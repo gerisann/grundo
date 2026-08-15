@@ -38,7 +38,7 @@ firebase deploy --only firestore:indexes
 if (-not $?) { throw "Az indexek deployja nem sikerült." }
 
 Write-Host "`n[3/3] Storage szabályok..." -ForegroundColor Green
-firebase deploy --only storage:rules
+firebase deploy --only storage
 if (-not $?) { throw "A Storage szabályok deployja nem sikerült." }
 
 Write-Host "`nKész." -ForegroundColor Green

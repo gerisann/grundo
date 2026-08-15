@@ -24,10 +24,6 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
-    function userDoc(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data;
-    }
-
     // Kétirányú tiltás: sem a tiltó, sem a tiltott nem látja a másikat.
     function blockedBetween(a, b) {
       return exists(/databases/$(database)/documents/users/$(a)/blocks/$(b))
