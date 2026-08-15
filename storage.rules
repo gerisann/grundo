@@ -1,0 +1,78 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRUND — Cloud Storage szabályok
+//
+// FONTOS: a Storage-szabályokat KÜLÖN kell deployolni a Firestore-szabályoktól.
+//   firebase deploy --only storage:rules
+// (Több projekten okozott már fejtörést, hogy a firestore:rules deploy
+//  önmagában nem frissíti ezt a fájlt.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp|heic)');
+    }
+
+    function underMB(mb) {
+      return request.resource.size < mb * 1024 * 1024;
+    }
+
+    // ── Profilkép ─────────────────────────────────────────────────────────
+    match /avatars/{uid}/{fileName} {
+      allow read: if true;                       // publikus, CDN-en keresztül
+      allow write: if isSelf(uid) && isImage() && underMB(5);
+    }
+
+    // ── Aktivitás-fotók ───────────────────────────────────────────────────
+    // Az EXIF-törlés a feltöltés után, szerveroldalon fut (a privát zóna
+    // értelmét venné el, ha a fotóban benne maradna a GPS-koordináta).
+    match /activities/{uid}/{activityId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if isSelf(uid) && isImage() && underMB(10);
+    }
+
+    // ── Generált térkép-előnézetek ────────────────────────────────────────
+    // Mindig a LEVÁGOTT nyomvonalból készülnek. Csak a szerver írhatja.
+    match /maps/{activityId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // ── Nyers idősor (GPS + pulzus + teljesítmény) ────────────────────────
+    // Tartalmazza a privát zónába eső pontokat is, ezért KIZÁRÓLAG a
+    // tulajdonos férhet hozzá — a láthatósági beállítástól függetlenül.
+    // Éles környezetben aláírt URL-lel szolgáljuk ki, szerveroldalról.
+    match /streams/{uid}/{activityId}/{fileName} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
+    // ── Klub- és kihívás-képek ────────────────────────────────────────────
+    match /clubs/{clubId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if false;                     // admin/tulajdonos szerveren át
+    }
+
+    // ── Adatexport (GDPR) ─────────────────────────────────────────────────
+    match /exports/{uid}/{fileName} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
+    // ── minden más tiltva ─────────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

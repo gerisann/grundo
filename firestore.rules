@@ -1,0 +1,291 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRUNDO — Firestore biztonsági szabályok
+//
+// ALAPELV: az írás alapból TILTOTT. A kliens kizárólag azt írhatja, ami
+// kifejezetten engedélyezve van itt. Minden játékadat (terület, GP, szint,
+// jelvény, előfizetés, bizalmi pontszám) KIZÁRÓLAG szerveroldalról íródik,
+// az Admin SDK-val, ami megkerüli ezeket a szabályokat.
+//
+// Részletek: docs/05-adatmodell.md
+// ═══════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Segédfüggvények ───────────────────────────────────────────────────
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    // Kétirányú tiltás: sem a tiltó, sem a tiltott nem látja a másikat.
+    function blockedBetween(a, b) {
+      return exists(/databases/$(database)/documents/users/$(a)/blocks/$(b))
+          || exists(/databases/$(database)/documents/users/$(b)/blocks/$(a));
+    }
+
+    function follows(followerUid, targetUid) {
+      return exists(/databases/$(database)/documents/users/$(targetUid)/followers/$(followerUid));
+    }
+
+    // Csak a felsorolt mezők változhatnak ebben az írásban.
+    function onlyChanges(allowed) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.role in ['owner', 'admin', 'moderator'];
+    }
+
+    // ── users ─────────────────────────────────────────────────────────────
+
+    match /users/{uid} {
+      // Privát fiók profilját csak elfogadott követő és a tulajdonos látja.
+      allow get, list: if signedIn()
+        && !blockedBetween(request.auth.uid, uid)
+        && (isSelf(uid)
+            || isAdmin()
+            || resource.data.privacy.account == 'public'
+            || follows(request.auth.uid, uid));
+
+      // A felhasználó SAJÁT MAGÁRÓL is csak a megjelenítési és beállítási
+      // mezőket írhatja. A játékállapot (level, gpTotal, territoryM2, trust,
+      // cellCount, zoneCount, counters, pro, status, username) szerveroldali.
+      allow update: if isSelf(uid) && onlyChanges([
+        'displayName', 'photoURL', 'bio', 'city', 'countryCode',
+        'privacy', 'units', 'body', 'timezone', 'updatedAt'
+      ]);
+
+      allow create, delete: if false;  // regisztráció és törlés szerveroldalról
+
+      // Privát beállítások — kizárólag a tulajdonosnak.
+      match /private/{docId} {
+        allow read, write: if isSelf(uid);
+      }
+
+      // Közösségi gráf: a kapcsolatokat a szerver írja (számlálók miatt),
+      // a kliens csak olvassa.
+      match /following/{targetUid} { allow read: if signedIn(); allow write: if false; }
+      match /followers/{sourceUid} { allow read: if signedIn(); allow write: if false; }
+
+      // Tiltás és némítás: a felhasználó saját maga kezeli.
+      match /blocks/{targetUid} { allow read, write: if isSelf(uid); }
+      match /mutes/{targetUid}  { allow read, write: if isSelf(uid); }
+
+      match /badges/{badgeId}   { allow read: if signedIn(); allow write: if false; }
+      match /passport/{iso}     { allow read: if signedIn(); allow write: if false; }
+    }
+
+    // Felhasználónév-foglalás: csak olvasható (az egyediséget a szerver
+    // tranzakcióban kezeli).
+    match /usernames/{name} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── activities ────────────────────────────────────────────────────────
+
+    match /activities/{activityId} {
+      function visibleToMe() {
+        let a = resource.data;
+        return isSelf(a.userId)
+            || isAdmin()
+            || (!blockedBetween(request.auth.uid, a.userId)
+                && (a.visibility == 'everyone'
+                    || (a.visibility == 'followers' && follows(request.auth.uid, a.userId))));
+      }
+
+      allow get, list: if signedIn() && visibleToMe();
+
+      // A kliens csak a saját aktivitása leíró mezőit szerkesztheti.
+      // A nyomvonal, a metrikák, a claim, a GP és a trust szerveroldali.
+      allow update: if isSelf(resource.data.userId) && onlyChanges([
+        'title', 'description', 'visibility', 'equipmentId', 'photos', 'updatedAt'
+      ]);
+
+      // Létrehozás és törlés a szerveren keresztül (feldolgozás + területvisszavonás).
+      allow create, delete: if false;
+
+      // ── A TELJES, LEVÁGATLAN NYOMVONAL ──
+      // Külön dokumentum, mert a Firestore-szabályok nem tudnak mezőszinten
+      // szűrni: ha a fő dokumentumban lenne, bárki elolvashatná, aki az
+      // aktivitást látja — és ezzel a privát zóna értelmét vesztené.
+      match /private/{docId} {
+        allow read: if isSelf(get(/databases/$(database)/documents/activities/$(activityId)).data.userId)
+                    || isAdmin();
+        allow write: if false;
+      }
+
+      match /likes/{uid} {
+        allow read: if signedIn();
+        allow create: if isSelf(uid)
+                      && request.resource.data.keys().hasOnly(['createdAt']);
+        allow delete: if isSelf(uid);
+        allow update: if false;
+      }
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && isSelf(request.resource.data.userId)
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && get(/databases/$(database)/documents/activities/$(activityId))
+               .data.allowComments != false;
+        // Szerkesztés csak a saját szövegen; a törlés puha (deleted flag).
+        allow update: if isSelf(resource.data.userId) && onlyChanges(['text', 'editedAt']);
+        allow delete: if isSelf(resource.data.userId) || isAdmin();
+      }
+    }
+
+    // ── A JÁTÉKTÉR — kliensről soha nem írható ────────────────────────────
+
+    // A hexrács cellatulajdonlása (res 9 blokkokban).
+    match /grid/{blockId}          { allow read: if signedIn(); allow write: if false; }
+    // Származtatott zónák (összefüggő birtokfoltok) a megjelenítéshez.
+    match /zones/{zoneId}          { allow read: if signedIn(); allow write: if false; }
+    match /territoryEvents/{id}    { allow read: if signedIn(); allow write: if false; }
+    match /gpLedger/{entryId} {
+      allow read: if signedIn() && (isSelf(resource.data.userId) || isAdmin());
+      allow write: if false;
+    }
+    match /leaderboards/{board}/entries/{rank} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // A bizalmi pontszám SOHA nem kerülhet kliensre — sem a szám, sem a
+    // részjelek. A felhasználó csak az aktivitáson lévő verdiktet látja.
+    match /activityTrust/{activityId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ── clubs ─────────────────────────────────────────────────────────────
+
+    match /clubs/{clubId} {
+      allow get, list: if signedIn()
+        && (resource.data.visibility == 'public'
+            || exists(/databases/$(database)/documents/clubs/$(clubId)/members/$(request.auth.uid)));
+      // Létrehozás, szerkesztés, tagfelvétel: szerveroldalon (Pro-ellenőrzés,
+      // meghívókód generálás, tagszámlálók).
+      allow write: if false;
+
+      match /members/{uid}      { allow read: if signedIn(); allow write: if false; }
+      match /joinRequests/{uid} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow create: if isSelf(uid);
+        allow delete: if isSelf(uid);
+        allow update: if false;
+      }
+    }
+
+    match /inviteCodes/{code} { allow read, write: if false; }  // csak szerver
+
+    // ── challenges ────────────────────────────────────────────────────────
+
+    match /challenges/{challengeId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /participants/{uid} {
+        allow read: if signedIn();
+        allow write: if false;  // a csatlakozás és a haladás szerveroldali
+      }
+    }
+
+    // ── notifications / messages ──────────────────────────────────────────
+
+    match /notifications/{uid}/items/{itemId} {
+      allow read: if isSelf(uid);
+      // A felhasználó csak olvasottnak jelölheti.
+      allow update: if isSelf(uid) && onlyChanges(['read']);
+      allow create, delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      function participant() {
+        return signedIn() && request.auth.uid in resource.data.participants;
+      }
+      allow read: if participant();
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow create: if isSelf(request.resource.data.senderId)
+          && request.auth.uid in
+             get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+          && request.resource.data.text.size() <= 2000;
+        allow update, delete: if false;
+      }
+    }
+
+    // ── reports ───────────────────────────────────────────────────────────
+
+    match /reports/{reportId} {
+      // A bejelentő létrehozhatja, de utána nem látja és nem módosítja.
+      allow create: if signedIn()
+        && isSelf(request.resource.data.reporterId)
+        && request.resource.data.category in
+           ['gps_spoof', 'vehicle', 'wrong_type', 'offensive', 'privacy', 'other']
+        && request.resource.data.status == 'open';
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /reporterCredibility/{uid} { allow read: if isAdmin(); allow write: if false; }
+
+    // ── egyéb felhasználói tartalom ───────────────────────────────────────
+
+    match /equipment/{itemId} {
+      allow read: if signedIn();
+      // A km-gyűjtés szerveroldali, a leíró mezők a felhasználóé.
+      allow create: if isSelf(request.resource.data.userId);
+      allow update: if isSelf(resource.data.userId)
+                    && onlyChanges(['name', 'type', 'targetKm', 'active', 'retiredAt']);
+      allow delete: if isSelf(resource.data.userId);
+    }
+
+    match /routes/{routeId} {
+      allow read: if signedIn() && (isSelf(resource.data.userId)
+                                    || resource.data.visibility == 'public');
+      allow create: if isSelf(request.resource.data.userId);
+      allow update, delete: if isSelf(resource.data.userId);
+    }
+
+    match /trainingPlans/{planId} { allow read: if signedIn(); allow write: if false; }
+    match /badges/{badgeId}       { allow read: if signedIn(); allow write: if false; }
+    match /subscriptions/{uid}    { allow read: if isSelf(uid); allow write: if false; }
+    match /connectors/{uid}/{provider} {
+      // A tokenek Secret Managerben vannak; itt csak státusz.
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+    match /devices/{uid}/tokens/{token} {
+      allow read: if isSelf(uid);
+      allow write: if isSelf(uid);  // FCM token regisztráció
+    }
+
+    // ── konfiguráció és napló ─────────────────────────────────────────────
+
+    match /appConfig/{docId}  { allow read: if signedIn(); allow write: if false; }
+    match /adminAudit/{docId} { allow read: if isAdmin();  allow write: if false; }
+
+    // ── minden más tiltva ─────────────────────────────────────────────────
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

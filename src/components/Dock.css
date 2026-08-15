@@ -1,0 +1,61 @@
+.dock {
+  position: fixed;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  bottom: calc(var(--safe-bottom) + var(--sp-3));
+  height: var(--dock-height);
+
+  display: grid;
+  grid-template-columns: 1fr 1fr auto 1fr 1fr;
+  align-items: center;
+  justify-items: center;
+
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-dock);
+  z-index: 40;
+}
+
+.dock__item {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-dim);
+  transition: color 120ms ease;
+}
+
+.dock__item:hover {
+  color: var(--text-muted);
+}
+
+.dock__item.active {
+  color: var(--territory);
+}
+
+/* A középső gomb kilóg a dockból — ez a képernyő domináns akciója. */
+.dock__play {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin-top: -26px;
+  border-radius: 50%;
+  color: #0b0b0d;
+  background: var(--grad-play);
+  box-shadow: var(--glow-play);
+  transition: transform 120ms ease;
+}
+
+.dock__play:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock__item,
+  .dock__play {
+    transition: none;
+  }
+}

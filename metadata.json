@@ -1,0 +1,9 @@
+{
+  "name": "GRUND",
+  "description": "Közösségi mozgás-app területfoglalós játékkal. Futás, séta és kerékpározás közben hexagon-cellákat foglalsz el a térképen: zárd be a kört, és a közrezárt terület a tiéd. A területfoglalás mellett minden megtett méter pontot (GP) ér, hogy az is haladjon, aki nem versenyez.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ],
+  "prompt": ""
+}

@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "groundo",
+    "prod": "groundo",
+    "dev": "groundo-dev"
+  }
+}

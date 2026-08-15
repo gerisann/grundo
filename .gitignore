@@ -1,0 +1,33 @@
+node_modules/
+dist/
+dist-server/
+.vite/
+
+# Környezeti változók — soha ne kerüljön verziókövetésbe
+.env
+.env.local
+.env.*.local
+*-service-account.json
+serviceAccountKey.json
+
+# Átmeneti munkafájlok
+tmp/*
+!tmp/.gitkeep
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Natív buildek (Capacitor)
+ios/App/Pods/
+android/.gradle/
+android/app/build/
