@@ -44,7 +44,7 @@ A projektben **három, egymáshoz megtévesztően hasonló név** van. Nem elír
 |---|---|---|
 | **GRUNDO** | az app / termék neve | felületi szövegek, `metadata.json`, `index.html` |
 | **`grundo`** | a Firebase **projekt** azonosítója | `.firebaserc`, `VITE_FIREBASE_PROJECT_ID`, authDomain, storage bucket |
-| **`groundo-db`** | a Firestore **adatbázis** neve | `firebase.json`, `getFirestore(…)` hívások |
+| **`grundo-db`** | a Firestore **adatbázis** neve | `firebase.json`, `getFirestore(…)` hívások |
 
 Ha valahol bizonytalan vagy, **ne találgass** — a `.env.example` fejlécében is ott van mindhárom.
 
@@ -53,16 +53,16 @@ Ha valahol bizonytalan vagy, **ne találgass** — a `.env.example` fejlécében
 A GRUNDO **nem** az alapértelmezett Firestore adatbázist használja, hanem egy dedikáltat:
 
 ```
-groundo-db
+grundo-db
 ```
 
 Ez három helyen van rögzítve, és **mindháromnak egyeznie kell**:
 
 | Fájl | Amit tartalmaznia kell |
 |---|---|
-| `firebase.json` | `"firestore": [{ "database": "groundo-db", ... }]` — **tömb** alak, ez a többadatbázisos mód |
-| `src/lib/firebase.ts` | `getFirestore(app, 'groundo-db')` |
-| `server/server.ts` | `getFirestore(adminApp, 'groundo-db')` |
+| `firebase.json` | `"firestore": [{ "database": "grundo-db", ... }]` — **tömb** alak, ez a többadatbázisos mód |
+| `src/lib/firebase.ts` | `getFirestore(app, 'grundo-db')` |
+| `server/server.ts` | `getFirestore(adminApp, 'grundo-db')` |
 
 > Ha a második paraméter lemarad, a hívás csendben a `(default)` adatbázisra megy.
 > Minden „működni fog", csak rossz helyen keletkeznek az adatok — és ez tipikusan

@@ -1,8 +1,8 @@
 {
-  "//": "FIGYELEM: a GRUNDO NEM az alapértelmezett (default) Firestore adatbázist használja, hanem egy dedikáltat: groundo-db. A tömb alakú firestore-konfiguráció a többadatbázisos mód — a database kulcs nélkül a deploy a default adatbázisra menne.",
+  "//": "FIGYELEM: a GRUNDO NEM az alapértelmezett (default) Firestore adatbázist használja, hanem egy dedikáltat: grundo-db. A tömb alakú firestore-konfiguráció a többadatbázisos mód — a database kulcs nélkül a deploy a default adatbázisra menne.",
   "firestore": [
     {
-      "database": "groundo-db",
+      "database": "grundo-db",
       "rules": "firestore.rules",
       "indexes": "firestore.indexes.json"
     }

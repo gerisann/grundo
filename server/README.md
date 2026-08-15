@@ -35,7 +35,7 @@ Ellenőrzés:
 
 ```bash
 curl http://localhost:8080/api/health
-# {"ok":true,"database":"groundo-db"}
+# {"ok":true,"database":"grundo-db"}
 ```
 
 ## Tesztek
@@ -70,7 +70,7 @@ gcloud services enable \
 ```bash
 gcloud artifacts repositories create grundo \
   --repository-format=docker \
-  --location=us-west1 \
+  --location=europe-west1 \
   --description="GRUNDO konténerek"
 ```
 
@@ -105,7 +105,7 @@ játékmotort is fordítja (`src/game`).
 
 ```bash
 gcloud run services describe grundo-api \
-  --region=us-west1 --format='value(status.url)'
+  --region=europe-west1 --format='value(status.url)'
 ```
 
 Ezt az URL-t kell beírni az AI Studio secretjei közé:
@@ -126,7 +126,7 @@ tartalmazza a kódot (`devCode`), hogy végig lehessen menni a folyamaton.
 Élesítéshez:
 
 ```bash
-gcloud run services update grundo-api --region=us-west1 \
+gcloud run services update grundo-api --region=europe-west1 \
   --set-env-vars=MAIL_PROVIDER=resend,MAIL_FROM='GRUNDO <no-reply@grundo.hu>' \
   --set-secrets=RESEND_API_KEY=resend-api-key:latest
 ```
@@ -136,11 +136,11 @@ A `resend-api-key` titkot előbb hozd létre a Secret Managerben.
 ## Ellenőrzési lista telepítés után
 
 ```bash
-API=$(gcloud run services describe grundo-api --region=us-west1 --format='value(status.url)')
+API=$(gcloud run services describe grundo-api --region=europe-west1 --format='value(status.url)')
 
 # 1. Életjel — a helyes adatbázist kell mondania
 curl -s $API/api/health
-# {"ok":true,"database":"groundo-db"}
+# {"ok":true,"database":"grundo-db"}
 
 # 2. Token nélkül 401, magyar üzenettel
 curl -s $API/api/me
@@ -155,7 +155,7 @@ környezeti változó nem tartalmazza a kliens domainjét.
 
 ## Amire figyelj
 
-**Az adatbázis neve `groundo-db`, nem `(default)`.** Ha a `FIRESTORE_DATABASE_ID`
+**Az adatbázis neve `grundo-db`, nem `(default)`.** Ha a `FIRESTORE_DATABASE_ID`
 lemarad, a szerver csendben a default adatbázisba ír, és ez hetekkel később derül ki.
 A `/healthz` pont ezért adja vissza a nevet.
 

@@ -16,7 +16,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 Write-Host "Cél környezet: $Env" -ForegroundColor Cyan
-Write-Host "Firestore adatbázis: groundo-db (NEM a default!)" -ForegroundColor Yellow
+Write-Host "Firestore adatbázis: grundo-db (NEM a default!)" -ForegroundColor Yellow
 
 if ($Env -eq 'prod') {
     $answer = Read-Host "Éles környezetre deployolsz. Írd be a 'IGEN' szót a folytatáshoz"

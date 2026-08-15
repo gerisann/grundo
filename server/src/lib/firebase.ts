@@ -6,10 +6,10 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
  * Dedikált Firestore adatbázis.
  *
  * A `getFirestore(app)` a `(default)` adatbázist adná vissza — a GRUNDO adatai
- * a `groundo-db` adatbázisban vannak. Ha ez elmarad, minden „működik", csak
+ * a `grundo-db` adatbázisban vannak. Ha ez elmarad, minden „működik", csak
  * rossz helyen keletkeznek az adatok, és ez hetekkel később derül ki.
  */
-export const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID ?? 'groundo-db';
+export const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID ?? 'grundo-db';
 
 function currentApp(): App {
   const existing = getApps()[0];

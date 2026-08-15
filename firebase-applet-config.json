@@ -3,7 +3,7 @@
   "appId": "1:65689674957:web:1e5550ab3562d31aa13584",
   "apiKey": "AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w",
   "authDomain": "grundo.firebaseapp.com",
-  "firestoreDatabaseId": "groundo-db",
+  "firestoreDatabaseId": "grundo-db",
   "storageBucket": "grundo.firebasestorage.app",
   "messagingSenderId": "65689674957",
   "measurementId": "",

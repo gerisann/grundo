@@ -5,12 +5,12 @@ import { getStorage, connectStorageEmulator, type FirebaseStorage } from 'fireba
 
 /**
  * A GRUNDO NEM az alapértelmezett Firestore adatbázist használja, hanem egy
- * dedikáltat: `groundo-db`. Ha a második paramétert elhagyod, csendben a
+ * dedikáltat: `grundo-db`. Ha a második paramétert elhagyod, csendben a
  * `(default)` adatbázisra írsz — ez a hiba nehezen vehető észre, mert minden
  * "működik", csak rossz helyen keletkeznek az adatok.
  */
 export const FIRESTORE_DATABASE_ID =
-  import.meta.env.VITE_FIRESTORE_DATABASE_ID || 'groundo-db';
+  import.meta.env.VITE_FIRESTORE_DATABASE_ID || 'grundo-db';
 
 const CONFIG_KEYS = [
   'VITE_FIREBASE_API_KEY',

@@ -6,9 +6,11 @@
 # játékmotort is fordítja (src/game, src/config, src/types).
 
 substitutions:
-  # A Firestore adatbázis (groundo-db) us-west1-ben van — a backendet
-  # ugyanoda telepítjük, mert sok oda-vissza forgalom lesz köztük.
-  _REGION: us-west1
+  # A Firestore adatbázis (grundo-db) az eur3 multiregionális helyen van.
+  # A backendet Európába telepítjük, mert a backend és a Firestore között sok
+  # oda-vissza forgalom lesz — és így a magyar felhasználókhoz is közelebb van,
+  # mint az USA nyugati partja.
+  _REGION: europe-west1
   _SERVICE: grundo-api
   _REPO: grundo
 
@@ -56,7 +58,7 @@ steps:
       - --min-instances=0
       - --max-instances=4
       - --memory=512Mi
-      - --set-env-vars=FIRESTORE_DATABASE_ID=groundo-db,ALLOWED_ORIGINS=https://grundo.ai.studio
+      - --set-env-vars=FIRESTORE_DATABASE_ID=grundo-db,ALLOWED_ORIGINS=https://grundo.ai.studio
 
 options:
   logging: CLOUD_LOGGING_ONLY

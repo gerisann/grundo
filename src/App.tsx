@@ -24,7 +24,20 @@ export function App() {
           tracking store-ból jöjjön. Addig a fix idősávos automatika fut. */}
       <ProfileProvider>
         <ThemeProvider coords={null} recordingActive={false}>
-          <BrowserRouter>
+          {/**
+            * A React Router v7-ben két viselkedés megváltozik, és a v6
+            * figyelmeztet, amíg nem nyilatkozunk róluk. Most kapcsoljuk be
+            * mindkettőt: így a mai kód már a v7 szerint működik, a későbbi
+            * frissítés nem hoz meglepetést, és a konzol is tiszta marad.
+            *
+            *  v7_startTransition   — az útvonalváltás állapotfrissítései
+            *                         React.startTransition-be kerülnek
+            *  v7_relativeSplatPath — a relatív útvonalak feloldása a
+            *                         csillagos (*) útvonalakon belül változik
+            */}
+          <BrowserRouter
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
             <Router />
           </BrowserRouter>
         </ThemeProvider>
