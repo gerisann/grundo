@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Checkbox, TextField } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
+import { useProfile } from '@/hooks/ProfileProvider';
+import { apiConfigured } from '@/lib/api';
 import { authErrorMessage } from '@/lib/authErrors';
 import {
   STRENGTH_LABEL,
@@ -16,6 +18,7 @@ import './auth.css';
 export function RegisterScreen() {
   const navigate = useNavigate();
   const { registerWithEmail, signInWithGoogle, status } = useAuth();
+  const { createProfile } = useProfile();
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -44,11 +47,16 @@ export function RegisterScreen() {
 
     setBusy(true);
     try {
-      await registerWithEmail({
-        username: username.trim().toLowerCase(),
-        email: email.trim(),
-        password,
-      });
+      const normalized = username.trim().toLowerCase();
+      await registerWithEmail({ username: normalized, email: email.trim(), password });
+
+      // A felhasználónév LEFOGLALÁSA szerveroldalon történik, tranzakcióban —
+      // enélkül két egyszerre regisztráló ugyanazt a nevet kaphatná meg.
+      // Ha ez elbukik (pl. időközben elvitték a nevet), a Firebase-fiók már
+      // létezik: a ProfileProvider `missing` állapotba kerül, és a
+      // felhasználónév-választó képernyő veszi át.
+      if (apiConfigured) await createProfile(normalized);
+
       navigate('/');
     } catch (error) {
       setFormError(authErrorMessage(error));

@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
+import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
 import { Dock } from './components/Dock';
 import { HomeScreen } from './screens/HomeScreen';
 import { TerritoryScreen } from './screens/TerritoryScreen';
@@ -14,23 +15,27 @@ import { WelcomeScreen } from './screens/auth/WelcomeScreen';
 import { LoginScreen } from './screens/auth/LoginScreen';
 import { RegisterScreen } from './screens/auth/RegisterScreen';
 import { ForgotPasswordScreen } from './screens/auth/ForgotPasswordScreen';
+import { CompleteProfileScreen } from './screens/auth/CompleteProfileScreen';
 
 export function App() {
   return (
     <AuthProvider>
       {/* TODO(F1): a `coords` a helymeghatározásból, a `recordingActive` a
           tracking store-ból jöjjön. Addig a fix idősávos automatika fut. */}
-      <ThemeProvider coords={null} recordingActive={false}>
-        <BrowserRouter>
-          <Router />
-        </BrowserRouter>
-      </ThemeProvider>
+      <ProfileProvider>
+        <ThemeProvider coords={null} recordingActive={false}>
+          <BrowserRouter>
+            <Router />
+          </BrowserRouter>
+        </ThemeProvider>
+      </ProfileProvider>
     </AuthProvider>
   );
 }
 
 function Router() {
   const { status } = useAuth();
+  const { status: profileStatus } = useProfile();
 
   if (status === 'loading') return <Splash />;
 
@@ -59,6 +64,11 @@ function Router() {
       </Routes>
     );
   }
+
+  // Van Firebase-fiók, de nincs GRUNDO-profil → előbb felhasználónév kell.
+  // A `unavailable` (nincs backend) NEM állítja meg az appot.
+  if (profileStatus === 'missing') return <CompleteProfileScreen />;
+  if (profileStatus === 'loading') return <Splash />;
 
   return (
     <>

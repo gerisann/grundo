@@ -1,7 +1,15 @@
 # GRUNDO backend — Cloud Run
-FROM node:22-slim AS build
+#
+# FIGYELEM: a build kontextusa a REPO GYÖKERE, nem a server/ mappa —
+# a szerver a klienssel közös játékmotort is fordítja (src/game).
+#
+#   docker build -f server/Dockerfile -t grundo-api .
+#
+# Cloud Buildben ugyanezt a cloudbuild.yaml intézi.
 
+FROM node:22-slim AS build
 WORKDIR /app
+
 COPY server/package*.json ./server/
 RUN cd server && npm ci
 
@@ -14,12 +22,15 @@ COPY server ./server
 
 RUN cd server && npm run build
 
+# ── Futtató réteg ────────────────────────────────────────────────────
 FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/server/package*.json ./
+
+COPY server/package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/server/dist ./dist
 
 EXPOSE 8080
-CMD ["node", "dist/server.js"]
+# A rootDir a repo gyökere, ezért a belépési pont dist/server/server.js
+CMD ["node", "dist/server/server.js"]
