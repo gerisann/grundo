@@ -34,7 +34,11 @@ export function SettingsScreen() {
               value={MODE_LABEL[settings.mode] ?? ''}
               onClick={() => navigate('/beallitasok/megjelenes')}
             />
-            <ListRow label="Mértékegységek" value="Hamarosan" chevron />
+            <ListRow
+              label="Mértékegységek"
+              value={<span className="row__value--muted">Hamarosan</span>}
+              chevron
+            />
             <ListRow label="Adatvédelem" description="Fiók és aktivitás láthatósága" chevron />
           </List>
         </section>
