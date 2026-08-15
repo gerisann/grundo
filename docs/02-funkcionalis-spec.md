@@ -27,7 +27,20 @@ Minden képernyő: mit tartalmaz, mit csinál, milyen állapotai vannak. A `[Pro
 
 ### Belépés
 - E-mail + jelszó, „Elfelejtett jelszó" (e-mailes reset link).
-- Opcionális V1.5: Apple / Google belépés (az App Store megköveteli az Apple-t, ha van másik social login).
+
+**Google belépés** *(élesítve: 2026-08-15)* — a Firebase projektben be van kapcsolva, tehát az F0 hatókörébe kerül, nem V1.5-be.
+
+Két következménye van, amit együtt kell kezelni:
+
+**1. Fiókösszevonás.** Ha valaki előbb e-mail+jelszóval regisztrál, majd ugyanazzal a címmel Google-lel lép be (vagy fordítva), a Firebase alapbeállítása („one account per email address") hibával elutasítja a másodikat. Ez lesz a leggyakoribb támogatási kérdés, ha nyersen hagyjuk.
+
+Kezelés: a `auth/account-exists-with-different-credential` hibát **érthető magyar üzenetre** kell fordítani, és fel kell ajánlani a helyes utat:
+
+> „Ezzel az e-mail-címmel már van fiókod, jelszóval. Lépj be jelszóval, és a profilodban összekapcsolhatod a Google-fiókoddal."
+
+Belépés után a Beállításokban legyen egy **„Bejelentkezési módok"** szakasz, ahol a Google-fiók hozzákapcsolható (`linkWithCredential`) és leválasztható — de legalább egy módszernek mindig maradnia kell.
+
+**2. Sign in with Apple kötelezővé válik iOS-en.** Az App Store megköveteli, ha az app kínál más harmadik féltől származó belépést. Amint iOS build készül, az Apple belépés is kell — ez **nem opcionális** és nem halasztható a beadás utánra. Tervezd be az F0-ba, ne az F6-ba.
 
 ---
 
@@ -361,7 +374,32 @@ Lásd [04 — Pontrendszer](04-pontrendszer.md#jelvények). Üres állapot: „M
 
 ## Beállítások
 
-**Preferenciák** (kép #38):
+### Megjelenés *(döntés: 2026-08-15)*
+
+A GRUNDO-nak **világos és sötét témája** is van, és az **alapértelmezett a világos**. Ez tudatos eltérés a referencia-apptól: az napszaktól függetlenül sötét volt, ami nappal, tűző napon a leggyakoribb használati helyzetben rosszul olvasható.
+
+**Négy mód, a felhasználó választ:**
+
+| Mód | Viselkedés |
+|---|---|
+| **Automatikus** *(alapértelmezett)* | Nappal világos, este sötét |
+| Világos | Mindig világos |
+| Sötét | Mindig sötét |
+| Rendszer szerint | A telefon beállítását követi |
+
+> A kifejezett választás (Világos / Sötét) **mindig felülírja** az automatikát. A telefon beállítását csak a „Rendszer szerint" mód követi — az „Automatikus" a napszakot nézi, nem az OS-t.
+
+**Az automatikus váltás beállítható:**
+
+- **Napnyugta szerint** *(alapértelmezett)* — a valódi napkelte/napnyugta a pozíciód alapján. Ezt helyben számoljuk, külső szolgáltatás nélkül; a nyáron 21 óráig világos este így nem vált idő előtt sötétre.
+- **Fix időpontok** — pl. 20:00-tól 06:30-ig sötét, mindkét érték állítható. Ez a tartalék, ha nincs helyengedély, és ez fut a sarkkörön túl is, ahol nincs minden nap napkelte.
+
+**Két viselkedési szabály, ami nem beállítás, hanem tervezési döntés:**
+
+1. **Rögzítés közben nem váltunk témát.** Ha futás közben lemegy a nap, a téma csak a mentés után vált. A térképstílus cseréje félbeszakítaná a megjelenítést és újratöltené a Mapbox stílust — futás közben ez elfogadhatatlan.
+2. **Nincs villanás induláskor.** A téma az első kirajzolás előtt eldől (az `index.html` inline szkriptje), tehát sötét módban sem villan fel egy pillanatra a világos felület.
+
+### Preferenciák (kép #38):
 - Kommentek engedélyezése a saját aktivitásokon.
 - Mértékegységek: KM/MI · KG/LBS · CM/FT+IN.
 - **Fiók-adatvédelem**: Publikus / Privát.

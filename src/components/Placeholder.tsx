@@ -16,10 +16,17 @@ export function Placeholder({
   return (
     <main style={{ padding: 'calc(var(--safe-top) + var(--sp-5)) var(--sp-4) var(--sp-5)' }}>
       <h1 className="screen-title">{title}</h1>
-      <p style={{ color: 'var(--text-muted)', marginTop: 'var(--sp-2)' }}>{children}</p>
+      <p style={{ color: 'var(--text-secondary)', marginTop: 'var(--sp-2)' }}>{children}</p>
       <div className="card" style={{ marginTop: 'var(--sp-4)' }}>
         <div className="label">Specifikáció</div>
-        <div style={{ marginTop: 'var(--sp-2)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-small)' }}>
+        <div
+          style={{
+            marginTop: 'var(--sp-2)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--fs-small)',
+            color: 'var(--text-secondary)',
+          }}
+        >
           {spec}
         </div>
       </div>

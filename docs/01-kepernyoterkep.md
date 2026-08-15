@@ -134,22 +134,43 @@ Profil
 
 ---
 
-## 3. Design-nyelv (a képek alapján)
+## 3. Design-nyelv
+
+> **A referencia-app sötét-only volt, narancs/cián szemantikával. A GRUNDO ettől eltér** *(döntés: 2026-08-15)*: **két témás**, lila márkaszínnel, és az **alapértelmezett a világos**.
+
+A képekből átvett szerkezeti jegyek (témától függetlenül érvényesek):
 
 | Elem | Érték |
 |---|---|
-| Alap háttér | `#08090B` közeli fekete |
-| Kártya | `#121316`, 20–24 px lekerekítés, finom 1 px szegély |
-| Kiemelés / terület / játék | **narancs** `#FF7A1A` |
-| Másodlagos / adat / link | **cián** `#22C7E8` |
-| Akcent / gradiens (play, CTA) | korall → magenta → lila |
-| Pozitív (szint, regeneráció) | zöld `#2BD97C` |
-| Negatív (törlés, jelentés) | piros `#FF4D5E` |
+| Kártya | 20–24 px lekerekítés, finom 1 px szegély, alig látható árnyék |
 | Fejléc-betű | groteszk, félkövér, nagy (28–34 px) |
-| Címke/label | ritkított VERZÁL, 11–12 px, szürke |
-| Számadat | monospace-jellegű, tabuláris számok |
-| Tab-pirula | aktív: gradiens kontúr; inaktív: szürke kontúr |
+| Címke/label | ritkított VERZÁL, 11–12 px, tercier szöveg |
+| Számadat | monospace, **tabuláris számok** — különben ugrál a mérőóra |
+| Tab-pirula | aktív: accent kontúr és szöveg; inaktív: szürke kontúr |
+| Dock | lebegő pill, elmosott háttér, középen kilógó indítógomb |
 
-A GRUNDO ugyanezt a sötét, kontrasztos, „játék-HUD" karaktert viszi tovább; a **narancs a terület, a cián az adat** — ezt a szétválasztást végig tartani kell.
+### Színszemantika
 
-> **Világos téma:** nem V1 scope. Ha később kell, azt tokenrendszerrel kell indítani, nem utólagos foltozással.
+A teljes tokenkészlet: [`src/styles/tokens.css`](../src/styles/tokens.css). A legfontosabb szerepek:
+
+| Szerep | Token | Mire |
+|---|---|---|
+| Márka / akció / link | `--accent` (lila) | gombok, aktív tabok, indítógomb |
+| **A te területed** | `--territory-own` | a saját hexagonjaid a térképen |
+| **Rivális területe** | `--territory-rival` (meleg narancs) | más játékos birtoka |
+| Ideiglenes nyom | `--trail-pending` | rögzítés közben, bezárás előtt |
+| Réteg | `--layer-foot` / `--layer-bike` | a gyalogos ⇄ kerékpáros váltó |
+| Több játékos | `--player-1…6` | ranglista, klub-nézet |
+| Grafikonok | `--chart-*`, `--zone-1…5` | tempó, teljesítmény, szint, zónák |
+
+**A legfontosabb szabály:** a saját és az idegen terület színe **soha nem lehet hasonló**. A referencia-app megúszta egyetlen színnel, mert ott nem volt tétje — a GRUNDO-ban egy pillantással el kell dönteni a térképen, hova érdemes menni. Ezért lett a saját terület lila, a riválisé meleg narancs: két maximálisan távoli hue, ami **világosságban is eltér**, tehát színtévesztéssel is elkülönül.
+
+**A védelmi szintet nem szín jelzi, hanem a kitöltés telítettsége** (`--defense-alpha-1…5`). Így a „kié" és a „mennyire védett" két független vizuális csatorna marad.
+
+### Két témás szabályok
+
+1. **Beégetett szín tilos.** Minden érték tokenből jön.
+2. **Minden képernyőt mindkét témában meg kell nézni**, mielőtt késznek nyilvánítjuk. Ami sötétben működik, világosban gyakran eltűnik — különösen az átlátszóságok.
+3. **A térkép is vált**: külön Mapbox stílus világoshoz és sötéthez (`VITE_MAPBOX_STYLE_LIGHT` / `_DARK`).
+4. **A poligonok átlátszósága témánként hangolt** — világos térképen a kitöltés hamarabb elnyomja az utcaneveket.
+5. **Kontraszt**: a szöveg/háttér párosoknak WCAG AA-t (4,5:1) kell teljesíteniük mindkét témában. A `--text-tertiary` csak címkékre való, folyó szövegre nem.

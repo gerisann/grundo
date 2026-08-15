@@ -136,6 +136,40 @@ Eredetileg két lehetőséget vázoltam fel (PostGIS vs. Firestore+turf.js) — 
 - Állapot: TanStack Query + Firestore realtime a feedre.
 - **Offline-first tracking:** a nyomvonal helyben (SQLite) rögzül, hálózat nélkül is; feltöltés amint van kapcsolat. Az app bezárása/összeomlása után a folyamatban lévő aktivitás visszaállítható.
 
+### Böngésző vs. natív — a fejlesztés két üzemmódja
+
+Az AI Studio egy **böngészőben futó Vite + React appot** fejleszt. Ott a natív háttér-helymeghatározás **nem működik**: a HTML5 Geolocation API csak előtérben, aktív fülön ad pozíciót, és a képernyő elalvásakor leáll. Ez nem hiba, hanem a platform korlátja.
+
+Ezért a fejlesztés két üzemmódban zajlik:
+
+| Üzemmód | Hol | Mire jó |
+|---|---|---|
+| **Böngésző** | AI Studio, `npm run dev` | minden felület, a játéklogika, a szerverhívások, a feed, a ranglisták — a funkcionalitás ~90 %-a |
+| **Natív** (Capacitor) | valós telefon | a háttér-GPS, az élő értesítés, a HealthKit/Health Connect, az akkumulátor-viselkedés |
+
+Böngészőben a tracking képernyő a HTML5 Geolocation API-t használja, és **világosan jelzi**, hogy ez fejlesztői mód — nem szabad úgy tenni, mintha éles rögzítés lenne.
+
+### Fejlesztői eszköz: GPX-visszajátszó *(kötelező, nem opcionális)*
+
+A `scripts/replay.ts` (és a hozzá tartozó fejlesztői felület) egy **GPX/JSON nyomvonalat játszik vissza** a tracking képernyőnek, mintha valós GPS-adat érkezne — állítható sebességgel, akár azonnal.
+
+Ez nem kényelmi eszköz. **Ez az egyetlen mód, hogy a játékmotort determinisztikusan teszteljük.** A `src/game/` logikáját nem lehet úgy validálni, hogy minden módosítás után kimegyünk futni egy kört.
+
+Kötelező tesztnyomvonalak a `scripts/fixtures/` alatt:
+
+| Fixture | Mit ellenőriz |
+|---|---|
+| `simple-loop.gpx` | alap bezárás, terület és GP számítás |
+| `figure-eight.gpx` | **két** külön bezárás egy aktivitásból |
+| `multi-lap.gpx` | ugyanaz a kör 4×: védelem 1→4, a szorzók helyessége |
+| `open-route.gpx` | be nem zárt nyom → nincs terület, de van alappont |
+| `gps-gap.gpx` | 50 m-es jelkihagyás → a `gridPathCells` hézagkitöltés vízhatlan-e |
+| `self-touch.gpx` | GPS-remegésből eredő ál-hurok → NEM adhat területet |
+| `steal.gpx` | idegen terület elvétele védelem 1-nél és 3-nál |
+| `huge-bbox.gpx` | vonatút → a 150 km²-es védőkorlát elutasítja |
+
+A böngészős előnézet és a szerver eredményének **azonosnak kell lennie** minden fixture-re — ez a rácsos modell egyik fő ígérete, és pont ez az, amit tesztelni kell.
+
 ### Teljesítmény-célok
 | Metrika | Cél |
 |---|---|
@@ -248,7 +282,9 @@ Job-futások és hibák · Cloud Tasks sorok · hibanapló (Sentry/Error Reporti
 ## Ütemterv
 
 ### F0 — Alapozás (2–3 hét)
-Repo, CI/CD, Firebase projekt (dev/prod), designrendszer-tokenek, auth + OTP, profil, navigáció/dock, üres képernyők.
+Repo, CI/CD, Firebase projekt, designrendszer-tokenek, **auth: e-mail+jelszó + OTP + Google belépés + fiókösszevonás**, profil, navigáció/dock, üres képernyők, **GPX-visszajátszó a fixture-ökkel**.
+
+*Nem igényel Mapbox tokent, natív buildet és külső konnektort — ez a fázis teljes egészében elkészíthető a böngészőben.*
 
 ### F1 — Tracking és aktivitás (3–4 hét)
 Háttér-GPS, indítás előtti/aktív/szünet/mentés folyamat, offline sor, aktivitás-részletek grafikonokkal és részidőkkel, térkép-előnézet generálás, feed alapok.
