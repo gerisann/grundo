@@ -1,6 +1,6 @@
 # 03 — Játékszabályok: a terület
 
-Ez a fejezet a GRUND magja. Minden szabály **szerveroldalon** kényszerül ki; a kliens csak megjelenít és élő előnézetet számol.
+Ez a fejezet a GRUNDO magja. Minden szabály **szerveroldalon** kényszerül ki; a kliens csak megjelenít és élő előnézetet számol.
 
 > **Alapdöntés (2026-08-15):** a terület nem szabad alakú poligon, hanem **hexagon-rács** (H3, 12-es felbontás). Ez a döntés hatja át az egész fejezetet. Az indoklás a [06 — Geometria-modell](06-architektura-es-admin.md#gt-geometria-modell-döntés) fejezetben.
 

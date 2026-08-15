@@ -1,10 +1,10 @@
-# GRUND — projekt gerinc
+# GRUNDO — projekt gerinc
 
 **Státusz:** V0.2 specifikáció · 2026-08-15 (10 alapdöntés rögzítve)
 **Cél:** production ready közösségi mozgás- és területfoglaló app (iOS/Android + web admin)
 **Stack:** Google AI Studio (fejlesztés) · Firebase (Auth, Firestore, Storage, FCM, Hosting) · Cloud Run (geo/konnektor/job szolgáltatások) · Mapbox
 
-Ez a mappa a GRUND funkcionális és technikai gerince. A `../*.jpg` (49 db) referencia-képernyőkép egy hasonló appról (Stryde) — ezekből lett a képernyőtérkép és a UI-elemzés. A GRUND ezekhez képest **más játéklogikát** kap: a területfoglalás mellé egy különálló, de összekapcsolt **pontrendszer** kerül, ami az aktivitást önmagában is jutalmazza.
+Ez a mappa a GRUNDO funkcionális és technikai gerince. A `../*.jpg` (49 db) referencia-képernyőkép egy hasonló appról (Stryde) — ezekből lett a képernyőtérkép és a UI-elemzés. A GRUNDO ezekhez képest **más játéklogikát** kap: a területfoglalás mellé egy különálló, de összekapcsolt **pontrendszer** kerül, ami az aktivitást önmagában is jutalmazza.
 
 ## Dokumentumok
 
@@ -17,14 +17,14 @@ Ez a mappa a GRUND funkcionális és technikai gerince. A `../*.jpg` (49 db) ref
 | 05 | [Adatmodell](05-adatmodell.md) | Firestore/PostGIS séma, kollekciók, indexek, biztonsági szabályok |
 | 06 | [Architektúra és admin](06-architektura-es-admin.md) | Szolgáltatások, jobok, admin felület, analitika, üzemeltetés, ütemterv |
 
-## A GRUND egy mondatban
+## A GRUNDO egy mondatban
 
 > Fuss, sétálj vagy bringázz → zárd a kört → urald a területet → védd meg, ami a tiéd.
 > És közben minden méter pontot ér — akkor is, ha nem zárul a kör.
 
 ## Két játék, egy app
 
-|  | **Terület** (m²) | **GRUND pont (GP)** |
+|  | **Terület** (m²) | **GRUNDO pont (GP)** |
 |---|---|---|
 | Jellege | állapot, **elvehető** | halmozódó, **soha nem vész el** |
 | Mit mér | pillanatnyi birodalom | tartós aktivitást |

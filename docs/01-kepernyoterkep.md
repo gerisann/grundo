@@ -67,7 +67,7 @@ A képek a `..\` mappában vannak. A rövid azonosító a fájlnév első két s
 - **Terület:** 2 kép
 - **Egyéb** (üzenetek, értesítések, Pro, felszerelés, konnektorok): 8 kép
 
-**Hiányzik a képekből** (a GRUND-hoz meg kell terveznünk): regisztráció/bejelentkezés folyamat, onboarding, aktivitás mentése/szerkesztése képernyő, klub részletek, kihívás részletek, komment-lista, más felhasználó profilja, keresés eredmények, pontrendszer felületei (GP-ranglista, szint-részletek).
+**Hiányzik a képekből** (a GRUNDO-hoz meg kell terveznünk): regisztráció/bejelentkezés folyamat, onboarding, aktivitás mentése/szerkesztése képernyő, klub részletek, kihívás részletek, komment-lista, más felhasználó profilja, keresés eredmények, pontrendszer felületei (GP-ranglista, szint-részletek).
 
 ---
 
@@ -150,6 +150,6 @@ Profil
 | Számadat | monospace-jellegű, tabuláris számok |
 | Tab-pirula | aktív: gradiens kontúr; inaktív: szürke kontúr |
 
-A GRUND ugyanezt a sötét, kontrasztos, „játék-HUD" karaktert viszi tovább; a **narancs a terület, a cián az adat** — ezt a szétválasztást végig tartani kell.
+A GRUNDO ugyanezt a sötét, kontrasztos, „játék-HUD" karaktert viszi tovább; a **narancs a terület, a cián az adat** — ezt a szétválasztást végig tartani kell.
 
 > **Világos téma:** nem V1 scope. Ha később kell, azt tokenrendszerrel kell indítani, nem utólagos foltozással.

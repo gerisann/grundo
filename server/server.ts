@@ -21,10 +21,10 @@ const adminApp = initializeApp({ credential: applicationDefault() });
 
 /**
  * Dedikált Firestore adatbázis. A `getFirestore(app)` a `(default)`
- * adatbázist adná vissza — a GRUNDO adatai a `grundo-db` adatbázisban vannak.
+ * adatbázist adná vissza — a GRUNDO adatai a `groundo-db` adatbázisban vannak.
  * Mindig ezt a `db` példányt használd, sose hívj `getFirestore()`-t máshol.
  */
-export const FIRESTORE_DATABASE_ID = 'grundo-db';
+export const FIRESTORE_DATABASE_ID = 'groundo-db';
 export const db = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
 
 const app = express();

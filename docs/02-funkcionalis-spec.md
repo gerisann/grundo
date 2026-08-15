@@ -107,7 +107,7 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
 
 ## Home
 
-**Fejléc:** GRUND logó · keresés · üzenetek · értesítések (számláló pötty).
+**Fejléc:** GRUNDO logó · keresés · üzenetek · értesítések (számláló pötty).
 
 **Sávok fentről lefelé** (képek #31, #37, #09):
 1. **Hitelesítés-banner** (ha nincs verifikálva) — bezárható, de a Beállításokból visszahozható.
@@ -124,7 +124,7 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
 - Cím (pl. „Reggeli futás" — szerkeszthető).
 - **Média-carousel**: első lap mindig az automatikusan generált térképkép az útvonallal (és a bezárt területtel narancs kitöltéssel), utána a feltöltött fotók. Oldalra swipe, lapozó pöttyök, kattintásra teljes képernyős nagyítás (pinch-zoom).
 - **Metrika-sáv**: TÁV · TEMPÓ · IDŐ · SZINT (bringánál tempó helyett átlagsebesség).
-- **GRUND-sáv** (ez az újdonság a referenciához képest): `+840 000 m² elfoglalva` · `+1 456 GP` · védelmi szint jelölés, ha ismételt kör.
+- **GRUNDO-sáv** (ez az újdonság a referenciához képest): `+840 000 m² elfoglalva` · `+1 456 GP` · védelmi szint jelölés, ha ismételt kör.
 - PR-chipek (400 m, 1 km, 5 km…).
 - Lábléc: like (szív + like-olók avatarjai) · komment (szám) · megosztás.
 - `⋯` menü idegen posztnál: Némítás · Követés vége · Tiltás · Jelentés (kép #22). Saját posztnál: Szerkesztés · Láthatóság · Törlés.
@@ -135,7 +135,7 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
 
 ## Terület
 
-A GRUND szíve (képek #49, #21).
+A GRUNDO szíve (képek #49, #21).
 
 - Teljes képernyős Mapbox térkép, sötét stílus.
 - Bal felül **`0 m² — A TE TERÜLETED`** chip.
@@ -197,7 +197,7 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - Fejléc: avatar · dátum · időjárás (☀️ 18°C).
 - Cím + leírás.
 - **STATS rács**: km · átlagtempó · idő · szintemelkedés · kalória · átlagpulzus.
-- **GRUND panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
+- **GRUNDO panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
 - Rögzítő eszköz neve („iPhone 13 Pro", „Garmin Forerunner 265").
 - Like / komment sáv.
 - **Grafikonok** (mind koppintásra scrub-olható):
@@ -266,11 +266,11 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - **Tempózónák** megoszlás.
 - **Versenyidő-becslés** (Riegel-képlet, csak futásra).
 - **Minden aktivitás / Regeneráció**: „Jól regenerálódtál — mehet a kemény edzés", aktív napok, heti táv, egymást követő napok.
-- **GRUND-blokk** (új): összes elfoglalt terület, összes elvett/elvesztett zóna, leghosszabb birtoklás, összes GP forrásonként.
+- **GRUNDO-blokk** (új): összes elfoglalt terület, összes elvett/elvesztett zóna, leghosszabb birtoklás, összes GP forrásonként.
 
 ### Útvonalak fül — **Küldetés-ajánló** (képek #33, #18) `[Pro: korlátlan · Ingyenes: heti 5]`
 
-*(döntés: 2026-08-15)* — Ez nem útvonaltervező, hanem **terület-ajánló motor**. A referencia-app „fuss 8 km-t" logikája bármelyik futóappban megvan; a GRUND-ban az útvonalnak **játékbeli tétje** van, és ezt kell kimondani.
+*(döntés: 2026-08-15)* — Ez nem útvonaltervező, hanem **terület-ajánló motor**. A referencia-app „fuss 8 km-t" logikája bármelyik futóappban megvan; a GRUNDO-ban az útvonalnak **játékbeli tétje** van, és ezt kell kimondani.
 
 **A bemenet nem távolság, hanem idő:**
 

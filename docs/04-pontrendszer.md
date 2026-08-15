@@ -1,10 +1,10 @@
-# 04 — Pontrendszer (GRUND pont / GP)
+# 04 — Pontrendszer (GRUNDO pont / GP)
 
 ## A tervezés elve
 
-A területfoglalás önmagában **kirekesztő játék**: aki lassabb, kevesebbet ér rá, vagy ritkás lakóövezetben él, az mindig veszíteni fog, és abbahagyja. A GRUND célja viszont az, hogy **mozgásra ösztönözzön** — ezért kell egy második, párhuzamos játék.
+A területfoglalás önmagában **kirekesztő játék**: aki lassabb, kevesebbet ér rá, vagy ritkás lakóövezetben él, az mindig veszíteni fog, és abbahagyja. A GRUNDO célja viszont az, hogy **mozgásra ösztönözzön** — ezért kell egy második, párhuzamos játék.
 
-|  | **Terület (m²)** | **GRUND pont (GP)** |
+|  | **Terület (m²)** | **GRUNDO pont (GP)** |
 |---|---|---|
 | Természete | pillanatnyi állapot | halmozott előzmény |
 | Elvehető? | **igen** | **soha** |
