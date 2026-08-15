@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -15,6 +15,12 @@ export interface SegmentedControlProps<T extends string> {
   size?: 'sm' | 'md';
   /** A teljes szélességet kitölti, egyenlő szélességű elemekkel. */
   block?: boolean;
+  /**
+   * Hány oszlopba rendezze `block` módban.
+   * Alapértelmezés: háromig egy sor, fölötte 2×2 rács — mert négy elem
+   * egy sorban mobilon 3+1-re törik, ami töröttnek látszik.
+   */
+  columns?: number;
 }
 
 /**
@@ -31,7 +37,10 @@ export function SegmentedControl<T extends string>({
   label,
   size = 'md',
   block = false,
+  columns,
 }: SegmentedControlProps<T>) {
+  const cols = columns ?? (options.length <= 3 ? options.length : 2);
+
   function move(delta: number) {
     const index = options.findIndex((o) => o.value === value);
     if (index < 0) return;
@@ -46,6 +55,7 @@ export function SegmentedControl<T extends string>({
       className={['seg', size === 'sm' ? 'seg--sm' : '', block ? 'seg--block' : '']
         .filter(Boolean)
         .join(' ')}
+      style={block ? ({ '--seg-cols': cols } as CSSProperties) : undefined}
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
           event.preventDefault();

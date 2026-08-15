@@ -121,12 +121,16 @@
   flex-wrap: wrap;
 }
 
+/**
+ * Teljes szélességű változat: RÁCS, nem flexbox.
+ *
+ * Flexboxszal a négy témamód 3+1-re tört, és a negyedik elem a teljes
+ * szélességre nyúlt — ez töröttnek látszott, nem szándékosnak. Ráccsal a
+ * tördelés determinisztikus: háromig egy sor, fölötte 2×2.
+ */
 .seg--block {
-  display: flex;
-}
-
-.seg--block .seg__item {
-  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--seg-cols, 1), minmax(0, 1fr));
 }
 
 .seg__item {
@@ -184,13 +188,17 @@
   min-width: 0;
 }
 
+/* A span alapból inline — display:block nélkül a felirat és a magyarázat
+   egymás mellé csúszik ("MegjelenésVilágos vagy sötét téma"). */
 .switch-row__label {
+  display: block;
   font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .switch-row__desc {
+  display: block;
   margin-top: 2px;
   font-size: var(--fs-small);
   color: var(--text-secondary);
@@ -381,21 +389,31 @@ button.row:hover {
 }
 
 .row__label {
+  display: block;
   font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .row__desc {
+  display: block;
   margin-top: 2px;
   font-size: var(--fs-small);
   color: var(--text-secondary);
+  line-height: 1.35;
 }
 
 .row__value {
+  flex: none;
   font-size: var(--fs-body);
   color: var(--accent);
   white-space: nowrap;
+}
+
+/* Nem választható érték (pl. „Hamarosan") — ne úgy nézzen ki, mint egy
+   beállított állapot. */
+.row__value--muted {
+  color: var(--text-tertiary);
 }
 
 .row__chevron {
@@ -473,8 +491,10 @@ button.row:hover {
    Képernyő-elrendezés segédosztályok
    ═══════════════════════════════════════════════════════════════════ */
 
+/* A lebegő dock alá csúszó tartalom elkerülése: a képernyő alja mindig
+   marad annyi, hogy az utolsó sor se bújjon a dock mögé. */
 .screen-body {
-  padding: 0 var(--sp-4) var(--sp-6);
+  padding: 0 var(--sp-4) calc(var(--dock-height) + var(--sp-5));
 }
 
 .stack {
