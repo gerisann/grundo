@@ -70,9 +70,20 @@ async function authenticate(req: AuthedRequest, _res: Response, next: NextFuncti
 
 /* ── Útvonalak ───────────────────────────────────────────────────── */
 
-app.get('/healthz', (_req, res) =>
-  res.json({ ok: true, database: FIRESTORE_DATABASE_ID }),
-);
+/**
+ * Életjel.
+ *
+ * KÉT útvonalon is elérhető, és ennek oka van: a Google Cloud Run frontendje
+ * a `/healthz` pontos útvonalat elfogja, mielőtt a konténerhez érne (saját
+ * 404-es HTML-t ad rá). A `/healthz/` — záró perjellel — átjut, de erre
+ * építeni törékeny. Az `/api/health` a megbízható változat; monitorozáshoz
+ * és Cloud Run uptime-ellenőrzéshez ezt használd.
+ */
+const health = (_req: Request, res: Response) =>
+  res.json({ ok: true, database: FIRESTORE_DATABASE_ID });
+
+app.get('/api/health', health);
+app.get('/healthz', health);
 
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/me', authenticate, authRouter); // GET /api/me

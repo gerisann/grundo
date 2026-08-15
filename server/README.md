@@ -34,7 +34,7 @@ gcloud auth application-default login
 Ellenőrzés:
 
 ```bash
-curl http://localhost:8080/healthz
+curl http://localhost:8080/api/health
 # {"ok":true,"database":"groundo-db"}
 ```
 
@@ -70,7 +70,7 @@ gcloud services enable \
 ```bash
 gcloud artifacts repositories create grundo \
   --repository-format=docker \
-  --location=europe-central2 \
+  --location=us-west1 \
   --description="GRUNDO konténerek"
 ```
 
@@ -105,7 +105,7 @@ játékmotort is fordítja (`src/game`).
 
 ```bash
 gcloud run services describe grundo-api \
-  --region=europe-central2 --format='value(status.url)'
+  --region=us-west1 --format='value(status.url)'
 ```
 
 Ezt az URL-t kell beírni az AI Studio secretjei közé:
@@ -126,7 +126,7 @@ tartalmazza a kódot (`devCode`), hogy végig lehessen menni a folyamaton.
 Élesítéshez:
 
 ```bash
-gcloud run services update grundo-api --region=europe-central2 \
+gcloud run services update grundo-api --region=us-west1 \
   --set-env-vars=MAIL_PROVIDER=resend,MAIL_FROM='GRUNDO <no-reply@grundo.hu>' \
   --set-secrets=RESEND_API_KEY=resend-api-key:latest
 ```
@@ -136,10 +136,10 @@ A `resend-api-key` titkot előbb hozd létre a Secret Managerben.
 ## Ellenőrzési lista telepítés után
 
 ```bash
-API=$(gcloud run services describe grundo-api --region=europe-central2 --format='value(status.url)')
+API=$(gcloud run services describe grundo-api --region=us-west1 --format='value(status.url)')
 
 # 1. Életjel — a helyes adatbázist kell mondania
-curl -s $API/healthz
+curl -s $API/api/health
 # {"ok":true,"database":"groundo-db"}
 
 # 2. Token nélkül 401, magyar üzenettel
@@ -162,3 +162,12 @@ A `/healthz` pont ezért adja vissza a nevet.
 **A `roles/firebaseauth.admin` nélkül az OTP-hitelesítés elbukik** — a szerver nem
 tudja `emailVerified`-re állítani a felhasználót. A hiba a naplóban látszik, a
 felhasználó pedig csak annyit lát, hogy „Váratlan hiba".
+
+## Miért `/api/health` és nem `/healthz`
+
+A Google Cloud Run frontendje a `/healthz` pontos útvonalat elfogja, és saját
+404-es HTML-t ad rá — a kérés el sem jut a konténerig. A `/healthz/` (záró
+perjellel) átmegy, de erre építeni törékeny.
+
+Monitorozáshoz és uptime-ellenőrzéshez **mindig az `/api/health`** útvonalat
+használd. A `/healthz` továbbra is regisztrálva van, helyi fejlesztéshez.
