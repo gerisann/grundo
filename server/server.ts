@@ -13,7 +13,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { auth as adminAuth, db, FIRESTORE_DATABASE_ID } from './src/lib/firebase';
 import { HttpError, unauthorized } from './src/lib/errors';
 
-import { authRouter, meHandler } from './src/routes/auth';
+import { authRouter, loginHandler, meHandler } from './src/routes/auth';
 import { activitiesRouter } from './src/routes/activities';
 import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
@@ -89,6 +89,16 @@ app.get('/healthz', health);
 // `meHandler` fölötti magyarázatot: a `app.use('/api/me', authRouter)`
 // alakban ez a végpont némán nem illeszkedett.)
 app.get('/api/me', authenticate, meHandler);
+
+/**
+ * NYILVÁNOS végpont — szándékosan `authenticate` NÉLKÜL.
+ *
+ * Belépés előtt nincs mit hitelesíteni: ez a kérés épp azért jön, hogy a
+ * felhasználó tokenhez jusson. A sorrend számít — ennek az `/api/auth` mount
+ * ELŐTT kell állnia, különben a hitelesítés elnyelné, és a felhasználó soha
+ * nem tudna belépni a felhasználónevével.
+ */
+app.post('/api/auth/login', loginHandler);
 
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);

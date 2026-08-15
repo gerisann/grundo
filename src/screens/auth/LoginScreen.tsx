@@ -9,7 +9,7 @@ import './auth.css';
 
 export function LoginScreen() {
   const navigate = useNavigate();
-  const { signInWithEmail, signInWithGoogle, status } = useAuth();
+  const { signInWithIdentifier, signInWithGoogle, status } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,15 +24,26 @@ export function LoginScreen() {
     setLinkHint(false);
 
     const next: Record<string, string> = {};
-    const e = validateEmail(email);
-    if (e) next.email = e;
+    const value = email.trim();
+    /**
+     * A mező kétféle bemenetet fogad, ezért az ellenőrzés is kétféle.
+     * Csak akkor kérünk szabályos e-mail-címet, ha a beírt szöveg `@`-ot
+     * tartalmaz — különben felhasználónévnek tekintjük, és a szerver dönti el,
+     * létezik-e. (Itt szándékosan nem ellenőrizzük a névformátumot: a régebbi
+     * fiókok neve nem feltétlenül felel meg a mai szabálynak.)
+     */
+    if (!value) next.email = 'Add meg az e-mail-címed vagy a felhasználóneved.';
+    else if (value.includes('@')) {
+      const e = validateEmail(value);
+      if (e) next.email = e;
+    }
     if (!password) next.password = 'Adj meg egy jelszót.';
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
     setBusy(true);
     try {
-      await signInWithEmail(email.trim(), password);
+      await signInWithIdentifier(value, password);
       navigate('/');
     } catch (error) {
       setFormError(authErrorMessage(error));
@@ -80,13 +91,16 @@ export function LoginScreen() {
         ) : null}
 
         <TextField
-          label="E-mail-cím"
-          type="email"
+          label="E-mail-cím vagy felhasználónév"
+          type="text"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
-          autoComplete="email"
-          inputMode="email"
+          // `username`, nem `email`: a jelszókezelők így mindkét alakot
+          // felkínálják, és nem erőltetik rá a címformátumot a névre.
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
         />
 
         <TextField

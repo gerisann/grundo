@@ -152,6 +152,18 @@ export interface OtpSendResult {
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
 
+  /**
+   * Belépés felhasználónévvel. A szerver ellenőrzi a jelszót, és egy
+   * custom tokent ad vissza, amivel a Firebase SDK bejelentkeztet.
+   * E-mail-címmel belépéskor ez a kerülő nem kell — ott a kliens közvetlenül
+   * a Firebase-t hívja, és a jelszó felénk el sem indul.
+   */
+  login: (username: string, password: string) =>
+    request<{ customToken: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
   register: (username: string) =>
     request<{ profile: Profile }>('/api/auth/register', {
       method: 'POST',

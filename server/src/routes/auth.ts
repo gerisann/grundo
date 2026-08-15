@@ -1,7 +1,14 @@
 import { Router, type RequestHandler, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, auth as adminAuth, db } from '../lib/firebase';
-import { badRequest, conflict, notFound, tooManyRequests } from '../lib/errors';
+import {
+  HttpError,
+  badRequest,
+  conflict,
+  notFound,
+  tooManyRequests,
+  unauthorized,
+} from '../lib/errors';
 import { createMailer, otpEmail } from '../lib/mailer';
 import { canResend, createOtp, verifyOtp, type OtpRecord } from '../lib/otp';
 import { displayUsername, newUserDoc, normalizeUsername, validateUsername } from '../lib/user';
@@ -42,6 +49,109 @@ export const meHandler: RequestHandler = async (req: AuthedRequest, res: Respons
 
 // Másodlagos cím, hogy a kliens régebbi verziói se törjenek el: /api/auth/me
 authRouter.get('/me', meHandler);
+
+/* ═══════════════════════════════════════════════════════════════════
+   POST /api/auth/login — belépés FELHASZNÁLÓNÉVVEL
+   ═══════════════════════════════════════════════════════════════════ */
+
+const SIGN_IN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword';
+
+/**
+ * Miért kell ehhez egyáltalán szerver?
+ *
+ * A Firebase kliensoldali belépése csak e-mail-címet ismer, felhasználónevet
+ * nem. A kézenfekvő megoldás — a kliens megkérdezi a szervertől, milyen e-mail
+ * tartozik a névhez, majd azzal lép be — **nem járható**: azzal bárki
+ * tetszőleges felhasználónévhez megkaphatná a hozzá tartozó e-mail-címet, és
+ * pillanatok alatt learathatná az egész tagság címlistáját.
+ *
+ * Ezért a jelszó-ellenőrzés is itt történik: a szerver oldja fel a nevet
+ * e-mailre, a jelszót a Google saját végpontján ellenőrizteti, és sikeres
+ * belépés esetén custom tokent ad vissza. Az e-mail-cím soha nem hagyja el a
+ * szervert.
+ *
+ * Az ára: a jelszó áthalad a mi backendünkön. Ezért SOHA nem naplózzuk a kérés
+ * törzsét, és a jelszót sehol nem tároljuk — csak továbbadjuk a Google-nak.
+ * (E-mail-címmel belépéskor a kliens közvetlenül a Firebase-t hívja, ott ez a
+ * kitérő fel sem merül.)
+ */
+export const loginHandler: RequestHandler = async (req, res, next) => {
+  try {
+    const body = req.body as { username?: unknown; password?: unknown };
+    const username = String(body.username ?? '').trim();
+    const password = String(body.password ?? '');
+
+    if (!username || !password) {
+      throw badRequest('missing_credentials', 'Add meg a felhasználóneved és a jelszavad.');
+    }
+
+    const apiKey = process.env.FIREBASE_WEB_API_KEY;
+    if (!apiKey) {
+      // Beállítási hiba, nem a felhasználó hibája — mondjuk meg neki, mit tehet.
+      console.error('[GRUNDO] FIREBASE_WEB_API_KEY nincs beállítva — a névvel belépés nem megy.');
+      throw new HttpError(
+        503,
+        'login_unavailable',
+        'A felhasználónévvel belépés most nem elérhető. Lépj be az e-mail-címeddel.',
+      );
+    }
+
+    const email = await emailForUsername(username);
+    if (!email) throw invalidCredentials();
+
+    const response = await fetch(`${SIGN_IN_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: false }),
+    });
+    const data = (await response.json().catch(() => null)) as {
+      localId?: string;
+      error?: { message?: string };
+    } | null;
+
+    if (!response.ok) {
+      const reason = data?.error?.message ?? '';
+      if (reason.startsWith('TOO_MANY_ATTEMPTS')) {
+        throw tooManyRequests(
+          'Túl sok próbálkozás. Várj pár percet, vagy állítsd vissza a jelszavad.',
+          300,
+        );
+      }
+      if (reason === 'USER_DISABLED') {
+        throw new HttpError(
+          403,
+          'user_disabled',
+          'Ez a fiók fel van függesztve. Írj nekünk, ha szerinted tévedés.',
+        );
+      }
+      throw invalidCredentials();
+    }
+
+    if (!data?.localId) throw invalidCredentials();
+
+    // A kliens ezzel lép be: signInWithCustomToken. Így a Firebase SDK kezeli a
+    // munkamenetet és a token frissítését — nem nekünk kell megoldani.
+    res.json({ customToken: await adminAuth.createCustomToken(data.localId) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * EGYSÉGES hibaüzenet, szándékosan.
+ *
+ * Nem áruljuk el, hogy a felhasználónév létezik-e: különben a belépőképernyő
+ * névellenőrzővé válna, amivel fel lehet térképezni, ki tagja az appnak.
+ */
+const invalidCredentials = () => unauthorized('Hibás felhasználónév vagy jelszó.');
+
+async function emailForUsername(raw: string): Promise<string | null> {
+  const snapshot = await db.collection(COLLECTIONS.usernames).doc(normalizeUsername(raw)).get();
+  const uid = snapshot.exists ? (snapshot.data() as { uid?: string }).uid : null;
+  if (!uid) return null;
+  const record = await adminAuth.getUser(uid).catch(() => null);
+  return record?.email ?? null;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    POST /api/auth/register — felhasználónév lefoglalása + profil

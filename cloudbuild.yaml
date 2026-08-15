@@ -66,8 +66,14 @@ steps:
       # A `^##^` előtag a gcloud lista-elválasztóját cseréli vesszőről `##`-ra.
       # Enélkül az ALLOWED_ORIGINS-ben lévő vesszőket a gcloud új környezeti
       # változók kezdetének nézné, és „Bad syntax for dict arg" hibát adna.
+      #
+      # A FIREBASE_WEB_API_KEY a felhasználónévvel belépéshez kell: a szerver
+      # ezzel ellenőrizteti a jelszót a Google végpontján. NEM titok — ugyanez
+      # a kulcs benne van minden kiszolgált kliens-bundle-ben, a Firebase így
+      # tervezte. A hozzáférést nem a kulcs titkossága védi, hanem a
+      # firestore.rules és a szerveroldali jogosultságkezelés.
       - >-
-        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173
+        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173
 
 options:
   logging: CLOUD_LOGGING_ONLY

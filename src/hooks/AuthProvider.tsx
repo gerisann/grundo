@@ -5,6 +5,7 @@ import {
   linkWithPopup,
   onAuthStateChanged,
   sendPasswordResetEmail,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as fbSignOut,
@@ -12,6 +13,8 @@ import {
   type User,
 } from 'firebase/auth';
 import { auth, firebaseConfigured, requireAuth } from '@/lib/firebase';
+// `backend` néven, mert az AuthProvider saját visszatérési objektuma is `api`.
+import { api as backend, apiConfigured } from '@/lib/api';
 
 export type AuthStatus = 'loading' | 'signed-in' | 'signed-out' | 'unconfigured';
 
@@ -22,6 +25,8 @@ export interface AuthApi {
   emailVerified: boolean;
   registerWithEmail: (input: RegisterInput) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  /** Belépés e-mail-címmel VAGY felhasználónévvel — a mező tartalma dönti el. */
+  signInWithIdentifier: (identifier: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   linkGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
@@ -76,6 +81,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       async signInWithEmail(email, password) {
         await signInWithEmailAndPassword(requireAuth(), email, password);
+      },
+
+      /**
+       * Két út, és a döntést a `@` hozza meg.
+       *
+       * E-mail-cím → közvetlenül a Firebase-hez. Így a jelszó a mi
+       * backendünket meg sem érinti, és a Firebase saját hibakódjait kapjuk
+       * (rossz jelszó, felfüggesztett fiók, túl sok próbálkozás).
+       *
+       * Felhasználónév → a backendhez, mert a Firebase nem ismeri a neveket.
+       * Lásd a szerveroldali `loginHandler` magyarázatát arról, miért nem
+       * kérdezhetjük le egyszerűen a névhez tartozó e-mail-címet.
+       */
+      async signInWithIdentifier(identifier, password) {
+        const instance = requireAuth();
+        const value = identifier.trim();
+
+        if (value.includes('@')) {
+          await signInWithEmailAndPassword(instance, value, password);
+          return;
+        }
+
+        if (!apiConfigured) {
+          throw new Error(
+            'Felhasználónévvel csak a háttérszolgáltatással lehet belépni. ' +
+              'Használd az e-mail-címed.',
+          );
+        }
+
+        const { customToken } = await backend.login(value, password);
+        await signInWithCustomToken(instance, customToken);
       },
 
       async signInWithGoogle() {
