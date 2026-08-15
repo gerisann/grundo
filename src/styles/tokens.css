@@ -1,52 +1,39 @@
 /**
- * GRUNDO designrendszer.
+ * GRUNDO designrendszer — világos és sötét téma.
  *
  * SZABÁLY: sehol a kódban ne legyen beégetett szín. Mindig ezeket a
- * változókat használd — így a világos téma (ha valaha kell) egy fájl
- * kicserélése lesz, nem 1500 soros foltozás.
+ * változókat használd — és MINDIG ellenőrizd MINDKÉT témában, mielőtt
+ * késznek nyilvánítasz egy képernyőt.
  *
- * A narancs a TERÜLET, a cián az ADAT. Ezt a szétválasztást végig kell tartani.
+ * Felépítés:
+ *   :root                → a márka- és állapotszínek (téma-független)
+ *                          + a VILÁGOS téma az alapértelmezett
+ *   [data-theme="dark"]  → a sötét téma felülírásai
+ *
+ * A `data-theme` attribútumot az `src/lib/theme.ts` állítja be a <html>
+ * elemen, még az első kirajzolás előtt (lásd az index.html inline scriptjét).
  */
 
 :root {
-  /* ── Felületek ─────────────────────────────────────────────── */
-  --bg: #08090b;
-  --bg-elevated: #0f1013;
-  --card: #121316;
-  --card-hover: #17181c;
-  --border: #22242a;
-  --border-strong: #32353d;
+  /* ═══ Márka ═══════════════════════════════════════════════════════ */
+  --brand-50:  #f4f0ff;
+  --brand-100: #e9e0ff;
+  --brand-200: #d4c1ff;
+  --brand-300: #b99aff;
+  --brand-400: #9b6dff;
+  --brand-500: #7c3aed;
+  --brand-600: #6d28d9;
+  --brand-700: #5b21b6;
+  --brand-800: #4c1d95;
+  --brand-900: #3b1674;
 
-  /* ── Szöveg ────────────────────────────────────────────────── */
-  --text: #f5f6f8;
-  --text-muted: #9ba0aa;
-  --text-dim: #676c76;
+  /* ═══ Állapot (téma-független) ════════════════════════════════════ */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger:  #ef4444;
+  --info:    #3b82f6;
 
-  /* ── Jelentéshordozó színek ────────────────────────────────── */
-  --territory: #ff7a1a;      /* terület, játék, foglalás */
-  --territory-dim: #7a3a0d;
-  --data: #22c7e8;           /* adat, link, másodlagos akció */
-  --positive: #2bd97c;       /* szint, regeneráció, siker */
-  --negative: #ff4d5e;       /* törlés, jelentés, veszteség */
-  --warning: #ffb020;
-
-  /* ── Gradiensek ────────────────────────────────────────────── */
-  --grad-action: linear-gradient(135deg, #ff5f6d 0%, #c644fc 100%);
-  --grad-play: linear-gradient(135deg, #ff8a3d 0%, #ff4d8d 100%);
-  --grad-tab: linear-gradient(90deg, #22c7e8 0%, #ff4d8d 100%);
-
-  /* ── Réteg-színek ──────────────────────────────────────────── */
-  --layer-foot: #ff7a1a;
-  --layer-bike: #22c7e8;
-
-  /* ── Védelmi szintek (kitöltés telítettsége) ───────────────── */
-  --defense-1: rgba(255, 122, 26, 0.18);
-  --defense-2: rgba(255, 122, 26, 0.32);
-  --defense-3: rgba(255, 122, 26, 0.46);
-  --defense-4: rgba(255, 122, 26, 0.62);
-  --defense-5: rgba(255, 122, 26, 0.80);
-
-  /* ── Térköz ────────────────────────────────────────────────── */
+  /* ═══ Térköz ══════════════════════════════════════════════════════ */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -55,13 +42,13 @@
   --sp-6: 32px;
   --sp-7: 48px;
 
-  /* ── Lekerekítés ───────────────────────────────────────────── */
+  /* ═══ Lekerekítés ═════════════════════════════════════════════════ */
   --r-sm: 10px;
   --r-md: 16px;
   --r-lg: 22px;
   --r-pill: 999px;
 
-  /* ── Tipográfia ────────────────────────────────────────────── */
+  /* ═══ Tipográfia ══════════════════════════════════════════════════ */
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
@@ -72,28 +59,251 @@
   --fs-small: 13px;
   --fs-label: 11px;
 
-  /* ── Árnyék ────────────────────────────────────────────────── */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-dock: 0 -4px 24px rgba(0, 0, 0, 0.6);
-  --glow-play: 0 0 32px rgba(255, 90, 90, 0.45);
-
-  /* ── Elrendezés ────────────────────────────────────────────── */
+  /* ═══ Elrendezés ══════════════════════════════════════════════════ */
   --dock-height: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+
+  /* ═══ Átmenet témaváltáskor ═══════════════════════════════════════ */
+  --theme-transition: 220ms ease;
 }
 
-/* A számadatok mindig tabuláris számokkal — különben "ugrálnak" a mérőórán. */
+/* ═══════════════════════════════════════════════════════════════════
+   VILÁGOS TÉMA — ez az alapértelmezett
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme='light'] {
+  --bg-primary:   #f7f7fa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary:  #f0f0f5;
+  --bg-elevated:  #ffffff;
+
+  --surface-1: #ffffff;
+  --surface-2: #f5f4f8;
+  --surface-3: #eceaf1;
+
+  --text-primary:   #17151c;
+  --text-secondary: #666270;
+  --text-tertiary:  #96919f;
+  --text-disabled:  #b8b4bf;
+  --text-inverse:   #ffffff;
+
+  --border-subtle:  #e6e3ea;
+  --border-default: #d8d4df;
+  --border-strong:  #bdb7c7;
+
+  --accent:        #7c3aed;
+  --accent-hover:  #6d28d9;
+  --accent-active: #5b21b6;
+  --accent-soft:   #eee7ff;
+  --accent-border: #cdb9ff;
+  --accent-on:     #ffffff;   /* olvasható szöveg accent háttéren */
+
+  --dock-bg:     #ffffff;
+  --dock-border: #e6e3ea;
+
+  --input-bg:     #ffffff;
+  --input-border: #d8d4df;
+
+  --shadow: rgba(25, 20, 35, 0.1);
+  --shadow-card: 0 1px 2px var(--shadow);
+  --shadow-dock: 0 -4px 24px var(--shadow);
+
+  /* ── Térkép ──────────────────────────────────────────────────── */
+  --map-bg:         #ececf1;
+  --map-road:       #ffffff;
+  --map-road-minor: #f7f7f9;
+  --map-label:      #686472;
+
+  /* ── Terület: a sajátod ──────────────────────────────────────── */
+  --territory-own:       #7c3aed;
+  --territory-own-fill:  rgba(124, 58, 237, 0.22);
+  --territory-own-hover: #6d28d9;
+
+  /* ── Terület: a riválisoké ───────────────────────────────────────
+     A saját területtől EGYÉRTELMŰEN el kell térnie. A márka lila,
+     ezért a riválisok meleg tartományban kapnak színt. */
+  --territory-rival:      #e05a2b;
+  --territory-rival-fill: rgba(224, 90, 43, 0.2);
+  --territory-neutral:      #8e8a97;
+  --territory-neutral-fill: rgba(142, 138, 151, 0.14);
+
+  /* ── Rögzítés közbeni ideiglenes nyom ────────────────────────────
+     "Ez most a tiéd — ha bezárod." Halványabb, mint a birtokolt. */
+  --trail-pending:      #9b6dff;
+  --trail-pending-fill: rgba(155, 109, 255, 0.14);
+
+  /* ── Rétegek (gyalogos / kerékpáros váltó) ───────────────────── */
+  --layer-foot: #7c3aed;
+  --layer-bike: #0e9aa7;
+
+  /* ── Több játékos megkülönböztetése egy térképen ─────────────────
+     Kategorikus paletta — ranglistához, klub-nézethez. */
+  --player-1: #7c3aed;
+  --player-2: #e05a2b;
+  --player-3: #0e9aa7;
+  --player-4: #c2298a;
+  --player-5: #4b7f2f;
+  --player-6: #b0851a;
+
+  /* ── Grafikonok ───────────────────────────────────────────────── */
+  --chart-pace:      #e05a2b;
+  --chart-elevation: #22c55e;
+  --chart-power:     #f59e0b;
+  --chart-cadence:   #0e9aa7;
+  --chart-hr:        #ef4444;
+  --chart-grid:      #e6e3ea;
+
+  /* Tempózónák Z1–Z5 */
+  --zone-1: #3b82f6;
+  --zone-2: #22c55e;
+  --zone-3: #f59e0b;
+  --zone-4: #f97316;
+  --zone-5: #ef4444;
+
+  color-scheme: light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SÖTÉT TÉMA
+   ═══════════════════════════════════════════════════════════════════ */
+
+[data-theme='dark'] {
+  --bg-primary:   #09080d;
+  --bg-secondary: #0f0d15;
+  --bg-tertiary:  #15121d;
+  --bg-elevated:  #1a1623;
+
+  --surface-1: #111018;
+  --surface-2: #18151f;
+  --surface-3: #201b2a;
+
+  --text-primary:   #f7f5fa;
+  --text-secondary: #aaa5b2;
+  --text-tertiary:  #77727f;
+  --text-disabled:  #56515e;
+  --text-inverse:   #111018;
+
+  --border-subtle:  #211d2a;
+  --border-default: #302a3c;
+  --border-strong:  #494154;
+
+  --accent:        #8b5cf6;
+  --accent-hover:  #9d71ff;
+  --accent-active: #7c3aed;
+  --accent-soft:   #211638;
+  --accent-border: #5f3ba6;
+  --accent-on:     #0d0a14;
+
+  --dock-bg:     #111018;
+  --dock-border: #282330;
+
+  --input-bg:     #17141d;
+  --input-border: #302a3c;
+
+  --shadow: rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 2px var(--shadow);
+  --shadow-dock: 0 -4px 24px var(--shadow);
+
+  /* ── Térkép ──────────────────────────────────────────────────── */
+  --map-bg:         #0b0a0f;
+  --map-road:       #292630;
+  --map-road-minor: #1b1921;
+  --map-label:      #85808d;
+
+  /* ── Terület ─────────────────────────────────────────────────── */
+  --territory-own:       #8b5cf6;
+  --territory-own-fill:  rgba(139, 92, 246, 0.25);
+  --territory-own-hover: #a376ff;
+
+  --territory-rival:      #ff7a45;
+  --territory-rival-fill: rgba(255, 122, 69, 0.22);
+  --territory-neutral:      #6a6577;
+  --territory-neutral-fill: rgba(106, 101, 119, 0.18);
+
+  --trail-pending:      #b99aff;
+  --trail-pending-fill: rgba(185, 154, 255, 0.16);
+
+  /* ── Rétegek ─────────────────────────────────────────────────── */
+  --layer-foot: #8b5cf6;
+  --layer-bike: #2fd3e1;
+
+  /* ── Játékos-paletta ─────────────────────────────────────────── */
+  --player-1: #8b5cf6;
+  --player-2: #ff7a45;
+  --player-3: #2fd3e1;
+  --player-4: #f472b6;
+  --player-5: #7ed957;
+  --player-6: #ffc94a;
+
+  /* ── Grafikonok ──────────────────────────────────────────────── */
+  --chart-pace:      #ff7a45;
+  --chart-elevation: #34d97f;
+  --chart-power:     #ffb020;
+  --chart-cadence:   #2fd3e1;
+  --chart-hr:        #ff5f6d;
+  --chart-grid:      #262130;
+
+  --zone-1: #60a5fa;
+  --zone-2: #34d97f;
+  --zone-3: #ffb020;
+  --zone-4: #ff8a3d;
+  --zone-5: #ff5f6d;
+
+  color-scheme: dark;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Védelmi szintek — a kitöltés telítettsége jelzi az erősséget.
+   A színt a --territory-own / --territory-rival adja, itt csak az
+   átlátszóságot fokozzuk, hogy egy pillantással látszódjon, hova
+   nem érdemes támadni.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --defense-alpha-1: 0.18;
+  --defense-alpha-2: 0.32;
+  --defense-alpha-3: 0.46;
+  --defense-alpha-4: 0.62;
+  --defense-alpha-5: 0.8;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Segédosztályok
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* A számadatok tabuláris számokkal — különben "ugrálnak" a mérőórán. */
 .numeric {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
 
-/* Ritkított verzál címke — a referencia-app vizuális védjegye. */
+/* Ritkított verzál címke. */
 .label {
   font-size: var(--fs-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-tertiary);
+}
+
+/* Témaváltáskor lágy átmenet — de csak a színekre, és soha nem a
+   rögzítés közben (lásd theme.ts: a váltás aktív aktivitás alatt
+   el van halasztva). */
+.theme-transition,
+.theme-transition * {
+  transition:
+    background-color var(--theme-transition),
+    border-color var(--theme-transition),
+    color var(--theme-transition),
+    fill var(--theme-transition),
+    stroke var(--theme-transition);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-transition,
+  .theme-transition * {
+    transition: none;
+  }
 }

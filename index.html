@@ -1,16 +1,63 @@
 <!doctype html>
-<html lang="hu">
+<html lang="hu" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
     />
-    <meta name="theme-color" content="#08090B" />
-    <meta name="description" content="GRUND — fuss, sétálj vagy bringázz, és foglald el a várost." />
+    <meta name="theme-color" content="#f7f7fa" />
+    <meta name="description" content="GRUNDO — fuss, sétálj vagy bringázz, és foglald el a várost." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
-    <title>GRUND</title>
+    <title>GRUNDO</title>
+
+    <!--
+      Téma az ELSŐ kirajzolás előtt.
+
+      Ennek a szkriptnek szinkronban, a <body> előtt kell lefutnia, különben
+      a felhasználó egy villanásnyi világos felületet lát, mielőtt a sötét
+      téma bekapcsol (FOUC). Ezért van inline, és ezért nem modul.
+
+      A pontos logika a src/lib/theme.ts-ben van; itt csak annyi fut, ami a
+      helyes első képkockához kell. A React induláskor újraszámol (napnyugta,
+      pozíció), és ha kell, finomít.
+    -->
+    <script>
+      (function () {
+        try {
+          var LIGHT = '#f7f7fa';
+          var DARK = '#09080d';
+
+          var saved = localStorage.getItem('grundo.theme');
+          var settings = saved ? JSON.parse(saved) : null;
+          var mode = (settings && settings.mode) || 'auto';
+          var theme;
+
+          if (mode === 'light' || mode === 'dark') {
+            theme = mode;
+          } else if (mode === 'system') {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          } else {
+            // 'auto' — a napnyugta-számításhoz pozíció kell, ami itt még
+            // nincs. A legutóbb kiszámolt témát használjuk: az szinte mindig
+            // helyes, és így nincs villanás. A React indulás után korrigál.
+            theme = localStorage.getItem('grundo.theme.last');
+            if (theme !== 'light' && theme !== 'dark') {
+              var h = new Date().getHours();
+              theme = h >= 20 || h < 6 ? 'dark' : 'light';
+            }
+          }
+
+          document.documentElement.setAttribute('data-theme', theme);
+          document
+            .querySelector('meta[name="theme-color"]')
+            .setAttribute('content', theme === 'dark' ? DARK : LIGHT);
+        } catch (e) {
+          /* localStorage letiltva — marad a világos alapértelmezés */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

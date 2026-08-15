@@ -73,7 +73,9 @@ Ez három helyen van rögzítve, és **mindháromnak egyeznie kell**:
 
 - **Nyelv:** TypeScript, `strict: true`. `any` nem elfogadható.
 - **UI nyelve:** magyar. A kód, a változónevek és a kommentek angolul.
-- **Stílus:** CSS-változók a `src/styles/tokens.css`-ből. Sötét téma. Ne írj beégetett színt.
+- **Stílus:** CSS-változók a `src/styles/tokens.css`-ből. **Két téma: világos (alapértelmezett) és sötét.**
+  Ne írj beégetett színt, és **minden képernyőt nézz meg mindkét témában**, mielőtt késznek nyilvánítod.
+  A témalogika a `src/lib/theme.ts`-ben van (mód, napnyugta-számítás, DOM-alkalmazás) — ne duplikáld máshol.
 - **Térkép:** Mapbox GL. A tokent környezeti változóból vedd.
 - **Állapot:** TanStack Query a szerveradatra, `zustand` a helyi UI-állapotra. Ne vezess be Redux-ot.
 - **Firestore:** olvasás közvetlenül a kliensről, írás csak a saját, engedélyezett mezőkre. Minden más a `server/` HTTP-végpontjain át.

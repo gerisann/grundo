@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GRUND — Cloud Storage szabályok
+// GRUNDO — Cloud Storage szabályok
 //
 // FONTOS: a Storage-szabályokat KÜLÖN kell deployolni a Firestore-szabályoktól.
 //   firebase deploy --only storage:rules
