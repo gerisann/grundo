@@ -1,12 +1,12 @@
 {
-  "projectId": "knows-community",
-  "appId": "1:222292357357:web:d660b8395b009842f71ce4",
-  "apiKey": "AIzaSyDFl4PaW1pROzvwWoXahmxX1hhC-H6dVw4",
-  "authDomain": "knows-community.firebaseapp.com",
-  "firestoreDatabaseId": "groundo",
-  "storageBucket": "knows-community.firebasestorage.app",
-  "messagingSenderId": "222292357357",
+  "projectId": "grundo",
+  "appId": "1:65689674957:web:1e5550ab3562d31aa13584",
+  "apiKey": "AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w",
+  "authDomain": "grundo.firebaseapp.com",
+  "firestoreDatabaseId": "groundo-db",
+  "storageBucket": "grundo.firebasestorage.app",
+  "messagingSenderId": "65689674957",
   "measurementId": "",
-  "oAuthClientId": "222292357357-llau4fg50sl3f68qghongsa00r171bo5.apps.googleusercontent.com",
+  "oAuthClientId": "65689674957-5aie775oro1od1ka1i7u00d0nskhv37r.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
