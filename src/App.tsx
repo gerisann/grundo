@@ -8,6 +8,7 @@ import { CommunityScreen } from './screens/CommunityScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
+import { ReplayScreen } from './screens/dev/ReplayScreen';
 
 export function App() {
   // TODO(F1): a `coords` a helymeghatározásból, a `recordingActive` a tracking
@@ -24,6 +25,7 @@ export function App() {
             <Route path="/profil" element={<ProfileScreen />} />
             <Route path="/beallitasok" element={<SettingsScreen />} />
             <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
+            <Route path="/dev/replay" element={<ReplayScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

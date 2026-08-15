@@ -74,10 +74,8 @@ export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
   if (first === undefined) return new Set();
   const res = getResolution(first);
 
+  // A méretkorlát a polyfill ELŐTT dől el — lásd candidateRegion().
   const candidates = candidateRegion(wall, res);
-  if (candidates.size > GAMEPLAY.MAX_LOOP_BBOX_CELLS) {
-    throw new LoopTooLargeError(candidates.size);
-  }
 
   // A régió pereme: minden olyan cella, amelynek van szomszédja a régión kívül.
   const queue: CellId[] = [];
@@ -123,14 +121,39 @@ function candidateRegion(wall: ReadonlySet<CellId>, res: number): Set<CellId> {
 
   // ~60 m margó, hogy a peremcellák biztosan a falon kívül essenek
   const pad = 0.0006;
+  const south = minLat - pad;
+  const north = maxLat + pad;
+  const west = minLng - pad;
+  const east = maxLng + pad;
+
+  // A méretkorlátot a polyfill ELŐTT kell ellenőrizni.
+  //
+  // Ha utána tennénk, egy vonat- vagy repülőút befoglaló doboza milliárdos
+  // nagyságrendű cellahalmazt generálna, mielőtt egyáltalán megnéznénk, hogy
+  // túl nagy-e — ami memóriát fal és percekre megállítja a feldolgozást.
+  // A doboz területéből becsülni olcsó és elég pontos.
+  const estimated = estimateCellCount(south, north, west, east);
+  if (estimated > GAMEPLAY.MAX_LOOP_BBOX_CELLS) {
+    throw new LoopTooLargeError(estimated);
+  }
+
   const boundary: [number, number][] = [
-    [minLat - pad, minLng - pad],
-    [minLat - pad, maxLng + pad],
-    [maxLat + pad, maxLng + pad],
-    [maxLat + pad, minLng - pad],
+    [south, west],
+    [south, east],
+    [north, east],
+    [north, west],
   ];
 
   return new Set(polygonToCells([boundary], res));
+}
+
+/** Hány cella férne a befoglaló dobozba? Közelítés, a polyfill elkerülésére. */
+function estimateCellCount(south: number, north: number, west: number, east: number): number {
+  const M_PER_DEG = 111_320;
+  const midLat = ((south + north) / 2) * (Math.PI / 180);
+  const heightM = (north - south) * M_PER_DEG;
+  const widthM = (east - west) * M_PER_DEG * Math.cos(midLat);
+  return Math.abs(heightM * widthM) / GAMEPLAY.CELL_AREA_M2;
 }
 
 /** Egy bezárás összes megszerzett cellája: a fal és a belső együtt. */

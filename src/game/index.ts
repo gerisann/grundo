@@ -14,7 +14,7 @@ export * from './scoring';
 
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
 import { detectLoops, loopCells } from './loops';
-import { resolveClaim } from './claim';
+import { mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import type {
   ActivityType, CellId, ClaimResult, DetectedLoop, GpBreakdown, OwnershipMap, TracePoint,
@@ -54,14 +54,24 @@ export function processActivity(input: ProcessInput): ProcessResult {
   const { path, droppedPoints, largeGaps } = traceToCellPath(input.points);
   const loops = detectLoops(path);
 
+  // A bezárásokat SORBAN dolgozzuk fel, mindegyiket az előző által frissített
+  // állapot ellen. Ha egyetlen egyesített halmazként kezelnénk, ugyanaz a kör
+  // négyszer megfutva csak egyszer számítana, és a védelem 1× maradna 4×
+  // helyett — a 04. fejezet C) példája éppen ezt írja le.
+  const running: OwnershipMap = new Map(input.ownership);
   const claimedCells = new Set<CellId>();
+  const perLoop: ClaimResult[] = [];
+
   for (const loop of loops) {
-    for (const cell of loopCells(loop)) claimedCells.add(cell);
+    const cells = loopCells(loop);
+    for (const cell of cells) claimedCells.add(cell);
+
+    const result = resolveClaim(cells, running, input.actorId);
+    for (const [cell, ownership] of result.updates) running.set(cell, ownership);
+    perLoop.push(result);
   }
 
-  const claim = claimedCells.size > 0
-    ? resolveClaim(claimedCells, input.ownership, input.actorId)
-    : null;
+  const claim = perLoop.length > 0 ? mergeClaims(perLoop) : null;
 
   const gp = computeActivityGp({
     type: input.type,

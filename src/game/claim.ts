@@ -9,6 +9,7 @@
 
 import { GAMEPLAY } from '@/config/gameplay';
 import type { CellFate, CellId, CellOwnership, ClaimResult, OwnershipMap } from '@/types';
+export type { ClaimResult };
 
 /**
  * @param claimed   a bezárásokból megszerzett cellák (fal + belső)
@@ -86,4 +87,40 @@ export function resolveClaim(
 export function multiplierFor(defense: number): number {
   const index = Math.min(Math.max(defense, 1), GAMEPLAY.MAX_DEFENSE) - 1;
   return GAMEPLAY.DEFENSE_MULTIPLIER[index] ?? 1;
+}
+
+/**
+ * Több bezárás eredményének összefésülése egyetlen aktivitásra.
+ *
+ * FONTOS: a bezárásokat SORBAN kell feldolgozni, mindegyiket az előző által
+ * frissített állapot ellen — nem egyetlen egyesített cellahalmazként.
+ * Különben ugyanaz a kör négyszer megfutva csak egyszer számítana, és a
+ * védelemépítés (1× → 4×) sosem történne meg.
+ *
+ * A számlálók összeadódnak: ha egy cella az első körben szabad volt, a
+ * másodikban pedig már a sajátod, akkor mindkét körben megkapja a maga
+ * pontját — pontosan ezt írja le a 04. fejezet C) példája.
+ */
+export function mergeClaims(results: readonly ClaimResult[]): ClaimResult {
+  const updates = new Map<CellId, CellOwnership>();
+  const fates = new Map<CellId, CellFate>();
+  const counts: Record<CellFate, number> = {
+    free: 0, reclaimed: 0, stolen: 0, breakthrough: 0,
+  };
+  const stolenFrom: Record<string, number> = {};
+  let weightedClaimM2 = 0;
+  let gainedM2 = 0;
+
+  for (const result of results) {
+    for (const [cell, ownership] of result.updates) updates.set(cell, ownership);
+    for (const [cell, fate] of result.fates) fates.set(cell, fate);
+    for (const key of Object.keys(counts) as CellFate[]) counts[key] += result.counts[key];
+    for (const [uid, count] of Object.entries(result.stolenFrom)) {
+      stolenFrom[uid] = (stolenFrom[uid] ?? 0) + count;
+    }
+    weightedClaimM2 += result.weightedClaimM2;
+    gainedM2 += result.gainedM2;
+  }
+
+  return { updates, fates, counts, stolenFrom, weightedClaimM2, gainedM2 };
 }
