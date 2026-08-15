@@ -6,11 +6,20 @@
 # játékmotort is fordítja (src/game, src/config, src/types).
 
 substitutions:
-  _REGION: europe-central2
+  # A Firestore adatbázis (groundo-db) us-west1-ben van — a backendet
+  # ugyanoda telepítjük, mert sok oda-vissza forgalom lesz köztük.
+  _REGION: us-west1
   _SERVICE: grundo-api
   _REPO: grundo
 
 steps:
+  # FIGYELEM: a címke $BUILD_ID, NEM $SHORT_SHA.
+  #
+  # A $SHORT_SHA csak akkor van kitöltve, ha a buildet egy repo-trigger
+  # indítja. Kézi `gcloud builds submit`-nél üres, és az üres címkéből
+  # érvénytelen image-név lesz („…/grundo-api:"), amitől a docker azonnal
+  # elhasal 125-ös kóddal — a Dockerfile futtatása előtt.
+  # A $BUILD_ID mindkét esetben létezik.
   - name: gcr.io/cloud-builders/docker
     id: build
     args:
@@ -18,7 +27,7 @@ steps:
       - -f
       - server/Dockerfile
       - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
       - .
@@ -30,6 +39,8 @@ steps:
       - --all-tags
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}
 
+  # A telepítés a konkrét build azonosítójára hivatkozik, nem a `latest`-re —
+  # így egyértelmű, melyik verzió fut, és visszaállni is lehet rá.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy
     entrypoint: gcloud
@@ -37,7 +48,7 @@ steps:
       - run
       - deploy
       - ${_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -49,6 +60,3 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
-images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest

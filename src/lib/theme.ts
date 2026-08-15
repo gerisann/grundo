@@ -255,9 +255,12 @@ export function saveSettings(settings: ThemeSettings): void {
 
 /** Mapbox stílus a témához. */
 export function mapStyleFor(theme: Theme): string {
+  // `||`, nem `??` — a környezeti változó létezhet ÜRES stringként is
+  // (pl. ha a titkot felvették, de nem töltötték ki). A `??` ilyenkor az
+  // üres stringet adná vissza, és a térkép némán nem töltődne be.
   const light = import.meta.env.VITE_MAPBOX_STYLE_LIGHT;
   const dark = import.meta.env.VITE_MAPBOX_STYLE_DARK;
   return theme === 'dark'
-    ? (dark ?? 'mapbox://styles/mapbox/dark-v11')
-    : (light ?? 'mapbox://styles/mapbox/light-v11');
+    ? dark || 'mapbox://styles/mapbox/dark-v11'
+    : light || 'mapbox://styles/mapbox/light-v11';
 }

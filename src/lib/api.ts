@@ -7,8 +7,40 @@ import { auth } from './firebase';
  * közvetlenül csak a saját, engedélyezett mezőit írhatja (firestore.rules).
  */
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
-export const apiConfigured = API_BASE.length > 0;
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+
+/**
+ * A saját eredetére mutató API-cím NEM backend.
+ *
+ * Két okból kell ezt külön kezelni. Egyrészt könnyű elrontani: a Cloud Run
+ * konzolban a frontend URL-je hasonlóan néz ki, mint a backendé. Másrészt az
+ * AI Studio értéket vár minden felismert környezeti változóhoz — üresen nem
+ * indul el az app —, tehát a „még nincs backend" állapotot nem lehet üres
+ * stringgel kifejezni.
+ *
+ * Ha az API-cím a saját eredetünkre mutat, úgy tekintjük, hogy nincs backend:
+ * az app működik tovább, profil nélkül, hibaüzenetek nélkül.
+ */
+function pointsAtSelf(base: string): boolean {
+  if (typeof location === 'undefined') return false;
+  try {
+    return new URL(base, location.href).origin === location.origin;
+  } catch {
+    return false;
+  }
+}
+
+const selfReferencing = API_BASE.length > 0 && pointsAtSelf(API_BASE);
+
+if (selfReferencing) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[GRUNDO] A VITE_API_BASE_URL (${API_BASE}) a frontend saját címére mutat, ` +
+      'nem a Cloud Run backendre. Az app backend nélküli módban fut.',
+  );
+}
+
+export const apiConfigured = API_BASE.length > 0 && !selfReferencing;
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +75,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, 'network', 'Nincs kapcsolat a szerverrel. Ellenőrizd az internetet.');
   }
 
+  /**
+   * A válasznak JSON-nak KELL lennie.
+   *
+   * Ha a VITE_API_BASE_URL véletlenül a frontendre mutat, a statikus tárhely
+   * minden ismeretlen útvonalra az index.html-t adja vissza — 200-as
+   * státusszal, HTML tartalommal. Enélkül az ellenőrzés nélkül ebből egy
+   * érthetetlen TypeError lenne a profil betöltésénél; így viszont megmondjuk,
+   * mi a baj.
+   */
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new ApiError(
+      response.status,
+      'not_json',
+      'A háttérszolgáltatás nem JSON-t adott vissza. Valószínűleg a ' +
+        'VITE_API_BASE_URL a frontend címére mutat a Cloud Run URL helyett.',
+    );
+  }
+
   const body = (await response.json().catch(() => null)) as
     | { code?: string; message?: string }
     | null;
@@ -53,6 +104,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body?.code ?? 'unknown',
       body?.message ?? 'A művelet nem sikerült. Próbáld újra.',
     );
+  }
+
+  if (body === null) {
+    throw new ApiError(response.status, 'empty_response', 'A szerver üres választ adott.');
   }
   return body as T;
 }
