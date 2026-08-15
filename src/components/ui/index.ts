@@ -17,5 +17,6 @@ export { Switch, type SwitchProps } from './Switch';
 export { TextField, type TextFieldProps } from './TextField';
 export { Chip, type ChipProps, type ChipVariant } from './Chip';
 export { List, ListRow, type ListRowProps } from './ListRow';
+export { Checkbox, type CheckboxProps } from './Checkbox';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { ScreenHeader, type ScreenHeaderProps } from './ScreenHeader';

@@ -505,3 +505,85 @@ button.row:hover {
 .stack--tight {
   gap: var(--sp-2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Checkbox
+   ═══════════════════════════════════════════════════════════════════ */
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-2) 0;
+}
+
+.check__box {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--input-bg);
+  color: var(--accent-on);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.check[aria-checked='true'] .check__box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.check__text {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.check__text a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Jelszó-erősség
+   ═══════════════════════════════════════════════════════════════════ */
+
+.strength {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.strength__bar {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.strength__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width 200ms ease, background-color 200ms ease;
+}
+
+.strength--weak .strength__fill { width: 33%; background: var(--danger); }
+.strength--fair .strength__fill { width: 66%; background: var(--warning); }
+.strength--strong .strength__fill { width: 100%; background: var(--success); }
+
+.strength__label {
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}

@@ -1,0 +1,128 @@
+.auth {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: calc(var(--safe-top) + var(--sp-6)) var(--sp-5) calc(var(--safe-bottom) + var(--sp-6));
+  background: var(--bg-primary);
+}
+
+.auth__brand {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  margin: 0;
+}
+
+.auth__tagline {
+  margin: var(--sp-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+}
+
+.auth__form {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  margin-top: var(--sp-6);
+}
+
+.auth__error {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+  font-size: var(--fs-small);
+}
+
+.auth__notice {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-size: var(--fs-small);
+}
+
+.auth__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+}
+
+.auth__divider::before,
+.auth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.auth__switch {
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.auth__link {
+  color: var(--accent);
+  font-weight: 600;
+  background: none;
+  padding: 0;
+}
+
+/* ── Üdvözlő diák ───────────────────────────────────────────────── */
+
+.welcome {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: var(--sp-5);
+  align-items: center;
+}
+
+.welcome__slide {
+  text-align: center;
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: center;
+}
+
+.welcome__step {
+  font-size: 56px;
+  line-height: 1;
+}
+
+.welcome__title {
+  font-size: var(--fs-title);
+  font-weight: 800;
+  margin: 0;
+}
+
+.welcome__text {
+  margin: 0;
+  max-width: 30ch;
+  color: var(--text-secondary);
+}
+
+.welcome__dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.welcome__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  padding: 0;
+}
+
+.welcome__dot--active {
+  background: var(--accent);
+  width: 22px;
+  border-radius: var(--r-pill);
+}

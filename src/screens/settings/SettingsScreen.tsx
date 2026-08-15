@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/hooks/ThemeProvider';
-import { List, ListRow, ScreenHeader } from '@/components/ui';
+import { useAuth } from '@/hooks/AuthProvider';
+import { Button, List, ListRow, ScreenHeader } from '@/components/ui';
 
 /**
  * Beállítások — a csoportok gyűjtője.
@@ -19,6 +20,7 @@ const MODE_LABEL: Record<string, string> = {
 export function SettingsScreen() {
   const navigate = useNavigate();
   const { settings } = useThemeContext();
+  const { user, signOut, status } = useAuth();
 
   return (
     <>
@@ -51,6 +53,24 @@ export function SettingsScreen() {
             <ListRow label="Előfizetés" chevron />
           </List>
         </section>
+
+        {status === 'signed-in' ? (
+          <section className="stack stack--tight">
+            <div className="label list__group-label">Fiók</div>
+            <List>
+              <ListRow label="Bejelentkezve" value={user?.email ?? user?.displayName ?? ''} />
+            </List>
+            <Button
+              variant="danger"
+              block
+              onClick={() => {
+                void signOut().then(() => navigate('/belepes'));
+              }}
+            >
+              Kijelentkezés
+            </Button>
+          </section>
+        ) : null}
       </div>
     </>
   );
