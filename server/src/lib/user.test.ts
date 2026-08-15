@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newUserDoc, normalizeUsername, validateUsername } from './user';
+import { displayUsername, newUserDoc, normalizeUsername, validateUsername } from './user';
 
 describe('validateUsername', () => {
   it('elfogadja a szabályos neveket', () => {
@@ -8,9 +8,17 @@ describe('validateUsername', () => {
     }
   });
 
-  it('kisbetűsít és trimmel', () => {
+  it('a kulcs kisbetűs és trimmelt, a megjelenítési alak megőrzi a betűket', () => {
     expect(normalizeUsername('  GeRi  ')).toBe('geri');
+    expect(displayUsername('  GeRi  ')).toBe('GeRi');
     expect(validateUsername('  GeRi  ')).toBeNull();
+  });
+
+  it('nagybetűs beírás nem ütközik a szabályokkal', () => {
+    // A minta kisbetűs mintára illeszkedik, de a vizsgálat a kulcson fut,
+    // ezért a „GERI" ugyanúgy szabályos, mint a „geri".
+    expect(validateUsername('GERI')).toBeNull();
+    expect(validateUsername('Geri.Marthon')).toBeNull();
   });
 
   it('elutasítja a túl rövidet és túl hosszút', () => {
@@ -35,12 +43,27 @@ describe('newUserDoc', () => {
   const now = new Date('2026-08-15T12:00:00Z');
   const doc = newUserDoc({ uid: 'u1', username: '  GeRi ', email: 'a@b.hu' }, now);
 
-  it('kisbetűsíti a felhasználónevet', () => {
-    expect(doc.username).toBe('geri');
+  it('MEGŐRZI a beírt kis-nagybetűs alakot', () => {
+    expect(doc.username).toBe('GeRi');
   });
 
-  it('a megjelenített név alapból a felhasználónév', () => {
-    expect(doc.displayName).toBe('geri');
+  it('külön tárolja a kisbetűs egyediségi kulcsot', () => {
+    expect(doc.usernameLower).toBe('geri');
+  });
+
+  it('a megjelenített név alapból a felhasználónév — a beírt alakban', () => {
+    expect(doc.displayName).toBe('GeRi');
+  });
+
+  it('a Google-fiók valódi neve NEM kerül át magától', () => {
+    // A `displayName` csak akkor lesz más, ha kifejezetten megadjuk.
+    const google = newUserDoc(
+      { uid: 'u2', username: 'Geri', email: 'a@b.hu', displayName: 'Gergely Márthon' },
+      now,
+    );
+    expect(google.displayName).toBe('Gergely Márthon');
+    // …de a regisztráció szándékosan nem ad át displayName-et, tehát:
+    expect(doc.displayName).toBe('GeRi');
   });
 
   it('a privát zóna ALAPBÓL BE van kapcsolva, 200 m-en', () => {

@@ -21,8 +21,11 @@
 ### `users/{uid}`
 ```ts
 {
-  username: string            // kisbetűs, egyedi
-  displayName: string
+  username: string            // ahogy beírta — „Geri". Ez látszik mindenhol.
+  usernameLower: string       // „geri" — egyediségi kulcs; ez a usernames/{id} is.
+                              // Kereséshez, névfeloldáshoz MINDIG ezt használd.
+  displayName: string         // alapból = username; a valódi nevet a felhasználó
+                              // adhatja meg, magától SOHA nem vesszük át
   email: string
   emailVerified: boolean
   photoURL?: string
@@ -67,7 +70,7 @@
 }
 ```
 - `users/{uid}/private/settings` — csak a tulajdonos olvashatja (értesítés-kapcsolók, e-mail preferenciák).
-- `usernames/{lowercase}` → `{ uid }` — egyediség tranzakcióval.
+- `usernames/{lowercase}` → `{ uid, username, createdAt }` — egyediség tranzakcióval. A dokumentum azonosítója a kisbetűs kulcs, a `username` mező a megjelenítési alak.
 
 ### `activities/{activityId}`
 ```ts

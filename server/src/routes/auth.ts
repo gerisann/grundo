@@ -4,7 +4,7 @@ import { COLLECTIONS, auth as adminAuth, db } from '../lib/firebase';
 import { badRequest, conflict, notFound, tooManyRequests } from '../lib/errors';
 import { createMailer, otpEmail } from '../lib/mailer';
 import { canResend, createOtp, verifyOtp, type OtpRecord } from '../lib/otp';
-import { newUserDoc, normalizeUsername, validateUsername } from '../lib/user';
+import { displayUsername, newUserDoc, normalizeUsername, validateUsername } from '../lib/user';
 import type { AuthedRequest } from '../../server';
 
 export const authRouter = Router();
@@ -54,9 +54,11 @@ authRouter.post('/register', async (req: AuthedRequest, res: Response, next) => 
     const problem = validateUsername(raw);
     if (problem) throw badRequest('invalid_username', problem);
 
-    const username = normalizeUsername(raw);
+    // A megjelenítési alak a beírt név; a foglalás a kisbetűs kulcson megy.
+    const username = displayUsername(raw);
+    const usernameLower = normalizeUsername(raw);
     const userRef = db.collection(COLLECTIONS.users).doc(uid);
-    const nameRef = db.collection(COLLECTIONS.usernames).doc(username);
+    const nameRef = db.collection(COLLECTIONS.usernames).doc(usernameLower);
     const now = new Date();
 
     /**
@@ -69,9 +71,11 @@ authRouter.post('/register', async (req: AuthedRequest, res: Response, next) => 
       const [userSnap, nameSnap] = await Promise.all([tx.get(userRef), tx.get(nameRef)]);
 
       if (userSnap.exists) {
-        const existing = userSnap.data() as { username?: string };
-        // Idempotens: ugyanazzal a névvel újrahívva nem hiba.
-        if (existing.username === username) return existing;
+        const existing = userSnap.data() as { usernameLower?: string };
+        // Idempotens: ugyanazzal a névvel újrahívva nem hiba. Az összevetés a
+        // kisbetűs kulcson megy, különben a „Geri" és a „geri" két különböző
+        // névnek látszana, és a második hívás hamis ütközést jelentene.
+        if (existing.usernameLower === usernameLower) return existing;
         throw conflict('profile_exists', 'Ehhez a fiókhoz már tartozik profil.');
       }
 
@@ -85,13 +89,18 @@ authRouter.post('/register', async (req: AuthedRequest, res: Response, next) => 
           uid,
           username,
           email: record.email ?? '',
-          displayName: record.displayName ?? username,
+          // A `displayName` SZÁNDÉKOSAN nincs átadva: a Google-fiók valódi
+          // nevét nem vesszük át. A megjelenített név a felhasználónév lesz,
+          // amit a felhasználó később a beállításokban felülírhat.
           photoURL: record.photoURL ?? undefined,
         },
         now,
       );
 
-      tx.set(nameRef, { uid, createdAt: now });
+      // A megjelenítési alakot a foglalási dokumentum is megkapja, hogy a
+      // névfeloldásnál (belépés felhasználónévvel) ne kelljen a profilt is
+      // beolvasni csak azért, hogy megtudjuk, hogyan írjuk ki a nevet.
+      tx.set(nameRef, { uid, username, createdAt: now });
       tx.set(userRef, doc);
       return doc;
     });

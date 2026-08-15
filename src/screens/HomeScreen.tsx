@@ -18,7 +18,12 @@ export function HomeScreen() {
   const { profile, reload } = useProfile();
   const [otpOpen, setOtpOpen] = useState(false);
 
-  const name = profile?.displayName ?? user?.displayName ?? 'sportoló';
+  /**
+   * A GRUNDO-identitás a FELHASZNÁLÓNÉV, nem a Google-fiókból átvett valódi
+   * név. Ezt a nevet választotta a felhasználó, ez látszik a ranglistán, és
+   * ezen szólítjuk meg — nem a polgári nevén.
+   */
+  const name = profile?.username ?? user?.displayName ?? 'sportoló';
   const needsVerification = user ? !user.emailVerified && !profile?.emailVerified : false;
 
   return (

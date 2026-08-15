@@ -10,7 +10,8 @@ Minden képernyő: mit tartalmaz, mit csinál, milyen állapotai vannak. A `[Pro
 
 1. **Splash / értékajánlat** — 3 lapos swipe: „Zárd a kört" · „Urald a területet" · „Minden méter pontot ér", Kihagyás gombbal.
 2. **Regisztráció**: felhasználónév · e-mail · jelszó (mind kötelező).
-   - Felhasználónév: 3–20 karakter, `a-z0-9._`, kisbetűsítve egyedi, tranzakcióval foglalt (`usernames/{lowercase}`), foglalt szavak tiltólistán (admin, grund, support…).
+   - Felhasználónév: 3–20 karakter, `a-z0-9._`, **kis-nagybetűre érzéketlen, de a beírt alakot megőrizzük** (a „Geri" így marad Geri, és a „geri" nem foglalható le külön). Egyediség tranzakcióval, a kisbetűs kulcson (`usernames/{lowercase}`), foglalt szavak tiltólistán (admin, grund, support…).
+   - A megjelenített név alapból a felhasználónév. A Google-fiók valódi nevét **nem** vesszük át magától: a polgári név a ranglistán jelenne meg anélkül, hogy a felhasználó valaha döntött volna róla.
    - Jelszó: min. 8 karakter, erősségjelző.
    - Kötelező pipa: ÁSZF + Adatvédelem elfogadása (verzióval együtt mentve).
 3. **E-mail hitelesítés**: 6 jegyű OTP e-mailben (kép #44).

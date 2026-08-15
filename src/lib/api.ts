@@ -118,7 +118,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface Profile {
   uid: string;
+  /** A megjelenítési alak, ahogy a felhasználó beírta — „Geri". */
   username: string;
+  /** Az egyediségi kulcs — „geri". Kereséshez, névfeloldáshoz, hivatkozáshoz. */
+  usernameLower: string;
   displayName: string;
   email: string;
   emailVerified: boolean;

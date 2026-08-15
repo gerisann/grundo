@@ -11,8 +11,28 @@ const RESERVED = new Set([
   'system', 'moderator', 'mod', 'official', 'team', 'api', 'null', 'undefined',
 ]);
 
+/**
+ * A név KÉT alakban él, és a kettőnek külön dolga van.
+ *
+ * `usernameLower` — az egyediségi kulcs. Ez a `usernames/{id}` dokumentum
+ * azonosítója, és minden keresés, névfeloldás és ütközésvizsgálat ezen megy.
+ * Így a „Geri" és a „geri" ugyanaz a név: nem lehet mindkettőt lefoglalni,
+ * és a belépésnél sem számít, hogyan írja be a felhasználó.
+ *
+ * `username` — a megjelenítési alak, ahogy a felhasználó beírta. Ez látszik a
+ * profilon és a ranglistán. Ha csak a kisbetűs alakot tárolnánk, a „Geri"-ből
+ * végleg „geri" lenne — a felhasználó a saját nevét látná elrontva.
+ *
+ * Ugyanaz a minta, mint a GitHubon: kis-nagybetűre érzéketlen, de a beírt
+ * alakot megőrzi.
+ */
 export function normalizeUsername(raw: string): string {
   return raw.trim().toLowerCase();
+}
+
+/** A megjelenítési alak: a beírt név, csak a felesleges szóközök nélkül. */
+export function displayUsername(raw: string): string {
+  return raw.trim();
 }
 
 /** null = rendben; egyébként a hiba magyar szövege. */
@@ -46,9 +66,18 @@ export interface NewUserInput {
  * a téma `auto` (nappal világos, este sötét).
  */
 export function newUserDoc(input: NewUserInput, now: Date) {
-  const username = normalizeUsername(input.username);
+  const username = displayUsername(input.username);
   return {
     username,
+    usernameLower: normalizeUsername(input.username),
+    /**
+     * A megjelenített név alapból a FELHASZNÁLÓNÉV.
+     *
+     * Korábban a Google-fiók valódi nevét vettük át ide, ami két bajt okozott:
+     * a felhasználó a saját, választott neve helyett a polgári nevét látta az
+     * appban, és ez a név a ranglistára is kikerült volna anélkül, hogy valaha
+     * beleegyezett volna. A valódi név megadása maradjon szándékos döntés.
+     */
     displayName: input.displayName?.trim() || username,
     email: input.email,
     emailVerified: false,
