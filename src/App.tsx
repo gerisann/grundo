@@ -3,6 +3,7 @@ import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
 import { Dock } from './components/Dock';
+import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
 import { TerritoryScreen } from './screens/TerritoryScreen';
 import { TrackingScreen } from './screens/TrackingScreen';
@@ -82,6 +83,15 @@ function Router() {
   // A `unavailable` (nincs backend) NEM állítja meg az appot.
   if (profileStatus === 'missing') return <CompleteProfileScreen />;
   if (profileStatus === 'loading') return <Splash />;
+  /**
+   * A profil betöltésének hibája NEM engedhető át némán.
+   *
+   * Korábban itt nem volt ág, így a hiba egyszerűen a Home-ra vitt: a
+   * felhasználó profil nélkül, de látszólag rendben belépett, és semmi nem
+   * jelezte, hogy baj van. Egy elrontott szerveroldali útvonal-bekötés így
+   * napokig észrevétlen maradhat. Inkább álljunk meg és mondjuk meg, mi a baj.
+   */
+  if (profileStatus === 'error') return <ProfileError />;
 
   return (
     <>
@@ -103,6 +113,41 @@ function Router() {
       </div>
       <Dock />
     </>
+  );
+}
+
+function ProfileError() {
+  const { error, reload } = useProfile();
+  const { signOut } = useAuth();
+
+  return (
+    <main
+      style={{
+        minHeight: '100dvh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: '24px',
+        background: 'var(--bg-primary)',
+      }}
+    >
+      <div style={{ maxWidth: 420, textAlign: 'center', display: 'grid', gap: 16 }}>
+        <span style={{ fontSize: 40 }} aria-hidden="true">
+          ⚠️
+        </span>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>
+          Nem sikerült betölteni a profilodat
+        </h1>
+        <p style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+          {error || 'Ismeretlen hiba történt.'}
+        </p>
+        <Button block onClick={() => void reload()}>
+          Újrapróbálom
+        </Button>
+        <Button variant="ghost" block onClick={() => void signOut()}>
+          Kijelentkezés
+        </Button>
+      </div>
+    </main>
   );
 }
 

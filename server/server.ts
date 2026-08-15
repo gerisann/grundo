@@ -13,7 +13,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { auth as adminAuth, db, FIRESTORE_DATABASE_ID } from './src/lib/firebase';
 import { HttpError, unauthorized } from './src/lib/errors';
 
-import { authRouter } from './src/routes/auth';
+import { authRouter, meHandler } from './src/routes/auth';
 import { activitiesRouter } from './src/routes/activities';
 import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
@@ -85,11 +85,29 @@ const health = (_req: Request, res: Response) =>
 app.get('/api/health', health);
 app.get('/healthz', health);
 
+// Egy szintű útvonal: közvetlenül, nem routeren keresztül. (Lásd a
+// `meHandler` fölötti magyarázatot: a `app.use('/api/me', authRouter)`
+// alakban ez a végpont némán nem illeszkedett.)
+app.get('/api/me', authenticate, meHandler);
+
 app.use('/api/auth', authenticate, authRouter);
-app.use('/api/me', authenticate, authRouter); // GET /api/me
 app.use('/api/activities', authenticate, activitiesRouter);
 app.use('/api/tiles', authenticate, tilesRouter);
 app.use('/api/missions', authenticate, missionsRouter);
+
+/* ── Ismeretlen API-útvonal ──────────────────────────────────────────
+   Enélkül az Express beépített 404-ese válaszol, ami HTML-t ad. A kliens
+   minden válaszról JSON-t feltételez, ezért egy elgépelt vagy rosszul
+   bekötött útvonalból „a szerver nem JSON-t adott vissza" lesz — olyan
+   hibaüzenet, ami a VITE_API_BASE_URL-re mutat, pedig a baj a szerveren
+   van. Ez a fogó a valódi okot mondja meg.                            */
+
+app.use('/api', (req: Request, res: Response) => {
+  res.status(404).json({
+    code: 'unknown_endpoint',
+    message: `Ismeretlen végpont: ${req.method} ${req.originalUrl}`,
+  });
+});
 
 /* ── Hibakezelés ─────────────────────────────────────────────────────
    A felhasználó mindig érthető magyar üzenetet kap; a részletek a

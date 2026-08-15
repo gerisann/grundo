@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type RequestHandler, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, auth as adminAuth, db } from '../lib/firebase';
 import { badRequest, conflict, notFound, tooManyRequests } from '../lib/errors';
@@ -14,7 +14,19 @@ const mailer = createMailer();
    GET /api/me — a bejelentkezett felhasználó profilja
    ═══════════════════════════════════════════════════════════════════ */
 
-authRouter.get('/me', async (req: AuthedRequest, res: Response, next) => {
+/**
+ * Külön exportált kezelő, NEM a routeren keresztül bekötve.
+ *
+ * Ennek oka egy már megtörtént hiba: a `server.ts` korábban
+ * `app.use('/api/me', authRouter)`-rel próbálta kiszolgálni ezt a végpontot.
+ * Az Express a mount-előtagot levágja, tehát a routerbe `/` érkezett, ami a
+ * `/me` mintára nem illeszkedik — a kérés kiesett az Express alapértelmezett,
+ * HTML-t adó 404-esébe. A kliens így nem `profile_missing`-et látott, hanem
+ * „nem JSON" hibát, és a felhasználó profil nélkül esett be az appba.
+ *
+ * Egy szintű útvonalat közvetlenül kötünk be — nincs mit elrontani rajta.
+ */
+export const meHandler: RequestHandler = async (req: AuthedRequest, res: Response, next) => {
   try {
     const snapshot = await db.collection(COLLECTIONS.users).doc(req.uid!).get();
     if (!snapshot.exists) {
@@ -26,7 +38,10 @@ authRouter.get('/me', async (req: AuthedRequest, res: Response, next) => {
   } catch (error) {
     next(error);
   }
-});
+};
+
+// Másodlagos cím, hogy a kliens régebbi verziói se törjenek el: /api/auth/me
+authRouter.get('/me', meHandler);
 
 /* ═══════════════════════════════════════════════════════════════════
    POST /api/auth/register — felhasználónév lefoglalása + profil
