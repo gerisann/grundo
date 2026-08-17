@@ -44,7 +44,13 @@ Ez akkor is jár, ha **nem zárul be a kör** — ez a rendszer legfontosabb ös
 IGÉNY = Σ  darab_m² / 1000 × védelmi_szorzó
 ```
 
-**1 GP minden 1 000 m² után** (azaz 1 km² = 1 000 GP). Egy hexagon-cella (307,09 m²) így **0,307 GP**-t ér. A számítás belül mindig cellaszámmal megy, a kerekítés a végén történik.
+**A terület GYÖKÉVEL arányos: `120 × √(km²)`.** Egy 1 km²-es foglalás 120 pont, a négyszer akkora (4 km²) nem 480, hanem **240**.
+
+> **Ez 2026-08-17-én változott.** Korábban `1 GP / 1000 m²` volt, azaz a területtel egyenesen arányos. A baj az, hogy **a bezárt terület a hurok méretének NÉGYZETÉVEL nő, a megtett út viszont csak lineárisan**: kétszer akkora kört futva kétszer annyit mozogsz, de négyszer annyi területet zársz be. Élesben ez azt jelentette, hogy egy 0,8 km-es sétánál az igénypont az alap hatszorosa volt, egy 11 km-es körnél a **százhetvenkétszerese** — a rendszer nem az erőfeszítést jutalmazta, hanem a geometriát.
+>
+> A gyök a hurok *lineáris* méretével arányos, tehát a pont a megtett úttal nő. A nagyobb kör továbbra is többet ér, csak nem aránytalanul.
+
+A **védelmi szorzó nem a gyök alatt van**, hanem kívül: a terület adja az alapot, a védelmi szint pedig teljes súllyal szorozza, egészen 5×-ig. Ha a szorzó is a gyök alá kerülne, a négyszer megfutott kör csak 1,7× pontot érne 3× helyett — és a körbe-körbe futás elveszítené az értelmét.
 
 **Védelmi szorzó** — a saját terület ismételt bezárása egyre értékesebb (ez a „körbe-körbe futás" jutalma):
 
@@ -132,7 +138,7 @@ Nem kemény korlát — az extrém teljesítmény továbbra is jutalmazott, csak
 | LOPÁS bónusz | 140 000 / 1000 × 0,5 | 70,0 |
 | **Részösszeg** | | **1 078,3** |
 | Streak (8. nap) | × 1,35 | |
-| **Összesen** | | **1 456 GP** |
+| **Összesen** | | **272 GP** |
 
 ### B) Kör nélküli séta
 
@@ -152,7 +158,7 @@ Ugyanaz a **300 000 m²**-es kör négyszer egymás után, egyetlen 8 km-es fut�
 | 3. | 3× | ×2,0 | 600 |
 | 4. | 4× | ×3,0 | 900 |
 | ALAP | | | 80 |
-| **Összesen** | | | **2 330 GP** |
+| **Összesen** | | | **573 GP** |
 
 A zóna másnap reggelig **4× védett**: négyszer kell áttörni, hogy elvegyék.
 
@@ -168,16 +174,18 @@ A zóna másnap reggelig **4× védett**: négyszer kell áttörni, hogy elvegy�
 
 | Szint | Név | GP küszöb |
 |---|---|---|
-| 1 | ÚJONC | 0 |
-| 2 | FELDERÍTŐ | 2 500 |
-| 3 | BIRTOKOS | 7 500 |
-| 4 | ŐRSZEM | 17 500 |
-| 5 | HÓDÍTÓ | 35 000 |
-| 6 | HADVEZÉR | 65 000 |
-| 7 | URALKODÓ | 110 000 |
-| 8 | LEGENDA | 180 000 |
-| 9 | TITÁN | 280 000 |
-| 10 | GRUNDMESTER | 420 000 |
+| 1 | JÖVEVÉNY | 0 |
+| 2 | KÓBORLÓ | 300 |
+| 3 | NYOMKERESŐ | 900 |
+| 4 | HATÁRJÁRÓ | 2 000 |
+| 5 | TERÜLETŐR | 4 200 |
+| 6 | GRUNDŐR | 8 500 |
+| 7 | VÁROSJÁRÓ | 16 000 |
+| 8 | NAGYGAZDA | 30 000 |
+| 9 | GRUNDBÍRÓ | 55 000 |
+| 10 | GRUNDMESTER | 100 000 |
+
+A lépcsők **elöl sűrűk, hátul ritkák**: egy átlagos aktivitás 150-350 GP, tehát a 2. szint egy-két aktivitás, a 3. további három, a 4. további öt-hat — onnantól minden szint nagyjából kétszer annyi, mint az előző. A cél, hogy a kezdés azonnal visszajelezzen, a 10. szint viszont valóban jelentsen valamit: heti négy aktivitással is évek munkája.
 
 Nagyságrend: heti 3 közepes futás területtel ≈ 4–5 000 GP/hét → a 2. szint 4–6 hét, a 10. szint komoly, éves elköteleződés.
 
@@ -247,7 +255,7 @@ Minden érték szerveroldali konfiguráció, admin felületről verziózva áll�
   "MAX_LOOP_BBOX_CELLS": 500000,
   "MAX_DEFENSE": 5,
   "DEFENSE_MULTIPLIER": [1.0, 1.5, 2.0, 3.0, 5.0],
-  "CLAIM_GP_PER_KM2": 1000,
+  "CLAIM_GP_PER_SQRT_KM2": 120,
   "BASE_GP_PER_KM": { "run": 10, "walk": 10, "ride": 4 },
   "STEAL_BONUS": 0.5,
   "BREAKTHROUGH_BONUS": 0.25,
@@ -264,7 +272,7 @@ Minden érték szerveroldali konfiguráció, admin felületről verziózva áll�
   "WEEK_STREAK_MILESTONES": { "4": 500, "12": 2000, "26": 5000, "52": 12000 },
   "SOFT_CAP_GP_PER_DAY": 5000,
   "SOFT_CAP_RATE": 0.5,
-  "LEVELS": [0, 2500, 7500, 17500, 35000, 65000, 110000, 180000, 280000, 420000]
+  "LEVELS": [0, 300, 900, 2000, 4200, 8500, 16000, 30000, 55000, 100000]
 }
 ```
 

@@ -26,16 +26,42 @@ export function computeActivityGp(input: ScoreInput): GpBreakdown {
   // 1. ALAP — minden méter számít, kör nélkül is
   const base = distanceKm * GAMEPLAY.BASE_GP_PER_KM[type];
 
-  // 2. IGÉNY — a védelmi szorzóval súlyozott terület
-  const claimPoints = claim ? m2ToGp(claim.weightedClaimM2) : 0;
+  /**
+   * 2. IGÉNY — a terület GYÖKE, a védelmi szorzóval megszorozva.
+   *
+   * A két hatást szándékosan szétválasztjuk. Ha a súlyozott területnek vennénk
+   * a gyökét, a gyök a védelmi szorzót is elnyelné: négy kör az egyhez képest
+   * csak 1,4× pontot adna a 3× helyett — pedig a körbe-körbe futás jutalma a
+   * játék egyik alappillére.
+   *
+   * Így viszont mindkettő azt teszi, amire való: a TERÜLET gyökösen nő (tehát
+   * a megtett úttal arányosan, nem a négyzetével), a VÉDELEM pedig teljes
+   * súllyal szoroz, egészen 5×-ig.
+   */
+  const ownCells =
+    (claim?.counts.free ?? 0) + (claim?.counts.reclaimed ?? 0) + (claim?.counts.stolen ?? 0);
+  const rawM2 = ownCells * GAMEPLAY.CELL_AREA_M2;
+  const defenseMultiplier = rawM2 > 0 ? (claim?.weightedClaimM2 ?? 0) / rawM2 : 1;
+  const claimPoints = claim ? areaToGp(rawM2) * defenseMultiplier : 0;
 
-  // 3. LOPÁS — csak a ténylegesen elvett cellákra
-  const stolenM2 = (claim?.counts.stolen ?? 0) * GAMEPLAY.CELL_AREA_M2;
-  const steal = m2ToGp(stolenM2) * GAMEPLAY.STEAL_BONUS;
+  /**
+   * A lopás és az áttörés az igénypont ARÁNYOS része.
+   *
+   * A gyök nem összegezhető cellánként (√(a+b) ≠ √a + √b), tehát az elvett
+   * mezőkre nem lehet külön kiszámolni a pontot. Ehelyett az igénypontot
+   * osztjuk el a mezők aránya szerint: ha a foglalás negyede idegentől jött,
+   * a lopásbónusz az igénypont negyedére jár.
+   */
+  const own =
+    (claim?.counts.free ?? 0) + (claim?.counts.reclaimed ?? 0) + (claim?.counts.stolen ?? 0);
+  const broken = claim?.counts.breakthrough ?? 0;
+
+  const stolenShare = own > 0 ? (claim?.counts.stolen ?? 0) / own : 0;
+  const steal = claimPoints * stolenShare * GAMEPLAY.STEAL_BONUS;
 
   // 4. ÁTTÖRÉS — a védett cella nem cserélt gazdát, de a támadás nem hiábavaló
-  const brokenM2 = (claim?.counts.breakthrough ?? 0) * GAMEPLAY.CELL_AREA_M2;
-  const breakthrough = m2ToGp(brokenM2) * GAMEPLAY.BREAKTHROUGH_BONUS;
+  const brokenShare = own + broken > 0 ? broken / (own + broken) : 0;
+  const breakthrough = claimPoints * brokenShare * GAMEPLAY.BREAKTHROUGH_BONUS;
 
   // 5. SOROZAT
   const streakMult = streakMultiplier(streakDays);
@@ -54,9 +80,15 @@ export function computeActivityGp(input: ScoreInput): GpBreakdown {
   };
 }
 
-/** m² → GP: 1 GP minden 1 000 m² után. */
-export function m2ToGp(m2: number): number {
-  return (m2 / 1_000_000) * GAMEPLAY.CLAIM_GP_PER_KM2;
+/**
+ * Terület → GP, a terület GYÖKÉVEL arányosan.
+ *
+ * A gyök a hurok lineáris méretével arányos, tehát a pont a megtett úttal nő,
+ * nem a négyzetével. Lásd a `CLAIM_GP_PER_SQRT_KM2` melletti indoklást.
+ */
+export function areaToGp(m2: number): number {
+  if (m2 <= 0) return 0;
+  return Math.sqrt(m2 / 1_000_000) * GAMEPLAY.CLAIM_GP_PER_SQRT_KM2;
 }
 
 export function streakMultiplier(streakDays: number): number {

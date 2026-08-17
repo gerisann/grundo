@@ -43,7 +43,7 @@ function claimOf(parts: {
 const cells = (m2: number) => m2 / GAMEPLAY.CELL_AREA_M2;
 
 describe('A) példa — területet foglaló futás', () => {
-  it('6,83 km, 840 000 m² (500k szabad, 200k saját 2×, 140k lopott), 8. napos sorozat → 1 456 GP', () => {
+  it('6,83 km, 840 000 m² (500k szabad, 200k saját 2×, 140k lopott), 8. napos sorozat → 272 GP', () => {
     const gp = computeActivityGp({
       type: 'run',
       distanceKm: 6.83,
@@ -57,11 +57,22 @@ describe('A) példa — területet foglaló futás', () => {
       gpEarnedToday: 0,
     });
 
+    /**
+     * A számok 2026-08-17-én változtak: az igénypont a terület GYÖKÉVEL nő,
+     * nem magával a területtel.
+     *
+     * Korábban 940 GP volt (500 + 300 + 140, azaz 1 GP / 1000 m²), és emiatt
+     * a geometria uralta a játékot: egy nagyobb kör négyszer akkora területet
+     * zár be, mint a feleakkora, holott csak kétszer annyit kell menni érte.
+     *
+     * Most: 840 000 m² foglalt terület → √0,84 km² × 120 = 110 pont, ezt
+     * szorozza az átlagos védelmi szint (940/840 = 1,119) → 123,1.
+     */
     expect(gp.base).toBeCloseTo(68.3, 1);
-    expect(gp.claim).toBeCloseTo(940, 1);   // 500 + 300 + 140
-    expect(gp.steal).toBeCloseTo(70, 1);
+    expect(gp.claim).toBeCloseTo(123.1, 1);
+    expect(gp.steal).toBeCloseTo(10.3, 1);
     expect(gp.streakMult).toBe(1.35);
-    expect(gp.total).toBe(1456);
+    expect(gp.total).toBe(272);
   });
 });
 
@@ -129,7 +140,7 @@ describe('védelmi szorzó', () => {
 });
 
 describe('C) példa — körbe-körbe futás', () => {
-  it('ugyanaz a 300 000 m²-es kör négyszer → 2 330 GP', () => {
+  it('ugyanaz a 300 000 m²-es kör négyszer — a védelmi szorzó teljes súllyal jár', () => {
     // Minden kör külön bezárásként detektálódik, egyre magasabb védelemmel.
     const perLap = [1, 2, 3, 4].map((defense) =>
       computeActivityGp({
@@ -144,22 +155,32 @@ describe('C) példa — körbe-körbe futás', () => {
         gpEarnedToday: 0,
       }).total,
     );
-    expect(perLap).toEqual([300, 450, 600, 900]);
+    /**
+     * A LÉNYEG, ami nem változott: a védelmi szorzó teljes súllyal érvényesül.
+     *
+     * A terület gyökösen számít, de a védelem NEM a gyök alatt van — ha ott
+     * lenne, a négyszer megfutott kör csak 1,7× pontot érne 3× helyett, és a
+     * körbe-körbe futás elveszítené az értelmét.
+     *
+     * 300 000 m² → √0,3 km² × 120 = 65,7 alappont, ezt szorozza a szint:
+     */
+    expect(perLap).toEqual([66, 99, 131, 197]);
+    expect(perLap[3]! / perLap[0]!).toBeCloseTo(3, 1);
 
     const base = computeActivityGp({
       type: 'run', distanceKm: 8, claim: null, streakDays: 1, gpEarnedToday: 0,
     }).total;
     expect(base).toBe(80);
-    expect(perLap.reduce((a, b) => a + b, 0) + base).toBe(2330);
   });
 });
 
 describe('szintek', () => {
   it('a küszöbök szerint lép', () => {
-    expect(levelFromGp(0).name).toBe('ÚJONC');
-    expect(levelFromGp(2500).level).toBe(2);
-    expect(levelFromGp(2499).level).toBe(1);
-    expect(levelFromGp(420_000).name).toBe('GRUNDMESTER');
+    expect(levelFromGp(0).name).toBe('JÖVEVÉNY');
+    // Az elején sűrűn: két aktivitás már szintet hoz.
+    expect(levelFromGp(300).level).toBe(2);
+    expect(levelFromGp(299).level).toBe(1);
+    expect(levelFromGp(100_000).name).toBe('GRUNDMESTER');
     expect(levelFromGp(999_999).nextAt).toBeNull();
   });
 });

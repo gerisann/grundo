@@ -56,8 +56,24 @@ export const GAMEPLAY = {
   DEFENSE_MULTIPLIER: [1.0, 1.5, 2.0, 3.0, 5.0],
 
   // ── Pontozás ────────────────────────────────────────────────────────────
-  /** 1 GP minden 1 000 m² után. Egy cella így 0,307 GP. */
-  CLAIM_GP_PER_KM2: 1000,
+  /**
+   * A terület GYÖKÉVEL arányos pont — nem magával a területtel.
+   *
+   * MIÉRT? Mert a bezárt terület a hurok méretének NÉGYZETÉVEL nő, a megtett
+   * út viszont csak lineárisan. A korábbi „1 GP / 1000 m²" szabálynál ezért a
+   * geometria uralta a játékot: egy 0,8 km-es sétánál az igénypont az alap
+   * hatszorosa volt, egy 11 km-es körnél a százhetvenkétszerese. Aki egyetlen
+   * nagy kört írt le, nagyságrendekkel többet kapott, mint aki ugyanannyit
+   * mozgott kisebb körökben.
+   *
+   * A gyök a hurok LINEÁRIS méretével arányos, tehát a pont a megtett úttal
+   * nő, nem a négyzetével. A nagyobb kör továbbra is többet ér — csak nem
+   * aránytalanul.
+   *
+   * Az érték kalibrálva: egy háztömb körüli séta ~26, egy 5 km-es kör ~150,
+   * egy 11 km-es bringakör ~340 igénypont.
+   */
+  CLAIM_GP_PER_SQRT_KM2: 120,
   /** Alappont — akkor is jár, ha nem zárul be a kör. Ez a rendszer
    *  legfontosabb ösztönző eleme. */
   BASE_GP_PER_KM: { run: 10, walk: 10, ride: 4 } as const,
@@ -84,10 +100,21 @@ export const GAMEPLAY = {
   SOFT_CAP_RATE: 0.5,
 
   // ── Szintek (kumulált GP) ───────────────────────────────────────────────
-  LEVELS: [0, 2500, 7500, 17500, 35000, 65000, 110000, 180000, 280000, 420000],
+  /**
+   * Szintlépcsők — elöl sűrűn, hátul ritkán.
+   *
+   * Egy átlagos aktivitás a gyök-alapú szabállyal ~150-350 GP. Ebből:
+   * a 2. szint egy-két aktivitás, a 3. további három, a 4. további öt-hat —
+   * onnantól minden szint nagyjából kétszer annyi, mint az előző.
+   *
+   * A cél, hogy a kezdés azonnal visszajelezzen, a felső szintek viszont
+   * valóban jelentsenek valamit: a 10. szint heti négy aktivitással is évek
+   * munkája.
+   */
+  LEVELS: [0, 300, 900, 2000, 4200, 8500, 16000, 30000, 55000, 100000],
   LEVEL_NAMES: [
-    'ÚJONC', 'FELDERÍTŐ', 'BIRTOKOS', 'ŐRSZEM', 'HÓDÍTÓ',
-    'HADVEZÉR', 'URALKODÓ', 'LEGENDA', 'TITÁN', 'GRUNDMESTER',
+    'JÖVEVÉNY', 'KÓBORLÓ', 'NYOMKERESŐ', 'HATÁRJÁRÓ', 'TERÜLETŐR',
+    'GRUNDŐR', 'VÁROSJÁRÓ', 'NAGYGAZDA', 'GRUNDBÍRÓ', 'GRUNDMESTER',
   ],
   /** A távolság-létra a jelvények szintjén marad meg (rétegenként). */
   DISTANCE_BADGE_LADDER_KM: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000],
