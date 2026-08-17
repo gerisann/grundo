@@ -1,13 +1,64 @@
 /* Terület képernyő */
 
 /*
- * A fejléc a ranglista-gomb horgonya.
- *
- * SAJÁT osztály, nem a globális `.screen-header` — a CSS nem elszigetelt,
- * tehát ott állítva a `position` minden képernyő fejlécére kihatna.
+ * A térkép a képernyő HÁTTERE, nem doboz a tartalomban — ugyanaz a felépítés,
+ * mint a rögzítésnél. A birtokviszony térbeli információ: minél többet látsz
+ * belőle egyszerre, annál használhatóbb.
  */
-.terr__header {
-  position: relative;
+.terr {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--map-bg);
+}
+
+.terr__map {
+  position: absolute;
+  inset: 0;
+}
+
+.terr__map .mapview {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.terr__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-3);
+  padding-bottom: calc(
+    var(--sp-6) + var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom)
+  );
+  /* A réteg átengedi az érintést a térképnek — csak a kártyák fogják meg.
+     Enélkül a térkép nem lenne mozgatható. */
+  pointer-events: none;
+  overflow-y: auto;
+}
+
+.terr__overlay > * {
+  pointer-events: auto;
+}
+
+/* A fejléc is a rétegben van, tehát nem foghatja meg a térkép mozgatását —
+   csak a benne lévő gomb. */
+.terr .screen-header {
+  pointer-events: none;
+}
+
+.terr .screen-header > * {
+  pointer-events: auto;
+}
+
+/* A kártyák áttetszők, hogy a térkép átlátsszon mögöttük. */
+.terr__stats,
+.terr__legend-grid,
+.terr__board,
+.terr .card {
+  backdrop-filter: blur(12px);
 }
 
 .terr__stats {
@@ -19,7 +70,7 @@
 .terr__stat {
   text-align: center;
   padding: var(--sp-3) var(--sp-2);
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   border-radius: var(--r-md);
 }
 
@@ -53,6 +104,10 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-secondary);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 /* ── Jelmagyarázat ───────────────────────────────────────────────── */
@@ -61,6 +116,9 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
 }
 
 .terr__legend-item {
@@ -137,28 +195,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Ranglista-váltó a fejlécben ─────────────────────────────────── */
-
-.terr__board-toggle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--text-secondary);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-}
-
-.terr__board-toggle--on {
-  color: var(--accent-on);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
 .terr__board-head {
   display: flex;
   align-items: center;
@@ -179,4 +215,18 @@
 
 .terr__board-close:hover {
   color: var(--text-primary);
+}
+
+/*
+ * Sima szöveges üzenet a ranglistában.
+ *
+ * NEM `terr__board-row`: az három oszlopos rács (helyezés, név, terület), és
+ * a szöveg a 32 képpontos első oszlopba esne — szavanként törve.
+ */
+.terr__board-message {
+  padding: var(--sp-3);
+  background: var(--bg-elevated);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }

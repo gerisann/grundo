@@ -137,12 +137,39 @@ export function TerritoryScreen() {
   const showingFree = groups.free.length > 0;
 
   return (
-    <>
-      <header className="screen-header terr__header">
+    <div className="terr">
+      {/*
+        A térkép a képernyő HÁTTERE, nem doboz a tartalomban — ugyanaz a
+        felépítés, mint a rögzítésnél. A birtokviszony térbeli információ: minél
+        többet látsz belőle egyszerre, annál használhatóbb.
+      */}
+      <div className="terr__map">
+        {mapboxConfigured ? (
+          <Suspense fallback={null}>
+            <MapView
+              layers={[
+                { role: 'free', cells: groups.free },
+                { role: 'rival', cells: groups.others },
+                { role: 'stolen', cells: groups.mineExposed },
+                { role: 'interior', cells: groups.mineDefended },
+              ]}
+              position={position}
+              follow={false}
+              onViewport={onViewport}
+              fill
+            />
+          </Suspense>
+        ) : null}
+      </div>
+
+      <header
+        className="screen-header"
+        style={{ justifyContent: 'space-between', paddingLeft: 'var(--sp-4)' }}
+      >
         <h1 className="screen-header__title">Terület</h1>
         <button
           type="button"
-          className={`terr__board-toggle${boardOpen ? ' terr__board-toggle--on' : ''}`}
+          className="screen-header__back"
           aria-label={boardOpen ? 'Vissza a térképhez' : 'Ranglista'}
           aria-pressed={boardOpen}
           onClick={() => setBoardOpen((open) => !open)}
@@ -151,7 +178,7 @@ export function TerritoryScreen() {
         </button>
       </header>
 
-      <div className="screen-body stack">
+      <div className="terr__overlay">
         <SegmentedControl
           label="Réteg"
           block
@@ -182,26 +209,13 @@ export function TerritoryScreen() {
 
         {boardOpen ? (
           <Leaderboard entries={board} meUid={uid} onClose={() => setBoardOpen(false)} />
-        ) : mapboxConfigured ? (
-          <Suspense fallback={<div className="card">Térkép betöltése…</div>}>
-            <MapView
-              layers={[
-                { role: 'free', cells: groups.free },
-                { role: 'rival', cells: groups.others },
-                { role: 'stolen', cells: groups.mineExposed },
-                { role: 'interior', cells: groups.mineDefended },
-              ]}
-              position={position}
-              follow={false}
-              height={400}
-              onViewport={onViewport}
-            />
-          </Suspense>
-        ) : (
+        ) : null}
+
+        {!mapboxConfigured ? (
           <div className="card">
             A térképhez Mapbox-token kell. Enélkül a birtokviszony nem jeleníthető meg.
           </div>
-        )}
+        ) : null}
 
         <div className="terr__legend-grid">
           <Swatch className="terr__swatch--mine" label="A tiéd, védve" />
@@ -221,7 +235,7 @@ export function TerritoryScreen() {
           egyre könnyebb elvenni.
         </p>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -256,7 +270,7 @@ function Leaderboard({
     return (
       <div className="terr__board">
         {head}
-        <div className="terr__board-row">Betöltés…</div>
+        <p className="terr__board-message">Betöltés…</p>
       </div>
     );
   }
@@ -265,7 +279,7 @@ function Leaderboard({
     return (
       <div className="terr__board">
         {head}
-        <div className="terr__board-row">Még senkinek nincs területe. Légy te az első.</div>
+        <p className="terr__board-message">Még senkinek nincs területe. Légy te az első.</p>
       </div>
     );
   }
