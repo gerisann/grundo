@@ -59,6 +59,23 @@ const ROLE_OPACITY: Partial<Record<HexRole, number>> = { free: 0.1 };
 const TRACK_SOURCE = 'grundo-track';
 const CELL_SOURCE = 'grundo-cells';
 
+/**
+ * A hatszög-forrás beállításai — mindkettőre szükség van, és mindkettő
+ * egy-egy látható hibát javít.
+ *
+ * `tolerance: 0` — a Mapbox alapból leegyszerűsíti a geometriát csempénként
+ * (alapérték 0,375 képpont): közeli csúcsokat összevon, éleket eldob. Nagy,
+ * ritka alakzatoknál ez láthatatlan. A mi hatszögeink viszont 18 méteresek és
+ * hat csúcsuk van — pont abban a mérettartományban, ahol az egyszerűsítés a
+ * csúcsokat ELMOZDÍTJA. Ettől tüskék nőnek a sarkokon, és a szomszédos
+ * hatszögek élei nem érnek össze. Nullán az eredeti geometria rajzolódik.
+ *
+ * `maxzoom: 22` — efölött a Mapbox nem generál új csempét, hanem a legutolsót
+ * nagyítja fel. Az alapérték 18, ami egy 18 méteres hatszögnél már a valós
+ * használati tartományban van: onnantól a rajz fokozatosan pontatlanná válik.
+ */
+const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
+
 export function MapView({
   track,
   layers,
@@ -211,7 +228,7 @@ export function MapView({
 
 function addLayers(instance: mapboxgl.Map): void {
   if (!instance.getSource(CELL_SOURCE)) {
-    instance.addSource(CELL_SOURCE, { type: 'geojson', data: emptyCollection() });
+    instance.addSource(CELL_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
     instance.addLayer({
       id: `${CELL_SOURCE}-fill`,
       type: 'fill',
@@ -264,7 +281,7 @@ function syncData(
             // A h3 [szélesség, hosszúság] párokat ad, a GeoJSON viszont
             // [hosszúság, szélesség] sorrendet vár. Felcserélve az egész
             // rács a Föld túloldalára kerülne.
-            coordinates: [cellToBoundary(cell).map(([lat, lng]) => [lng, lat])],
+            coordinates: [closedRing(cell)],
           },
         });
       }
@@ -289,6 +306,23 @@ function syncData(
           : [],
     });
   }
+}
+
+/**
+ * A cella határa GeoJSON-gyűrűként, ZÁRTAN.
+ *
+ * A `cellToBoundary` nyitott gyűrűt ad: nem ismétli meg az első csúcsot a
+ * végén. A GeoJSON-szabvány viszont zárt gyűrűt ír elő — a Mapbox tolerálja a
+ * nyitottat, de az utolsó él kezelése így megjósolhatatlan.
+ *
+ * A h3 [szélesség, hosszúság] párokat ad, a GeoJSON [hosszúság, szélesség]
+ * sorrendet vár. Felcserélve az egész rács a Föld túloldalára kerülne.
+ */
+function closedRing(cell: CellId): [number, number][] {
+  const ring = cellToBoundary(cell).map(([lat, lng]) => [lng, lat] as [number, number]);
+  const first = ring[0];
+  if (first) ring.push([first[0], first[1]]);
+  return ring;
 }
 
 function emptyCollection(): GeoJSON.FeatureCollection {
