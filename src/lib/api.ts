@@ -204,6 +204,30 @@ export interface TerritoryResult {
   truncated?: boolean;
 }
 
+export interface TileCell {
+  cell: string;
+  owner: string;
+  defense: number;
+}
+
+export interface TilesResult {
+  layer: 'foot' | 'bike';
+  cells: TileCell[];
+  /** A nézetet lefedő res 9 blokkok — ezekből számoljuk a SZABAD cellákat. */
+  blocks?: string[];
+  owners: Record<string, string>;
+  /** Túl nagy a nézet: közelíteni kell, mert távolról értelmetlen a rajz. */
+  tooWide: boolean;
+}
+
+export interface LeaderboardEntry {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+  areaM2: number;
+  cellCount: number;
+}
+
 export interface OtpSendResult {
   sent?: boolean;
   alreadyVerified?: boolean;
@@ -263,6 +287,22 @@ export const api = {
   /** A saját területem cellái, érvényes védelmi szinttel. */
   territory: (layer: 'foot' | 'bike' = 'foot') =>
     request<TerritoryResult>(`/api/tiles/mine?layer=${layer}`),
+
+  /** A látott térképszakasz birtokviszonya — mindenkié. */
+  tiles: (
+    layer: 'foot' | 'bike',
+    view: { south: number; west: number; north: number; east: number },
+  ) =>
+    request<TilesResult>(
+      `/api/tiles?layer=${layer}&south=${view.south}&west=${view.west}` +
+        `&north=${view.north}&east=${view.east}`,
+    ),
+
+  /** A legnagyobb területek. */
+  leaderboard: (layer: 'foot' | 'bike' = 'foot') =>
+    request<{ layer: string; entries: LeaderboardEntry[] }>(
+      `/api/tiles/leaderboard?layer=${layer}`,
+    ),
 
   otpSend: () => request<OtpSendResult>('/api/auth/otp/send', { method: 'POST' }),
 

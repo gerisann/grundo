@@ -44,3 +44,85 @@
   line-height: 1.5;
   color: var(--text-secondary);
 }
+
+/* ── Jelmagyarázat ───────────────────────────────────────────────── */
+
+.terr__legend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
+}
+
+.terr__legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.terr__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex: none;
+  border: 1px solid var(--border-default);
+}
+
+.terr__swatch--mine { background: var(--territory-own); border-color: var(--territory-own); }
+.terr__swatch--exposed { background: var(--territory-own-fill); border-color: var(--territory-own); }
+.terr__swatch--rival { background: var(--territory-rival-fill); border-color: var(--territory-rival); }
+.terr__swatch--free { background: transparent; border-style: dashed; }
+
+/* ── Ranglista ───────────────────────────────────────────────────── */
+
+.terr__board {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.terr__board-title {
+  padding: var(--sp-3);
+  background: var(--bg-elevated);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.terr__board-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--bg-elevated);
+}
+
+/* A saját sor kiemelve: a ranglistán az első kérdés mindig „én hol vagyok". */
+.terr__board-row--me {
+  background: var(--accent-soft);
+}
+
+.terr__board-rank {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.terr__board-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.terr__board-area {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}

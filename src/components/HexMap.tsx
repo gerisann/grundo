@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { cellToBoundary } from 'h3-js';
 import type { CellId } from '@/types';
 
-export type HexRole = 'trail' | 'interior' | 'rival' | 'stolen';
+export type HexRole = 'trail' | 'interior' | 'rival' | 'stolen' | 'free';
 
 export interface HexMapProps {
   /** Cellák szerepenként. A sorrend a rajzolási sorrend is. */
@@ -26,6 +26,8 @@ const ROLE_STYLE: Record<HexRole, { fill: string; stroke: string }> = {
   trail: { fill: 'var(--trail-pending-fill)', stroke: 'var(--trail-pending)' },
   rival: { fill: 'var(--territory-rival-fill)', stroke: 'var(--territory-rival)' },
   stolen: { fill: 'var(--territory-own-fill)', stroke: 'var(--territory-rival)' },
+  // Szabad cella: látszik, hogy létezik, de nem vonja el a figyelmet.
+  free: { fill: 'transparent', stroke: 'var(--territory-neutral)' },
 };
 
 /**

@@ -35,6 +35,13 @@ export interface MapViewProps {
   height?: number;
   /** Töltse ki a szülőt — teljes képernyős háttérként. */
   fill?: boolean;
+  /**
+   * A látott szakasz változásakor hívjuk.
+   *
+   * Csak a mozgás VÉGÉN (`moveend`), nem közben: húzás alatt másodpercenként
+   * több tucatszor tüzelne, és minden alkalommal lekérdezést indítana.
+   */
+  onViewport?: (view: { south: number; west: number; north: number; east: number; zoom: number }) => void;
 }
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
@@ -43,7 +50,11 @@ const ROLE_COLOR: Record<HexRole, string> = {
   interior: '#7c3aed',
   rival: '#ef4444',
   stolen: '#f59e0b',
+  free: '#94a3b8',
 };
+
+/** A szabad cellák halványak: jelen vannak, de nem vonják el a figyelmet. */
+const ROLE_OPACITY: Partial<Record<HexRole, number>> = { free: 0.1 };
 
 const TRACK_SOURCE = 'grundo-track';
 const CELL_SOURCE = 'grundo-cells';
@@ -55,6 +66,7 @@ export function MapView({
   follow = true,
   height = 320,
   fill = false,
+  onViewport,
 }: MapViewProps) {
   const { theme } = useThemeContext();
   const container = useRef<HTMLDivElement | null>(null);
@@ -63,6 +75,9 @@ export function MapView({
   const ready = useRef(false);
   /** Az ELSŐ pozícióra ugrunk, nem odaúszunk — lásd lejjebb. */
   const centered = useRef(false);
+  /** Refben, hogy a térkép ne épüljön újra, ha a hívó új függvényt ad. */
+  const viewportRef = useRef(onViewport);
+  viewportRef.current = onViewport;
 
   /* ── A térkép létrehozása, egyszer ─────────────────────────────── */
 
@@ -86,7 +101,22 @@ export function MapView({
       ready.current = true;
       addLayers(instance);
       syncData(instance, track, layers);
+      report(instance);
     });
+
+    instance.on('moveend', () => report(instance));
+
+    function report(map: mapboxgl.Map) {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+      viewportRef.current?.({
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast(),
+        zoom: map.getZoom(),
+      });
+    }
 
     map.current = instance;
 
@@ -190,7 +220,7 @@ function addLayers(instance: mapboxgl.Map): void {
         // A szín a jellemzőből jön, hogy egyetlen réteg elég legyen minden
         // szerephez — különben szerepenként külön forrás és réteg kellene.
         'fill-color': ['get', 'color'],
-        'fill-opacity': 0.35,
+        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.35],
       },
     });
     instance.addLayer({
@@ -225,7 +255,10 @@ function syncData(
       for (const cell of layer.cells) {
         features.push({
           type: 'Feature' as const,
-          properties: { color: ROLE_COLOR[layer.role] },
+          properties: {
+            color: ROLE_COLOR[layer.role],
+            opacity: ROLE_OPACITY[layer.role] ?? 0.35,
+          },
           geometry: {
             type: 'Polygon' as const,
             // A h3 [szélesség, hosszúság] párokat ad, a GeoJSON viszont

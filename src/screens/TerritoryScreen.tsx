@@ -1,59 +1,134 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Button, SegmentedControl } from '@/components/ui';
-import { HexMap } from '@/components/HexMap';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cellToChildren } from 'h3-js';
+import { SegmentedControl } from '@/components/ui';
 import { mapboxConfigured } from '@/lib/mapbox';
-import { api, apiConfigured, type TerritoryResult } from '@/lib/api';
+import {
+  api,
+  apiConfigured,
+  type LeaderboardEntry,
+  type TilesResult,
+} from '@/lib/api';
+import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea } from '@/lib/format';
 import type { Layer } from '@/types';
 import './territory.css';
 
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
-type Status = 'loading' | 'ready' | 'error' | 'unavailable';
+/**
+ * Ennyi blokknál még kirajzoljuk a SZABAD cellákat is.
+ *
+ * Egy res 9 blokk 343 res 12 cellát tartalmaz, tehát nyolc blokk ~2 700
+ * hatszög — ennyi még gyorsan rajzolódik és olvasható. Följebb a szabad
+ * cellák úgyis szürke masszává folynának össze, és a lényeget takarnák el:
+ * azt, hogy hol van FOGLALT terület.
+ */
+const FREE_CELL_BLOCK_LIMIT = 8;
+
+type View = { south: number; west: number; north: number; east: number; zoom: number };
 
 /**
- * Terület — amit eddig megszereztél.
+ * Terület.
  *
- * A védelmi szint látszik, mert ez a legfontosabb információ a képernyőn: az
- * 5-ös védelmű folt öt bezárásba kerül a támadónak, az 1-es egybe. És mivel a
- * védelem naponta egy szintet veszít, a felhasználónak látnia kell, mi az,
- * ami még tart, és mi az, ami már bárkinek szabad préda.
+ * A térkép MINDIG látszik, akkor is, ha még nincs saját területed — sőt főleg
+ * akkor: aki most kezdi, épp azt akarja tudni, mi van körülötte és mi szabad.
  */
 export function TerritoryScreen() {
+  const { profile } = useProfile();
   const [layer, setLayer] = useState<Layer>('foot');
-  const [status, setStatus] = useState<Status>('loading');
-  const [data, setData] = useState<TerritoryResult | null>(null);
-  const [error, setError] = useState('');
-
-  const load = useCallback(async () => {
-    if (!apiConfigured) {
-      setStatus('unavailable');
-      return;
-    }
-    setStatus('loading');
-    setError('');
-    try {
-      setData(await api.territory(layer));
-      setStatus('ready');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nem sikerült betölteni a területed.');
-      setStatus('error');
-    }
-  }, [layer]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const cells = data?.cells ?? [];
+  const [tiles, setTiles] = useState<TilesResult | null>(null);
+  const [board, setBoard] = useState<LeaderboardEntry[] | null>(null);
+  const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   /**
-   * A védelmi szint szerint bontjuk rétegekre, mert a `HexMap` és a `MapView`
-   * is szerep szerint színez. A „mai" (védett) és a „tegnapi" (1-es) terület
-   * vizuálisan is elkülönül.
+   * A látott szakasz REFBEN, nem állapotban.
+   *
+   * Ha állapot lenne, minden térképmozgatás újrarajzolást indítana, az pedig
+   * újabb `moveend` eseményt — körbe. Az újrarajzolást a `tiles` változása
+   * hajtja, ami a lekérdezés után egyszer következik be. A refre csak azért
+   * van szükség, hogy rétegváltáskor tudjuk, melyik szakaszt kell újrakérni.
    */
-  const defended = cells.filter((c) => c.defense > 1).map((c) => c.cell);
-  const exposed = cells.filter((c) => c.defense <= 1).map((c) => c.cell);
+  const viewRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => setPosition({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => undefined,
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!apiConfigured) return;
+    void api
+      .leaderboard(layer)
+      .then((r) => setBoard(r.entries))
+      .catch(() => setBoard([]));
+  }, [layer]);
+
+  const loadTiles = useCallback(
+    async (next: View) => {
+      if (!apiConfigured) return;
+      try {
+        setTiles(await api.tiles(layer, next));
+      } catch {
+        setTiles(null);
+      }
+    },
+    [layer],
+  );
+
+  const onViewport = useCallback(
+    (next: View) => {
+      viewRef.current = next;
+      void loadTiles(next);
+    },
+    [loadTiles],
+  );
+
+  // Rétegváltásnál újra kell kérdezni ugyanarra a szakaszra.
+  useEffect(() => {
+    if (viewRef.current) void loadTiles(viewRef.current);
+  }, [loadTiles]);
+
+  const uid = profile?.uid ?? '';
+
+  /**
+   * A cellák három csoportba kerülnek, mert a felhasználót három kérdés
+   * érdekli: mi az enyém, mi máséé, és mi szabad.
+   */
+  const groups = useMemo(() => {
+    const mineDefended: string[] = [];
+    const mineExposed: string[] = [];
+    const others: string[] = [];
+    const taken = new Set<string>();
+
+    for (const c of tiles?.cells ?? []) {
+      taken.add(c.cell);
+      if (c.owner === uid) (c.defense > 1 ? mineDefended : mineExposed).push(c.cell);
+      else others.push(c.cell);
+    }
+
+    /**
+     * A SZABAD cella nem tárolódik sehol — az a foglalt cellák hiánya.
+     * Ezért a nézetet lefedő blokkok gyerekeiből vonjuk ki a foglaltakat.
+     * Csak közeli nézetben: távolról tízezres nagyságrendű hatszög lenne.
+     */
+    const blocks = tiles?.blocks ?? [];
+    const free: string[] = [];
+    if (blocks.length > 0 && blocks.length <= FREE_CELL_BLOCK_LIMIT) {
+      for (const block of blocks) {
+        for (const child of cellToChildren(block, 12)) {
+          if (!taken.has(child)) free.push(child);
+        }
+      }
+    }
+
+    return { mineDefended, mineExposed, others, free };
+  }, [tiles, uid]);
+
+  const showingFree = groups.free.length > 0;
 
   return (
     <>
@@ -73,88 +148,105 @@ export function TerritoryScreen() {
           ]}
         />
 
-        {status === 'unavailable' ? (
-          <div className="card">A háttérszolgáltatás nincs beállítva.</div>
-        ) : null}
-
-        {status === 'error' ? (
-          <div className="card" role="alert">
-            {error}
-            <div style={{ marginTop: 'var(--sp-3)' }}>
-              <Button size="sm" onClick={() => void load()}>
-                Újrapróbálom
-              </Button>
-            </div>
+        <div className="terr__stats">
+          <div className="terr__stat">
+            <span className="terr__stat-value">
+              {formatArea(profile?.territoryM2[layer] ?? 0)}
+            </span>
+            <span className="terr__stat-label">a tiéd</span>
           </div>
-        ) : null}
-
-        {status === 'loading' ? <div className="card">Betöltés…</div> : null}
-
-        {status === 'ready' && cells.length === 0 ? (
-          <div className="card terr__empty">
-            <h2 className="terr__empty-title">Még nincs területed</h2>
-            <p>
-              Zárj be egy kört — kerülj meg egy háztömböt, vagy keresztezd a saját nyomvonalad —,
-              és a közrezárt terület a tiéd lesz.
-            </p>
+          <div className="terr__stat">
+            <span className="terr__stat-value">{groups.mineDefended.length}</span>
+            <span className="terr__stat-label">védett mező</span>
           </div>
+          <div className="terr__stat">
+            <span className="terr__stat-value">{groups.others.length}</span>
+            <span className="terr__stat-label">másé itt</span>
+          </div>
+        </div>
+
+        {mapboxConfigured ? (
+          <Suspense fallback={<div className="card">Térkép betöltése…</div>}>
+            <MapView
+              layers={[
+                { role: 'free', cells: groups.free },
+                { role: 'rival', cells: groups.others },
+                { role: 'stolen', cells: groups.mineExposed },
+                { role: 'interior', cells: groups.mineDefended },
+              ]}
+              position={position}
+              follow={false}
+              height={400}
+              onViewport={onViewport}
+            />
+          </Suspense>
+        ) : (
+          <div className="card">
+            A térképhez Mapbox-token kell. Enélkül a birtokviszony nem jeleníthető meg.
+          </div>
+        )}
+
+        {tiles?.tooWide ? (
+          <p className="terr__legend">
+            Túl nagy a nézet — közelíts rá, hogy lásd a mezőket.
+          </p>
         ) : null}
 
-        {status === 'ready' && cells.length > 0 ? (
-          <>
-            <div className="terr__stats">
-              <div className="terr__stat">
-                <span className="terr__stat-value">{formatArea(data!.areaM2)}</span>
-                <span className="terr__stat-label">terület</span>
-              </div>
-              <div className="terr__stat">
-                <span className="terr__stat-value">{data!.cellCount}</span>
-                <span className="terr__stat-label">mező</span>
-              </div>
-              <div className="terr__stat">
-                <span className="terr__stat-value">{defended.length}</span>
-                <span className="terr__stat-label">védett</span>
-              </div>
-            </div>
+        <div className="terr__legend-grid">
+          <Swatch className="terr__swatch--mine" label="A tiéd, védve" />
+          <Swatch className="terr__swatch--exposed" label="A tiéd, 1-es szinten" />
+          <Swatch className="terr__swatch--rival" label="Másé" />
+          <Swatch className="terr__swatch--free" label="Szabad" />
+        </div>
 
-            {mapboxConfigured ? (
-              <Suspense fallback={<div className="card">Térkép betöltése…</div>}>
-                <MapView
-                  layers={[
-                    { role: 'rival', cells: exposed },
-                    { role: 'interior', cells: defended },
-                  ]}
-                  position={null}
-                  follow={false}
-                  height={380}
-                />
-              </Suspense>
-            ) : (
-              <HexMap
-                layers={[
-                  { role: 'rival', cells: exposed },
-                  { role: 'interior', cells: defended },
-                ]}
-                height={340}
-              />
-            )}
+        <p className="terr__legend">
+          {showingFree
+            ? 'A halvány mezők szabadok — bárkié lehetnek, aki bezár egy kört körülöttük.'
+            : 'Közelíts rá jobban, és a szabad mezők is megjelennek.'}{' '}
+          A védelem naponta egy szintet veszít, de sosem esik 1 alá: a terület a tiéd marad, csak
+          egyre könnyebb elvenni.
+        </p>
 
-            <p className="terr__legend">
-              A <strong>sötét</strong> foltok védettek — a támadónak annyi bezárás kell, amennyi a
-              védelmi szintjük. A <strong>halvány</strong> foltok 1-es szinten állnak: egyetlen
-              bezárással elvehetők. A védelem <strong>naponta egy szintet veszít</strong>, de
-              sosem esik 1 alá — a terület a tiéd marad, csak egyre könnyebb elvenni. Amit
-              erősen meg akarsz tartani, azt rendszeresen újra kell futnod.
-            </p>
-
-            {data!.truncated ? (
-              <p className="terr__legend">
-                Sok területed van — a térkép csak egy részét mutatja.
-              </p>
-            ) : null}
-          </>
-        ) : null}
+        <Leaderboard entries={board} meUid={uid} />
       </div>
     </>
+  );
+}
+
+function Swatch({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="terr__legend-item">
+      <span className={`terr__swatch ${className}`} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+function Leaderboard({ entries, meUid }: { entries: LeaderboardEntry[] | null; meUid: string }) {
+  if (entries === null) return <div className="card">Ranglista betöltése…</div>;
+
+  if (entries.length === 0) {
+    return (
+      <div className="card">
+        <h2 className="terr__board-title">Ranglista</h2>
+        <p className="terr__legend">Még senkinek nincs területe. Légy te az első.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="terr__board">
+      <h2 className="terr__board-title">Legnagyobb területek</h2>
+      {entries.map((entry, index) => (
+        <div
+          key={entry.uid}
+          className={`terr__board-row${entry.uid === meUid ? ' terr__board-row--me' : ''}`}
+        >
+          <span className="terr__board-rank">{index + 1}.</span>
+          <span className="terr__board-name">{entry.username}</span>
+          <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -13,7 +13,7 @@ import { cellToParent } from 'h3-js';
 import type { CellId, Layer } from '../../../src/types';
 
 /** A blokk felbontása. NEM a cellák felbontása (az res 12). */
-const BLOCK_RESOLUTION = 9;
+export const BLOCK_RESOLUTION = 9;
 
 /**
  * A cella kulcsa a blokkon belül: az index utolsó 6 karaktere.

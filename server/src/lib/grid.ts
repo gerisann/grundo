@@ -31,7 +31,7 @@ import {
 
 // A tiszta logika a `gridMath`-ban él (tesztelhetőség miatt); innen is
 // elérhető, hogy a hívóknak ne kelljen két helyről importálniuk.
-export { blockIdFor, blocksFor, cellKey, effectiveDefense, gameDay } from './gridMath';
+export { BLOCK_RESOLUTION, blockIdFor, blocksFor, cellKey, effectiveDefense, gameDay } from './gridMath';
 export type { GridBlock } from './gridMath';
 
 /**
