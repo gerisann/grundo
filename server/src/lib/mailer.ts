@@ -6,10 +6,19 @@
  * meg. Ez fejlesztéshez szándékos, élesben viszont hiba.
  *
  * Környezeti változók:
- *   MAIL_PROVIDER = 'resend' | 'console'   (alap: console)
- *   RESEND_API_KEY
- *   MAIL_FROM     pl. "GRUNDO <no-reply@grundo.hu>"
+ *   MAIL_PROVIDER = 'smtp' | 'resend' | 'console'   (alap: console)
+ *   MAIL_FROM     pl. "GRUNDO <no-reply@grundo.ultimateteam.hu>"
+ *
+ *   smtp:    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD
+ *   resend:  RESEND_API_KEY
+ *
+ * Az éles beállítás az `smtp`: a saját domain levelezőjén keresztül megy a
+ * küldés, tehát nincs harmadik fél a láncban és nem kell külön szolgáltatói
+ * fiók. A `resend` ág megmarad tartaléknak — ha egyszer a saját szerver napi
+ * küldési korlátja szűk lesz, elég a MAIL_PROVIDER-t átállítani.
  */
+
+import nodemailer from 'nodemailer';
 
 export interface Mail {
   to: string;
@@ -33,6 +42,52 @@ const consoleMailer: Mailer = {
     );
   },
 };
+
+/**
+ * Küldés a saját domain levelezőjén keresztül.
+ *
+ * Két dolgot érdemes tudni a Cloud Runról:
+ *
+ * 1. A **25-ös port kifelé tiltva van** a Google Cloudon, kivétel nélkül.
+ *    Ezért csak az 587 (STARTTLS) vagy a 465 (azonnali TLS) használható.
+ *    A `secure` kapcsolót ehhez igazítjuk: 465-nél kezdettől titkosított a
+ *    kapcsolat, 587-nél a szerver a beszélgetés közben vált át rá.
+ *
+ * 2. A konténer bármikor leállhat, ha nincs forgalom, ezért nem tartunk fenn
+ *    állandó kapcsolatot: minden levél saját kapcsolatot nyit és zár. Néhány
+ *    tized másodperccel lassabb, cserébe nem lehet elhalt kapcsolatba
+ *    beleküldeni — ami pont a ritkán küldő szolgáltatások tipikus hibája.
+ */
+function smtpMailer(from: string): Mailer {
+  const host = process.env.SMTP_HOST ?? '';
+  const port = Number(process.env.SMTP_PORT ?? 587);
+  const user = process.env.SMTP_USER ?? '';
+  const pass = process.env.SMTP_PASSWORD ?? '';
+
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: user ? { user, pass } : undefined,
+    // Ha a szolgáltató lassan válaszol, ne akadjon be egy kérés örökre.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+
+  return {
+    name: 'smtp',
+    async send(mail) {
+      await transport.sendMail({
+        from,
+        to: mail.to,
+        subject: mail.subject,
+        text: mail.text,
+        ...(mail.html ? { html: mail.html } : {}),
+      });
+    },
+  };
+}
 
 function resendMailer(apiKey: string, from: string): Mailer {
   return {
@@ -62,7 +117,18 @@ function resendMailer(apiKey: string, from: string): Mailer {
 
 export function createMailer(): Mailer {
   const provider = process.env.MAIL_PROVIDER ?? 'console';
-  const from = process.env.MAIL_FROM ?? 'GRUNDO <no-reply@grundo.hu>';
+  const from = process.env.MAIL_FROM ?? 'GRUNDO <no-reply@grundo.ultimateteam.hu>';
+
+  if (provider === 'smtp') {
+    if (!process.env.SMTP_HOST) {
+      // Visszaesés a naplóba: a szolgáltatás elindul, csak a levél nem megy ki.
+      // Így egy hiányzó beállítás nem dönti le az egész backendet.
+      // eslint-disable-next-line no-console
+      console.error('[GRUNDO] MAIL_PROVIDER=smtp, de az SMTP_HOST hiányzik.');
+      return consoleMailer;
+    }
+    return smtpMailer(from);
+  }
 
   if (provider === 'resend') {
     const key = process.env.RESEND_API_KEY;

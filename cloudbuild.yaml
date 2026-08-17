@@ -14,6 +14,16 @@ substitutions:
   _SERVICE: grundo-api
   _REPO: grundo
 
+  # A domain levelezőszervere. Ezek nem titkok (a jelszó igen — az Secret
+  # Managerből jön), de itt gyűjtve könnyű átállítani, ha szolgáltatót váltasz.
+  #
+  # A 465-ös port AZONNALI TLS-t jelent (a kapcsolat az első bájttól titkosított),
+  # szemben az 587-tel, ahol a beszélgetés közben történik a váltás. A kód a
+  # portszámból ismeri fel, melyik kell — lásd a mailer.ts `secure` kapcsolóját.
+  _SMTP_HOST: grundo.ultimateteam.hu
+  _SMTP_PORT: '465'
+  _SMTP_USER: no-reply@grundo.ultimateteam.hu
+
 steps:
   # FIGYELEM: a címke $BUILD_ID, NEM $SHORT_SHA.
   #
@@ -72,8 +82,23 @@ steps:
       # a kulcs benne van minden kiszolgált kliens-bundle-ben, a Firebase így
       # tervezte. A hozzáférést nem a kulcs titkossága védi, hanem a
       # firestore.rules és a szerveroldali jogosultságkezelés.
+      #
+      # A levelezés a SAJÁT domain szerverén megy (nincs harmadik fél).
+      # A 25-ös port a Google Cloudon kifelé tiltva van, ezért 465 (vagy 587).
       - >-
-        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173
+        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##MAIL_PROVIDER=smtp##MAIL_FROM=GRUNDO <no-reply@grundo.ultimateteam.hu>##SMTP_HOST=${_SMTP_HOST}##SMTP_PORT=${_SMTP_PORT}##SMTP_USER=${_SMTP_USER}##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173
+      # Az SMTP-jelszó az EGYETLEN valódi titok a szolgáltatásban, ezért nem
+      # env-változóként, hanem Secret Managerből érkezik: a repóba így soha nem
+      # kerül bele, és cserélni is lehet a kód érintése nélkül.
+      #
+      # FIGYELEM: a titoknak LÉTEZNIE kell a telepítés előtt, különben a
+      # `gcloud run deploy` elhasal. Létrehozás:
+      #   read -rsp 'jelszo: ' K && printf '%s' "$K" | \
+      #     gcloud secrets create SMTP_PASSWORD --data-file=- && unset K
+      #   gcloud secrets add-iam-policy-binding SMTP_PASSWORD \
+      #     --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" \
+      #     --role="roles/secretmanager.secretAccessor"
+      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
