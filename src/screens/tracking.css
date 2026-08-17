@@ -396,3 +396,11 @@
   font-weight: 600;
   color: var(--accent);
 }
+
+.track__saved {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--success);
+  margin-bottom: var(--sp-2);
+}

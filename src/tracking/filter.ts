@@ -18,7 +18,7 @@
  *      egy piros lámpánál.
  */
 
-import { distanceM } from '@/lib/geo';
+import { distanceM } from '@/game/geo';
 import type { PositionSample } from './types';
 
 export const FILTER = {

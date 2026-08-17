@@ -20,6 +20,7 @@ import {
   createRecorder,
   finish as finishRecorder,
   markLap as markLapRecorder,
+  movingMs as movingMsOf,
   pause as pauseRecorder,
   resume as resumeRecorder,
   start as startRecorder,
@@ -32,6 +33,7 @@ import {
   type PersistedRun,
 } from '@/tracking/storage';
 import { TrackingError, type PositionSource } from '@/tracking/types';
+import { ApiError, api, apiConfigured, type ActivitySummary } from '@/lib/api';
 import { requestWakeLock, wakeLockSupported, type WakeLock } from '@/tracking/wakeLock';
 
 export interface RecorderApi {
@@ -47,6 +49,11 @@ export interface RecorderApi {
   /** Félbehagyott, folytatható rögzítés a korábbi munkamenetből. */
   resumable: RecorderState | null;
 
+  /** A feltöltés állapota és eredménye. */
+  upload: UploadState;
+  /** Feltöltés — a szerver újraszámol mindent, és az ő eredménye a hiteles. */
+  uploadActivity: () => Promise<void>;
+
   begin: (type: ActivityType) => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -59,6 +66,12 @@ export interface RecorderApi {
   /** A felajánlott rögzítés eldobása. */
   dismissResumable: () => Promise<void>;
 }
+
+export type UploadState =
+  | { status: 'idle' }
+  | { status: 'sending' }
+  | { status: 'done'; summary: ActivitySummary; duplicate: boolean }
+  | { status: 'error'; message: string; retryable: boolean };
 
 export function useRecorder(source?: PositionSource): RecorderApi {
   const positionSource = useMemo(() => source ?? new BrowserPositionSource(), [source]);
@@ -176,6 +189,57 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     apply((current) => markLapRecorder(current, Date.now()));
   }, [apply]);
 
+  const [upload, setUpload] = useState<UploadState>({ status: 'idle' });
+
+  const uploadActivity = useCallback(async () => {
+    const current = stateRef.current;
+    if (current.status !== 'finished' || current.points.length < 2) return;
+    if (!apiConfigured) {
+      setUpload({
+        status: 'error',
+        message: 'A háttérszolgáltatás nincs beállítva, a mentés nem megy.',
+        retryable: false,
+      });
+      return;
+    }
+
+    setUpload({ status: 'sending' });
+    try {
+      const result = await api.uploadActivity({
+        activityId: current.id,
+        type: current.type,
+        points: current.points,
+        startedAt: current.startedAt ?? Date.now(),
+        endedAt: current.endedAt ?? Date.now(),
+        // A lezárt rögzítésnél az `endedAt` már megvan, tehát a „most"
+        // paraméternek nincs szerepe — de a függvény kéri.
+        movingMs: movingMsOf(current, current.endedAt ?? Date.now()),
+      });
+      setUpload({
+        status: 'done',
+        summary: result.summary,
+        duplicate: result.duplicate === true,
+      });
+      // A mentett rögzítést nem kell tovább őrizni: a szerveren már megvan.
+      await persister.clear();
+    } catch (err) {
+      /**
+       * A hálózati hiba ÚJRAPRÓBÁLHATÓ, a szabálysértés nem.
+       *
+       * A különbségtétel azért fontos, mert a „túl rövid" vagy „hibás
+       * nyomvonal" hiba újrapróbálásra sem lesz jobb — a felhasználónak nem
+       * gombot kell nyomnia, hanem megérteni, mi történt.
+       */
+      const retryable =
+        err instanceof ApiError ? err.status === 0 || err.status >= 500 : true;
+      setUpload({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'A mentés nem sikerült.',
+        retryable,
+      });
+    }
+  }, [persister]);
+
   const finish = useCallback(async () => {
     positionSource.stop();
     apply((current) => finishRecorder(current, Date.now()));
@@ -193,6 +257,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     setState(stateRef.current);
     setHasFix(false);
     setError(null);
+    setUpload({ status: 'idle' });
   }, [persister, positionSource, releaseWakeLock]);
 
   const restore = useCallback(async () => {
@@ -220,6 +285,8 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     supportsBackground: positionSource.supportsBackground,
     wakeLockActive,
     resumable,
+    upload,
+    uploadActivity,
     begin,
     pause,
     resume,

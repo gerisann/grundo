@@ -20,7 +20,7 @@
  */
 
 import type { ActivityType, TracePoint } from '@/types';
-import { distanceM } from '@/lib/geo';
+import { distanceM } from '@/game/geo';
 import { evaluate, type FilterVerdict } from './filter';
 import type { PositionSample } from './types';
 
@@ -35,6 +35,15 @@ export interface LapMark {
 }
 
 export interface RecorderState {
+  /**
+   * A rögzítés azonosítója, MÁR AZ INDULÁSKOR.
+   *
+   * Ez teszi a feltöltést idempotenssé: ha a hálózat elszáll és újrapróbáljuk,
+   * a szerver felismeri, hogy ugyanarról az aktivitásról van szó, és nem írja
+   * be kétszer. Ha csak a feltöltéskor kapna azonosítót, két próbálkozás két
+   * különböző aktivitás lenne — duplán foglalt területtel.
+   */
+  id: string;
   status: RecorderStatus;
   /**
    * Az aktivitás típusa, NEM a réteg.
@@ -67,8 +76,9 @@ export interface RecorderState {
   rejected: Record<string, number>;
 }
 
-export function createRecorder(type: ActivityType): RecorderState {
+export function createRecorder(type: ActivityType, id = newActivityId()): RecorderState {
   return {
+    id,
     status: 'idle',
     type,
     points: [],
@@ -243,4 +253,19 @@ function withRejection(state: RecorderState, verdict: FilterVerdict): RecorderSt
     ...state,
     rejected: { ...state.rejected, [reason]: (state.rejected[reason] ?? 0) + 1 },
   };
+}
+
+/**
+ * Új aktivitás-azonosító.
+ *
+ * A `randomUUID` csak biztonságos eredeten (https vagy localhost) létezik.
+ * A tartalék nem kriptográfiai minőségű, de az ütközés esélye itt nem
+ * biztonsági kérdés: az azonosító a saját feltöltésünk kulcsa, és a szerver
+ * a felhasználóhoz köti — máséhoz nem lehet hozzáírni vele.
+ */
+export function newActivityId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }

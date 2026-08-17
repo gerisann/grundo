@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
+import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { traceToCellPath } from '@/game/cells';
@@ -11,7 +12,7 @@ import {
   paceSecPerKm,
   type RecorderState,
 } from '@/tracking/recorder';
-import { formatDistance, formatDuration, formatPace } from '@/lib/format';
+import { formatArea, formatDistance, formatDuration, formatPace } from '@/lib/format';
 import type { ActivityType } from '@/types';
 import './tracking.css';
 
@@ -119,6 +120,18 @@ export function TrackingScreen() {
    * figyelmeztetésnél is tesszük.
    */
   const showStartHint = true;
+
+  /**
+   * A befejezés után magától indul a feltöltés.
+   *
+   * Külön „Mentés" gomb nélkül: a felhasználó befejezte a futást, nincs miért
+   * még egyszer megerősítenie. Hiba esetén viszont KELL gomb — az újrapróbálás
+   * az ő döntése, és a hálózat lehet, hogy csak egy perc múlva jön vissza.
+   */
+  useEffect(() => {
+    if (!done || recorder.upload.status !== 'idle' || !countsAsActivity) return;
+    void recorder.uploadActivity();
+  }, [done, countsAsActivity, recorder]);
 
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
@@ -247,14 +260,7 @@ export function TrackingScreen() {
               </div>
             ) : null}
 
-            {done && countsAsActivity ? (
-              <p className="track__note">
-                {/* TODO(F1): POST /api/activities — a motor szerveroldalon fut,
-                    mert a foglalás hiteles eredménye nem jöhet a klienstől. */}
-                A terület kiszámítása és a pontok jóváírása a feltöltéskor történik. A feltöltés
-                még nincs bekötve.
-              </p>
-            ) : null}
+            {done && countsAsActivity ? <UploadPanel recorder={recorder} /> : null}
           </>
         )}
       </div>
@@ -474,4 +480,65 @@ function SignalIcon() {
       <path d="M7.5 7.5a6.5 6.5 0 0 0 0 9M16.5 7.5a6.5 6.5 0 0 1 0 9" />
     </svg>
   );
+}
+
+/**
+ * A mentés állapota és a szerver által számolt eredmény.
+ *
+ * Fontos, hogy AMIT ITT MUTATUNK, az a szerveré, nem a klienstől jön. A
+ * képernyőn futás közben látott táv és mezőszám előnézet; a hiteles értéket a
+ * szerver számolja újra a nyers nyomvonalból, és eltérés esetén az számít.
+ */
+function UploadPanel({ recorder }: { recorder: RecorderApi }) {
+  const { upload } = recorder;
+
+  if (upload.status === 'sending') {
+    return <p className="track__note">Mentés folyamatban…</p>;
+  }
+
+  if (upload.status === 'error') {
+    return (
+      <div className="track__note track__note--error" role="alert">
+        <strong>A mentés nem sikerült.</strong> {upload.message}
+        {upload.retryable ? (
+          <div style={{ marginTop: 'var(--sp-3)' }}>
+            <Button size="sm" onClick={() => void recorder.uploadActivity()}>
+              Újrapróbálom
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (upload.status === 'done') {
+    const { summary, duplicate } = upload;
+    return (
+      <div className="track__panel">
+        <p className="track__saved">
+          {duplicate ? 'Ez a rögzítés már mentve volt.' : 'Mentve.'}
+        </p>
+        <div className="track__stats">
+          <div className="track__stat">
+            <span className="track__stat-value">{formatDistance(summary.distanceM / 1000)}</span>
+            <span className="track__stat-label">táv</span>
+          </div>
+          <div className="track__stat">
+            <span className="track__stat-value">{formatArea(summary.areaGainedM2)}</span>
+            <span className="track__stat-label">terület</span>
+          </div>
+          <div className="track__stat">
+            <span className="track__stat-value">{summary.gp}</span>
+            <span className="track__stat-label">GP</span>
+          </div>
+          <div className="track__stat">
+            <span className="track__stat-value">{summary.loops}</span>
+            <span className="track__stat-label">bezárás</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }

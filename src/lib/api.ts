@@ -141,6 +141,27 @@ export interface Profile {
   pro: { active: boolean };
 }
 
+/** Amit a szerver visszaad egy feldolgozott aktivitásról. */
+export interface ActivitySummary {
+  distanceM: number;
+  durationS: number;
+  movingS: number;
+  cellCount: number;
+  loops: number;
+  claimedCells: number;
+  areaGainedM2: number;
+  gp: number;
+}
+
+export interface UploadActivityInput {
+  activityId: string;
+  type: 'run' | 'walk' | 'ride';
+  points: readonly { lat: number; lng: number; t: number; accuracy?: number }[];
+  startedAt: number;
+  endedAt: number;
+  movingMs: number;
+}
+
 export interface OtpSendResult {
   sent?: boolean;
   alreadyVerified?: boolean;
@@ -169,6 +190,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username }),
     }),
+
+  /**
+   * Egy befejezett aktivitás feltöltése.
+   *
+   * A szerver MINDENT újraszámol a nyers nyomvonalból — a kliens által
+   * mutatott táv és terület csak előnézet. Eltérés esetén a szerveré az
+   * igazság; a válaszban ez jön vissza.
+   */
+  uploadActivity: (input: UploadActivityInput) =>
+    request<{ activityId: string; summary: ActivitySummary; duplicate?: boolean }>(
+      '/api/activities',
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 
   otpSend: () => request<OtpSendResult>('/api/auth/otp/send', { method: 'POST' }),
 
