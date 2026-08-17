@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import { useRecorder } from '@/hooks/useRecorder';
+import { useRecordingLock } from '@/hooks/RecordingLock';
+import { GAMEPLAY } from '@/config/gameplay';
 import { cellsToM2, traceToCellPath } from '@/game/cells';
 import { movingMs, paceSecPerKm } from '@/tracking/recorder';
 import { formatArea, formatDistance, formatDuration, formatPace } from '@/lib/format';
@@ -54,6 +56,23 @@ export function TrackingScreen() {
 
   const pace = paceSecPerKm(state, now);
   const elapsed = Math.floor(movingMs(state, now) / 1000);
+
+  /**
+   * A 100 méteres küszöb alatt NEM írunk ki területet.
+   *
+   * Egy helyben állva is keletkezik egy-két cella (a GPS pár métert vándorol,
+   * és 30 másodpercenként úgyis rögzítünk egy pontot), amiből „307 m² érintett"
+   * lenne — nulla megtett táv mellett. Ez azt ígérné a felhasználónak, hogy
+   * szerzett valamit, holott az aktivitás a szabály szerint nem is számít.
+   */
+  const countsAsActivity = state.distanceM >= GAMEPLAY.MIN_DISTANCE_M;
+
+  // Rögzítés közben nincs dokk: az elnavigálás leállítaná a mérést.
+  const { setLocked } = useRecordingLock();
+  useEffect(() => {
+    setLocked(running || paused);
+    return () => setLocked(false);
+  }, [running, paused, setLocked]);
 
   return (
     <div className="track">
@@ -136,25 +155,36 @@ export function TrackingScreen() {
                 <span className="track__stat-label">tempó</span>
               </div>
               <div className="track__stat">
-                <span className="track__stat-value">{formatArea(cellsToM2(cells.length))}</span>
+                <span className="track__stat-value">
+                  {countsAsActivity ? formatArea(cellsToM2(cells.length)) : '—'}
+                </span>
                 <span className="track__stat-label">érintett</span>
               </div>
             </div>
 
-            {cells.length > 0 || state.points.length > 1 ? (
-              <HexMap
-                layers={[{ role: 'trail', cells }]}
-                track={state.points}
-                height={260}
-              />
+            {state.points.length > 1 ? (
+              <HexMap layers={[{ role: 'trail', cells }]} track={state.points} height={260} />
+            ) : (
+              <p className="track__note">
+                A nyomvonalad itt jelenik meg, amint elindulsz. Ez a hexagon-nézet — utcatérkép
+                még nincs benne.
+              </p>
+            )}
+
+            {done && !countsAsActivity ? (
+              <div className="track__note track__note--warn">
+                <strong>Ez a rögzítés túl rövid.</strong> Legalább{' '}
+                {GAMEPLAY.MIN_DISTANCE_M} méter kell ahhoz, hogy az aktivitás számítson —
+                terület és pont nem jár érte.
+              </div>
             ) : null}
 
-            {done ? (
+            {done && countsAsActivity ? (
               <p className="track__note">
-                A terület kiszámítása és a pontok jóváírása a feltöltéskor történik.{' '}
                 {/* TODO(F1): POST /api/activities — a motor szerveroldalon fut,
                     mert a foglalás hiteles eredménye nem jöhet a klienstől. */}
-                A feltöltés még nincs bekötve.
+                A terület kiszámítása és a pontok jóváírása a feltöltéskor történik. A feltöltés
+                még nincs bekötve.
               </p>
             ) : null}
           </>

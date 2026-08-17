@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
+import { RecordingLockProvider, useRecordingLock } from './hooks/RecordingLock';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
@@ -39,7 +40,9 @@ export function App() {
           <BrowserRouter
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
-            <Router />
+            <RecordingLockProvider>
+              <Router />
+            </RecordingLockProvider>
           </BrowserRouter>
         </ThemeProvider>
       </ProfileProvider>
@@ -50,6 +53,7 @@ export function App() {
 function Router() {
   const { status } = useAuth();
   const { status: profileStatus } = useProfile();
+  const { locked: recordingLocked } = useRecordingLock();
 
   if (status === 'loading') return <Splash />;
 
@@ -95,7 +99,7 @@ function Router() {
 
   return (
     <>
-      <div className="app-shell">
+      <div className={`app-shell${recordingLocked ? ' app-shell--recording' : ''}`}>
         <Routes>
           {/* Fejlesztői átengedés esetén a belépési képernyők is elérhetők
               maradnak, különben nem lehetne rajtuk dolgozni. */}
@@ -111,7 +115,9 @@ function Router() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      <Dock />
+      {/* Rögzítés közben nincs dokk: az elnavigálás leválasztaná a rögzítő
+          képernyőt, és a mérés csendben leállna. */}
+      {recordingLocked ? null : <Dock />}
     </>
   );
 }

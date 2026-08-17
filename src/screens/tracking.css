@@ -3,13 +3,17 @@
 .track {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
   background: var(--bg-primary);
 }
 
+/*
+ * A tartalom alatt akkora hely marad, amekkorát a rögzített vezérlősáv elfoglal.
+ * Enélkül a legalsó elem a gombok alá csúszna, és csak görgetéssel látszana.
+ */
 .track__body {
   flex: 1;
   padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--track-controls-h));
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -130,14 +134,36 @@
 
 /* ── Vezérlők ────────────────────────────────────────────────────── */
 
+/*
+ * A vezérlők MINDIG látszanak, görgetés nélkül.
+ *
+ * Korábban `sticky` volt, ami csak akkor tapad, ha a görgetés a szülőn belül
+ * történik — itt viszont a lap egésze görgetett, így az Indítás gomb a hajtás
+ * alá került. Ezért `fixed`: a nézetablakhoz igazodik, függetlenül attól, mi
+ * van fölötte.
+ *
+ * Az alsó igazítás a dokk magasságát is figyelembe veszi, amíg a dokk látszik.
+ * Rögzítés közben nincs dokk, ezért csak a készülék biztonsági sávja marad.
+ */
+.track {
+  --track-controls-h: 92px;
+}
+
 .track__controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--dock-height) + env(safe-area-inset-bottom));
+  z-index: 20;
   display: flex;
   gap: var(--sp-3);
-  padding: var(--sp-4);
-  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+  padding: var(--sp-3) var(--sp-4);
+  padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom));
   background: var(--bg-primary);
   border-top: 1px solid var(--border-subtle);
-  position: sticky;
+}
+
+.app-shell--recording .track__controls {
   bottom: 0;
 }
 
