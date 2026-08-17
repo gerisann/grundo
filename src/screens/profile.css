@@ -1,0 +1,29 @@
+/* Profil képernyő */
+
+.prof__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.prof__stat {
+  text-align: center;
+  padding: var(--sp-3) var(--sp-2);
+  background: var(--bg-elevated);
+  border-radius: var(--r-md);
+}
+
+.prof__stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.prof__stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}

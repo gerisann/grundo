@@ -59,7 +59,8 @@ export function TerritoryScreen() {
   const viewRef = useRef<View | null>(null);
   const [zoom, setZoom] = useState(0);
   const [boardOpen, setBoardOpen] = useState(false);
-  const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) !== 'closed');
+  // Alapból ZÁRVA: a jelmagyarázat egyszer hasznos, utána helyet foglal.
+  const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) === 'open');
   const [helpOpen, setHelpOpen] = useState(() => read(HELP_KEY) !== 'closed');
 
   useEffect(() => {
@@ -219,32 +220,6 @@ export function TerritoryScreen() {
           </div>
         ) : null}
 
-        <div className="terr__legend-box">
-          {/* A kapcsoló csak a feliratot fogja körül, nem a teljes sávot: egy
-              összecsukott jelmagyarázat ne foglaljon el egy egész sort. */}
-          <button
-            type="button"
-            className="terr__legend-toggle"
-            aria-expanded={legendOpen}
-            onClick={() => {
-              setLegendOpen(!legendOpen);
-              write(LEGEND_KEY, legendOpen ? 'closed' : 'open');
-            }}
-          >
-            Jelmagyarázat
-            <ChevronIcon up={legendOpen} />
-          </button>
-
-          {legendOpen ? (
-            <div className="terr__legend-grid">
-              <Swatch role="interior" label="A tiéd, védve" />
-              <Swatch role="stolen" label="A tiéd, 1-es szinten" />
-              <Swatch role="rival" label="Másé" />
-              <Swatch role="free" label="Szabad" />
-            </div>
-          ) : null}
-        </div>
-
         {/*
           A szabályok magyarázata egyszer hasznos, aztán útban van. Bezárható,
           és a bezárást megjegyezzük — aki elolvasta, tudja.
@@ -275,6 +250,33 @@ export function TerritoryScreen() {
         {tiles?.partial ? (
           <p className="terr__legend">Közelíts rá a térképre, hogy lásd a mezőket!</p>
         ) : null}
+        {/* A jelmagyarázat legalul: a térképet nézve ritkán kell,
+              és felül a lényeges számok elől venné el a helyet. */}
+        <div className="terr__legend-box">
+          {/* A kapcsoló csak a feliratot fogja körül, nem a teljes sávot: egy
+              összecsukott jelmagyarázat ne foglaljon el egy egész sort. */}
+          <button
+            type="button"
+            className="terr__legend-toggle"
+            aria-expanded={legendOpen}
+            onClick={() => {
+              setLegendOpen(!legendOpen);
+              write(LEGEND_KEY, legendOpen ? 'closed' : 'open');
+            }}
+          >
+            Jelmagyarázat
+            <ChevronIcon up={legendOpen} />
+          </button>
+
+          {legendOpen ? (
+            <div className="terr__legend-grid">
+              <Swatch role="interior" label="A tiéd, védve" />
+              <Swatch role="stolen" label="A tiéd, 1-es szinten" />
+              <Swatch role="rival" label="Másé" />
+              <Swatch role="free" label="Szabad" />
+            </div>
+          ) : null}
+        </div>
         </div>
       </div>
     </div>

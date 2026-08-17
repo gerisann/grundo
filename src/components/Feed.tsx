@@ -33,7 +33,17 @@ type GlobalView = 'world' | 'local';
  *  kézzel senki nem akar számot gépelni. */
 const RADII = [1, 5, 10, 25, 50] as const;
 
-export function Feed() {
+export interface FeedProps {
+  /**
+   * Rögzített nézet — ilyenkor NINCSENEK fülek.
+   *
+   * A profilon a felhasználó a SAJÁT aktivitásait nézi; ott a „Globális" fül
+   * félrevezető lenne, mert nem az ő oldala többé.
+   */
+  fixedScope?: FeedScope;
+}
+
+export function Feed({ fixedScope }: FeedProps = {}) {
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>(() => (read(TAB_KEY) as Tab) ?? 'mine');
@@ -69,7 +79,14 @@ export function Feed() {
   }, [tab, view, position]);
 
   const scope: FeedScope =
-    tab === 'mine' ? 'mine' : tab === 'following' ? 'following' : view === 'local' ? 'local' : 'world';
+    fixedScope ??
+    (tab === 'mine'
+      ? 'mine'
+      : tab === 'following'
+        ? 'following'
+        : view === 'local'
+          ? 'local'
+          : 'world');
 
   const load = useCallback(async () => {
     if (!apiConfigured) {
@@ -112,6 +129,7 @@ export function Feed() {
 
   return (
     <div className="feed">
+      {fixedScope ? null : (
       <SegmentedControl
         label="Feed nézet"
         block
@@ -123,8 +141,9 @@ export function Feed() {
           { value: 'mine', label: 'Saját' },
         ]}
       />
+      )}
 
-      {tab === 'global' ? (
+      {!fixedScope && tab === 'global' ? (
         <SegmentedControl
           label="Globális nézet"
           block
@@ -138,7 +157,7 @@ export function Feed() {
         />
       ) : null}
 
-      {tab === 'global' && view === 'local' ? (
+      {!fixedScope && tab === 'global' && view === 'local' ? (
         <div className="feed__radius">
           <span className="feed__radius-label">Ekkora körzetben:</span>
           <div className="feed__radius-options">

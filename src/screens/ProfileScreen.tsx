@@ -1,16 +1,29 @@
 import { useNavigate } from 'react-router-dom';
-import { Button, Chip, EmptyState } from '@/components/ui';
-import { formatArea, formatGp } from '@/lib/format';
+import { Chip } from '@/components/ui';
+import { Feed } from '@/components/Feed';
+import { useProfile } from '@/hooks/ProfileProvider';
+import { formatArea, formatDistance, formatGp } from '@/lib/format';
+import { GAMEPLAY } from '@/config/gameplay';
+import './profile.css';
 
 /**
  * Profil — Profil · Statisztikák · Útvonalak · Edzés · Jelvények.
  *
- * Egyelőre csak a váz és a Beállítások belépési pontja. A profilon KÉT
- * haladásjelző fut majd egymás alatt: felül a GP-szint, alatta a
- * távolság-jelvény („38,4 / 50 km").
+ * A számok a VALÓDI profilból jönnek. Korábban be voltak drótozva nullára,
+ * ezért mutatott a fejléc 0 m²-t és 0 GP-t azoknak is, akiknek volt területük.
+ *
+ * TODO(F2): a profilon KÉT haladásjelző fut majd egymás alatt: felül a
+ * GP-szint, alatta a távolság-jelvény („38,4 / 50 km").
  */
 export function ProfileScreen() {
   const navigate = useNavigate();
+  const { profile } = useProfile();
+
+  const territoryM2 = (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0);
+  const distanceKm =
+    (profile?.counters.distanceKm.run ?? 0) +
+    (profile?.counters.distanceKm.walk ?? 0) +
+    (profile?.counters.distanceKm.ride ?? 0);
 
   return (
     <>
@@ -18,7 +31,7 @@ export function ProfileScreen() {
         className="screen-header"
         style={{ justifyContent: 'space-between', paddingLeft: 'var(--sp-4)' }}
       >
-        <h1 className="screen-header__title">Profil</h1>
+        <h1 className="screen-header__title">{profile?.username ?? 'Profil'}</h1>
         <button
           type="button"
           className="screen-header__back"
@@ -44,18 +57,28 @@ export function ProfileScreen() {
 
       <div className="screen-body stack">
         <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-          <Chip variant="accent">ÚJONC</Chip>
-          <Chip variant="territory">{formatArea(0)}</Chip>
-          <Chip>{formatGp(0)}</Chip>
+          <Chip variant="accent">{GAMEPLAY.LEVEL_NAMES[(profile?.level ?? 1) - 1] ?? 'ÚJONC'}</Chip>
+          <Chip variant="territory">{formatArea(territoryM2)}</Chip>
+          <Chip>{formatGp(profile?.gpTotal ?? 0)}</Chip>
         </div>
 
-        <EmptyState
-          title="Még nincs aktivitásod"
-          description="Zárj be egy kört, és a közrezárt terület a tiéd lesz. Minden méter pontot ér — akkor is, ha nem zárul a kör."
-          action={
-            <Button onClick={() => navigate('/rogzites')}>Kezdd az első aktivitásod</Button>
-          }
-        />
+        <div className="prof__stats">
+          <div className="prof__stat">
+            <span className="prof__stat-value">{profile?.counters.activities ?? 0}</span>
+            <span className="prof__stat-label">aktivitás</span>
+          </div>
+          <div className="prof__stat">
+            <span className="prof__stat-value">{formatDistance(distanceKm * 1000)}</span>
+            <span className="prof__stat-label">összes táv</span>
+          </div>
+          <div className="prof__stat">
+            <span className="prof__stat-value">{profile?.streak.current ?? 0}</span>
+            <span className="prof__stat-label">napos sorozat</span>
+          </div>
+        </div>
+
+        {/* A saját aktivitások — fülek nélkül: ez a te oldalad. */}
+        <Feed fixedScope="mine" />
       </div>
     </>
   );

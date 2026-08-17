@@ -53,8 +53,15 @@
   transition: color 200ms ease;
 }
 
-.layersw:not(.layersw--bike) .layersw__option:first-of-type,
-.layersw--bike .layersw__option:last-of-type {
+/*
+ * Az AKTÍV felirat fehér, a lila csúszka fölött.
+ *
+ * Korábban `:first-of-type` / `:last-of-type` választotta ki — csakhogy a
+ * csúszka is `<span>`, tehát a `:first-of-type` ŐT találta el, nem az első
+ * feliratot. Világos témában emiatt a kiemelt felirat szürke maradt a lila
+ * háttéren, vagyis olvashatatlan. Külön osztály, nincs mit félreérteni.
+ */
+.layersw__option--on {
   color: var(--accent-on);
 }
 

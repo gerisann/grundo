@@ -34,11 +34,11 @@ export function LayerSwitch({ value, onChange }: LayerSwitchProps) {
       {/* A csúszka a feliratok ALATT van, ezért a szöveg mindkét állásban
           olvasható marad — a kiemelés nem takarja el. */}
       <span className="layersw__thumb" aria-hidden="true" />
-      <span className="layersw__option">
+      <span className={`layersw__option${isBike ? '' : ' layersw__option--on'}`}>
         <FootIcon />
         Séta/Futás
       </span>
-      <span className="layersw__option">
+      <span className={`layersw__option${isBike ? ' layersw__option--on' : ''}`}>
         <BikeIcon />
         Bringa
       </span>

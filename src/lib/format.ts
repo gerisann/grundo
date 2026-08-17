@@ -8,29 +8,25 @@
 const hu = (opts?: Intl.NumberFormatOptions) => new Intl.NumberFormat('hu-HU', opts);
 
 /** 1 000 000 m² fölött váltunk km²-re. */
-export const AREA_KM2_THRESHOLD_M2 = 1_000_000;
 
 /**
- * Terület m²-ben, 1 km² fölött km²-ben.
- *   9 421 m²  ·  184 500 m²  ·  1,84 km²  ·  55,83 km²
+ * Terület MINDIG km²-ben, három tizedesjeggyel.
+ *   0,001 km²  ·  0,072 km²  ·  1,845 km²  ·  55,830 km²
  *
- * @param forceUnit listákhoz: egy ranglistán belül mindig egységes legyen a
- *        mértékegység, ezért ott a legnagyobb elem alapján kell rögzíteni.
+ * Miért nem m²? Mert a valós számok gyorsan hatjegyűek lesznek („143 104 m²"),
+ * és egy hatjegyű szám nem mond semmit — nincs mihez viszonyítani. A km² a
+ * térképen is értelmezhető nagyságrend.
+ *
+ * AMIT EZ ÁLDOZ: három tizedesjegy km²-ben ezer négyzetméteres felbontás, egy
+ * hexagon viszont 307 m². Néhány mezőnyi terület ezért „0,000 km²"-ként
+ * jelenik meg. Ez tudatos csere: a kezdő felhasználó pár mezője úgyis
+ * jelentéktelen, a nagyságrend viszont az első pillanattól olvasható.
  */
-export function formatArea(m2: number, forceUnit?: 'm2' | 'km2'): string {
-  const unit = forceUnit ?? (m2 >= AREA_KM2_THRESHOLD_M2 ? 'km2' : 'm2');
-  if (unit === 'km2') {
-    return `${hu({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(m2 / 1_000_000)} km²`;
-  }
-  return `${hu({ maximumFractionDigits: 0 }).format(m2)} m²`;
+export function formatArea(m2: number): string {
+  return `${hu({ minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(m2 / 1_000_000)} km²`;
 }
 
-/** Egy lista egységes mértékegysége a legnagyobb elem alapján. */
-export function areaUnitFor(values: readonly number[]): 'm2' | 'km2' {
-  return Math.max(0, ...values) >= AREA_KM2_THRESHOLD_M2 ? 'km2' : 'm2';
-}
-
-/** Előjeles területváltozás: `+840 000 m²` / `−21 400 m²` */
+/** Előjeles területváltozás: `+0,840 km²` / `−0,021 km²` */
 export function formatAreaDelta(m2: number): string {
   const sign = m2 > 0 ? '+' : m2 < 0 ? '−' : '';
   return `${sign}${formatArea(Math.abs(m2))}`;

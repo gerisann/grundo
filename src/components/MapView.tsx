@@ -47,8 +47,16 @@ export interface MapViewProps {
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
 
-/** A szabad cellák halványak: jelen vannak, de nem vonják el a figyelmet. */
-const ROLE_OPACITY: Partial<Record<HexRole, number>> = { free: 0.1 };
+/**
+ * A kitöltés átlátszósága.
+ *
+ * Szándékosan alacsony: a hatszögek a térkép FÖLÖTT ülnek, és ha eltakarják az
+ * utcaneveket meg a tájékozódási pontokat, akkor pont azt veszik el, amiért a
+ * térkép ott van. A birtokviszonyt a körvonal is elárulja — a kitöltés csak
+ * megerősíti.
+ */
+const FILL_OPACITY = 0.18;
+const ROLE_OPACITY: Partial<Record<HexRole, number>> = { free: 0.05 };
 
 const TRACK_SOURCE = 'grundo-track';
 const CELL_SOURCE = 'grundo-cells';
@@ -231,14 +239,15 @@ function addLayers(instance: mapboxgl.Map): void {
         // A szín a jellemzőből jön, hogy egyetlen réteg elég legyen minden
         // szerephez — különben szerepenként külön forrás és réteg kellene.
         'fill-color': ['get', 'color'],
-        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.35],
+        'fill-opacity': ['coalesce', ['get', 'opacity'], FILL_OPACITY],
       },
     });
     instance.addLayer({
       id: `${CELL_SOURCE}-line`,
       type: 'line',
       source: CELL_SOURCE,
-      paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.8 },
+      // A körvonal viszont marad erős: ez hordozza a határt.
+      paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.85 },
     });
   }
 
@@ -268,7 +277,7 @@ function syncData(
           type: 'Feature' as const,
           properties: {
             color: ROLE_COLOR[layer.role],
-            opacity: ROLE_OPACITY[layer.role] ?? 0.35,
+            opacity: ROLE_OPACITY[layer.role] ?? FILL_OPACITY,
           },
           geometry: {
             type: 'Polygon' as const,
