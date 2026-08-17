@@ -29,7 +29,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: 0 var(--sp-3);
+  padding: calc(var(--safe-top) + var(--sp-2)) var(--sp-3) 0;
   padding-bottom: calc(
     var(--sp-6) + var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom)
   );
@@ -43,10 +43,20 @@
   pointer-events: auto;
 }
 
-/* A fejléc is a rétegben van, tehát nem foghatja meg a térkép mozgatását —
-   csak a benne lévő gomb. */
+/*
+ * A fejléc a RÉTEGEN BELÜL van, nem mellette.
+ *
+ * Kívül hagyva a normál folyamban maradt volna, a térkép és a réteg viszont
+ * `position: absolute` — a pozicionált elemek pedig a normál folyamúak FÖLÉ
+ * rajzolódnak. A fejléc így alájuk került, és a ranglista-gomb eltűnt.
+ *
+ * Az érintést átengedi a térképnek, csak a benne lévő gomb fogja meg.
+ */
 .terr .screen-header {
   pointer-events: none;
+  padding-left: 0;
+  padding-right: 0;
+  flex: none;
 }
 
 .terr .screen-header > * {
@@ -229,4 +239,70 @@
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+
+/* ── Összecsukható jelmagyarázat ─────────────────────────────────── */
+
+.terr__legend-box {
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.terr__legend-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--sp-3);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.terr__chevron {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-secondary);
+  transition: transform 180ms ease;
+}
+
+.terr__chevron--up {
+  transform: rotate(180deg);
+}
+
+.terr__legend-box .terr__legend-grid {
+  padding: 0 var(--sp-3) var(--sp-3);
+  background: none;
+  backdrop-filter: none;
+}
+
+.terr__legend--closable {
+  position: relative;
+  padding-right: calc(var(--sp-3) + 28px);
+}
+
+.terr__legend-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.terr__legend-close:hover {
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terr__chevron {
+    transition: none;
+  }
 }

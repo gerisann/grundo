@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cellToChildren } from 'h3-js';
-import { SegmentedControl } from '@/components/ui';
+import { LayerSwitch } from '@/components/ui';
 import { mapboxConfigured } from '@/lib/mapbox';
 import {
   api,
@@ -28,6 +28,9 @@ const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default
  */
 const FREE_CELL_MIN_ZOOM = 15;
 
+const LEGEND_KEY = 'grundo.territory.legend';
+const HELP_KEY = 'grundo.territory.help';
+
 type View = { south: number; west: number; north: number; east: number; zoom: number };
 
 /**
@@ -54,6 +57,8 @@ export function TerritoryScreen() {
   const viewRef = useRef<View | null>(null);
   const [zoom, setZoom] = useState(0);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) !== 'closed');
+  const [helpOpen, setHelpOpen] = useState(() => read(HELP_KEY) !== 'closed');
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
@@ -162,33 +167,21 @@ export function TerritoryScreen() {
         ) : null}
       </div>
 
-      <header
-        className="screen-header"
-        style={{ justifyContent: 'space-between', paddingLeft: 'var(--sp-4)' }}
-      >
-        <h1 className="screen-header__title">Terület</h1>
-        <button
-          type="button"
-          className="screen-header__back"
-          aria-label={boardOpen ? 'Vissza a térképhez' : 'Ranglista'}
-          aria-pressed={boardOpen}
-          onClick={() => setBoardOpen((open) => !open)}
-        >
-          <TrophyIcon />
-        </button>
-      </header>
-
       <div className="terr__overlay">
-        <SegmentedControl
-          label="Réteg"
-          block
-          value={layer}
-          onChange={setLayer}
-          options={[
-            { value: 'foot', label: 'Gyalogos' },
-            { value: 'bike', label: 'Bringás' },
-          ]}
-        />
+        <header className="screen-header" style={{ justifyContent: 'space-between' }}>
+          <h1 className="screen-header__title">Terület</h1>
+          <button
+            type="button"
+            className="screen-header__back"
+            aria-label={boardOpen ? 'Vissza a térképhez' : 'Ranglista'}
+            aria-pressed={boardOpen}
+            onClick={() => setBoardOpen((open) => !open)}
+          >
+            <TrophyIcon />
+          </button>
+        </header>
+
+        <LayerSwitch value={layer} onChange={setLayer} />
 
         <div className="terr__stats">
           <div className="terr__stat">
@@ -217,23 +210,62 @@ export function TerritoryScreen() {
           </div>
         ) : null}
 
-        <div className="terr__legend-grid">
-          <Swatch className="terr__swatch--mine" label="A tiéd, védve" />
-          <Swatch className="terr__swatch--exposed" label="A tiéd, 1-es szinten" />
-          <Swatch className="terr__swatch--rival" label="Másé" />
-          <Swatch className="terr__swatch--free" label="Szabad" />
+        <div className="terr__legend-box">
+          <button
+            type="button"
+            className="terr__legend-toggle"
+            aria-expanded={legendOpen}
+            onClick={() => {
+              setLegendOpen(!legendOpen);
+              write(LEGEND_KEY, legendOpen ? 'closed' : 'open');
+            }}
+          >
+            Jelmagyarázat
+            <span className={`terr__chevron${legendOpen ? ' terr__chevron--up' : ''}`}>⌄</span>
+          </button>
+
+          {legendOpen ? (
+            <div className="terr__legend-grid">
+              <Swatch className="terr__swatch--mine" label="A tiéd, védve" />
+              <Swatch className="terr__swatch--exposed" label="A tiéd, 1-es szinten" />
+              <Swatch className="terr__swatch--rival" label="Másé" />
+              <Swatch className="terr__swatch--free" label="Szabad" />
+            </div>
+          ) : null}
         </div>
 
-        <p className="terr__legend">
-          {showingFree
-            ? 'A halvány mezők szabadok — bárkié lehetnek, aki bezár egy kört körülöttük.'
-            : 'Közelíts rá, és a szabad mezők is megjelennek.'}{' '}
-          {tiles?.partial
-            ? 'A háló most csak a nézet közepét fedi le — a széleken nem tudjuk, mi van. '
-            : ''}
-          A védelem naponta egy szintet veszít, de sosem esik 1 alá: a terület a tiéd marad, csak
-          egyre könnyebb elvenni.
-        </p>
+        {/*
+          A szabályok magyarázata egyszer hasznos, aztán útban van. Bezárható,
+          és a bezárást megjegyezzük — aki elolvasta, tudja.
+        */}
+        {helpOpen ? (
+          <div className="terr__legend terr__legend--closable">
+            <button
+              type="button"
+              className="terr__legend-close"
+              aria-label="Magyarázat bezárása"
+              onClick={() => {
+                setHelpOpen(false);
+                write(HELP_KEY, 'closed');
+              }}
+            >
+              ✕
+            </button>
+            {showingFree
+              ? 'A halvány mezők szabadok — bárkié lehetnek, aki bezár egy kört körülöttük.'
+              : 'Közelíts rá, és a szabad mezők is megjelennek.'}{' '}
+            A védelem naponta egy szintet veszít, de sosem esik 1 alá: a terület a tiéd marad,
+            csak egyre könnyebb elvenni.
+          </div>
+        ) : null}
+
+        {/* Ez viszont NEM bezárható: nem magyarázat, hanem a nézet állapota —
+            enélkül a felhasználó szabadnak hinné, amiről nem kérdeztünk. */}
+        {tiles?.partial ? (
+          <p className="terr__legend">
+            A háló most csak a nézet közepét fedi le — a széleken nem tudjuk, mi van.
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -319,4 +351,20 @@ function TrophyIcon() {
       <path d="M12 14v4M9 20h6" />
     </svg>
   );
+}
+
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function write(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* privát böngészés — a választás nem marad meg, de működik */
+  }
 }
