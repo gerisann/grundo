@@ -31,7 +31,7 @@ function sample(offsetM: number, seconds: number): PositionSample {
 }
 
 function runWithPoints(): RecorderState {
-  let state = start(createRecorder('foot'), T0);
+  let state = start(createRecorder('run'), T0);
   state = applySample(state, sample(0, 0));
   state = applySample(state, sample(100, 20));
   return state;
@@ -186,7 +186,7 @@ describe('visszaállíthatóság', () => {
   });
 
   it('a pont nélküli rögzítést nem ajánljuk fel', () => {
-    expect(isResumable(fresh(start(createRecorder('foot'), T0), T0), T0 + 1000)).toBe(false);
+    expect(isResumable(fresh(start(createRecorder('run'), T0), T0), T0 + 1000)).toBe(false);
   });
 
   it('a tegnapi mentést nem ajánljuk fel', () => {

@@ -1,0 +1,152 @@
+/* Rögzítés képernyő */
+
+.track {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--bg-primary);
+}
+
+.track__body {
+  flex: 1;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ── Figyelmeztetések és állapotsáv ──────────────────────────────── */
+
+.track__note {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  font-size: 14px;
+  line-height: 1.45;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.track__note--warn {
+  border-color: var(--warning);
+  color: var(--text-primary);
+}
+
+.track__note--error {
+  border-color: var(--danger);
+  color: var(--text-primary);
+}
+
+.track__signal {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.track__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex: none;
+}
+
+.track__dot--live {
+  background: var(--success);
+  animation: track-pulse 2s ease-in-out infinite;
+}
+
+.track__dot--searching {
+  background: var(--warning);
+  animation: track-pulse 1s ease-in-out infinite;
+}
+
+@keyframes track-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* A mozgáscsökkentést kérő felhasználónál ne villogjon semmi. */
+@media (prefers-reduced-motion: reduce) {
+  .track__dot--live,
+  .track__dot--searching {
+    animation: none;
+  }
+}
+
+/* ── Élő adatok ──────────────────────────────────────────────────── */
+
+.track__primary {
+  text-align: center;
+  padding: var(--sp-4) 0;
+}
+
+.track__distance {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text-primary);
+  /* Táblázatos számok: a számláló ne ugráljon számjegyváltáskor. */
+  font-variant-numeric: tabular-nums;
+}
+
+.track__unit {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: var(--sp-2);
+}
+
+.track__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.track__stat {
+  text-align: center;
+  padding: var(--sp-3) var(--sp-2);
+  background: var(--bg-elevated);
+  border-radius: var(--r-md);
+}
+
+.track__stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.track__stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ── Vezérlők ────────────────────────────────────────────────────── */
+
+.track__controls {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-subtle);
+  position: sticky;
+  bottom: 0;
+}
+
+.track__controls > * {
+  flex: 1;
+}
+
+.track__types {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}

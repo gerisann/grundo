@@ -19,7 +19,7 @@
  * beszúrásnál a távolságot újraszámoljuk, mert a szakaszhatárok elmozdulnak.
  */
 
-import type { Layer, TracePoint } from '@/types';
+import type { ActivityType, TracePoint } from '@/types';
 import { distanceM } from '@/lib/geo';
 import { evaluate, type FilterVerdict } from './filter';
 import type { PositionSample } from './types';
@@ -28,7 +28,15 @@ export type RecorderStatus = 'idle' | 'recording' | 'paused' | 'finished';
 
 export interface RecorderState {
   status: RecorderStatus;
-  layer: Layer;
+  /**
+   * Az aktivitás típusa, NEM a réteg.
+   *
+   * A réteg (`foot`/`bike`) ebből következik — fordítva nem: a `foot` rétegből
+   * nem derül ki, futás volt-e vagy séta, márpedig a GP-számítás és az
+   * összegzés különbözőképp kezeli őket. A leképezést a `layerOf()` végzi;
+   * itt szándékosan nem hívjuk, hogy ez a modul ne rántsa be a h3-js-t.
+   */
+  type: ActivityType;
   /** Az elfogadott pontok, MINDIG időrendben. Ezt kapja a játékmotor. */
   points: TracePoint[];
   /** Megtett távolság méterben. */
@@ -43,10 +51,10 @@ export interface RecorderState {
   rejected: Record<string, number>;
 }
 
-export function createRecorder(layer: Layer): RecorderState {
+export function createRecorder(type: ActivityType): RecorderState {
   return {
     status: 'idle',
-    layer,
+    type,
     points: [],
     distanceM: 0,
     startedAt: null,

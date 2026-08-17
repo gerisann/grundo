@@ -33,7 +33,7 @@ function sample(offsetM: number, seconds: number, accuracy = 8): PositionSample 
 }
 
 function recording(): RecorderState {
-  return start(createRecorder('foot'), T0);
+  return start(createRecorder('run'), T0);
 }
 
 /** Több minta egymás után. */
@@ -43,7 +43,7 @@ function feed(state: RecorderState, samples: PositionSample[]): RecorderState {
 
 describe('állapotátmenetek', () => {
   it('idle állapotban nem gyűjt mintát', () => {
-    const state = applySample(createRecorder('foot'), sample(0, 0));
+    const state = applySample(createRecorder('run'), sample(0, 0));
     expect(state.points).toHaveLength(0);
   });
 
