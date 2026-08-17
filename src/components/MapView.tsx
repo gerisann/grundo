@@ -33,6 +33,8 @@ export interface MapViewProps {
   /** Kövesse-e a térkép a pozíciót. */
   follow?: boolean;
   height?: number;
+  /** Töltse ki a szülőt — teljes képernyős háttérként. */
+  fill?: boolean;
 }
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
@@ -46,12 +48,21 @@ const ROLE_COLOR: Record<HexRole, string> = {
 const TRACK_SOURCE = 'grundo-track';
 const CELL_SOURCE = 'grundo-cells';
 
-export function MapView({ track, layers, position, follow = true, height = 320 }: MapViewProps) {
+export function MapView({
+  track,
+  layers,
+  position,
+  follow = true,
+  height = 320,
+  fill = false,
+}: MapViewProps) {
   const { theme } = useThemeContext();
   const container = useRef<HTMLDivElement | null>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
   const ready = useRef(false);
+  /** Az ELSŐ pozícióra ugrunk, nem odaúszunk — lásd lejjebb. */
+  const centered = useRef(false);
 
   /* ── A térkép létrehozása, egyszer ─────────────────────────────── */
 
@@ -135,15 +146,33 @@ export function MapView({ track, layers, position, follow = true, height = 320 }
       marker.current.setLngLat([position.lng, position.lat]);
     }
 
+    /**
+     * Az ELSŐ pozíciónál ugrunk, utána úszunk.
+     *
+     * Indításkor a térkép egy alapértelmezett ponton áll, ami tetszőlegesen
+     * messze lehet. Odaúszni fél másodperc alatt fél országon át értelmetlen
+     * animáció — ott viszont már zavaró lenne az ugrálás, ezért utána `easeTo`.
+     */
+    if (!centered.current) {
+      centered.current = true;
+      instance.jumpTo({ center: [position.lng, position.lat], zoom: 16 });
+      return;
+    }
+
     if (follow) {
-      // `easeTo` és nem `jumpTo`: a rángatózó térkép futás közben olvashatatlan.
       instance.easeTo({ center: [position.lng, position.lat], duration: 600 });
     }
   }, [position, follow]);
 
   if (!mapboxConfigured) return null;
 
-  return <div ref={container} className="mapview" style={{ height }} />;
+  return (
+    <div
+      ref={container}
+      className="mapview"
+      style={fill ? { height: '100%' } : { height }}
+    />
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════

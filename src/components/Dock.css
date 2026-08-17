@@ -49,57 +49,50 @@
   place-items: center;
 }
 
-/* Rögzítés közben a menüpontok a szélek felé húzódnak, hogy a kinyúló
-   gombok elférjenek. */
-.dock--wide {
-  grid-template-columns: auto auto 1fr auto auto;
-  padding: 0 var(--sp-2);
+/*
+ * Rögzítés közben a dokk CSAK a három vezérlőt tartalmazza, és emiatt
+ * másképp áll össze: egyetlen középre igazított sor, nagyobb gombokkal.
+ * A cél, hogy futás közben, egy pillantásra is el lehessen találni őket.
+ */
+.dock--controls {
+  grid-template-columns: 1fr;
+  height: auto;
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.dock--controls .dock__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
 }
 
 .dock__side {
-  position: absolute;
-  top: 50%;
-  transform: translateY(calc(-50% - var(--dock-fab-overhang) / 2));
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 10px 16px;
+  letter-spacing: 0.01em;
+  /* Nagy tapintható felület: 52 px magas, széles — kesztyűben, futás közben
+     is eltalálható. Az Apple és a Google ajánlása 44 px, ez fölötte van. */
+  min-height: 52px;
+  flex: 1;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-pill);
   border: 1px solid var(--border-default);
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
-  /* A kinyúló gombok a FAB alá kerülnek, hogy a kör alakú gomb takarja a
-     szélüket — ettől néz ki úgy, mintha belőle nőnének ki. */
-  z-index: -1;
-  animation: dock-extend 200ms ease-out both;
 }
 
 .dock__side--left {
-  right: 50%;
-  padding-right: 34px;
-  margin-right: 12px;
   color: var(--success);
-  transform-origin: right center;
 }
 
 .dock__side--right {
-  left: 50%;
-  padding-left: 34px;
-  margin-left: 12px;
   color: var(--danger);
-  transform-origin: left center;
 }
 
-@keyframes dock-extend {
-  from {
-    opacity: 0;
-    transform: translateY(calc(-50% - var(--dock-fab-overhang) / 2)) scaleX(0.4);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(calc(-50% - var(--dock-fab-overhang) / 2)) scaleX(1);
-  }
+.dock__side:active {
+  transform: scale(0.97);
 }
 
 /* A középső gomb kilóg a dockból — ez a képernyő domináns akciója. */
@@ -144,6 +137,13 @@
   border-radius: var(--r-pill);
 }
 
+/* Rögzítés közben a középső gomb is nagyobb. */
+.dock__play--large {
+  width: 68px;
+  height: 68px;
+  margin-top: calc(-1 * var(--dock-fab-overhang));
+}
+
 .dock__play-text {
   font-size: 14px;
   font-weight: 700;
@@ -152,8 +152,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dock__play--idle,
-  .dock__side {
+  .dock__play--idle {
     animation: none;
   }
 }

@@ -43,59 +43,80 @@ export function Dock() {
     return void begin(state.type);
   }
 
+  /**
+   * A „Új rögzítés" felirat CSAK a rögzítés képernyőn jelenik meg.
+   *
+   * A lezárt rögzítés állapota az egész alkalmazásban él, ezért a felirat
+   * korábban a kezdőlapon is ott volt — ahol viszont értelmetlen: onnan nem
+   * új rögzítést indítani akar a felhasználó, hanem odajutni. Máshol tehát
+   * marad a Play ikon, ami a rögzítés képernyőre visz.
+   */
+  const showFinishedLabel = done && onTrackingScreen;
+
   const primaryLabel = running
     ? 'Szünet'
     : paused
       ? 'Folytatás'
-      : done
+      : showFinishedLabel
         ? 'Új rögzítés'
         : 'Aktivitás indítása';
 
+  const controls = (
+    <div className="dock__center">
+      {active ? (
+        <button className="dock__side dock__side--left" onClick={markLap}>
+          Új kör
+        </button>
+      ) : null}
+
+      <button
+        className={`dock__play${showFinishedLabel ? ' dock__play--wide' : ''}${
+          state.status === 'idle' ? ' dock__play--idle' : ''
+        }${active ? ' dock__play--large' : ''}`}
+        onClick={primaryAction}
+        aria-label={primaryLabel}
+      >
+        {showFinishedLabel ? (
+          <span className="dock__play-text">Új rögzítés</span>
+        ) : running ? (
+          <PauseIcon />
+        ) : (
+          <PlayIcon />
+        )}
+      </button>
+
+      {active ? (
+        <button className="dock__side dock__side--right" onClick={() => void finish()}>
+          Befejezés
+        </button>
+      ) : null}
+    </div>
+  );
+
+  /**
+   * Rögzítés közben CSAK a három vezérlő látszik.
+   *
+   * A menüpontok ilyenkor nemcsak fölöslegesek, hanem zavaróak is: a
+   * felhasználó futás közben, egy pillantásra nyúl a képernyőhöz, és a
+   * legrosszabb, ami történhet, hogy a Befejezés helyett a Profilt találja el.
+   */
+  if (active) {
+    return (
+      <nav className="dock dock--controls" aria-label="Rögzítés vezérlése">
+        {controls}
+      </nav>
+    );
+  }
+
   return (
-    <nav
-      className={`dock${active ? ' dock--wide' : ''}`}
-      aria-label="Fő navigáció és rögzítés"
-    >
+    <nav className="dock" aria-label="Fő navigáció és rögzítés">
       <NavLink to="/" className="dock__item" aria-label="Kezdőlap">
         <HomeIcon />
       </NavLink>
       <NavLink to="/terulet" className="dock__item" aria-label="Terület">
         <HexIcon />
       </NavLink>
-
-      <div className="dock__center">
-        {active ? (
-          <button className="dock__side dock__side--left" onClick={markLap}>
-            Új kör
-          </button>
-        ) : null}
-
-        <button
-          className={`dock__play${done ? ' dock__play--wide' : ''}${
-            state.status === 'idle' ? ' dock__play--idle' : ''
-          }`}
-          onClick={primaryAction}
-          aria-label={primaryLabel}
-        >
-          {done ? (
-            <span className="dock__play-text">Új rögzítés</span>
-          ) : running ? (
-            <PauseIcon />
-          ) : (
-            <PlayIcon />
-          )}
-        </button>
-
-        {active ? (
-          <button
-            className="dock__side dock__side--right"
-            onClick={() => void finish()}
-          >
-            Befejezés
-          </button>
-        ) : null}
-      </div>
-
+      {controls}
       <NavLink to="/kozosseg" className="dock__item" aria-label="Közösség">
         <PeopleIcon />
       </NavLink>

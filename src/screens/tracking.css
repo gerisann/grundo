@@ -1,36 +1,76 @@
-/* Rögzítés képernyő */
+/*
+ * Rögzítés képernyő.
+ *
+ * A térkép a HÁTTÉR, nem egy doboz a tartalomban: rögzítés közben a
+ * felhasználó azt nézi, merre jár, minden más csak ráolvasás. Ezért a térkép
+ * kitölti a képernyőt, az adatok és a figyelmeztetések pedig fölötte lebegnek.
+ */
 
 .track {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-primary);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--map-bg);
 }
 
-/*
- * A tartalom alatt akkora hely marad, amekkorát a dokk és a fölé kilógó
- * középső gomb elfoglal. Enélkül a legalsó elem a dokk alá csúszna.
- */
-.track__body {
-  flex: 1;
+.track__map {
+  position: absolute;
+  inset: 0;
+}
+
+.track__map .mapview {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+/* Ha nincs térkép (nincs token), a hexagon-nézet is töltse ki a hátteret. */
+.track__map--plain {
+  display: grid;
+  place-items: center;
   padding: var(--sp-4);
+  background: var(--bg-secondary);
+}
+
+/* ── A rárétegzett felület ───────────────────────────────────────── */
+
+.track__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-3);
   padding-bottom: calc(
     var(--sp-6) + var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom)
   );
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
+  /* A réteg maga átengedi az érintést a térképnek — csak a benne lévő
+     kártyák fogják meg. Enélkül a térkép nem lenne mozgatható. */
+  pointer-events: none;
+  overflow-y: auto;
 }
 
-/* ── Figyelmeztetések és állapotsáv ──────────────────────────────── */
+.track__overlay > * {
+  pointer-events: auto;
+}
+
+/* ── Kártyák ─────────────────────────────────────────────────────── */
 
 .track__note {
+  position: relative;
   padding: var(--sp-3);
   border-radius: var(--r-md);
   font-size: 14px;
   line-height: 1.45;
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: blur(12px);
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+}
+
+.track__note--closable {
+  padding-right: calc(var(--sp-3) + 28px);
 }
 
 .track__note--warn {
@@ -43,12 +83,37 @@
   color: var(--text-primary);
 }
 
+.track__note-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.track__note-close:hover {
+  color: var(--text-primary);
+}
+
 .track__signal {
+  align-self: flex-start;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
 }
 
 .track__dot {
@@ -74,54 +139,42 @@
   50% { opacity: 0.35; }
 }
 
-/* A mozgáscsökkentést kérő felhasználónál ne villogjon semmi. */
-@media (prefers-reduced-motion: reduce) {
-  .track__dot--live,
-  .track__dot--searching {
-    animation: none;
-  }
-}
-
 /* ── Élő adatok ──────────────────────────────────────────────────── */
 
-.track__primary {
-  text-align: center;
-  padding: var(--sp-4) 0;
+.track__panel {
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-3);
 }
 
 .track__distance {
-  font-size: 56px;
+  display: block;
+  text-align: center;
+  font-size: 46px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  line-height: 1;
+  line-height: 1.05;
   color: var(--text-primary);
-  /* Táblázatos számok: a számláló ne ugráljon számjegyváltáskor. */
   font-variant-numeric: tabular-nums;
-}
-
-.track__unit {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-left: var(--sp-2);
 }
 
 .track__stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-2);
+  margin-top: var(--sp-2);
 }
 
 .track__stat {
   text-align: center;
-  padding: var(--sp-3) var(--sp-2);
-  background: var(--bg-elevated);
-  border-radius: var(--r-md);
 }
 
 .track__stat-value {
   display: block;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -129,18 +182,63 @@
 
 .track__stat-label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   margin-top: 2px;
 }
 
-/* ── Vezérlők ────────────────────────────────────────────────────── */
+/* ── Szünet ──────────────────────────────────────────────────────── */
 
+/*
+ * A szünetet nem elég egy ikonnal jelezni. A leggyakoribb és legdrágább
+ * felhasználói hiba, hogy valaki szünetben hiszi magát futónak — vagy
+ * fordítva —, és percekig mér, vagy épp nem mér, feleslegesen. Ezért a
+ * szünet az EGÉSZ képernyőt megjelöli.
+ */
+.track__paused {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow:
+    inset 0 0 0 5px var(--warning),
+    inset 0 0 60px 10px color-mix(in srgb, var(--warning) 35%, transparent);
+  animation: track-paused-glow 2.4s ease-in-out infinite;
+}
 
-.track__types {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.track__paused-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-6);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(16px);
+  border: 2px solid var(--warning);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.track__paused-hint {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+@keyframes track-paused-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ── Körök ───────────────────────────────────────────────────────── */
@@ -159,7 +257,8 @@
   justify-content: space-between;
   align-items: baseline;
   padding: var(--sp-3);
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 .track__lap-index {
@@ -176,36 +275,52 @@
 
 /* ── Első indítás: nyíl a dokk gombjára ──────────────────────────── */
 
+/*
+ * A jelzés a dokk KÖZÉPSŐ gombja fölé kerül, és arra mutat. Ezért nem a
+ * tartalom folyamában él, hanem a képernyő aljához, középre rögzítve —
+ * különben ott jelenne meg, ahol a szöveg épp tart, és bárhova mutatna,
+ * csak a gombra nem. (Az első változat pontosan ezt csinálta.)
+ */
 .track__hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-4));
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
-  margin-top: auto;
+  gap: var(--sp-1);
   color: var(--accent);
-  /* A nyíl a dokk középső gombjára mutat, ami a képernyő alján, középen van.
-     A kis jobbra tolás azért kell, mert a görbe balra ível. */
-  padding-left: var(--sp-4);
-  animation: track-hint-in 400ms ease-out both;
+  pointer-events: none;
+  z-index: 6;
 }
 
 .track__hint-text {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-card);
 }
 
 .track__hint-arrow {
-  width: 40px;
-  height: 90px;
+  width: 28px;
+  height: 40px;
+  animation: track-hint-bob 1.6s ease-in-out infinite;
 }
 
-@keyframes track-hint-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: none; }
+@keyframes track-hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .track__hint {
+  .track__dot--live,
+  .track__dot--searching,
+  .track__paused,
+  .track__hint-arrow {
     animation: none;
   }
 }
