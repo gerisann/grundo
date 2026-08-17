@@ -16,14 +16,17 @@ import './territory.css';
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 /**
- * Ennyi blokknál még kirajzoljuk a SZABAD cellákat is.
+ * Ez alatt a nagyítás alatt nem rajzoljuk ki a szabad mezőket.
  *
- * Egy res 9 blokk 343 res 12 cellát tartalmaz, tehát nyolc blokk ~2 700
- * hatszög — ennyi még gyorsan rajzolódik és olvasható. Följebb a szabad
- * cellák úgyis szürke masszává folynának össze, és a lényeget takarnák el:
- * azt, hogy hol van FOGLALT terület.
+ * Nem teljesítmény kérdése, hanem olvashatóságé: egy res 12 hatszög ~18 m
+ * átmérőjű, ami 14-es nagyításnál nagyjából KÉT képpont. Az ilyen háló nem
+ * információ, hanem szürke zaj a térképen — és pont azt takarná el, ami
+ * számít: hol van foglalt terület.
+ *
+ * A FOGLALT cellákat viszont minden nagyításnál kirajzoljuk, mert azok
+ * összefüggő foltot alkotnak, és távolról is felismerhetők.
  */
-const FREE_CELL_BLOCK_LIMIT = 8;
+const FREE_CELL_MIN_ZOOM = 15;
 
 type View = { south: number; west: number; north: number; east: number; zoom: number };
 
@@ -49,6 +52,8 @@ export function TerritoryScreen() {
    * van szükség, hogy rétegváltáskor tudjuk, melyik szakaszt kell újrakérni.
    */
   const viewRef = useRef<View | null>(null);
+  const [zoom, setZoom] = useState(0);
+  const [boardOpen, setBoardOpen] = useState(false);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
@@ -82,6 +87,7 @@ export function TerritoryScreen() {
   const onViewport = useCallback(
     (next: View) => {
       viewRef.current = next;
+      setZoom(next.zoom);
       void loadTiles(next);
     },
     [loadTiles],
@@ -117,7 +123,7 @@ export function TerritoryScreen() {
      */
     const blocks = tiles?.blocks ?? [];
     const free: string[] = [];
-    if (blocks.length > 0 && blocks.length <= FREE_CELL_BLOCK_LIMIT) {
+    if (zoom >= FREE_CELL_MIN_ZOOM) {
       for (const block of blocks) {
         for (const child of cellToChildren(block, 12)) {
           if (!taken.has(child)) free.push(child);
@@ -126,14 +132,23 @@ export function TerritoryScreen() {
     }
 
     return { mineDefended, mineExposed, others, free };
-  }, [tiles, uid]);
+  }, [tiles, uid, zoom]);
 
   const showingFree = groups.free.length > 0;
 
   return (
     <>
-      <header className="screen-header">
+      <header className="screen-header terr__header">
         <h1 className="screen-header__title">Terület</h1>
+        <button
+          type="button"
+          className={`terr__board-toggle${boardOpen ? ' terr__board-toggle--on' : ''}`}
+          aria-label={boardOpen ? 'Vissza a térképhez' : 'Ranglista'}
+          aria-pressed={boardOpen}
+          onClick={() => setBoardOpen((open) => !open)}
+        >
+          <TrophyIcon />
+        </button>
       </header>
 
       <div className="screen-body stack">
@@ -165,7 +180,9 @@ export function TerritoryScreen() {
           </div>
         </div>
 
-        {mapboxConfigured ? (
+        {boardOpen ? (
+          <Leaderboard entries={board} meUid={uid} onClose={() => setBoardOpen(false)} />
+        ) : mapboxConfigured ? (
           <Suspense fallback={<div className="card">Térkép betöltése…</div>}>
             <MapView
               layers={[
@@ -186,12 +203,6 @@ export function TerritoryScreen() {
           </div>
         )}
 
-        {tiles?.tooWide ? (
-          <p className="terr__legend">
-            Túl nagy a nézet — közelíts rá, hogy lásd a mezőket.
-          </p>
-        ) : null}
-
         <div className="terr__legend-grid">
           <Swatch className="terr__swatch--mine" label="A tiéd, védve" />
           <Swatch className="terr__swatch--exposed" label="A tiéd, 1-es szinten" />
@@ -202,12 +213,13 @@ export function TerritoryScreen() {
         <p className="terr__legend">
           {showingFree
             ? 'A halvány mezők szabadok — bárkié lehetnek, aki bezár egy kört körülöttük.'
-            : 'Közelíts rá jobban, és a szabad mezők is megjelennek.'}{' '}
+            : 'Közelíts rá, és a szabad mezők is megjelennek.'}{' '}
+          {tiles?.partial
+            ? 'A háló most csak a nézet közepét fedi le — a széleken nem tudjuk, mi van. '
+            : ''}
           A védelem naponta egy szintet veszít, de sosem esik 1 alá: a terület a tiéd marad, csak
           egyre könnyebb elvenni.
         </p>
-
-        <Leaderboard entries={board} meUid={uid} />
       </div>
     </>
   );
@@ -222,21 +234,45 @@ function Swatch({ className, label }: { className: string; label: string }) {
   );
 }
 
-function Leaderboard({ entries, meUid }: { entries: LeaderboardEntry[] | null; meUid: string }) {
-  if (entries === null) return <div className="card">Ranglista betöltése…</div>;
+function Leaderboard({
+  entries,
+  meUid,
+  onClose,
+}: {
+  entries: LeaderboardEntry[] | null;
+  meUid: string;
+  onClose: () => void;
+}) {
+  const head = (
+    <div className="terr__board-head">
+      <h2 className="terr__board-title">Legnagyobb területek</h2>
+      <button type="button" className="terr__board-close" aria-label="Bezárás" onClick={onClose}>
+        ✕
+      </button>
+    </div>
+  );
+
+  if (entries === null) {
+    return (
+      <div className="terr__board">
+        {head}
+        <div className="terr__board-row">Betöltés…</div>
+      </div>
+    );
+  }
 
   if (entries.length === 0) {
     return (
-      <div className="card">
-        <h2 className="terr__board-title">Ranglista</h2>
-        <p className="terr__legend">Még senkinek nincs területe. Légy te az első.</p>
+      <div className="terr__board">
+        {head}
+        <div className="terr__board-row">Még senkinek nincs területe. Légy te az első.</div>
       </div>
     );
   }
 
   return (
     <div className="terr__board">
-      <h2 className="terr__board-title">Legnagyobb területek</h2>
+      {head}
       {entries.map((entry, index) => (
         <div
           key={entry.uid}
@@ -248,5 +284,25 @@ function Leaderboard({ entries, meUid }: { entries: LeaderboardEntry[] | null; m
         </div>
       ))}
     </div>
+  );
+}
+
+function TrophyIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M7 4h10v5a5 5 0 0 1-10 0z" />
+      <path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3" />
+      <path d="M12 14v4M9 20h6" />
+    </svg>
   );
 }

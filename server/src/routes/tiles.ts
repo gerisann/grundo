@@ -3,7 +3,7 @@ import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest } from '../lib/errors';
 import { BLOCK_RESOLUTION, cellKey, effectiveDefense, gameDay, type GridBlock } from '../lib/grid';
 import { cellsToM2 } from '../../../src/game/cells';
-import { cellToChildren, polygonToCells } from 'h3-js';
+import { cellToChildren, gridDisk, latLngToCell } from 'h3-js';
 import type { CellId, Layer } from '../../../src/types';
 
 export const tilesRouter = Router();
@@ -91,15 +91,59 @@ function parseLayer(raw: unknown): Layer {
   return value;
 }
 
+/** Négy gyűrű = 61 blokk. Ennyi az a legnagyobb szakasz, amit lefedünk. */
+const MAX_VIEW_BLOCKS = 61;
+
 /**
- * Legfeljebb ennyi blokkot olvasunk egy térképnézethez.
+ * Egy res 9 cella jellemző átmérője kilométerben.
  *
- * Egy res 9 blokk ~105 000 m². Negyven blokk ~4 km² — nagyjából egy belvárosi
- * nézet. Efölött nem olvasunk többet, hanem szólunk a felületnek, hogy
- * közelítsen rá: távolról úgysem lehet értelmesen megjeleníteni hatszázezer
- * hatszöget.
+ * A h3 res 9 átlagos élhossza ~0,174 km, tehát a szemközti oldalak távolsága
+ * ~0,30 km. Ebből számoljuk, hány gyűrűnyi cella kell a nézet lefedéséhez.
  */
-const MAX_VIEW_BLOCKS = 40;
+const BLOCK_SPAN_KM = 0.3;
+
+/**
+ * A nézetet LEFEDŐ blokkok.
+ *
+ * Miért nem `polygonToCells`? Mert az csak azokat a cellákat adja vissza,
+ * amelyeknek a KÖZEPE a poligonon belül van. Ebből két hiba következett:
+ *
+ *   1. A nézet szélein lévő cellák kimaradtak, tehát a hatszögháló nem érte
+ *      el a képernyő szélét.
+ *   2. Erős ráközelítésnél, amikor a nézet kisebb egy blokknál, egyetlen
+ *      közép sem esett bele — nulla cella jött vissza, és semmi nem rajzolódott.
+ *
+ * A gyűrűs lefedés mindkettőt megoldja: a nézet közepéből indulunk, és annyi
+ * gyűrűt veszünk, amennyi biztosan túlér a széleken.
+ */
+const MAX_RINGS = 4;
+
+function coveringBlocks(view: {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}): { blocks: string[]; partial: boolean } {
+  const centerLat = (view.north + view.south) / 2;
+  const centerLng = (view.east + view.west) / 2;
+
+  // Fok → kilométer, a szélességi kör összehúzódását figyelembe véve.
+  const heightKm = (view.north - view.south) * 111.32;
+  const widthKm = (view.east - view.west) * 111.32 * Math.cos((centerLat * Math.PI) / 180);
+  const radiusKm = Math.hypot(heightKm, widthKm) / 2;
+
+  // Legalább egy gyűrű: erős ráközelítésnél a nézet kisebb egy blokknál, de
+  // a középső cellát és a szomszédjait akkor is meg kell mutatni.
+  const needed = Math.max(1, Math.ceil(radiusKm / BLOCK_SPAN_KM));
+  const rings = Math.min(MAX_RINGS, needed);
+
+  return {
+    blocks: gridDisk(latLngToCell(centerLat, centerLng, BLOCK_RESOLUTION), rings),
+    // Ha levágtuk, a háló csak a nézet közepét fedi le — a kliensnek tudnia
+    // kell róla, hogy ne higgye tévesen szabadnak a széleket.
+    partial: needed > MAX_RINGS,
+  };
+}
 
 /**
  * GET /api/tiles?layer=foot&south=&west=&north=&east=
@@ -124,22 +168,15 @@ tilesRouter.get('/', async (req, res, next) => {
       throw badRequest('invalid_bbox', 'Hibás térképszakasz.');
     }
 
-    // A h3 [szélesség, hosszúság] párokat vár, és zárt gyűrűt.
-    const ring: [number, number][] = [
-      [south, west],
-      [south, east],
-      [north, east],
-      [north, west],
-      [south, west],
-    ];
-    const blockIds = polygonToCells(ring, BLOCK_RESOLUTION);
-
-    if (blockIds.length > MAX_VIEW_BLOCKS) {
-      return res.json({ layer, cells: [], owners: {}, tooWide: true });
-    }
-    if (blockIds.length === 0) {
-      return res.json({ layer, cells: [], owners: {}, tooWide: false });
-    }
+    /**
+     * Négy gyűrűnél (61 blokk, ~2,4 km) nem megyünk tovább.
+     *
+     * Nem a lekérdezés miatt: egy res 12 hatszög ekkora nézetben már
+     * képpontnyi, a háló pedig olvashatatlan szürkeséggé folyna össze. A
+     * középső szakaszt viszont ilyenkor is megmutatjuk — jobb valamit látni,
+     * mint üres térképet.
+     */
+    const { blocks: blockIds, partial } = coveringBlocks({ south, west, north, east });
 
     const today = gameDay(new Date());
     const refs = blockIds.map((id) => db.collection(COLLECTIONS.grid).doc(`${layer}_${id}`));
@@ -169,7 +206,8 @@ tilesRouter.get('/', async (req, res, next) => {
       blocks: blockIds,
       cells,
       owners: await ownerNames(ownerIds),
-      tooWide: false,
+      // A háló csak a nézet közepét fedi le — a széleken NEM tudjuk, mi van.
+      partial,
     });
   } catch (error) {
     next(error);

@@ -1,5 +1,15 @@
 /* Terület képernyő */
 
+/*
+ * A fejléc a ranglista-gomb horgonya.
+ *
+ * SAJÁT osztály, nem a globális `.screen-header` — a CSS nem elszigetelt,
+ * tehát ott állítva a `position` minden képernyő fejlécére kihatna.
+ */
+.terr__header {
+  position: relative;
+}
+
 .terr__stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -125,4 +135,48 @@
   font-weight: 700;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Ranglista-váltó a fejlécben ─────────────────────────────────── */
+
+.terr__board-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.terr__board-toggle--on {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.terr__board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  padding-right: var(--sp-2);
+}
+
+.terr__board-close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+
+.terr__board-close:hover {
+  color: var(--text-primary);
 }

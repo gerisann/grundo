@@ -216,8 +216,11 @@ export interface TilesResult {
   /** A nézetet lefedő res 9 blokkok — ezekből számoljuk a SZABAD cellákat. */
   blocks?: string[];
   owners: Record<string, string>;
-  /** Túl nagy a nézet: közelíteni kell, mert távolról értelmetlen a rajz. */
-  tooWide: boolean;
+  /**
+   * A háló csak a nézet KÖZEPÉT fedi le — a széleken nem tudjuk, mi van.
+   * Ilyenkor a felület ne állítsa, hogy ott szabad a terület.
+   */
+  partial?: boolean;
 }
 
 export interface LeaderboardEntry {
