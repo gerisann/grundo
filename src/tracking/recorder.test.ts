@@ -11,6 +11,8 @@ import {
   applySample,
   createRecorder,
   finish,
+  lapDistances,
+  markLap,
   movingMs,
   paceSecPerKm,
   pause,
@@ -179,5 +181,54 @@ describe('a nyomvonal a motor bemenete', () => {
     const times = state.points.map((p) => p.t);
     expect(times).toEqual([...times].sort((a, b) => a - b));
     expect(new Set(times).size).toBe(times.length);
+  });
+});
+
+describe('körök', () => {
+  it('az indítás megnyitja az első kört', () => {
+    expect(recording().laps).toEqual([{ at: T0, distanceM: 0 }]);
+  });
+
+  it('az új kör a jelenlegi távolságnál vágja el a nyomvonalat', () => {
+    let state = feed(recording(), [sample(0, 0), sample(100, 20)]);
+    state = markLap(state, T0 + 20_000);
+    state = feed(state, [sample(250, 50)]);
+
+    const laps = lapDistances(state);
+    expect(laps).toHaveLength(2);
+    expect(laps[0]).toBeCloseTo(100, 0);
+    expect(laps[1]).toBeCloseTo(150, 0);
+  });
+
+  it('a körök összege a teljes távolság', () => {
+    let state = feed(recording(), [sample(0, 0), sample(100, 20)]);
+    state = markLap(state, T0 + 20_000);
+    state = feed(state, [sample(250, 50)]);
+    state = markLap(state, T0 + 50_000);
+    state = feed(state, [sample(400, 80)]);
+
+    const sum = lapDistances(state).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(state.distanceM, 6);
+  });
+
+  it('szünet alatt is nyitható kör', () => {
+    let state = feed(recording(), [sample(0, 0), sample(100, 20)]);
+    state = pause(state, T0 + 21_000);
+    state = markLap(state, T0 + 22_000);
+    expect(state.laps).toHaveLength(2);
+  });
+
+  it('ugyanabban a pillanatban nem nyit üres kört', () => {
+    let state = feed(recording(), [sample(0, 0), sample(100, 20)]);
+    state = markLap(state, T0 + 20_000);
+    const twice = markLap(state, T0 + 20_000);
+    expect(twice.laps).toHaveLength(2);
+    expect(twice).toBe(state);
+  });
+
+  it('leállás után nem nyit kört', () => {
+    let state = feed(recording(), [sample(0, 0), sample(100, 20)]);
+    state = finish(state, T0 + 21_000);
+    expect(markLap(state, T0 + 22_000).laps).toHaveLength(1);
   });
 });

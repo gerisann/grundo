@@ -19,6 +19,7 @@ import {
   applySample,
   createRecorder,
   finish as finishRecorder,
+  markLap as markLapRecorder,
   pause as pauseRecorder,
   resume as resumeRecorder,
   start as startRecorder,
@@ -49,6 +50,8 @@ export interface RecorderApi {
   begin: (type: ActivityType) => Promise<void>;
   pause: () => void;
   resume: () => void;
+  /** Új kör kezdése. */
+  markLap: () => void;
   finish: () => Promise<void>;
   discard: () => Promise<void>;
   /** A felajánlott félbehagyott rögzítés folytatása. */
@@ -169,6 +172,10 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     apply((current) => resumeRecorder(current, Date.now()));
   }, [apply]);
 
+  const markLap = useCallback(() => {
+    apply((current) => markLapRecorder(current, Date.now()));
+  }, [apply]);
+
   const finish = useCallback(async () => {
     positionSource.stop();
     apply((current) => finishRecorder(current, Date.now()));
@@ -216,6 +223,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     begin,
     pause,
     resume,
+    markLap,
     finish,
     discard,
     restore,

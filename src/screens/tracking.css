@@ -7,13 +7,15 @@
 }
 
 /*
- * A tartalom alatt akkora hely marad, amekkorát a rögzített vezérlősáv elfoglal.
- * Enélkül a legalsó elem a gombok alá csúszna, és csak görgetéssel látszana.
+ * A tartalom alatt akkora hely marad, amekkorát a dokk és a fölé kilógó
+ * középső gomb elfoglal. Enélkül a legalsó elem a dokk alá csúszna.
  */
 .track__body {
   flex: 1;
   padding: var(--sp-4);
-  padding-bottom: calc(var(--sp-4) + var(--track-controls-h));
+  padding-bottom: calc(
+    var(--sp-6) + var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom)
+  );
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -134,49 +136,76 @@
 
 /* ── Vezérlők ────────────────────────────────────────────────────── */
 
-/*
- * A vezérlők MINDIG látszanak, görgetés nélkül.
- *
- * Korábban `sticky` volt, ami csak akkor tapad, ha a görgetés a szülőn belül
- * történik — itt viszont a lap egésze görgetett, így az Indítás gomb a hajtás
- * alá került. Ezért `fixed`: a nézetablakhoz igazodik, függetlenül attól, mi
- * van fölötte.
- *
- * Az alsó igazítás a dokk magasságát is figyelembe veszi, amíg a dokk látszik.
- * Rögzítés közben nincs dokk, ezért csak a készülék biztonsági sávja marad.
- */
-.track {
-  --track-controls-h: 92px;
-}
-
-.track__controls {
-  position: fixed;
-  left: 0;
-  right: 0;
-  /* A dokk magassága ÉS a fölé kilógó középső gomb — enélkül a Play gomb
-     rátakar az Indítás gombra. */
-  bottom: calc(
-    var(--dock-height) + var(--dock-fab-overhang) + var(--sp-2) + env(safe-area-inset-bottom)
-  );
-  z-index: 20;
-  display: flex;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom));
-  background: var(--bg-primary);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.app-shell--recording .track__controls {
-  bottom: 0;
-}
-
-.track__controls > * {
-  flex: 1;
-}
 
 .track__types {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-2);
+}
+
+/* ── Körök ───────────────────────────────────────────────────────── */
+
+.track__laps {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.track__lap {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--sp-3);
+  background: var(--bg-elevated);
+}
+
+.track__lap-index {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.track__lap-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Első indítás: nyíl a dokk gombjára ──────────────────────────── */
+
+.track__hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: auto;
+  color: var(--accent);
+  /* A nyíl a dokk középső gombjára mutat, ami a képernyő alján, középen van.
+     A kis jobbra tolás azért kell, mert a görbe balra ível. */
+  padding-left: var(--sp-4);
+  animation: track-hint-in 400ms ease-out both;
+}
+
+.track__hint-text {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.track__hint-arrow {
+  width: 40px;
+  height: 90px;
+}
+
+@keyframes track-hint-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track__hint {
+    animation: none;
+  }
 }

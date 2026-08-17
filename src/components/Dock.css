@@ -35,6 +35,73 @@
   color: var(--accent);
 }
 
+/*
+ * A középső oszlop: a domináns gomb, és rögzítés közben a belőle kinyúló
+ * két gomb (Kör balra, Befejezés jobbra).
+ *
+ * A kinyúló gombok a dokk fölé lógnak, ezért a középső oszlop `relative`, a
+ * gombok pedig hozzá képest abszolút helyezkednek. Így a dokk rácsa nem
+ * torzul tőlük — csak a menüpontok csúsznak kijjebb (`.dock--wide`).
+ */
+.dock__center {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+/* Rögzítés közben a menüpontok a szélek felé húzódnak, hogy a kinyúló
+   gombok elférjenek. */
+.dock--wide {
+  grid-template-columns: auto auto 1fr auto auto;
+  padding: 0 var(--sp-2);
+}
+
+.dock__side {
+  position: absolute;
+  top: 50%;
+  transform: translateY(calc(-50% - var(--dock-fab-overhang) / 2));
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 10px 16px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+  /* A kinyúló gombok a FAB alá kerülnek, hogy a kör alakú gomb takarja a
+     szélüket — ettől néz ki úgy, mintha belőle nőnének ki. */
+  z-index: -1;
+  animation: dock-extend 200ms ease-out both;
+}
+
+.dock__side--left {
+  right: 50%;
+  padding-right: 34px;
+  margin-right: 12px;
+  color: var(--success);
+  transform-origin: right center;
+}
+
+.dock__side--right {
+  left: 50%;
+  padding-left: 34px;
+  margin-left: 12px;
+  color: var(--danger);
+  transform-origin: left center;
+}
+
+@keyframes dock-extend {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% - var(--dock-fab-overhang) / 2)) scaleX(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(calc(-50% - var(--dock-fab-overhang) / 2)) scaleX(1);
+  }
+}
+
 /* A középső gomb kilóg a dockból — ez a képernyő domináns akciója. */
 .dock__play {
   display: grid;
@@ -49,6 +116,46 @@
   transition:
     transform 120ms ease,
     background-color 120ms ease;
+}
+
+/*
+ * Indítás előtt lüktet — ez a képernyő egyetlen hívása cselekvésre.
+ * A lüktetés fénykör, nem méretváltozás: a mozgó gomb célpontja is mozogna,
+ * és nehezebb lenne eltalálni.
+ */
+.dock__play--idle {
+  animation: dock-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes dock-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+/* Befejezés után a gomb feliratot kap, és kiszélesedik. */
+.dock__play--wide {
+  width: auto;
+  min-width: 150px;
+  padding: 0 22px;
+  border-radius: var(--r-pill);
+}
+
+.dock__play-text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock__play--idle,
+  .dock__side {
+    animation: none;
+  }
 }
 
 .dock__play:hover {

@@ -10,15 +10,16 @@ import { HexMap } from '@/components/HexMap';
 const MapView = lazy(() =>
   import('@/components/MapView').then((m) => ({ default: m.MapView })),
 );
-import { useRecorder } from '@/hooks/useRecorder';
-import { useRecordingLock } from '@/hooks/RecordingLock';
+import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { cellsToM2, traceToCellPath } from '@/game/cells';
-import { movingMs, paceSecPerKm } from '@/tracking/recorder';
+import { lapDistances, movingMs, paceSecPerKm } from '@/tracking/recorder';
 import { formatArea, formatDistance, formatDuration, formatPace } from '@/lib/format';
 import type { ActivityType } from '@/types';
 import './tracking.css';
+
+const START_HINT_KEY = 'grundo.hint.start';
 
 /**
  * Rögzítés.
@@ -32,7 +33,7 @@ import './tracking.css';
  * futás sokkal rosszabb, mint az őszinte figyelmeztetés.
  */
 export function TrackingScreen() {
-  const recorder = useRecorder();
+  const recorder = useRecorderContext();
   const { state } = recorder;
   const [type, setType] = useState<ActivityType>('run');
 
@@ -85,12 +86,25 @@ export function TrackingScreen() {
    */
   const lastPoint = state.points.length > 0 ? state.points[state.points.length - 1]! : null;
 
-  // Rögzítés közben nincs dokk: az elnavigálás leállítaná a mérést.
-  const { setLocked } = useRecordingLock();
+  /**
+   * Az indítás helyét csak az ELSŐ alkalommal mutatjuk meg.
+   *
+   * A jelzést az első sikeres indítás oltja ki, nem a képernyő megnyitása:
+   * aki megnyitotta, de nem indított, legközelebb is segítségre szorul.
+   */
+  const [showStartHint, setShowStartHint] = useState(
+    () => localStorage.getItem(START_HINT_KEY) === null,
+  );
   useEffect(() => {
-    setLocked(running || paused);
-    return () => setLocked(false);
-  }, [running, paused, setLocked]);
+    if (state.status !== 'recording' || !showStartHint) return;
+    setShowStartHint(false);
+    try {
+      localStorage.setItem(START_HINT_KEY, '1');
+    } catch {
+      /* privát böngészés — a jelzés legközelebb újra megjelenik, nem baj */
+    }
+  }, [state.status, showStartHint]);
+
 
   return (
     <div className="track">
@@ -142,8 +156,8 @@ export function TrackingScreen() {
         {idle ? (
           <>
             <p className="track__note">
-              Válaszd ki a mozgásformát, aztán indíts. Legalább 100 méter kell ahhoz, hogy az
-              aktivitás számítson.
+              Válaszd ki a mozgásformát, aztán nyomd meg a lila gombot alul. Legalább
+              100 méter kell ahhoz, hogy az aktivitás számítson.
             </p>
             <SegmentedControl
               label="Mozgásforma"
@@ -156,6 +170,33 @@ export function TrackingScreen() {
                 { value: 'ride', label: 'Bringa' },
               ]}
             />
+
+            {/*
+              Az első alkalommal megmutatjuk, hol az indítás. Nem magyarázunk:
+              egy nyíl a gombra többet ér, mint egy bekezdés szöveg. Utána
+              soha nem jelenik meg többé.
+            */}
+            {showStartHint ? (
+              <div className="track__hint" aria-hidden="true">
+                <span className="track__hint-text">Indítás</span>
+                <svg className="track__hint-arrow" viewBox="0 0 40 90" fill="none">
+                  <path
+                    d="M20 4c0 30-14 38-14 56 0 12 8 20 14 24"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeDasharray="6 7"
+                  />
+                  <path
+                    d="M13 78l7 8 8-7"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            ) : null}
           </>
         ) : (
           <>
@@ -206,6 +247,17 @@ export function TrackingScreen() {
               </p>
             )}
 
+            {state.laps.length > 1 ? (
+              <div className="track__laps">
+                {lapDistances(state).map((meters, index) => (
+                  <div className="track__lap" key={state.laps[index]!.at}>
+                    <span className="track__lap-index">{index + 1}. kör</span>
+                    <span className="track__lap-value">{formatDistance(meters / 1000)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
             {done && !countsAsActivity ? (
               <div className="track__note track__note--warn">
                 <strong>Ez a rögzítés túl rövid.</strong> Legalább{' '}
@@ -226,39 +278,6 @@ export function TrackingScreen() {
         )}
       </div>
 
-      <div className="track__controls">
-        {idle ? (
-          <Button block onClick={() => void recorder.begin(type)}>
-            Indítás
-          </Button>
-        ) : null}
-
-        {running ? (
-          <>
-            <Button variant="secondary" onClick={recorder.pause}>
-              Szünet
-            </Button>
-            <Button variant="danger" onClick={() => void recorder.finish()}>
-              Befejezés
-            </Button>
-          </>
-        ) : null}
-
-        {paused ? (
-          <>
-            <Button onClick={recorder.resume}>Folytatás</Button>
-            <Button variant="danger" onClick={() => void recorder.finish()}>
-              Befejezés
-            </Button>
-          </>
-        ) : null}
-
-        {done ? (
-          <Button variant="secondary" block onClick={() => void recorder.discard()}>
-            Új rögzítés
-          </Button>
-        ) : null}
-      </div>
     </div>
   );
 }

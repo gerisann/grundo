@@ -2,7 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
-import { RecordingLockProvider, useRecordingLock } from './hooks/RecordingLock';
+import { RecorderProvider } from './hooks/RecorderProvider';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
@@ -40,9 +40,9 @@ export function App() {
           <BrowserRouter
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
-            <RecordingLockProvider>
+            <RecorderProvider>
               <Router />
-            </RecordingLockProvider>
+            </RecorderProvider>
           </BrowserRouter>
         </ThemeProvider>
       </ProfileProvider>
@@ -53,7 +53,6 @@ export function App() {
 function Router() {
   const { status } = useAuth();
   const { status: profileStatus } = useProfile();
-  const { locked: recordingLocked } = useRecordingLock();
 
   if (status === 'loading') return <Splash />;
 
@@ -99,7 +98,7 @@ function Router() {
 
   return (
     <>
-      <div className={`app-shell${recordingLocked ? ' app-shell--recording' : ''}`}>
+      <div className="app-shell">
         <Routes>
           {/* Fejlesztői átengedés esetén a belépési képernyők is elérhetők
               maradnak, különben nem lehetne rajtuk dolgozni. */}
@@ -115,9 +114,10 @@ function Router() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      {/* Rögzítés közben nincs dokk: az elnavigálás leválasztaná a rögzítő
-          képernyőt, és a mérés csendben leállna. */}
-      {recordingLocked ? null : <Dock />}
+      {/* A dokk MINDIG látszik: a rögzítés vezérlői benne vannak, és a
+          rögzítő az alkalmazás szintjén él, tehát a képernyőváltás nem
+          állítja le a mérést. */}
+      <Dock />
     </>
   );
 }

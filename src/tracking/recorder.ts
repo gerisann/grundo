@@ -26,6 +26,14 @@ import type { PositionSample } from './types';
 
 export type RecorderStatus = 'idle' | 'recording' | 'paused' | 'finished';
 
+/** Egy kör kezdete. */
+export interface LapMark {
+  /** Mikor kezdődött, epoch ms. */
+  at: number;
+  /** Mennyi volt az összes megtett táv ekkor, méterben. */
+  distanceM: number;
+}
+
 export interface RecorderState {
   status: RecorderStatus;
   /**
@@ -47,6 +55,14 @@ export interface RecorderState {
   pausedMs: number;
   /** Mikor kezdődött a jelenlegi szünet (null, ha nincs szünet). */
   pausedAt: number | null;
+  /**
+   * A körhatárok — minden elem egy kör KEZDETE.
+   *
+   * Miért nem a pontok indexe? Mert sorrenden kívüli minta beszúrásakor az
+   * indexek elcsúsznának, és a körök visszamenőleg átrendeződnének. Az
+   * időbélyeg és a hozzá tartozó távolság viszont rögzített tény.
+   */
+  laps: LapMark[];
   /** Diagnosztika: elutasított minták száma okonként. */
   rejected: Record<string, number>;
 }
@@ -61,13 +77,38 @@ export function createRecorder(type: ActivityType): RecorderState {
     endedAt: null,
     pausedMs: 0,
     pausedAt: null,
+    laps: [],
     rejected: {},
   };
 }
 
 export function start(state: RecorderState, now: number): RecorderState {
   if (state.status !== 'idle') return state;
-  return { ...state, status: 'recording', startedAt: now };
+  // Az első kör a rögzítés indulásakor kezdődik — így nincs olyan szakasz,
+  // ami egyik körhöz sem tartozik.
+  return { ...state, status: 'recording', startedAt: now, laps: [{ at: now, distanceM: 0 }] };
+}
+
+/**
+ * Új kör kezdése.
+ *
+ * Szünet alatt is megengedett: a felhasználó megállhat, körözhet, majd
+ * folytathat. A kör kezdete ilyenkor a szünet pillanata.
+ */
+export function markLap(state: RecorderState, now: number): RecorderState {
+  if (state.status !== 'recording' && state.status !== 'paused') return state;
+  const last = state.laps[state.laps.length - 1];
+  // Ugyanabban a pillanatban két kört nyitni értelmetlen — üres kör lenne.
+  if (last !== undefined && last.at === now && last.distanceM === state.distanceM) return state;
+  return { ...state, laps: [...state.laps, { at: now, distanceM: state.distanceM }] };
+}
+
+/** A körök hossza méterben, a legutolsó a folyamatban lévő. */
+export function lapDistances(state: RecorderState): number[] {
+  return state.laps.map((lap, index) => {
+    const next = state.laps[index + 1];
+    return (next?.distanceM ?? state.distanceM) - lap.distanceM;
+  });
 }
 
 export function pause(state: RecorderState, now: number): RecorderState {

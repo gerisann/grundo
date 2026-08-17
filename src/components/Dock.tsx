@@ -1,17 +1,61 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, NavLink } from 'react-router-dom';
+import { useRecorderContext } from '@/hooks/RecorderProvider';
 import './Dock.css';
 
 /**
- * Alsó dock — a navigáció gerince.
- * Középen a domináns indítógomb, ami a dock fölé lóg.
+ * Alsó dock — a navigáció gerince ÉS a rögzítés vezérlője.
+ *
+ * A középső gomb nem csak egy menüpont: ez a képernyő domináns akciója, és
+ * a rögzítés állapotától függően mást csinál.
+ *
+ *   nincs rögzítés   → Play. Máshonnan a rögzítés képernyőre visz, ott indít.
+ *   rögzítés fut     → Pause, és két gomb nyúlik ki belőle: Kör és Befejezés.
+ *   szüneteltetve    → Play (folytatás), ugyanazzal a két gombbal.
+ *   befejezve        → „Új rögzítés" felirat, kiszélesített gombban.
+ *
+ * A kinyúló gombok miatt a menüpontok a szélek felé csúsznak — erről a
+ * `dock--wide` osztály gondoskodik.
  *
  * docs/01-kepernyoterkep.md → Navigációs architektúra
  */
 export function Dock() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { state, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
+
+  const onTrackingScreen = location.pathname === '/rogzites';
+  const running = state.status === 'recording';
+  const paused = state.status === 'paused';
+  const done = state.status === 'finished';
+  const active = running || paused;
+
+  /**
+   * Mi történjen a középső gombra?
+   *
+   * Ha nem a rögzítés képernyőn állunk, előbb oda visszük a felhasználót —
+   * indítani vakon, a mérés visszajelzése nélkül félrevezető lenne.
+   */
+  function primaryAction() {
+    if (running) return pause();
+    if (paused) return resume();
+    if (done) return void discard();
+    if (!onTrackingScreen) return navigate('/rogzites');
+    return void begin(state.type);
+  }
+
+  const primaryLabel = running
+    ? 'Szünet'
+    : paused
+      ? 'Folytatás'
+      : done
+        ? 'Új rögzítés'
+        : 'Aktivitás indítása';
 
   return (
-    <nav className="dock" aria-label="Fő navigáció">
+    <nav
+      className={`dock${active ? ' dock--wide' : ''}`}
+      aria-label="Fő navigáció és rögzítés"
+    >
       <NavLink to="/" className="dock__item" aria-label="Kezdőlap">
         <HomeIcon />
       </NavLink>
@@ -19,13 +63,38 @@ export function Dock() {
         <HexIcon />
       </NavLink>
 
-      <button
-        className="dock__play"
-        onClick={() => navigate('/rogzites')}
-        aria-label="Aktivitás indítása"
-      >
-        <PlayIcon />
-      </button>
+      <div className="dock__center">
+        {active ? (
+          <button className="dock__side dock__side--left" onClick={markLap}>
+            Új kör
+          </button>
+        ) : null}
+
+        <button
+          className={`dock__play${done ? ' dock__play--wide' : ''}${
+            state.status === 'idle' ? ' dock__play--idle' : ''
+          }`}
+          onClick={primaryAction}
+          aria-label={primaryLabel}
+        >
+          {done ? (
+            <span className="dock__play-text">Új rögzítés</span>
+          ) : running ? (
+            <PauseIcon />
+          ) : (
+            <PlayIcon />
+          )}
+        </button>
+
+        {active ? (
+          <button
+            className="dock__side dock__side--right"
+            onClick={() => void finish()}
+          >
+            Befejezés
+          </button>
+        ) : null}
+      </div>
 
       <NavLink to="/kozosseg" className="dock__item" aria-label="Közösség">
         <PeopleIcon />
@@ -34,6 +103,15 @@ export function Dock() {
         <PersonIcon />
       </NavLink>
     </nav>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <rect x="6.5" y="5" width="4" height="14" rx="1.4" />
+      <rect x="13.5" y="5" width="4" height="14" rx="1.4" />
+    </svg>
   );
 }
 
