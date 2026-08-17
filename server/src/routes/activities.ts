@@ -83,14 +83,15 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     const activityRef = db.collection(COLLECTIONS.activities).doc(activityId);
 
     /**
-     * Idempotencia: ha már feldolgoztuk, a tárolt eredményt adjuk vissza.
+     * Előszűrés — a MUNKA megspórolására, nem az idempotencia biztosítására.
      *
-     * Fontos, hogy a MÁSÉ ne legyen visszaadható: az azonosítót a kliens
-     * választja, tehát elvileg eltalálhatná valaki másét.
+     * A valódi védelem a tranzakción belül van (lásd lejjebb): ez itt csak
+     * annyit ér el, hogy egy nyilvánvaló ismétlésnél ne fussunk le a teljes
+     * motoron és a rács-olvasáson.
      */
-    const existing = await activityRef.get();
-    if (existing.exists) {
-      const data = existing.data() as { userId?: string; summary?: unknown };
+    const preflight = await activityRef.get();
+    if (preflight.exists) {
+      const data = preflight.data() as { userId?: string; summary?: unknown };
       if (data.userId !== uid) {
         throw badRequest('activity_conflict', 'Ez az azonosító már foglalt.');
       }
@@ -157,8 +158,30 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       gp: result.gp.total,
     };
 
+    let duplicate = false;
+
     await db.runTransaction(async (tx) => {
       // MINDEN olvasás az írások ELŐTT — a Firestore ezt megköveteli.
+
+      /**
+       * AZ IDEMPOTENCIA IGAZI HELYE: a tranzakción BELÜL.
+       *
+       * A fenti előszűrés önmagában nem elég. Két egyszerre érkező feltöltés
+       * mindkettő „még nincs ilyen"-t lát, aztán mindkettő ír — és a terület,
+       * a pont, a táv meg az aktivitásszám kétszer könyvelődik. Élesben pontosan
+       * ez történt: 2 × 1,144 km² lett a profilon, 2 × 12,7 km táv, és három
+       * aktivitásból hat.
+       *
+       * A tranzakción belüli olvasás viszont a Firestore-nál egyben ütközés-
+       * figyelés is: ha közben más ír ugyanerre a dokumentumra, a tranzakció
+       * újrafut, és a második futásban már látja az elsőt.
+       */
+      const existing = await tx.get(activityRef);
+      if (existing.exists) {
+        duplicate = true;
+        return;
+      }
+
       const blocks = await readBlocks(tx, blockIds);
 
       if (claimUpdates.size > 0) {
@@ -233,6 +256,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       );
     });
 
+    if (duplicate) return res.json({ activityId, summary, duplicate: true });
     res.status(201).json({ activityId, summary });
   } catch (error) {
     next(error);

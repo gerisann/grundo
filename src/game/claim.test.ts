@@ -135,9 +135,20 @@ describe('processActivity — több bezárás egy aktivitásban', () => {
       gpEarnedToday: 0,
     });
 
-    // 1× + 1,5× + 2× + 3× = 7,5× az egyszeri igényponthoz képest
-    expect(four.gp.claim).toBeGreaterThan(single.gp.claim * 6.5);
-    expect(four.gp.claim).toBeLessThan(single.gp.claim * 8.5);
+    /**
+     * Négy kör után a védelem 4-es, aminek a szorzója 3× — tehát a négyszer
+     * megfutott kör HÁROMSZOR annyi igénypontot ér, mint az egyszeri.
+     *
+     * Korábban 7,5× volt (1 + 1,5 + 2 + 3), mert körönként külön fizettünk.
+     * Ez tiszta körnél működött, egy valódi városi útvonalon viszont a
+     * hurkok erősen átfedik egymást, és ugyanaz a cella tízszer is fizetett:
+     * élesben 149 666 GP jött ki egy 11 km-es bringaútra.
+     *
+     * A mai szabály cellánként egyszer fizet, a VÉGSŐ védelmi szint szerint.
+     * A körbe-körbe futás jutalma megmarad, de felülről korlátos: 5× a
+     * legtöbb, amit egy cella érhet.
+     */
+    expect(four.gp.claim).toBeCloseTo(single.gp.claim * 3, 0);
   });
 
   it('a megszerzett terület nem duplázódik a körök számával', () => {

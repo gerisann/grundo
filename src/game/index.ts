@@ -71,7 +71,9 @@ export function processActivity(input: ProcessInput): ProcessResult {
     perLoop.push(result);
   }
 
-  const claim = perLoop.length > 0 ? mergeClaims(perLoop) : null;
+  // Az EREDETI birtokviszony kell a károsultak azonosításához.
+  const claim =
+    perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId) : null;
 
   const gp = computeActivityGp({
     type: input.type,

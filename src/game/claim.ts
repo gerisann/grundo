@@ -101,26 +101,87 @@ export function multiplierFor(defense: number): number {
  * másodikban pedig már a sajátod, akkor mindkét körben megkapja a maga
  * pontját — pontosan ezt írja le a 04. fejezet C) példája.
  */
-export function mergeClaims(results: readonly ClaimResult[]): ClaimResult {
+/**
+ * Több bezárás eredményének összefésülése — CELLÁNKÉNT EGYSZER.
+ *
+ * Ez a függvény korábban hurkonként ÖSSZEGEZTE a súlyozott területet. Tiszta,
+ * ismételt körnél ez helyes eredményt adott (minden kör külön hurok, alig
+ * fedik egymást), egy valódi városi útvonalon viszont a hurkok erősen
+ * átfedik egymást: ugyanaz a cella tíz-húsz hurok falában és belsejében is
+ * benne van, és mindannyiszor fizetett.
+ *
+ * Élesben ez 149 666 GP-t adott egy 11 km-es bringaútra — nagyjából
+ * hatvanötszörösét a valóságnak.
+ *
+ * Mostantól a végső állapotból számolunk: minden cella EGYSZER számít, azon a
+ * védelmi szinten, ahová az aktivitás végén került. A körbe-körbe futás
+ * jutalma megmarad — a védelem 5-ig nő, és az 5× szorzót hozza —, de a
+ * jutalom a védelmi szintből jön, nem a hurkok darabszámából. Így felülről
+ * korlátos, és el is magyarázható a felhasználónak.
+ */
+export function mergeClaims(
+  results: readonly ClaimResult[],
+  /** Az aktivitás ELŐTTI birtokviszony. */
+  before: OwnershipMap,
+  actorId: string,
+): ClaimResult {
   const updates = new Map<CellId, CellOwnership>();
   const fates = new Map<CellId, CellFate>();
+  const stolenFrom: Record<string, number> = {};
+
+  // A későbbi hurok felülírja a korábbit: a cella VÉGSŐ állapota számít.
+  for (const result of results) {
+    for (const [cell, ownership] of result.updates) updates.set(cell, ownership);
+  }
+
   const counts: Record<CellFate, number> = {
     free: 0, reclaimed: 0, stolen: 0, breakthrough: 0,
   };
-  const stolenFrom: Record<string, number> = {};
   let weightedClaimM2 = 0;
   let gainedM2 = 0;
 
-  for (const result of results) {
-    for (const [cell, ownership] of result.updates) updates.set(cell, ownership);
-    for (const [cell, fate] of result.fates) fates.set(cell, fate);
-    for (const key of Object.keys(counts) as CellFate[]) counts[key] += result.counts[key];
-    for (const [uid, count] of Object.entries(result.stolenFrom)) {
-      stolenFrom[uid] = (stolenFrom[uid] ?? 0) + count;
+  for (const [cell, after] of updates) {
+    const previousOwner = before.get(cell)?.owner;
+
+    /**
+     * A cella sorsát az ELŐTTE és UTÁNA állapotból határozzuk meg, nem abból,
+     * mi történt vele az utolsó hurokban.
+     *
+     * Miért? Mert egy négy körös futásnál a cella az első körben szabadként
+     * kerül hozzánk, a többiben pedig már „újrafoglalás" — a végső sors
+     * szerint tehát semmit nem szereztünk, pedig dehogynem. A kérdés nem az,
+     * mi történt utoljára, hanem hogy kié volt az aktivitás előtt és kié utána.
+     */
+    const fate: CellFate =
+      after.owner !== actorId
+        ? 'breakthrough'
+        : previousOwner === undefined
+          ? 'free'
+          : previousOwner === actorId
+            ? 'reclaimed'
+            : 'stolen';
+
+    fates.set(cell, fate);
+    counts[fate] += 1;
+
+    if (fate === 'breakthrough') {
+      // Nem a miénk: igénypont nem jár rá, de a károsult értesül róla.
+      if (previousOwner !== undefined) stolenFrom[previousOwner] ??= 0;
+      continue;
     }
-    weightedClaimM2 += result.weightedClaimM2;
-    gainedM2 += result.gainedM2;
+
+    // CELLÁNKÉNT EGYSZER, a végső védelmi szinten. Korábban hurkonként
+    // összegeztünk, és egy valódi útvonalon az erősen átfedő hurkok miatt
+    // ugyanaz a cella tízszer is fizetett — élesben 149 666 GP jött ki egy
+    // 11 km-es bringaútra.
+    weightedClaimM2 += multiplierFor(after.defense) * GAMEPLAY.CELL_AREA_M2;
+
+    if (fate === 'free' || fate === 'stolen') gainedM2 += GAMEPLAY.CELL_AREA_M2;
+    if (fate === 'stolen' && previousOwner !== undefined) {
+      stolenFrom[previousOwner] = (stolenFrom[previousOwner] ?? 0) + 1;
+    }
   }
 
   return { updates, fates, counts, stolenFrom, weightedClaimM2, gainedM2 };
 }
+

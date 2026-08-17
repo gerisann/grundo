@@ -135,10 +135,15 @@ export function TrackingScreen() {
    * még egyszer megerősítenie. Hiba esetén viszont KELL gomb — az újrapróbálás
    * az ő döntése, és a hálózat lehet, hogy csak egy perc múlva jön vissza.
    */
+  const uploadStatus = recorder.upload.status;
+  const uploadActivity = recorder.uploadActivity;
   useEffect(() => {
-    if (!done || recorder.upload.status !== 'idle' || !countsAsActivity) return;
-    void recorder.uploadActivity();
-  }, [done, countsAsActivity, recorder]);
+    if (!done || uploadStatus !== 'idle' || !countsAsActivity) return;
+    void uploadActivity();
+    // A `recorder` OBJEKTUM minden rendereléskor új, ezért ha attól függene, a
+    // hatás minden rendereléskor újrafutna — és a lassú mentés alatt kétszer is
+    // elindíthatta a feltöltést. Csak a ténylegesen használt két értéktől függ.
+  }, [done, countsAsActivity, uploadStatus, uploadActivity]);
 
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
