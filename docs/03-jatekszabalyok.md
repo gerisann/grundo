@@ -93,11 +93,17 @@ Ebből következik, amit kértél:
 - **Nyolcas alakú útvonal két területet ad**, mert a két hurok külön-külön detektálódik.
 - **Egy aktivitás alatt több bezárás is lehet** — ahányszor metszed magad, annyiszor.
 - **Menet közben, azonnal.** A bezárás nem a mentéskor derül ki: a kliens élőben mutatja a kitöltött területet és a becsült pontot. (A hiteles számítás mentés után, szerveroldalon fut újra.)
-- **A keskeny kör is kör.** Ha kimész az út egyik oldalán és visszajössz a másikon, a két nyomvonal szomszédos cellasorokban fut, tehát **nulla cellát zár közre** — a bezárás mégis érvényes, és a bejárt folyosó a tiéd lesz. A közrezárt terület mérete nem feltétel; a bezárás attól bezárás, hogy visszaértél.
+- **A bezáráshoz kihagyott mező kell.** Ha ugyanazon a nyomvonalon jössz vissza, az nem bezárás — és az sem, ha a visszaút a szomszédos cellasorban fut. Legalább **egy kihagyott mezőnek** kell lennie a két nyomvonal között; a gyakorlatban ez ~30 méteres hézag. Egy átlagos utca két járdája nem elég, egy háztömb megkerülése igen.
 
-  > Ez 2026-08-17-én változott. Korábban négy cellányi minimális belsőt követeltünk meg, és emiatt az ilyen kör **semmit nem ért**: az egész bezárást eldobtuk, a bejárt falakkal együtt. Szűk utcákban, sorházak között, parkoló mellett futva ez a leggyakoribb kör alakja — és pont az nem működött.
+  > **Ez a szabály oda-vissza járt.** Egy ideig elengedtük, hogy a keskeny kör is számítson — de kiderült, hogy kaput nyit. Ha ugyanazokon a cellákon térsz vissza, **minden cella újralátogatás**, és mindegyik saját beágyazott hurkot szül: egyetlen oda-vissza séta egy 250 méteres utcán **tizenhárom** hurkot generált, és a folyosót azonnal 5-ös védelemre vitte. Egy 6 km-es cikcakkal így be lehetett betonozni egy kis területet öt napra.
   >
-  > A GPS-remegésből eredő ál-hurkokat nem ez a küszöb szűrte, hanem a `MIN_LOOP_STEPS`: két látogatás között legalább hat cellát kell bejárni (~110 m). Álló helyzetben a fix pár méteres körben vándorol, ami ennyi cellát nem érint.
+  > A valódi körök ettől nem sérülnek: a négyzet alakú kör egy hurok, a négyszer megfutott kör négy — pontosan annyi, amennyi kell a védelem növeléséhez.
+
+- **Csak az számít, ami körön fekszik.** Két dolog esik ki: a **zsákutca** (kimész néhány mezőt és ugyanazon jössz vissza) és a **két területet összekötő folyosó** (átmész egy vonalon, majd ugyanazon vissza). A közös bennük, hogy egyik sem része egyetlen körnek sem — a bejárt mezők közül csak azok lesznek a tiéd, amelyeket megkerül egy kör.
+
+  > **Miért nem a szomszédok számából döntjük el?** Kézenfekvő lenne azt mondani, hogy „legalább három szomszéd kell" — de egy egy mező vastag gyűrűben minden mezőnek pontosan **kettő** van: az előző és a következő. Megmérve: egy 200 m-es kör 50 fal-mezőjéből **34-nek (68%)** csak két szomszédja van, egy 600 m-esnél 150-ből 104-nek. Ez a szabály tehát minden valódi kör kétharmadát törölné.
+  >
+  > Ezért a döntés nem a szomszédszám, hanem az, hogy a mező **körön fekszik-e**. A zsákutca és a folyosó élei „hidak": elvágva őket a bejárt hálózat szétesik. Egy körön fekvő él sosem híd, mert a kör másik fele megkerüli.
 
 ### 3. Flood fill — a bezárt belső megtalálása
 

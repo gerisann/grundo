@@ -11,7 +11,8 @@
 import { describe, expect, it } from 'vitest';
 import { GAMEPLAY } from '@/config/gameplay';
 import { cellsToM2, traceToCellPath } from './cells';
-import { detectLoops, floodFillInterior, loopCells } from './loops';
+import { detectLoops, floodFillInterior, loopCells, pruneDeadEnds } from './loops';
+import { processActivity } from './index';
 import {
   ORIGIN,
   buildTrace,
@@ -163,15 +164,20 @@ describe('floodFillInterior', () => {
   });
 });
 
-describe('keskeny kör — a bezárás nem a terület mérete', () => {
+describe('bezáráshoz kihagyott mező kell', () => {
   /**
-   * Kimész az út egyik oldalán, visszajössz a másikon.
+   * Két nyomvonal `gapM` méterre egymástól, oda-vissza.
    *
-   * A két nyomvonal szomszédos cellasorokban fut, tehát NULLA cellát zárnak
-   * közre. Korábban ezért az egész bezárást eldobtuk — a bejárt falakkal
-   * együtt —, és a felhasználó csak távolságpontot kapott.
+   * Ha a két sáv szomszédos cellasorokban fut, NINCS közte kihagyott mező —
+   * és akkor nem bezárás. Ez a szabály 2026-08-17-én került vissza, miután
+   * kiderült, hogy nélküle egyetlen oda-vissza séta ugyanazon az utcán
+   * TIZENHÁROM hurkot generál, és a folyosót azonnal 5-ös védelemre viszi.
+   *
+   * Az ok: ha ugyanazokon a cellákon jössz vissza, minden cella újralátogatás,
+   * és mindegyik saját beágyazott hurkot szül. Egy kihagyott mező megkövetelése
+   * ezt a kaszkádot tövében vágja el.
    */
-  function narrowLoop(lengthM = 300, gapM = 20): TracePoint[] {
+  function corridor(gapM: number, lengthM = 300): TracePoint[] {
     return buildTrace(
       [
         ORIGIN,
@@ -184,26 +190,201 @@ describe('keskeny kör — a bezárás nem a terület mérete', () => {
     );
   }
 
-  it('a keskeny kör is bezárás', () => {
-    const { path } = traceToCellPath(narrowLoop());
-    expect(detectLoops(path).length).toBeGreaterThan(0);
+  it('ugyanazon a nyomvonalon oda-vissza NEM bezárás', () => {
+    const { path } = traceToCellPath(
+      buildTrace([ORIGIN, offset(ORIGIN, 0, 300), ORIGIN], { stepM: 6 }),
+    );
+    expect(detectLoops(path)).toHaveLength(0);
   });
 
-  it('a bejárt folyosó a felhasználóé lesz', () => {
-    const { path } = traceToCellPath(narrowLoop());
-    const [loop] = detectLoops(path);
-    // A fal maga a jutalom: a közrezárt terület lehet nulla, a bejárt
-    // cellák viszont nem.
-    expect(loop!.wall.size).toBeGreaterThan(10);
+  it('szomszédos sávok (20 m) sem: nincs köztük kihagyott mező', () => {
+    const { path } = traceToCellPath(corridor(20));
+    expect(detectLoops(path)).toHaveLength(0);
+  });
+
+  it('egy kihagyott mezőnyi hézag (30 m) már bezárás', () => {
+    const { path } = traceToCellPath(corridor(30));
+    const loops = detectLoops(path);
+    expect(loops).toHaveLength(1);
+    expect(loops[0]!.interior.size).toBeGreaterThanOrEqual(GAMEPLAY.MIN_INTERIOR_CELLS);
   });
 
   it('álló helyzeti remegés NEM lesz bezárás', () => {
-    // Néhány méteres körben mozgó fix: kevesebb cella, mint MIN_LOOP_STEPS.
     const jitter = buildTrace(
       [ORIGIN, offset(ORIGIN, 4, 0), offset(ORIGIN, 0, 4), ORIGIN],
       { stepM: 2 },
     );
     const { path } = traceToCellPath(jitter);
     expect(detectLoops(path)).toHaveLength(0);
+  });
+});
+
+/**
+ * A három eset, ahogy a szabály a rajzon néz ki.
+ *
+ * ✗  szomszédos sorokon oda-vissza  → nincs bezárás, semmi nem lesz a tiéd
+ * ✓  egy kihagyott mezősor közte    → bezárás: a fal ÉS a belső a tiéd
+ * ✓  bezárás + utána kilógó érintés → a kilógó rész NEM számít
+ *
+ * Ez a felhasználó saját ábrája alapján készült, és azért él tesztként, mert a
+ * három eset együtt írja le a szabályt — külön-külön mindegyik félreérthető.
+ */
+describe('a bezárás szabálya három esetben', () => {
+  const A = ORIGIN;
+  const B = offset(ORIGIN, 0, 200);
+  const C = offset(ORIGIN, 200, 200);
+  const D = offset(ORIGIN, 200, 0);
+
+  const claimOf = (waypoints: { lat: number; lng: number }[]) => {
+    const points = buildTrace(waypoints, { stepM: 6 });
+    const { path } = traceToCellPath(points);
+    return {
+      walked: new Set(path),
+      loops: detectLoops(path),
+      claimed: processActivity({
+        points,
+        type: 'run',
+        distanceKm: 1,
+        actorId: 'u1',
+        ownership: new Map(),
+        streakDays: 0,
+        gpEarnedToday: 0,
+      }).claimedCells,
+    };
+  };
+
+  it('✗ szomszédos sorokon: nincs bezárás', () => {
+    const { loops, claimed } = claimOf([A, B, offset(ORIGIN, 20, 200), offset(ORIGIN, 20, 0), A]);
+    expect(loops).toHaveLength(0);
+    expect(claimed.size).toBe(0);
+  });
+
+  it('✓ egy kihagyott mezősorral: a fal és a belső is a tiéd', () => {
+    const { loops, claimed, walked } = claimOf([
+      A,
+      B,
+      offset(ORIGIN, 40, 200),
+      offset(ORIGIN, 40, 0),
+      A,
+    ]);
+    expect(loops).toHaveLength(1);
+    // Több mint amit bejártunk: a közrezárt belső is hozzájön.
+    expect(claimed.size).toBeGreaterThan(walked.size);
+  });
+
+  it('✓ a bezárás UTÁNI kilógó érintés nem számít területnek', () => {
+    const clean = claimOf([A, B, C, D, A]);
+    const withSpur = claimOf([A, B, C, D, A, offset(ORIGIN, 240, -40), A]);
+
+    // A kiszögellés bejárt mezőket ad, megszerzettet nem.
+    expect(withSpur.walked.size).toBeGreaterThan(clean.walked.size);
+    expect(withSpur.claimed.size).toBe(clean.claimed.size);
+  });
+});
+
+describe('zsákutca-metszés', () => {
+  const A = ORIGIN;
+  const B = offset(ORIGIN, 0, 200);
+  const C = offset(ORIGIN, 200, 200);
+  const D = offset(ORIGIN, 200, 0);
+
+  const claimedCount = (waypoints: { lat: number; lng: number }[]) => {
+    const points = buildTrace(waypoints, { stepM: 6 });
+    return processActivity({
+      points,
+      type: 'run',
+      distanceKm: 1,
+      actorId: 'u1',
+      ownership: new Map(),
+      streakDays: 0,
+      gpEarnedToday: 0,
+    }).claimedCells.size;
+  };
+
+  /**
+   * A szabály: amelyik cellának csak EGY szomszédja van a falban, az nem
+   * része a körnek — és mivel a hegy levágásával a mögötte lévő válik
+   * zsákutcává, addig ismételjük, amíg el nem fogynak.
+   *
+   * Enélkül a menet közbeni kitérők beleszámítottak a területbe, mert a fal
+   * a két találkozás között bejárt MINDEN cellát tartalmazta.
+   */
+  it('a menet közbeni kitérő nem ad területet', () => {
+    const clean = claimedCount([A, B, C, D, A]);
+    const withDetour = claimedCount([
+      A,
+      B,
+      offset(ORIGIN, 100, 200),
+      offset(ORIGIN, 100, 260),
+      offset(ORIGIN, 100, 200),
+      C,
+      D,
+      A,
+    ]);
+    expect(withDetour).toBe(clean);
+  });
+
+  it('a hosszabb kitérő sem — a metszés a hegyétől visszafelé halad', () => {
+    const clean = claimedCount([A, B, C, D, A]);
+    const withLongDetour = claimedCount([
+      A,
+      B,
+      offset(ORIGIN, 100, 200),
+      offset(ORIGIN, 100, 300),
+      offset(ORIGIN, 100, 200),
+      C,
+      D,
+      A,
+    ]);
+    expect(withLongDetour).toBe(clean);
+  });
+
+  it('a valódi kört nem érinti: ott minden cellának két szomszédja van', () => {
+    const { path } = traceToCellPath(buildTrace([A, B, C, D, A], { stepM: 6 }));
+    const [loop] = detectLoops(path);
+    expect(pruneDeadEnds(loop!.wall).size).toBe(loop!.wall.size);
+  });
+});
+
+describe('két területet összekötő folyosó', () => {
+  const p = (e: number, n: number) => offset(ORIGIN, e, n);
+
+  const claimed = (waypoints: { lat: number; lng: number }[], km: number) =>
+    processActivity({
+      points: buildTrace(waypoints, { stepM: 6 }),
+      type: 'run',
+      distanceKm: km,
+      actorId: 'u1',
+      ownership: new Map(),
+      streakDays: 0,
+      gpEarnedToday: 0,
+    }).claimedCells.size;
+
+  /**
+   * Két bezárt terület, közte egy vonal, amin oda is és vissza is átmentünk.
+   *
+   * A folyosó celláinak KÉT szomszédjuk van, tehát a zsákutca-szabály nem
+   * fogja meg őket — mégsem részei egyetlen körnek sem. A hídkeresés viszont
+   * igen: a folyosó minden éle híd, mert elvágva szétesik a gráf.
+   */
+  it('a folyosó nem ad területet: annyi lesz, mintha külön futottuk volna', () => {
+    const both = claimed(
+      [
+        p(0, 0), p(0, 200), p(200, 200), p(200, 0), p(0, 0),
+        p(500, 0),
+        p(500, 200), p(700, 200), p(700, 0), p(500, 0),
+        p(0, 0),
+      ],
+      2.6,
+    );
+
+    const left = claimed([p(0, 0), p(0, 200), p(200, 200), p(200, 0), p(0, 0)], 0.8);
+    const right = claimed([p(500, 0), p(500, 200), p(700, 200), p(700, 0), p(500, 0)], 0.8);
+
+    // A folyosó ~16 cellája kiesik; ami marad, az a két kör. A csatlakozási
+    // pontnál egyetlen cella még körön fekszik (háromszöget zár a gyűrűvel),
+    // ezért engedünk pár cellányi eltérést.
+    expect(both).toBeGreaterThanOrEqual(left + right);
+    expect(both).toBeLessThan(left + right + 5);
   });
 });

@@ -27,6 +27,116 @@ export class LoopTooLargeError extends Error {
  * Az ismételt kör (körbe-körbe futás) újra detektálódik — ez szándékos:
  * pontosan ez adja a védelemnövelést és a 2–5× pontszorzót.
  */
+/**
+ * A falból CSAK a körökön fekvő mezők maradnak.
+ *
+ * A fal a két találkozás között bejárt cellák halmaza — kitérőkkel és
+ * összekötő szakaszokkal együtt. Kétféle mező kerül bele feleslegesen:
+ *
+ *   ZSÁKUTCA — kimész néhány mezőt és ugyanazon jössz vissza. Ezeknek csak
+ *   egy szomszédjuk van a falban, mint egy kinyúló ujjnak.
+ *
+ *   ÖSSZEKÖTŐ FOLYOSÓ — két bezárt terület között átmész egy vonalon, majd
+ *   ugyanazon jössz vissza. Ezeknek KÉT szomszédjuk van, tehát a zsákutca-
+ *   szabály nem fogja meg őket — mégsem részei egyetlen körnek sem.
+ *
+ * A közös bennük, hogy egyik sem fekszik körön. Gráfelméletben az ilyen élek
+ * a HIDAK: olyan él, amit elvágva a gráf szétesik. Egy körön fekvő él sosem
+ * híd, hiszen a kör másik fele megkerüli.
+ *
+ * Az eljárás tehát: megkeressük a hidakat, elvágjuk őket, és eldobjuk azokat
+ * a cellákat, amiknek ezután nem marad éle. Ez egy menetben elintézi mindkét
+ * esetet — a kinyúló ujjakat és az összekötő folyosókat is.
+ *
+ * A VALÓDI kört nem érinti: ott minden él körön fekszik, tehát egyik sem híd.
+ *
+ * A metszés a flood fill ELŐTT fut. Ha utána tennénk, egy befelé mutató
+ * kitérő cellái se falként, se belsőként nem szerepelnének — lyuk maradna a
+ * területben. Így viszont a levágott cellák a belsőhöz kerülnek, ami helyes.
+ */
+export function pruneDeadEnds(wall: ReadonlySet<CellId>): Set<CellId> {
+  const neighbours = new Map<CellId, CellId[]>();
+  for (const cell of wall) {
+    const list: CellId[] = [];
+    for (const near of gridDisk(cell, 1)) {
+      if (near !== cell && wall.has(near)) list.push(near);
+    }
+    neighbours.set(cell, list);
+  }
+
+  const bridges = findBridges(neighbours);
+  const kept = new Set<CellId>();
+
+  for (const [cell, list] of neighbours) {
+    // Marad, ha van legalább egy éle, ami NEM híd — azaz körön fekszik.
+    if (list.some((near) => !bridges.has(edgeKey(cell, near)))) kept.add(cell);
+  }
+
+  return kept;
+}
+
+function edgeKey(a: CellId, b: CellId): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/**
+ * Hídkeresés (Tarjan), ITERATÍVAN.
+ *
+ * Rekurzívan rövidebb lenne, de egy hosszú aktivitás fala több ezer cellából
+ * áll, és egy elnyúlt útvonalon a mélység is ennyi lehet — az pedig
+ * veremtúlcsordulás. A saját veremmel kezelt változat ettől mentes.
+ */
+function findBridges(neighbours: ReadonlyMap<CellId, readonly CellId[]>): Set<string> {
+  const bridges = new Set<string>();
+  const discovered = new Map<CellId, number>();
+  const lowest = new Map<CellId, number>();
+  let time = 0;
+
+  for (const root of neighbours.keys()) {
+    if (discovered.has(root)) continue;
+
+    // [cella, szülő, hányadik szomszédnál tartunk]
+    const stack: [CellId, CellId | null, number][] = [[root, null, 0]];
+    discovered.set(root, time);
+    lowest.set(root, time);
+    time += 1;
+
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!;
+      const [cell, parent, index] = frame;
+      const list = neighbours.get(cell) ?? [];
+
+      if (index < list.length) {
+        frame[2] += 1;
+        const near = list[index]!;
+        if (near === parent) continue;
+
+        if (discovered.has(near)) {
+          // Visszaél: a mélyebb pont ennél nem lehet magasabb.
+          lowest.set(cell, Math.min(lowest.get(cell)!, discovered.get(near)!));
+        } else {
+          discovered.set(near, time);
+          lowest.set(near, time);
+          time += 1;
+          stack.push([near, cell, 0]);
+        }
+        continue;
+      }
+
+      stack.pop();
+      if (parent !== null) {
+        lowest.set(parent, Math.min(lowest.get(parent)!, lowest.get(cell)!));
+        // Ha a részfából nem vezet vissza él a szülő fölé, az él HÍD.
+        if (lowest.get(cell)! > discovered.get(parent)!) {
+          bridges.add(edgeKey(parent, cell));
+        }
+      }
+    }
+  }
+
+  return bridges;
+}
+
 export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
   const loops: DetectedLoop[] = [];
   const lastSeenAt = new Map<CellId, number>();
@@ -36,7 +146,9 @@ export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
     const previous = lastSeenAt.get(cell);
 
     if (previous !== undefined && i - previous >= GAMEPLAY.MIN_LOOP_STEPS) {
-      const wall = new Set(path.slice(previous, i + 1));
+      // A zsákutcákat a bezárás ELŐTT vágjuk le: ami csak egy szomszéddal
+      // érintkezik, az nem része a körnek. Lásd `pruneDeadEnds`.
+      const wall = pruneDeadEnds(new Set(path.slice(previous, i + 1)));
       let interior: Set<CellId>;
       try {
         interior = floodFillInterior(wall);

@@ -28,18 +28,21 @@ export const GAMEPLAY = {
 
   // ── Bezárás ─────────────────────────────────────────────────────────────
   /**
-   * A közrezárt terület mérete NEM feltétel.
+   * A bezáráshoz LEGALÁBB EGY kihagyott mező kell a két nyomvonal között.
    *
-   * Korábban négy cellát követeltünk meg, és emiatt a keskeny kör — kimész az
-   * út egyik oldalán, visszajössz a másikon — semmit nem ért: a két szomszédos
-   * sor közt nulla cella van, tehát az egész bezárást eldobtuk, a bejárt
-   * falakkal együtt. Pedig az is kör: a felhasználó visszaért oda, ahonnan
-   * indult, és a bejárt folyosó jár neki.
+   * Egy ideig nulla volt, hogy a keskeny kör is számítson — de kiderült, hogy
+   * ez kaput nyit: ha ugyanazokon a cellákon jössz vissza, MINDEN cella
+   * újralátogatás, és mindegyik saját beágyazott hurkot szül. Egyetlen
+   * oda-vissza séta egy 250 méteres utcán így TIZENHÁROM hurkot generált, és
+   * a folyosót azonnal 5-ös védelemre vitte. Az egy kihagyott mező
+   * megkövetelése ezt a kaszkádot tövében vágja el.
    *
-   * A GPS-remegésből eredő ál-hurkokat nem ez szűri, hanem a `MIN_LOOP_STEPS`:
-   * egy helyben állva nem lehet hat különböző cellát bejárni és visszatérni.
+   * A gyakorlatban ez ~30 méteres hézagot jelent a két nyomvonal között: egy
+   * átlagos utca két járdája NEM elég, egy háztömb megkerülése igen.
+   *
+   * A GPS-remegésből eredő ál-hurkokat emellett a `MIN_LOOP_STEPS` szűri.
    */
-  MIN_INTERIOR_CELLS: 0,
+  MIN_INTERIOR_CELLS: 1,
   /**
    * Ennyi cellát kell bejárni két látogatás között, hogy bezárásnak számítson.
    *
