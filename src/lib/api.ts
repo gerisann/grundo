@@ -162,16 +162,37 @@ export interface UploadActivityInput {
   movingMs: number;
 }
 
+export type FeedScope = 'mine' | 'world' | 'local' | 'following';
+
 export interface FeedActivity {
   id: string;
   type: 'run' | 'walk' | 'ride';
   layer: 'foot' | 'bike';
   startedAt: number;
-  endedAt: number;
   distanceM: number;
   movingS: number;
   areaGainedM2: number;
   gp: number;
+  /** A nyomvonal közepe — a helyi szűréshez és a térképhez. */
+  center: { lat: number; lng: number } | null;
+  author: { username: string; photoURL: string | null };
+}
+
+export interface FeedResult {
+  activities: FeedActivity[];
+  /** Ha 'following', a követés még nem elérhető — nincs követési gráf. */
+  unavailable?: 'following';
+  /** A helyi nézet a vizsgált halmaz végéig ért — lehet, hogy van még. */
+  truncated?: boolean;
+}
+
+export interface FeedQuery {
+  scope: FeedScope;
+  limit?: number;
+  /** Csak a `local` nézethez. */
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
 }
 
 export interface TerritoryResult {
@@ -225,9 +246,19 @@ export const api = {
       { method: 'POST', body: JSON.stringify(input) },
     ),
 
-  /** A saját aktivitásaim, legfrissebb elöl. */
-  activities: (limit = 20) =>
-    request<{ activities: FeedActivity[] }>(`/api/activities?limit=${limit}`),
+  /** A feed — nézet szerint szűrve. */
+  activities: (query: FeedQuery) => {
+    const params = new URLSearchParams({
+      scope: query.scope,
+      limit: String(query.limit ?? 20),
+    });
+    if (query.scope === 'local') {
+      params.set('lat', String(query.lat ?? 0));
+      params.set('lng', String(query.lng ?? 0));
+      params.set('radiusKm', String(query.radiusKm ?? 10));
+    }
+    return request<FeedResult>(`/api/activities?${params.toString()}`);
+  },
 
   /** A saját területem cellái, érvényes védelmi szinttel. */
   territory: (layer: 'foot' | 'bike' = 'foot') =>

@@ -227,44 +227,144 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
 });
 
 /**
- * GET /api/activities — a saját aktivitásaim, legfrissebb elöl.
+ * GET /api/activities — a feed.
  *
- * A feed egyelőre CSAK a sajátod. A követés és a lokális feed külön adat-
- * szerkezetet igényel (kit követsz, mely aktivitások láthatók) — az F2 dolga.
+ * Nézetek (`scope`):
+ *   mine      — a sajátjaim
+ *   world     — mindenki, időrendben
+ *   local     — mindenki, de csak a közelben (lat/lng/radiusKm kell hozzá)
+ *   following — akiket követek
+ *
+ * A KÖVETÉS még nem működik: nincs követési gráf az adatbázisban. A végpont
+ * ezt őszintén megmondja (`unavailable: 'following'`), hogy a felület ne úgy
+ * tegyen, mintha csak épp nem követnél senkit.
+ *
+ * A HELYI nézet földrajzi szűrése ITT történik, nem a lekérdezésben: a
+ * Firestore nem tud „adott ponttól x km-en belül" kérdést. A rendes megoldás
+ * geohash-tartományok lennének; addig a friss aktivitásokat kérjük le, és
+ * távolság szerint szűrünk.
+ *
+ * MIKOR KELL CSERÉLNI? Amikor a napi aktivitások száma meghaladja a
+ * `LOCAL_SCAN_LIMIT`-et — onnantól egy távoli város aktivitásai kiszoríthatják
+ * a közelieket a vizsgált halmazból, és a helyi feed hiányosan töltődne.
  */
+const LOCAL_SCAN_LIMIT = 300;
+
+type Scope = 'mine' | 'world' | 'local' | 'following';
+
 activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
   try {
+    const scope = parseScope(req.query.scope);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-    const snapshot = await db
-      .collection(COLLECTIONS.activities)
-      .where('userId', '==', req.uid!)
-      .orderBy('startedAt', 'desc')
-      .limit(limit)
-      .get();
 
-    res.json({
-      activities: snapshot.docs.map((doc) => {
-        const data = doc.data() as Record<string, unknown>;
-        return {
-          id: doc.id,
-          type: data.type,
-          layer: data.layer,
-          // A Firestore Timestampet ezredmásodpercre fordítjuk: a kliens így
-          // közvetlenül Date-té alakíthatja, kerülő nélkül.
-          startedAt: toMillis(data.startedAt),
-          endedAt: toMillis(data.endedAt),
-          distanceM: data.distanceM ?? 0,
-          movingS: data.movingS ?? 0,
-          areaGainedM2: data.areaGainedM2 ?? 0,
-          gp: (data.gp as { total?: number } | undefined)?.total ?? 0,
-          bounds: data.bounds ?? null,
-        };
-      }),
-    });
+    if (scope === 'following') {
+      return res.json({ activities: [], unavailable: 'following' });
+    }
+
+    const collection = db.collection(COLLECTIONS.activities);
+
+    const query =
+      scope === 'mine'
+        ? collection.where('userId', '==', req.uid!).orderBy('startedAt', 'desc').limit(limit)
+        : collection
+            .where('visibility', '==', 'everyone')
+            .orderBy('startedAt', 'desc')
+            .limit(scope === 'local' ? LOCAL_SCAN_LIMIT : limit);
+
+    const snapshot = await query.get();
+    let rows = snapshot.docs.map((doc) => toFeedRow(doc.id, doc.data() as Record<string, unknown>));
+
+    let truncated = false;
+    if (scope === 'local') {
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const radiusKm = Math.min(200, Math.max(1, Number(req.query.radiusKm) || 10));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        throw badRequest('missing_position', 'A helyi nézethez meg kell adni a pozíciót.');
+      }
+      rows = rows
+        .filter((row) => row.center !== null && distanceM({ lat, lng }, row.center) <= radiusKm * 1000)
+        .slice(0, limit);
+      truncated = snapshot.size >= LOCAL_SCAN_LIMIT;
+    }
+
+    res.json({ activities: await withAuthors(rows), truncated });
   } catch (error) {
     next(error);
   }
 });
+
+function parseScope(raw: unknown): Scope {
+  const value = String(raw ?? 'mine');
+  if (value === 'mine' || value === 'world' || value === 'local' || value === 'following') {
+    return value;
+  }
+  throw badRequest('invalid_scope', 'Ismeretlen nézet.');
+}
+
+interface FeedRow {
+  id: string;
+  userId: string;
+  type: unknown;
+  layer: unknown;
+  startedAt: number;
+  distanceM: number;
+  movingS: number;
+  areaGainedM2: number;
+  gp: number;
+  /** A nyomvonal közepe — a helyi szűréshez és a térképhez. */
+  center: { lat: number; lng: number } | null;
+}
+
+function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
+  const bounds = data.bounds as
+    | { north: number; south: number; east: number; west: number }
+    | undefined;
+  return {
+    id,
+    userId: String(data.userId ?? ''),
+    type: data.type,
+    layer: data.layer,
+    startedAt: toMillis(data.startedAt),
+    distanceM: Number(data.distanceM ?? 0),
+    movingS: Number(data.movingS ?? 0),
+    areaGainedM2: Number(data.areaGainedM2 ?? 0),
+    gp: (data.gp as { total?: number } | undefined)?.total ?? 0,
+    center: bounds
+      ? { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 }
+      : null,
+  };
+}
+
+/**
+ * A szerzők nevének hozzáfűzése.
+ *
+ * Az aktivitás csak `userId`-t tárol. Név nélkül a globális feed névtelen
+ * sorok listája lenne, ami használhatatlan. A neveket kötegelve olvassuk, és
+ * csak az EGYEDI szerzőkre — húsz aktivitás jellemzően néhány embertől van.
+ */
+async function withAuthors(rows: FeedRow[]) {
+  const ids = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
+  const authors = new Map<string, { username: string; photoURL: string | null }>();
+
+  if (ids.length > 0) {
+    const refs = ids.map((id) => db.collection(COLLECTIONS.users).doc(id));
+    for (const snapshot of await db.getAll(...refs)) {
+      if (!snapshot.exists) continue;
+      const data = snapshot.data() as { username?: string; photoURL?: string | null };
+      authors.set(snapshot.id, {
+        username: data.username ?? 'ismeretlen',
+        photoURL: data.photoURL ?? null,
+      });
+    }
+  }
+
+  return rows.map(({ userId, center, ...rest }) => ({
+    ...rest,
+    center,
+    author: authors.get(userId) ?? { username: 'ismeretlen', photoURL: null },
+  }));
+}
 
 /** GET /api/activities/:id/track — a teljes nyomvonal, csak a tulajdonosnak. */
 activitiesRouter.get('/:id/track', async (req: AuthedRequest, res, next) => {
