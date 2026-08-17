@@ -13,8 +13,11 @@ import { GAMEPLAY } from '@/config/gameplay';
 import { cellsToM2, traceToCellPath } from './cells';
 import { detectLoops, floodFillInterior, loopCells } from './loops';
 import {
+  ORIGIN,
+  buildTrace,
   figureEight,
   gpsGap,
+  offset,
   hugeBBox,
   multiLap,
   openRoute,
@@ -22,6 +25,7 @@ import {
   simpleLoop,
 } from './fixtures';
 import { gridDisk } from 'h3-js';
+import type { TracePoint } from '@/types';
 
 /** Összefüggő-e a cellalánc? (minden szomszédos pár élszomszéd) */
 function isContiguous(path: readonly string[]): boolean {
@@ -156,5 +160,50 @@ describe('floodFillInterior', () => {
     const [loop] = detectLoops(path);
     const shared = [...loop!.interior].filter((c) => loop!.wall.has(c));
     expect(shared).toHaveLength(0);
+  });
+});
+
+describe('keskeny kör — a bezárás nem a terület mérete', () => {
+  /**
+   * Kimész az út egyik oldalán, visszajössz a másikon.
+   *
+   * A két nyomvonal szomszédos cellasorokban fut, tehát NULLA cellát zárnak
+   * közre. Korábban ezért az egész bezárást eldobtuk — a bejárt falakkal
+   * együtt —, és a felhasználó csak távolságpontot kapott.
+   */
+  function narrowLoop(lengthM = 300, gapM = 20): TracePoint[] {
+    return buildTrace(
+      [
+        ORIGIN,
+        offset(ORIGIN, 0, lengthM),
+        offset(ORIGIN, gapM, lengthM),
+        offset(ORIGIN, gapM, 0),
+        ORIGIN,
+      ],
+      { stepM: 6 },
+    );
+  }
+
+  it('a keskeny kör is bezárás', () => {
+    const { path } = traceToCellPath(narrowLoop());
+    expect(detectLoops(path).length).toBeGreaterThan(0);
+  });
+
+  it('a bejárt folyosó a felhasználóé lesz', () => {
+    const { path } = traceToCellPath(narrowLoop());
+    const [loop] = detectLoops(path);
+    // A fal maga a jutalom: a közrezárt terület lehet nulla, a bejárt
+    // cellák viszont nem.
+    expect(loop!.wall.size).toBeGreaterThan(10);
+  });
+
+  it('álló helyzeti remegés NEM lesz bezárás', () => {
+    // Néhány méteres körben mozgó fix: kevesebb cella, mint MIN_LOOP_STEPS.
+    const jitter = buildTrace(
+      [ORIGIN, offset(ORIGIN, 4, 0), offset(ORIGIN, 0, 4), ORIGIN],
+      { stepM: 2 },
+    );
+    const { path } = traceToCellPath(jitter);
+    expect(detectLoops(path)).toHaveLength(0);
   });
 });

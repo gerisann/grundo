@@ -93,6 +93,11 @@ Ebből következik, amit kértél:
 - **Nyolcas alakú útvonal két területet ad**, mert a két hurok külön-külön detektálódik.
 - **Egy aktivitás alatt több bezárás is lehet** — ahányszor metszed magad, annyiszor.
 - **Menet közben, azonnal.** A bezárás nem a mentéskor derül ki: a kliens élőben mutatja a kitöltött területet és a becsült pontot. (A hiteles számítás mentés után, szerveroldalon fut újra.)
+- **A keskeny kör is kör.** Ha kimész az út egyik oldalán és visszajössz a másikon, a két nyomvonal szomszédos cellasorokban fut, tehát **nulla cellát zár közre** — a bezárás mégis érvényes, és a bejárt folyosó a tiéd lesz. A közrezárt terület mérete nem feltétel; a bezárás attól bezárás, hogy visszaértél.
+
+  > Ez 2026-08-17-én változott. Korábban négy cellányi minimális belsőt követeltünk meg, és emiatt az ilyen kör **semmit nem ért**: az egész bezárást eldobtuk, a bejárt falakkal együtt. Szűk utcákban, sorházak között, parkoló mellett futva ez a leggyakoribb kör alakja — és pont az nem működött.
+  >
+  > A GPS-remegésből eredő ál-hurkokat nem ez a küszöb szűrte, hanem a `MIN_LOOP_STEPS`: két látogatás között legalább hat cellát kell bejárni (~110 m). Álló helyzetben a fix pár méteres körben vándorol, ami ennyi cellát nem érint.
 
 ### 3. Flood fill — a bezárt belső megtalálása
 

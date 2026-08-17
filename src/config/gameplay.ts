@@ -27,9 +27,25 @@ export const GAMEPLAY = {
   MAX_GRID_PATH_CELLS: 40,
 
   // ── Bezárás ─────────────────────────────────────────────────────────────
-  /** Ennyi cellánál kisebb belsőt nem fogadunk el (≈1 228 m²). */
-  MIN_INTERIOR_CELLS: 4,
-  /** GPS-remegésből eredő ál-hurkok kiszűrése. */
+  /**
+   * A közrezárt terület mérete NEM feltétel.
+   *
+   * Korábban négy cellát követeltünk meg, és emiatt a keskeny kör — kimész az
+   * út egyik oldalán, visszajössz a másikon — semmit nem ért: a két szomszédos
+   * sor közt nulla cella van, tehát az egész bezárást eldobtuk, a bejárt
+   * falakkal együtt. Pedig az is kör: a felhasználó visszaért oda, ahonnan
+   * indult, és a bejárt folyosó jár neki.
+   *
+   * A GPS-remegésből eredő ál-hurkokat nem ez szűri, hanem a `MIN_LOOP_STEPS`:
+   * egy helyben állva nem lehet hat különböző cellát bejárni és visszatérni.
+   */
+  MIN_INTERIOR_CELLS: 0,
+  /**
+   * Ennyi cellát kell bejárni két látogatás között, hogy bezárásnak számítson.
+   *
+   * EZ az ál-hurkok elleni védelem: hat res 12 cella ~110 méternyi út. Álló
+   * helyzetben a fix pár méteres körben vándorol, ami ennyi cellát nem érint.
+   */
   MIN_LOOP_STEPS: 6,
   /** Védőkorlát: efölött a hurkot elutasítjuk (≈150 km²) — repülő, vonat. */
   MAX_LOOP_BBOX_CELLS: 500_000,
