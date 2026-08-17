@@ -162,6 +162,27 @@ export interface UploadActivityInput {
   movingMs: number;
 }
 
+export interface FeedActivity {
+  id: string;
+  type: 'run' | 'walk' | 'ride';
+  layer: 'foot' | 'bike';
+  startedAt: number;
+  endedAt: number;
+  distanceM: number;
+  movingS: number;
+  areaGainedM2: number;
+  gp: number;
+}
+
+export interface TerritoryResult {
+  layer: 'foot' | 'bike';
+  cells: { cell: string; defense: number }[];
+  cellCount: number;
+  areaM2: number;
+  blockCount: number;
+  truncated?: boolean;
+}
+
 export interface OtpSendResult {
   sent?: boolean;
   alreadyVerified?: boolean;
@@ -203,6 +224,14 @@ export const api = {
       '/api/activities',
       { method: 'POST', body: JSON.stringify(input) },
     ),
+
+  /** A saját aktivitásaim, legfrissebb elöl. */
+  activities: (limit = 20) =>
+    request<{ activities: FeedActivity[] }>(`/api/activities?limit=${limit}`),
+
+  /** A saját területem cellái, érvényes védelmi szinttel. */
+  territory: (layer: 'foot' | 'bike' = 'foot') =>
+    request<TerritoryResult>(`/api/tiles/mine?layer=${layer}`),
 
   otpSend: () => request<OtpSendResult>('/api/auth/otp/send', { method: 'POST' }),
 

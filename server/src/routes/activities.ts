@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, notFound } from '../lib/errors';
-import { blocksFor, loadOwnership, readBlocks, writeOwnership } from '../lib/grid';
+import { blocksFor, gameDay, loadOwnership, readBlocks, writeOwnership } from '../lib/grid';
 import { processActivity } from '../../../src/game';
 import { layerOf } from '../../../src/game/cells';
 import { GAMEPLAY } from '../../../src/config/gameplay';
@@ -164,7 +164,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       const blocks = await readBlocks(tx, blockIds);
 
       if (claimUpdates.size > 0) {
-        writeOwnership(tx, layer, claimUpdates, blocks, now);
+        writeOwnership(tx, layer, claimUpdates, blocks, now, uid);
       }
 
       tx.set(activityRef, {
@@ -200,7 +200,8 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
 
       tx.set(
         db.collection(COLLECTIONS.gpLedger).doc(),
-        { userId: uid, activityId, gp: result.gp, createdAt: now },
+        // A mezőnevek az indexekhez igazodnak (`userId + at`, `userId + day`).
+        { userId: uid, activityId, gp: result.gp, at: now, day: gameDay(now) },
       );
 
       tx.set(
@@ -220,6 +221,46 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     });
 
     res.status(201).json({ activityId, summary });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/activities — a saját aktivitásaim, legfrissebb elöl.
+ *
+ * A feed egyelőre CSAK a sajátod. A követés és a lokális feed külön adat-
+ * szerkezetet igényel (kit követsz, mely aktivitások láthatók) — az F2 dolga.
+ */
+activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
+  try {
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const snapshot = await db
+      .collection(COLLECTIONS.activities)
+      .where('userId', '==', req.uid!)
+      .orderBy('startedAt', 'desc')
+      .limit(limit)
+      .get();
+
+    res.json({
+      activities: snapshot.docs.map((doc) => {
+        const data = doc.data() as Record<string, unknown>;
+        return {
+          id: doc.id,
+          type: data.type,
+          layer: data.layer,
+          // A Firestore Timestampet ezredmásodpercre fordítjuk: a kliens így
+          // közvetlenül Date-té alakíthatja, kerülő nélkül.
+          startedAt: toMillis(data.startedAt),
+          endedAt: toMillis(data.endedAt),
+          distanceM: data.distanceM ?? 0,
+          movingS: data.movingS ?? 0,
+          areaGainedM2: data.areaGainedM2 ?? 0,
+          gp: (data.gp as { total?: number } | undefined)?.total ?? 0,
+          bounds: data.bounds ?? null,
+        };
+      }),
+    });
   } catch (error) {
     next(error);
   }
@@ -295,6 +336,12 @@ function totalDistance(points: readonly TracePoint[]): number {
     sum += distanceM(points[i - 1]!, points[i]!);
   }
   return sum;
+}
+
+function toMillis(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  const stamp = value as { toMillis?: () => number } | undefined;
+  return typeof stamp?.toMillis === 'function' ? stamp.toMillis() : 0;
 }
 
 function boundsOf(points: readonly TracePoint[]) {

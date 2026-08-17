@@ -18,56 +18,21 @@
  * Részletes indoklás: docs/05-adatmodell.md → `grid/{h3res9}`
  */
 
-import { cellToParent } from 'h3-js';
 import type { CellId, CellOwnership, Layer, OwnershipMap } from '../../../src/types';
 import { db, COLLECTIONS } from './firebase';
+import {
+  blocksFor,
+  cellKey,
+  effectiveDefense,
+  gameDay,
+  type GridBlock,
+  type StoredCell,
+} from './gridMath';
 
-/** A blokk felbontása. NEM a cellák felbontása (az res 12). */
-const BLOCK_RESOLUTION = 9;
-
-/**
- * A cella kulcsa a blokkon belül: az index utolsó 6 karaktere.
- *
- * Miért nem a teljes index? Mert a szülő minden gyerekének ugyanaz az eleje,
- * és 343 cellánál a 15 karakteres kulcsok több kilobájtnyi ismétlést
- * jelentenének dokumentumonként. A teljes index sosem kell visszafejteni:
- * olvasáskor is, íráskor is a kezünkben van.
- */
-export function cellKey(cell: CellId): string {
-  return cell.slice(-6);
-}
-
-export function blockIdFor(layer: Layer, cell: CellId): string {
-  return `${layer}_${cellToParent(cell, BLOCK_RESOLUTION)}`;
-}
-
-/** Tárolt alak — rövid kulcsok, mert 343-szor ismétlődnek. */
-interface StoredCell {
-  /** owner — tulajdonos uid */
-  o: string;
-  /** defense — védelmi szint 1–5 */
-  d: number;
-}
-
-export interface GridBlock {
-  layer: Layer;
-  parent: string;
-  cells: Record<string, StoredCell>;
-  ownerCounts: Record<string, number>;
-  version: number;
-}
-
-/** Mely blokkokat érinti ez a cellahalmaz? */
-export function blocksFor(layer: Layer, cells: Iterable<CellId>): Map<string, CellId[]> {
-  const blocks = new Map<string, CellId[]>();
-  for (const cell of cells) {
-    const id = blockIdFor(layer, cell);
-    const list = blocks.get(id);
-    if (list) list.push(cell);
-    else blocks.set(id, [cell]);
-  }
-  return blocks;
-}
+// A tiszta logika a `gridMath`-ban él (tesztelhetőség miatt); innen is
+// elérhető, hogy a hívóknak ne kelljen két helyről importálniuk.
+export { blockIdFor, blocksFor, cellKey, effectiveDefense, gameDay } from './gridMath';
+export type { GridBlock } from './gridMath';
 
 /**
  * A cellák JELENLEGI tulajdonosa.
@@ -75,7 +40,11 @@ export function blocksFor(layer: Layer, cells: Iterable<CellId>): Map<string, Ce
  * A hiányzó cella nem hiba: az még senkié. A motor üres bejegyzést szabad
  * területként értelmez.
  */
-export async function loadOwnership(layer: Layer, cells: Iterable<CellId>): Promise<OwnershipMap> {
+export async function loadOwnership(
+  layer: Layer,
+  cells: Iterable<CellId>,
+  today = gameDay(new Date()),
+): Promise<OwnershipMap> {
   const blocks = blocksFor(layer, cells);
   const ownership: OwnershipMap = new Map();
   if (blocks.size === 0) return ownership;
@@ -88,7 +57,11 @@ export async function loadOwnership(layer: Layer, cells: Iterable<CellId>): Prom
     const block = snapshot.data() as GridBlock;
     for (const cell of blocks.get(snapshot.id) ?? []) {
       const stored = block.cells?.[cellKey(cell)];
-      if (stored) ownership.set(cell, { owner: stored.o, defense: stored.d });
+      // A motor az ÉRVÉNYES védelmet kapja, nem a tároltat — így a napi
+      // forduló magától érvényesül, a motor pedig mit sem tud róla.
+      if (stored) {
+        ownership.set(cell, { owner: stored.o, defense: effectiveDefense(stored, today) });
+      }
     }
   }
 
@@ -108,7 +81,9 @@ export function writeOwnership(
   updates: Map<CellId, CellOwnership>,
   existing: Map<string, GridBlock | null>,
   now: Date,
+  actorId: string,
 ): void {
+  const today = gameDay(now);
   const blocks = blocksFor(layer, updates.keys());
 
   for (const [blockId, cells] of blocks) {
@@ -132,8 +107,24 @@ export function writeOwnership(
       }
       ownerCounts[next.owner] = (ownerCounts[next.owner] ?? 0) + 1;
 
-      cellMap[key] = { o: next.owner, d: next.defense };
+      cellMap[key] = { o: next.owner, d: next.defense, u: today };
     }
+
+    /**
+     * Mutató a felhasználó blokkjairól.
+     *
+     * A Firestore nem tud térkép-KULCSOKRA keresni, tehát azt a kérdést, hogy
+     * „mely blokkokban van cellája ennek a felhasználónak", a rácsból nem
+     * lehet megválaszolni. Ezért vezetünk külön mutatót. Elavulhat (a
+     * felhasználó elveszítheti az összes celláját egy blokkban) — ezt
+     * olvasáskor szűrjük, nem törléssel, mert a törlés minden károsultnál
+     * további írásokat jelentene.
+     */
+    tx.set(
+      db.collection(COLLECTIONS.users).doc(actorId).collection('blocks').doc(blockId),
+      { layer, parent, updatedAt: now },
+      { merge: true },
+    );
 
     tx.set(
       db.collection(COLLECTIONS.grid).doc(blockId),

@@ -144,9 +144,15 @@ Az igény feldolgozása egyetlen atomi művelet cellablokkonként (lásd [05](05
 - **Cellánként** 1–5 közötti szint.
 - **Növelés:** saját cella ismételt bezárása → +1. Ugyanaz a kör négyszer megfutva = 4× védelem.
 - **Csökkentés:** sikeres idegen áttörés → −1.
-- **Napi visszaállás:** naponta egyszer minden cella védelme **1-re esik**.
+- **Napi elévülés:** minden cella védelme naponta **egy szintet veszít**, de **sosem esik 1 alá**. A tulajdonos nem változik az elévüléstől — a cella a tiéd marad, csak egyre könnyebb elvenni.
 
-> Ez tartja mozgásban a játékot: a védelem napi teljesítmény, nem tartós vagyon. Aki ma nem futott, annak a birodalma holnap ugyanolyan sebezhető, mint bárkié.
+> Ez tartja mozgásban a játékot, kímélet nélkül, de nem kegyetlenül. Egy 5-ös védelmű folt négy napig még ad valamit, tehát egy kihagyott nap nem nyitja ki az egész birodalmadat — de aki hetekig nem futott, annak a területe ugyanolyan sebezhető, mint bárkié.
+>
+> **Miért nem napi nullázás?** Mert az a napi megfelelést jutalmazná a rendszeres mozgás helyett: egyetlen kihagyott nap ugyanoda vezetne, mint egy kihagyott hónap.
+
+**Az elévülés OLVASÁSKOR számolódik, nincs mögötte ütemezett feladat.** A cellához odaírjuk a szerzés napját, és az érvényes védelem `max(1, szint − eltelt napok)`. Egy naponta futó „mindent visszaír" job több tízezer dokumentumot írna át azért, hogy egy számot csökkentsen — ráadásul félbeszakadhatna, amitől a rács fele elévülne, a másik fele nem.
+
+**A nap egyetlen, rögzített időzóna szerint** (`Europe/Budapest`) telik, nem a felhasználó helyi ideje szerint. Egy cellának nincs időzónája: ha a tulajdonos és a támadó két kontinensen van, a védelem attól függne, ki nézi — és utazással vagy órát állítva lehetne napot váltani. A **streak** és a napi célok maradnak helyi idő szerint, azok tényleg a felhasználó napjához tartoznak.
 
 A védelem a cellához tartozik, nem a felhasználóhoz. Gazdacsere után az új tulajdonosnál 1-es szinten indul.
 
