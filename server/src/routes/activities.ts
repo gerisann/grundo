@@ -127,10 +127,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     const userRef = db.collection(COLLECTIONS.users).doc(uid);
     const userSnap = await userRef.get();
     if (!userSnap.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
-    const user = userSnap.data() as {
-      streak?: { current?: number };
-      counters?: { activities?: number };
-    };
+    const user = userSnap.data() as { streak?: StoredStreak };
 
     const result = processActivity({
       points,
@@ -145,6 +142,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     });
 
     const now = new Date();
+    const nextStreak = advanceStreak(user.streak, gameDay(now));
     const claimUpdates = result.claim?.updates ?? new Map();
     const blockIds = [...blocksFor(layer, claimUpdates.keys()).keys()];
 
@@ -204,16 +202,31 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         { userId: uid, activityId, gp: result.gp, at: now, day: gameDay(now) },
       );
 
+      /**
+       * BEÁGYAZOTT OBJEKTUMOK, nem pontozott kulcsok.
+       *
+       * A `set(..., { merge: true })` a pontot NEM útvonalnak érti, hanem a
+       * mezőnév részének: a `{ 'territoryM2.foot': ... }` egy „territoryM2.foot"
+       * NEVŰ, felső szintű mezőt hoz létre, a beágyazott érték pedig érintetlen
+       * marad. (A pontot csak az `update()` kezeli útvonalként.)
+       *
+       * Ez a hiba élesben abban látszott, hogy a `gpTotal` nőtt, a terület
+       * viszont nulla maradt a profilon — és emiatt a ranglista is üres volt,
+       * hiszen az a `territoryM2.foot` szerint rendez.
+       */
       tx.set(
         userRef,
         {
           gpTotal: FieldValue.increment(result.gp.total),
           gpWeek: FieldValue.increment(result.gp.total),
           gpMonth: FieldValue.increment(result.gp.total),
-          [`territoryM2.${layer}`]: FieldValue.increment(result.areaGainedM2),
-          [`cellCount.${layer}`]: FieldValue.increment(result.claimedCells.size),
-          'counters.activities': FieldValue.increment(1),
-          [`counters.distanceKm.${type}`]: FieldValue.increment(serverDistanceM / 1000),
+          territoryM2: { [layer]: FieldValue.increment(result.areaGainedM2) },
+          cellCount: { [layer]: FieldValue.increment(result.claimedCells.size) },
+          counters: {
+            activities: FieldValue.increment(1),
+            distanceKm: { [type]: FieldValue.increment(serverDistanceM / 1000) },
+          },
+          streak: nextStreak,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
@@ -436,6 +449,38 @@ function totalDistance(points: readonly TracePoint[]): number {
     sum += distanceM(points[i - 1]!, points[i]!);
   }
   return sum;
+}
+
+interface StoredStreak {
+  current?: number;
+  longest?: number;
+  /** A legutóbbi aktív nap, játéknap-számként. */
+  lastActiveDay?: number;
+}
+
+/**
+ * A sorozat léptetése.
+ *
+ * Három eset van, és a különbség lényegi:
+ *   - ma már volt aktivitás  → a sorozat NEM nő. Aki naponta ötször fut, az
+ *     nem ötnapos sorozatot épít.
+ *   - tegnap volt az utolsó  → +1, ez a folytatás.
+ *   - régebben (vagy soha)   → újrakezdés 1-gyel.
+ *
+ * A `longest` sosem csökken: az elért csúcs megmarad akkor is, ha a sorozat
+ * megszakad — ez a felhasználó teljesítménye, nem az aktuális állapota.
+ */
+function advanceStreak(streak: StoredStreak | undefined, today: number) {
+  const current = streak?.current ?? 0;
+  const last = streak?.lastActiveDay;
+
+  const next = last === today ? Math.max(1, current) : last === today - 1 ? current + 1 : 1;
+
+  return {
+    current: next,
+    longest: Math.max(next, streak?.longest ?? 0),
+    lastActiveDay: today,
+  };
 }
 
 function toMillis(value: unknown): number {

@@ -163,14 +163,16 @@
   background: var(--border-default);
 }
 
+/* Öt érték: összecsukva egy sorban is elfér, mert mind rövid szám. */
 .track__stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--sp-2);
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--sp-1);
   margin-top: var(--sp-2);
 }
 
 /* Kinyitva 2×2, nagyobb számokkal — ezt a nézetet megállva nézi az ember. */
+/* Kinyitva 2x2 + 1: a legfontosabbak nagyobb helyet kapnak. */
 .track__panel--open .track__stats {
   grid-template-columns: repeat(2, 1fr);
   gap: var(--sp-3);
@@ -193,7 +195,7 @@
 
 .track__stat-value {
   display: block;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -207,8 +209,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 4px;
+  font-size: 10px;
   color: var(--text-secondary);
   margin-top: 2px;
 }

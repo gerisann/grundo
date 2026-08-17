@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cellToChildren } from 'h3-js';
+import type { HexRole } from '@/components/HexMap';
 import { LayerSwitch } from '@/components/ui';
 import { mapboxConfigured } from '@/lib/mapbox';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/lib/api';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea } from '@/lib/format';
+import { ROLE_COLOR } from '@/lib/hexColors';
 import type { Layer } from '@/types';
 import './territory.css';
 
@@ -226,10 +228,10 @@ export function TerritoryScreen() {
 
           {legendOpen ? (
             <div className="terr__legend-grid">
-              <Swatch className="terr__swatch--mine" label="A tiéd, védve" />
-              <Swatch className="terr__swatch--exposed" label="A tiéd, 1-es szinten" />
-              <Swatch className="terr__swatch--rival" label="Másé" />
-              <Swatch className="terr__swatch--free" label="Szabad" />
+              <Swatch role="interior" label="A tiéd, védve" />
+              <Swatch role="stolen" label="A tiéd, 1-es szinten" />
+              <Swatch role="rival" label="Másé" />
+              <Swatch role="free" label="Szabad" />
             </div>
           ) : null}
         </div>
@@ -271,10 +273,25 @@ export function TerritoryScreen() {
   );
 }
 
-function Swatch({ className, label }: { className: string; label: string }) {
+/**
+ * A jelmagyarázat mintája UGYANABBÓL a színtáblából dolgozik, mint a térkép.
+ *
+ * Korábban a kettő külön volt definiálva, és el is tért: a térkép borostyánnal
+ * rajzolta a saját, 1-es szintű területet, a magyarázat halványlilát mutatott.
+ */
+function Swatch({ role, label }: { role: HexRole; label: string }) {
+  const color = ROLE_COLOR[role];
   return (
     <span className="terr__legend-item">
-      <span className={`terr__swatch ${className}`} aria-hidden="true" />
+      <span
+        className="terr__swatch"
+        aria-hidden="true"
+        style={
+          role === 'free'
+            ? { borderColor: color, borderStyle: 'dashed', background: 'transparent' }
+            : { borderColor: color, background: color }
+        }
+      />
       {label}
     </span>
   );

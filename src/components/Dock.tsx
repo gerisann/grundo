@@ -40,7 +40,8 @@ export function Dock() {
     if (paused) return resume();
     if (done) return void discard();
     if (!onTrackingScreen) return navigate('/rogzites');
-    return void begin(state.type);
+    // A választott mozgásforma a rögzítőben él — lásd `pendingType`.
+    return void begin();
   }
 
   /**

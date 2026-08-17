@@ -54,7 +54,18 @@ export interface RecorderApi {
   /** Feltöltés — a szerver újraszámol mindent, és az ő eredménye a hiteles. */
   uploadActivity: () => Promise<void>;
 
-  begin: (type: ActivityType) => Promise<void>;
+  /**
+   * A KÖVETKEZŐ rögzítés mozgásformája.
+   *
+   * A rögzítőben él, nem a képernyőn: az indítógomb a dokkban van, tehát a
+   * választásnak el kell jutnia oda. Korábban a képernyő saját állapotában
+   * volt, amit a dokk nem látott — ezért indult minden rögzítés futásként,
+   * hiába választott a felhasználó bringát.
+   */
+  pendingType: ActivityType;
+  setPendingType: (type: ActivityType) => void;
+
+  begin: (type?: ActivityType) => Promise<void>;
   pause: () => void;
   resume: () => void;
   /** Új kör kezdése. */
@@ -82,6 +93,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   const [error, setError] = useState<TrackingError | null>(null);
   const [hasFix, setHasFix] = useState(false);
   const [resumable, setResumable] = useState<RecorderState | null>(null);
+  const [pendingType, setPendingType] = useState<ActivityType>('run');
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
@@ -168,13 +180,13 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   /* ── Műveletek ─────────────────────────────────────────────────── */
 
   const begin = useCallback(
-    async (type: ActivityType) => {
+    async (type?: ActivityType) => {
       setHasFix(false);
-      apply(() => startRecorder(createRecorder(type), Date.now()));
+      apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
       await acquireWakeLock();
       await attach();
     },
-    [acquireWakeLock, apply, attach],
+    [acquireWakeLock, apply, attach, pendingType],
   );
 
   const pause = useCallback(() => {
@@ -285,6 +297,8 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     supportsBackground: positionSource.supportsBackground,
     wakeLockActive,
     resumable,
+    pendingType,
+    setPendingType,
     upload,
     uploadActivity,
     begin,

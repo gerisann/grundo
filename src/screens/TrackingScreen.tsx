@@ -7,6 +7,7 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { traceToCellPath } from '@/game/cells';
 import {
+  currentSpeedMps,
   lapDistances,
   movingMs,
   paceSecPerKm,
@@ -42,18 +43,24 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const { state } = recorder;
   /**
-   * A legutóbbi mozgásformát megjegyezzük.
+   * A mozgásforma a RÖGZÍTŐBEN él, nem itt.
    *
-   * Aki bringázik, az jellemzően minden nap bringázik — neki minden indításnál
-   * átállítani a futásról fölösleges lépés, és könnyű elfelejteni.
+   * Az indítógomb a dokkban van, tehát a választásnak oda kell eljutnia. Amíg
+   * ez a képernyő saját állapota volt, a dokk nem látta — ezért indult minden
+   * rögzítés futásként.
+   *
+   * A legutóbbi választást megjegyezzük: aki bringázik, jellemzően minden nap
+   * bringázik, neki minden indításnál átállítani fölösleges lépés.
    */
-  const [type, setTypeState] = useState<ActivityType>(() => {
+  const { pendingType: type, setPendingType } = recorder;
+
+  useEffect(() => {
     const saved = readFlag(LAST_TYPE_KEY);
-    return ACTIVITY_TYPES.includes(saved as ActivityType) ? (saved as ActivityType) : 'run';
-  });
+    if (ACTIVITY_TYPES.includes(saved as ActivityType)) setPendingType(saved as ActivityType);
+  }, [setPendingType]);
 
   function setType(next: ActivityType) {
-    setTypeState(next);
+    setPendingType(next);
     writeFlag(LAST_TYPE_KEY, next);
   }
 
@@ -173,7 +180,7 @@ export function TrackingScreen() {
           <div className="track__note track__note--warn">
             <strong>Van egy félbehagyott rögzítésed.</strong>{' '}
             {recorder.resumable.points.length} pont,{' '}
-            {formatDistance(recorder.resumable.distanceM / 1000)}.
+            {formatDistance(recorder.resumable.distanceM)}.
             <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-3)' }}>
               <Button size="sm" onClick={() => void recorder.restore()}>
                 Folytatom
@@ -248,6 +255,7 @@ export function TrackingScreen() {
                  és a profilon számít. */
               cells={countsAsActivity ? cells.length : null}
               points={state.points.length}
+              speedMps={currentSpeedMps(state)}
               hasFix={recorder.hasFix}
             />
 
@@ -341,7 +349,7 @@ function LapList({ state }: { state: RecorderState }) {
                 <span className="track__lap-now">most</span>
               ) : null}
             </span>
-            <span className="track__lap-value">{formatDistance(meters / 1000)}</span>
+            <span className="track__lap-value">{formatDistance(meters)}</span>
           </div>
         ))}
       </div>
@@ -375,6 +383,7 @@ function StatsPanel({
   pace,
   cells,
   points,
+  speedMps,
   hasFix,
 }: {
   distanceM: number;
@@ -382,6 +391,7 @@ function StatsPanel({
   pace: number | null;
   cells: number | null;
   points: number;
+  speedMps: number | null;
   hasFix: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -393,6 +403,14 @@ function StatsPanel({
       label: 'tempó',
       value: pace === null ? '—' : formatPace(pace),
       icon: <PaceIcon />,
+    },
+    {
+      key: 'speed',
+      label: 'sebesség',
+      // km/h-ban, mert bringán a tempó (perc/km) használhatatlan, és a
+      // sebességet mindenki ebben érzi.
+      value: speedMps === null ? '—' : `${(speedMps * 3.6).toFixed(1)}`,
+      icon: <SpeedIcon />,
     },
     { key: 'cells', label: 'mező', value: cells === null ? '—' : String(cells), icon: <HexIcon /> },
     {
@@ -414,7 +432,7 @@ function StatsPanel({
       aria-expanded={expanded}
       aria-label={expanded ? 'Adatok összecsukása' : 'Adatok kinyitása'}
     >
-      <span className="track__distance">{formatDistance(distanceM / 1000)}</span>
+      <span className="track__distance">{formatDistance(distanceM)}</span>
 
       <div className="track__stats">
         {stats.map((stat) => (
@@ -520,7 +538,7 @@ function UploadPanel({ recorder }: { recorder: RecorderApi }) {
         </p>
         <div className="track__stats">
           <div className="track__stat">
-            <span className="track__stat-value">{formatDistance(summary.distanceM / 1000)}</span>
+            <span className="track__stat-value">{formatDistance(summary.distanceM)}</span>
             <span className="track__stat-label">táv</span>
           </div>
           <div className="track__stat">
@@ -541,4 +559,14 @@ function UploadPanel({ recorder }: { recorder: RecorderApi }) {
   }
 
   return null;
+}
+
+function SpeedIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M4 18a8 8 0 1 1 16 0" />
+      <path d="M12 18l4-5" />
+      <path d="M4 18h16" />
+    </svg>
+  );
 }

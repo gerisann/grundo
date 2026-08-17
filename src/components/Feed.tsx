@@ -291,7 +291,7 @@ function FeedRow({ item, showAuthor }: { item: FeedActivity; showAuthor: boolean
         </span>
         <span className="feed__meta">
           {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}
-          {formatRelativeDay(item.startedAt)} · {formatDistance(item.distanceM / 1000)} ·{' '}
+          {formatRelativeDay(item.startedAt)} · {formatDistance(item.distanceM)} ·{' '}
           {formatDuration(item.movingS)}
         </span>
       </span>

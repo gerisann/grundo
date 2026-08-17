@@ -218,6 +218,37 @@ export function paceSecPerKm(state: RecorderState, now: number): number | null {
   return seconds / (state.distanceM / 1000);
 }
 
+/**
+ * Az AKTUÁLIS sebesség m/s-ban — az utolsó néhány másodperc alapján.
+ *
+ * Nem a teljes átlag: a felhasználót az érdekli, most milyen gyorsan halad,
+ * nem az, hogy egy órája mennyi volt. Viszont nem is két pontból számoljuk —
+ * az a GPS zajától másodpercenként ugrálna, és olvashatatlan lenne.
+ *
+ * Tíz másodperces ablak a kompromisszum: elég hosszú a simításhoz, elég rövid
+ * ahhoz, hogy egy megállás pár másodperc alatt látszódjon.
+ */
+const SPEED_WINDOW_MS = 10_000;
+
+export function currentSpeedMps(state: RecorderState): number | null {
+  const points = state.points;
+  if (points.length < 2 || state.status !== 'recording') return null;
+
+  const last = points[points.length - 1]!;
+  let index = points.length - 1;
+  while (index > 0 && last.t - points[index - 1]!.t < SPEED_WINDOW_MS) index -= 1;
+
+  const first = points[index]!;
+  const seconds = (last.t - first.t) / 1000;
+  if (seconds <= 0) return null;
+
+  let meters = 0;
+  for (let i = index + 1; i < points.length; i += 1) {
+    meters += distanceM(points[i - 1]!, points[i]!);
+  }
+  return meters / seconds;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Belső segédek
    ═══════════════════════════════════════════════════════════════════ */

@@ -6,6 +6,7 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import type { HexRole } from './HexMap';
+import { ROLE_COLOR } from '@/lib/hexColors';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './mapview.css';
 
@@ -45,13 +46,6 @@ export interface MapViewProps {
 }
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
-const ROLE_COLOR: Record<HexRole, string> = {
-  trail: '#8b5cf6',
-  interior: '#7c3aed',
-  rival: '#ef4444',
-  stolen: '#f59e0b',
-  free: '#94a3b8',
-};
 
 /** A szabad cellák halványak: jelen vannak, de nem vonják el a figyelmet. */
 const ROLE_OPACITY: Partial<Record<HexRole, number>> = { free: 0.1 };

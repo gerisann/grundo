@@ -147,10 +147,6 @@
   border: 1px solid var(--border-default);
 }
 
-.terr__swatch--mine { background: var(--territory-own); border-color: var(--territory-own); }
-.terr__swatch--exposed { background: var(--territory-own-fill); border-color: var(--territory-own); }
-.terr__swatch--rival { background: var(--territory-rival-fill); border-color: var(--territory-rival); }
-.terr__swatch--free { background: transparent; border-style: dashed; }
 
 /* ── Ranglista ───────────────────────────────────────────────────── */
 
