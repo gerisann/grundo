@@ -296,18 +296,21 @@
 }
 
 .track__hint-text {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 800;
-  padding: 6px 14px;
+  letter-spacing: 0.01em;
+  padding: 9px 22px;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  backdrop-filter: blur(12px);
-  box-shadow: var(--shadow-card);
+  /* Tömör lila, fehér szöveggel: a félig áttetsző változat beleolvadt a
+     térképbe, és pont az veszett el belőle, amiért ott van. */
+  background: var(--accent);
+  color: var(--accent-on);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .track__hint-arrow {
-  width: 28px;
-  height: 40px;
+  width: 34px;
+  height: 46px;
   animation: track-hint-bob 1.6s ease-in-out infinite;
 }
 
@@ -323,4 +326,24 @@
   .track__hint-arrow {
     animation: none;
   }
+}
+
+.track__lap-now {
+  display: inline-block;
+  margin-left: var(--sp-2);
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.track__lap-toggle {
+  padding: var(--sp-3);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: blur(12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
 }

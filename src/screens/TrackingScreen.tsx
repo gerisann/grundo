@@ -4,9 +4,14 @@ import { HexMap } from '@/components/HexMap';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
-import { cellsToM2, traceToCellPath } from '@/game/cells';
-import { lapDistances, movingMs, paceSecPerKm } from '@/tracking/recorder';
-import { formatArea, formatDistance, formatDuration, formatPace } from '@/lib/format';
+import { traceToCellPath } from '@/game/cells';
+import {
+  lapDistances,
+  movingMs,
+  paceSecPerKm,
+  type RecorderState,
+} from '@/tracking/recorder';
+import { formatDistance, formatDuration, formatPace } from '@/lib/format';
 import type { ActivityType } from '@/types';
 import './tracking.css';
 
@@ -16,8 +21,10 @@ import './tracking.css';
  */
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
-const START_HINT_KEY = 'grundo.hint.start';
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
+const LAST_TYPE_KEY = 'grundo.lastActivityType';
+
+const ACTIVITY_TYPES: ActivityType[] = ['run', 'walk', 'ride'];
 
 /**
  * Rögzítés.
@@ -33,7 +40,21 @@ const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
 export function TrackingScreen() {
   const recorder = useRecorderContext();
   const { state } = recorder;
-  const [type, setType] = useState<ActivityType>('run');
+  /**
+   * A legutóbbi mozgásformát megjegyezzük.
+   *
+   * Aki bringázik, az jellemzően minden nap bringázik — neki minden indításnál
+   * átállítani a futásról fölösleges lépés, és könnyű elfelejteni.
+   */
+  const [type, setTypeState] = useState<ActivityType>(() => {
+    const saved = readFlag(LAST_TYPE_KEY);
+    return ACTIVITY_TYPES.includes(saved as ActivityType) ? (saved as ActivityType) : 'run';
+  });
+
+  function setType(next: ActivityType) {
+    setTypeState(next);
+    writeFlag(LAST_TYPE_KEY, next);
+  }
 
   // Az eltelt idő magától nem változik — az állapot csak mintaérkezéskor
   // frissül, márpedig állva percekig nem jön minta. Saját ütem kell hozzá.
@@ -90,16 +111,14 @@ export function TrackingScreen() {
   const mapPosition = lastPoint ?? preview;
 
   /**
-   * Az indítás helyét csak az ELSŐ alkalommal mutatjuk meg. A jelzést az első
-   * sikeres indítás oltja ki, nem a képernyő megnyitása: aki megnyitotta, de
-   * nem indított, legközelebb is segítségre szorul.
+   * TODO(F1, tesztelés után): a jelzés csak az ELSŐ indításig látszódjon.
+   *
+   * Amíg a felületet teszteljük, minden indításnál megjelenik, mert így
+   * ítélhető meg, elég feltűnő-e. Élesben elég lesz az elsőnél: a jelzést a
+   * `localStorage`-ba írt jelölővel lehet kioltani, ahogy a képernyő-
+   * figyelmeztetésnél is tesszük.
    */
-  const [showStartHint, setShowStartHint] = useState(() => readFlag(START_HINT_KEY) === null);
-  useEffect(() => {
-    if (state.status !== 'recording' || !showStartHint) return;
-    setShowStartHint(false);
-    writeFlag(START_HINT_KEY);
-  }, [state.status, showStartHint]);
+  const showStartHint = true;
 
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
@@ -230,24 +249,18 @@ export function TrackingScreen() {
                   <span className="track__stat-label">tempó</span>
                 </div>
                 <div className="track__stat">
+                  {/* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
+                      megfogható, a „11 666 m²" nem. A négyzetméter az
+                      összegzésben és a profilon számít. */}
                   <span className="track__stat-value">
-                    {countsAsActivity ? formatArea(cellsToM2(cells.length)) : '—'}
+                    {countsAsActivity ? cells.length : '—'}
                   </span>
-                  <span className="track__stat-label">érintett</span>
+                  <span className="track__stat-label">mező</span>
                 </div>
               </div>
             </div>
 
-            {state.laps.length > 1 ? (
-              <div className="track__laps">
-                {lapDistances(state).map((meters, index) => (
-                  <div className="track__lap" key={state.laps[index]!.at}>
-                    <span className="track__lap-index">{index + 1}. kör</span>
-                    <span className="track__lap-value">{formatDistance(meters / 1000)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+            {state.laps.length > 1 ? <LapList state={state} /> : null}
 
             {done && !countsAsActivity ? (
               <div className="track__note track__note--warn">
@@ -299,10 +312,57 @@ function readFlag(key: string): string | null {
   }
 }
 
-function writeFlag(key: string): void {
+function writeFlag(key: string, value = '1'): void {
   try {
-    localStorage.setItem(key, '1');
+    localStorage.setItem(key, value);
   } catch {
     /* nem baj */
   }
+}
+
+/**
+ * Körök: alapból csak az AKTUÁLIS és az ELŐZŐ.
+ *
+ * Egy órás futásnál húsz kör is lehet — kilistázva ellepné a képernyőt, és
+ * pont azt takarná el, amiért a felhasználó odanéz: a térképet és az élő
+ * adatokat. Futás közben az érdekes kérdés az, hogy „az előzőhöz képest
+ * hogy állok", nem az, hogy mi volt a negyedik körben. A teljes lista egy
+ * koppintással előhozható.
+ */
+function LapList({ state }: { state: RecorderState }) {
+  const [expanded, setExpanded] = useState(false);
+  const distances = lapDistances(state);
+
+  // Fordított sorrend: a legfrissebb kör legyen elöl.
+  const rows = distances
+    .map((meters, index) => ({ meters, index }))
+    .reverse();
+  const shown = expanded ? rows : rows.slice(0, 2);
+  const hidden = rows.length - shown.length;
+
+  return (
+    <div className="track__laps">
+      {shown.map(({ meters, index }) => (
+        <div className="track__lap" key={state.laps[index]!.at}>
+          <span className="track__lap-index">
+            {index + 1}. kör
+            {index === distances.length - 1 && state.status !== 'finished' ? (
+              <span className="track__lap-now">most</span>
+            ) : null}
+          </span>
+          <span className="track__lap-value">{formatDistance(meters / 1000)}</span>
+        </div>
+      ))}
+
+      {hidden > 0 || expanded ? (
+        <button
+          type="button"
+          className="track__lap-toggle"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? 'Kevesebb' : `Mind a ${rows.length} kör`}
+        </button>
+      ) : null}
+    </div>
+  );
 }
