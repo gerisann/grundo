@@ -36,11 +36,11 @@ export function LayerSwitch({ value, onChange }: LayerSwitchProps) {
       <span className="layersw__thumb" aria-hidden="true" />
       <span className="layersw__option">
         <FootIcon />
-        Gyalogos
+        Séta/Futás
       </span>
       <span className="layersw__option">
         <BikeIcon />
-        Bringás
+        Bringa
       </span>
     </button>
   );

@@ -170,8 +170,13 @@ export function TerritoryScreen() {
       </div>
 
       <div className="terr__overlay">
-        <header className="screen-header" style={{ justifyContent: 'space-between' }}>
-          <h1 className="screen-header__title">Terület</h1>
+        {/*
+          A fejléc pontosan ugyanazt a `screen-header` osztályt és belső
+          térközt használja, mint a Profil — így a ranglista- és a
+          beállítás-gomb ugyanoda esik fentről és jobbról is.
+        */}
+        <header className="screen-header terr__header" style={{ justifyContent: 'space-between' }}>
+          <h1 className="screen-header__title">Grund</h1>
           <button
             type="button"
             className="screen-header__back"
@@ -182,6 +187,8 @@ export function TerritoryScreen() {
             <TrophyIcon />
           </button>
         </header>
+
+        <div className="terr__content">
 
         <LayerSwitch value={layer} onChange={setLayer} />
 
@@ -213,6 +220,8 @@ export function TerritoryScreen() {
         ) : null}
 
         <div className="terr__legend-box">
+          {/* A kapcsoló csak a feliratot fogja körül, nem a teljes sávot: egy
+              összecsukott jelmagyarázat ne foglaljon el egy egész sort. */}
           <button
             type="button"
             className="terr__legend-toggle"
@@ -223,7 +232,7 @@ export function TerritoryScreen() {
             }}
           >
             Jelmagyarázat
-            <span className={`terr__chevron${legendOpen ? ' terr__chevron--up' : ''}`}>⌄</span>
+            <ChevronIcon up={legendOpen} />
           </button>
 
           {legendOpen ? (
@@ -264,10 +273,9 @@ export function TerritoryScreen() {
         {/* Ez viszont NEM bezárható: nem magyarázat, hanem a nézet állapota —
             enélkül a felhasználó szabadnak hinné, amiről nem kérdeztünk. */}
         {tiles?.partial ? (
-          <p className="terr__legend">
-            A háló most csak a nézet közepét fedi le — a széleken nem tudjuk, mi van.
-          </p>
+          <p className="terr__legend">Közelíts rá a térképre, hogy lásd a mezőket!</p>
         ) : null}
+        </div>
       </div>
     </div>
   );
@@ -384,4 +392,23 @@ function write(key: string, value: string): void {
   } catch {
     /* privát böngészés — a választás nem marad meg, de működik */
   }
+}
+
+function ChevronIcon({ up }: { up: boolean }) {
+  return (
+    <svg
+      className={`terr__chevron${up ? ' terr__chevron--up' : ''}`}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9.5 12 15l6-5.5" />
+    </svg>
+  );
 }

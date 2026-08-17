@@ -29,7 +29,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: calc(var(--safe-top) + var(--sp-2)) var(--sp-3) 0;
+  /* A vízszintes térköz a TARTALOMÉ, nem a fejlécé — az teljes szélességű,
+     hogy a gombja a Profiléval egy vonalba essen. */
+  padding: 0 0;
   padding-bottom: calc(
     var(--sp-6) + var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom)
   );
@@ -50,17 +52,34 @@
  * `position: absolute` — a pozicionált elemek pedig a normál folyamúak FÖLÉ
  * rajzolódnak. A fejléc így alájuk került, és a ranglista-gomb eltűnt.
  *
- * Az érintést átengedi a térképnek, csak a benne lévő gomb fogja meg.
+ * A belső térköz SZÁNDÉKOSAN ugyanaz, mint az alapértelmezett `.screen-header`
+ * esetén (`sp-4` jobbról, `safe-top + sp-4` fentről) — így a ranglista-gomb
+ * pontosan oda esik, ahová a Profil beállítás-gombja. Csak a bal oldal nagyobb,
+ * hogy a cím ne tapadjon a szélhez.
+ *
+ * Térkép fölött ül, ezért világos, elmosott háttere van, alul lekerekítve —
+ * ugyanaz a kártyaszerű megjelenés, mint az alatta lévő dobozoknál.
  */
 .terr .screen-header {
   pointer-events: none;
-  padding-left: 0;
-  padding-right: 0;
   flex: none;
+  padding-left: var(--sp-5);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .terr .screen-header > * {
   pointer-events: auto;
+}
+
+/* A fejléc alatti tartalom kap vízszintes térközt. */
+.terr__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
 }
 
 /* A kártyák áttetszők, hogy a térkép átlátsszon mögöttük. */
@@ -239,18 +258,20 @@
 
 /* ── Összecsukható jelmagyarázat ─────────────────────────────────── */
 
+/* Összecsukva csak a felirat magasságát foglalja. */
 .terr__legend-box {
+  align-self: flex-start;
   border-radius: var(--r-md);
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   backdrop-filter: blur(12px);
   overflow: hidden;
 }
 
+/* Csak a felirat körül fog, nem a teljes sáv szélességében. */
 .terr__legend-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
+  gap: var(--sp-2);
   padding: var(--sp-3);
   font-size: 14px;
   font-weight: 600;
@@ -258,8 +279,6 @@
 }
 
 .terr__chevron {
-  font-size: 18px;
-  line-height: 1;
   color: var(--text-secondary);
   transition: transform 180ms ease;
 }
