@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, notFound } from '../lib/errors';
 import { blocksFor, gameDay, loadOwnership, readBlocks, writeOwnership } from '../lib/grid';
+import { computeTrustScore } from '../trust/score';
 import { processActivity } from '../../../src/game';
 import { layerOf } from '../../../src/game/cells';
 import { GAMEPLAY } from '../../../src/config/gameplay';
@@ -128,7 +129,10 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     const userRef = db.collection(COLLECTIONS.users).doc(uid);
     const userSnap = await userRef.get();
     if (!userSnap.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
-    const user = userSnap.data() as { streak?: StoredStreak };
+    const user = userSnap.data() as {
+      streak?: StoredStreak;
+      trust?: { cleanActivities?: number; upheldReports?: number };
+    };
 
     const result = processActivity({
       points,
@@ -141,6 +145,32 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       // lágy plafon enélkül nem érvényesül.
       gpEarnedToday: 0,
     });
+
+    /**
+     * Trust Score — MIELŐTT bármit módosítana a birtokviszonyokon.
+     *
+     * A gyanús aktivitás nem tűnik el: elmentjük, megjelenik a profilban és a
+     * feedben, de a rácshoz és a pontokhoz nem nyúl, amíg nem validálódik.
+     * Nem büntetjük az ártatlant azzal, hogy letagadjuk a futását — de nem is
+     * engedjük, hogy egy hamisított nyom átrendezze a térképet.
+     *
+     * ⚠️ A PONTSZÁM ÉS A RÉSZJELEK NEM MENNEK KI A KLIENSNEK. Csak a verdikt
+     * és a felhasználónak szánt indoklás. Ha a szám látszana, visszafejthető
+     * és kijátszható lenne.
+     */
+    const trust = computeTrustScore({
+      points,
+      type,
+      distanceKm: serverDistanceM / 1000,
+      durationS: Math.max(1, (endedAt - startedAt) / 1000),
+      history: {
+        cleanActivities: user.trust?.cleanActivities ?? 0,
+        upheldReports: user.trust?.upheldReports ?? 0,
+      },
+      credibleReports: 0,
+      largeGaps: result.diagnostics.largeGaps,
+    });
+    const trusted = trust.verdict === 'trusted';
 
     const now = new Date();
     const nextStreak = advanceStreak(user.streak, gameDay(now));
@@ -156,6 +186,8 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       claimedCells: result.claimedCells.size,
       areaGainedM2: result.areaGainedM2,
       gp: result.gp.total,
+      trustVerdict: trust.verdict,
+      trustReasons: trust.reasons,
     };
 
     let duplicate = false;
@@ -184,7 +216,8 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
 
       const blocks = await readBlocks(tx, blockIds);
 
-      if (claimUpdates.size > 0) {
+      // A rácshoz CSAK hiteles aktivitás nyúlhat.
+      if (trusted && claimUpdates.size > 0) {
         writeOwnership(tx, layer, claimUpdates, blocks, now, uid);
       }
 
@@ -204,6 +237,11 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         summary,
         bounds: boundsOf(points),
         visibility: 'everyone',
+        // A verdikt és az indoklás MEHET a kliensre; a pontszám és a
+        // részjelek maradnak itt, a szerveren.
+        trustVerdict: trust.verdict,
+        trustReasons: trust.reasons,
+        trustScore: trust.score,
         createdAt: now,
       });
 
@@ -237,6 +275,14 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
        * viszont nulla maradt a profilon — és emiatt a ranglista is üres volt,
        * hiszen az a `territoryM2.foot` szerint rendez.
        */
+      /**
+       * A pontok és az összesítők is csak hiteles aktivitás után frissülnek.
+       *
+       * A `pending_review` aktivitás GP-je FÜGGŐBEN van — nem elveszett. Ha a
+       * validálás átengedi, akkor kerül jóváírásra.
+       */
+      if (!trusted) return;
+
       tx.set(
         userRef,
         {
@@ -250,6 +296,8 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
             distanceKm: { [type]: FieldValue.increment(serverDistanceM / 1000) },
           },
           streak: nextStreak,
+          // A tiszta aktivitások száma a történeti jel bemenete.
+          trust: { cleanActivities: FieldValue.increment(1) },
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
