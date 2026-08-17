@@ -101,21 +101,6 @@
   color: var(--text-primary);
 }
 
-.track__signal {
-  align-self: flex-start;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
-}
-
 .track__dot {
   width: 8px;
   height: 8px;
@@ -161,30 +146,75 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Koppintásra nyíló panel. Gomb, nem div: így billentyűzetről is működik. */
+.track__panel--tap {
+  width: 100%;
+  text-align: inherit;
+  cursor: pointer;
+  transition: padding 160ms ease;
+}
+
+.track__panel-grip {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: var(--sp-3) auto 0;
+  border-radius: 2px;
+  background: var(--border-default);
+}
+
 .track__stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--sp-2);
   margin-top: var(--sp-2);
+}
+
+/* Kinyitva 2×2, nagyobb számokkal — ezt a nézetet megállva nézi az ember. */
+.track__panel--open .track__stats {
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+.track__panel--open .track__distance {
+  font-size: 56px;
 }
 
 .track__stat {
   text-align: center;
 }
 
+.track__stat-icon {
+  display: block;
+  margin: 0 auto var(--sp-1);
+  color: var(--accent);
+}
+
 .track__stat-value {
   display: block;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
+.track__panel--open .track__stat-value {
+  font-size: 26px;
+}
+
 .track__stat-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   font-size: 11px;
   color: var(--text-secondary);
   margin-top: 2px;
+}
+
+.track__panel--open .track__stat-label {
+  font-size: 13px;
 }
 
 /* ── Szünet ──────────────────────────────────────────────────────── */
@@ -250,6 +280,25 @@
   background: var(--border-subtle);
   border-radius: var(--r-md);
   overflow: hidden;
+  /* Ne nőjön össze a szülő flexében: a doboz saját magassággal gazdálkodik. */
+  flex: none;
+}
+
+.track__lap-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/*
+ * Kinyitva LEGFELJEBB a képernyő 40%-át foglalja, azon belül görget.
+ * A magasságot viewport-arányban adjuk meg, nem képpontban: egy kis telefonon
+ * a 300 px fél képernyő, egy nagyon negyed.
+ */
+.track__lap-rows--scroll {
+  max-height: 40dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .track__lap {

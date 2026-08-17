@@ -150,7 +150,7 @@ export function TrackingScreen() {
         <div className="track__paused">
           <div className="track__paused-label">
             Szünet
-            <span className="track__paused-hint">A mérés áll. A lila gombbal folytathatod.</span>
+            <span className="track__paused-hint">A mérés áll. A PLAY gombbal folytathatod.</span>
           </div>
         </div>
       ) : null}
@@ -199,15 +199,6 @@ export function TrackingScreen() {
           </div>
         ) : null}
 
-        {running || paused ? (
-          <div className="track__signal">
-            <span
-              className={`track__dot ${recorder.hasFix ? 'track__dot--live' : 'track__dot--searching'}`}
-            />
-            {recorder.hasFix ? `${state.points.length} pont` : 'Jelet keresünk…'}
-          </div>
-        ) : null}
-
         {idle ? (
           <div className="track__panel">
             <p
@@ -235,30 +226,17 @@ export function TrackingScreen() {
           </div>
         ) : (
           <>
-            <div className="track__panel">
-              <span className="track__distance">{formatDistance(state.distanceM / 1000)}</span>
-              <div className="track__stats">
-                <div className="track__stat">
-                  <span className="track__stat-value">{formatDuration(elapsed)}</span>
-                  <span className="track__stat-label">idő</span>
-                </div>
-                <div className="track__stat">
-                  <span className="track__stat-value">
-                    {pace === null ? '—' : formatPace(pace)}
-                  </span>
-                  <span className="track__stat-label">tempó</span>
-                </div>
-                <div className="track__stat">
-                  {/* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
-                      megfogható, a „11 666 m²" nem. A négyzetméter az
-                      összegzésben és a profilon számít. */}
-                  <span className="track__stat-value">
-                    {countsAsActivity ? cells.length : '—'}
-                  </span>
-                  <span className="track__stat-label">mező</span>
-                </div>
-              </div>
-            </div>
+            <StatsPanel
+              distanceM={state.distanceM}
+              elapsed={elapsed}
+              pace={pace}
+              /* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
+                 megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
+                 és a profilon számít. */
+              cells={countsAsActivity ? cells.length : null}
+              points={state.points.length}
+              hasFix={recorder.hasFix}
+            />
 
             {state.laps.length > 1 ? <LapList state={state} /> : null}
 
@@ -342,17 +320,25 @@ function LapList({ state }: { state: RecorderState }) {
 
   return (
     <div className="track__laps">
-      {shown.map(({ meters, index }) => (
-        <div className="track__lap" key={state.laps[index]!.at}>
-          <span className="track__lap-index">
-            {index + 1}. kör
-            {index === distances.length - 1 && state.status !== 'finished' ? (
-              <span className="track__lap-now">most</span>
-            ) : null}
-          </span>
-          <span className="track__lap-value">{formatDistance(meters / 1000)}</span>
-        </div>
-      ))}
+      {/*
+        A sorok KÜLÖN, görgethető dobozban élnek, nem a kártyában közvetlenül.
+        Enélkül egy húszkörös futásnál a lista lelógott a képernyőről, és vele
+        együtt az összecsukó gomb is — vagyis a lenyitást nem lehetett
+        visszavonni.
+      */}
+      <div className={`track__lap-rows${expanded ? ' track__lap-rows--scroll' : ''}`}>
+        {shown.map(({ meters, index }) => (
+          <div className="track__lap" key={state.laps[index]!.at}>
+            <span className="track__lap-index">
+              {index + 1}. kör
+              {index === distances.length - 1 && state.status !== 'finished' ? (
+                <span className="track__lap-now">most</span>
+              ) : null}
+            </span>
+            <span className="track__lap-value">{formatDistance(meters / 1000)}</span>
+          </div>
+        ))}
+      </div>
 
       {hidden > 0 || expanded ? (
         <button
@@ -364,5 +350,128 @@ function LapList({ state }: { state: RecorderState }) {
         </button>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Az élő adatok panelje — koppintásra kinyílik.
+ *
+ * Összecsukva egy sor, négy értékkel: futás közben egy pillantásra ennyi
+ * fogyasztható. Kinyitva 2×2-es rács, nagyobb számokkal és ikonokkal — ez az
+ * a nézet, amit a felhasználó megáll megnézni, vagy amit kitesz a kormányra.
+ *
+ * TODO(F2): a kinyitott nézet lesz a helye a felhasználó által választott
+ * mérőszámoknak (pulzus, emelkedés, szakasztempó).
+ */
+function StatsPanel({
+  distanceM,
+  elapsed,
+  pace,
+  cells,
+  points,
+  hasFix,
+}: {
+  distanceM: number;
+  elapsed: number;
+  pace: number | null;
+  cells: number | null;
+  points: number;
+  hasFix: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const stats = [
+    { key: 'time', label: 'idő', value: formatDuration(elapsed), icon: <ClockIcon /> },
+    {
+      key: 'pace',
+      label: 'tempó',
+      value: pace === null ? '—' : formatPace(pace),
+      icon: <PaceIcon />,
+    },
+    { key: 'cells', label: 'mező', value: cells === null ? '—' : String(cells), icon: <HexIcon /> },
+    {
+      key: 'points',
+      label: 'pont',
+      value: String(points),
+      icon: <SignalIcon />,
+      // A jelállapot ide költözött a különálló chipről: ahol a pontszám van,
+      // ott a legbeszédesebb, hogy nő-e egyáltalán.
+      dot: hasFix ? 'live' : 'searching',
+    },
+  ] as const;
+
+  return (
+    <button
+      type="button"
+      className={`track__panel track__panel--tap${expanded ? ' track__panel--open' : ''}`}
+      onClick={() => setExpanded((value) => !value)}
+      aria-expanded={expanded}
+      aria-label={expanded ? 'Adatok összecsukása' : 'Adatok kinyitása'}
+    >
+      <span className="track__distance">{formatDistance(distanceM / 1000)}</span>
+
+      <div className="track__stats">
+        {stats.map((stat) => (
+          <div className="track__stat" key={stat.key}>
+            {expanded ? <span className="track__stat-icon">{stat.icon}</span> : null}
+            <span className="track__stat-value">{stat.value}</span>
+            <span className="track__stat-label">
+              {'dot' in stat ? <span className={`track__dot track__dot--${stat.dot}`} /> : null}
+              {stat.label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <span className="track__panel-grip" aria-hidden="true" />
+    </button>
+  );
+}
+
+/* Ikonok — inline SVG, hogy ne kelljen ikonkészletet behúzni. */
+
+const iconProps = {
+  width: 20,
+  height: 20,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+};
+
+function ClockIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 2M9 2h6" />
+    </svg>
+  );
+}
+
+function PaceIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 20a8 8 0 1 1 8-8" />
+      <path d="M12 13l4.5-4.5" />
+    </svg>
+  );
+}
+
+function HexIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 3l7.5 4.5v9L12 21l-7.5-4.5v-9z" />
+    </svg>
+  );
+}
+
+function SignalIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M7.5 7.5a6.5 6.5 0 0 0 0 9M16.5 7.5a6.5 6.5 0 0 1 0 9" />
+    </svg>
   );
 }
