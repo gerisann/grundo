@@ -123,6 +123,19 @@ export const GAMEPLAY = {
   DISTANCE_BADGE_LADDER_KM: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000],
 
   // ── Trust Score ─────────────────────────────────────────────────────────
+  /**
+   * MEGFIGYELŐ MÓD: a pontszám kiszámolódik és elmentődik, de nem blokkol.
+   *
+   * A heurisztika egyetlen valódi nyomvonalon sem futott még le. Ha élesben
+   * döntene, egy félreítélés úgy jelentkezne, hogy „nem kaptam meg a
+   * területet" — és semmi nem árulná el, hogy a Trust Score vette el.
+   *
+   * Ezért előbb mérünk: néhány valódi aktivitás pontszáma megmondja, hol
+   * húzódnak a valós határok. Élesítés: ez a kapcsoló `false`-ra.
+   *
+   * ⚠️ Idegeneket beengedni CSAK élesített módban szabad.
+   */
+  TRUST_OBSERVE_ONLY: true,
   TRUST_THRESHOLD_ACCEPT: 80,
   TRUST_THRESHOLD_REJECT: 50,
   TRUST_AUTO_APPROVE_MINUTES: 60,

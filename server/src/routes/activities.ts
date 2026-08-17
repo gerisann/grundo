@@ -170,7 +170,12 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       credibleReports: 0,
       largeGaps: result.diagnostics.largeGaps,
     });
-    const trusted = trust.verdict === 'trusted';
+    /**
+     * Megfigyelő módban a verdikt elmentődik, de nem blokkol — lásd
+     * `TRUST_OBSERVE_ONLY`. Így a heurisztikát valós adaton lehet kalibrálni
+     * anélkül, hogy közben ártatlan aktivitásokat nyelne el.
+     */
+    const trusted = GAMEPLAY.TRUST_OBSERVE_ONLY || trust.verdict === 'trusted';
 
     const now = new Date();
     const nextStreak = advanceStreak(user.streak, gameDay(now));
