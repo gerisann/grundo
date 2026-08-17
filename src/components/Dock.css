@@ -41,7 +41,7 @@
   place-items: center;
   width: 62px;
   height: 62px;
-  margin-top: -26px;
+  margin-top: calc(-1 * var(--dock-fab-overhang));
   border-radius: 50%;
   color: var(--accent-on);
   background: var(--accent);

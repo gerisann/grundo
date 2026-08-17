@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
+
+/**
+ * A Mapbox lustán töltődik: saját csomagja 521 kB tömörítve — hatszorosa a
+ * belépő csomagnak (88 kB) —, és csak ezen a képernyőn kell. Statikus
+ * importtal minden felhasználó fizetne érte a belépéskor is.
+ */
+const MapView = lazy(() =>
+  import('@/components/MapView').then((m) => ({ default: m.MapView })),
+);
 import { useRecorder } from '@/hooks/useRecorder';
 import { useRecordingLock } from '@/hooks/RecordingLock';
+import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { cellsToM2, traceToCellPath } from '@/game/cells';
 import { movingMs, paceSecPerKm } from '@/tracking/recorder';
@@ -66,6 +76,14 @@ export function TrackingScreen() {
    * szerzett valamit, holott az aktivitás a szabály szerint nem is számít.
    */
   const countsAsActivity = state.distanceM >= GAMEPLAY.MIN_DISTANCE_M;
+
+  /**
+   * A térkép jelölője a legutolsó elfogadott ponton áll.
+   *
+   * Nem a nyers GPS-fixen: azt a szűrő elutasíthatta pontatlanság miatt, és
+   * akkor a jelölő olyan helyre ugrana, ahol a felhasználó nem járt.
+   */
+  const lastPoint = state.points.length > 0 ? state.points[state.points.length - 1]! : null;
 
   // Rögzítés közben nincs dokk: az elnavigálás leállítaná a mérést.
   const { setLocked } = useRecordingLock();
@@ -162,12 +180,29 @@ export function TrackingScreen() {
               </div>
             </div>
 
-            {state.points.length > 1 ? (
+            {/*
+              Utcatérkép, ha van Mapbox-token; egyébként a token nélkül is
+              működő hexagon-nézet. Így egy hiányzó beállítás nem üres
+              képernyőt okoz, csak szegényesebbet.
+            */}
+            {mapboxConfigured ? (
+              <Suspense
+                fallback={<div className="track__note">Térkép betöltése…</div>}
+              >
+                <MapView
+                  layers={[{ role: 'trail', cells }]}
+                  track={state.points}
+                  position={lastPoint}
+                  follow={running}
+                  height={280}
+                />
+              </Suspense>
+            ) : state.points.length > 1 ? (
               <HexMap layers={[{ role: 'trail', cells }]} track={state.points} height={260} />
             ) : (
               <p className="track__note">
                 A nyomvonalad itt jelenik meg, amint elindulsz. Ez a hexagon-nézet — utcatérkép
-                még nincs benne.
+                csak beállított Mapbox-tokennel jelenik meg.
               </p>
             )}
 

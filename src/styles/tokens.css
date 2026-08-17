@@ -61,6 +61,9 @@
 
   /* ═══ Elrendezés ══════════════════════════════════════════════════ */
   --dock-height: 64px;
+  /** A középső gomb ennyivel lóg ki a dokk fölé — a fölötte lévő rögzített
+      sávoknak ennyivel feljebb kell kezdődniük, különben a gomb rájuk takar. */
+  --dock-fab-overhang: 26px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 

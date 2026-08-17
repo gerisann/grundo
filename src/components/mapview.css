@@ -1,0 +1,44 @@
+.mapview {
+  width: 100%;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--map-bg);
+}
+
+/* A jelenlegi pozíció: tömör pont, körülötte lüktető gyűrű. A gyűrű nem
+   pontosságot jelöl — csak azt, hogy a jel él. */
+.mapview__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--accent-on);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+  position: relative;
+}
+
+.mapview__dot::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0.5;
+  animation: mapview-ping 2s ease-out infinite;
+}
+
+@keyframes mapview-ping {
+  0% { transform: scale(0.6); opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapview__dot::after {
+    animation: none;
+  }
+}
+
+/* A Mapbox saját vezérlői a sötét témában is olvashatók maradjanak. */
+.mapview .mapboxgl-ctrl-attrib {
+  font-size: 10px;
+}

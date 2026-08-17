@@ -153,7 +153,11 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--dock-height) + env(safe-area-inset-bottom));
+  /* A dokk magassága ÉS a fölé kilógó középső gomb — enélkül a Play gomb
+     rátakar az Indítás gombra. */
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--sp-2) + env(safe-area-inset-bottom)
+  );
   z-index: 20;
   display: flex;
   gap: var(--sp-3);
