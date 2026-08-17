@@ -130,6 +130,8 @@ export interface Profile {
   gpTotal: number;
   gpWeek: number;
   territoryM2: { foot: number; bike: number };
+  /** Hány meződ van rétegenként — a profil összesítése, nem a látott szakaszé. */
+  cellCount: { foot: number; bike: number };
   zoneCount: { foot: number; bike: number };
   streak: { current: number; longest: number; weeks: number };
   counters: {

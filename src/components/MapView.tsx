@@ -6,7 +6,7 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import type { HexRole } from './HexMap';
-import { ROLE_COLOR } from '@/lib/hexColors';
+import { ROLE_COLOR, ROLE_FILL_OPACITY } from '@/lib/hexColors';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './mapview.css';
 
@@ -47,16 +47,6 @@ export interface MapViewProps {
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
 
-/**
- * A kitöltés átlátszósága.
- *
- * Szándékosan alacsony: a hatszögek a térkép FÖLÖTT ülnek, és ha eltakarják az
- * utcaneveket meg a tájékozódási pontokat, akkor pont azt veszik el, amiért a
- * térkép ott van. A birtokviszonyt a körvonal is elárulja — a kitöltés csak
- * megerősíti.
- */
-const FILL_OPACITY = 0.18;
-const ROLE_OPACITY: Partial<Record<HexRole, number>> = { free: 0.05 };
 
 const TRACK_SOURCE = 'grundo-track';
 const CELL_SOURCE = 'grundo-cells';
@@ -239,7 +229,7 @@ function addLayers(instance: mapboxgl.Map): void {
         // A szín a jellemzőből jön, hogy egyetlen réteg elég legyen minden
         // szerephez — különben szerepenként külön forrás és réteg kellene.
         'fill-color': ['get', 'color'],
-        'fill-opacity': ['coalesce', ['get', 'opacity'], FILL_OPACITY],
+        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.2],
       },
     });
     instance.addLayer({
@@ -277,7 +267,7 @@ function syncData(
           type: 'Feature' as const,
           properties: {
             color: ROLE_COLOR[layer.role],
-            opacity: ROLE_OPACITY[layer.role] ?? FILL_OPACITY,
+            opacity: ROLE_FILL_OPACITY[layer.role],
           },
           geometry: {
             type: 'Polygon' as const,

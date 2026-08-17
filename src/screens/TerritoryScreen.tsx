@@ -59,6 +59,13 @@ export function TerritoryScreen() {
   const viewRef = useRef<View | null>(null);
   const [zoom, setZoom] = useState(0);
   const [boardOpen, setBoardOpen] = useState(false);
+  /**
+   * Tiszta térkép nézet.
+   *
+   * A birtokviszony térbeli információ; néha egyszerűen látni akarod, mi hol
+   * van, ráolvasás nélkül. A fejléc marad, hogy legyen mivel visszakapcsolni.
+   */
+  const [overlayVisible, setOverlayVisible] = useState(true);
   // Alapból ZÁRVA: a jelmagyarázat egyszer hasznos, utána helyet foglal.
   const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) === 'open');
   const [helpOpen, setHelpOpen] = useState(() => read(HELP_KEY) !== 'closed');
@@ -178,17 +185,29 @@ export function TerritoryScreen() {
         */}
         <header className="screen-header terr__header" style={{ justifyContent: 'space-between' }}>
           <h1 className="screen-header__title">Grund</h1>
-          <button
-            type="button"
-            className="screen-header__back"
-            aria-label={boardOpen ? 'Vissza a térképhez' : 'Ranglista'}
-            aria-pressed={boardOpen}
-            onClick={() => setBoardOpen((open) => !open)}
-          >
-            <TrophyIcon />
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+            <button
+              type="button"
+              className="screen-header__back"
+              aria-label={overlayVisible ? 'Csak a térkép' : 'Adatok megjelenítése'}
+              aria-pressed={!overlayVisible}
+              onClick={() => setOverlayVisible((v) => !v)}
+            >
+              <EyeIcon open={overlayVisible} />
+            </button>
+            <button
+              type="button"
+              className="screen-header__back"
+              aria-label={boardOpen ? 'Vissza a térképhez' : 'Ranglista'}
+              aria-pressed={boardOpen}
+              onClick={() => setBoardOpen((open) => !open)}
+            >
+              <TrophyIcon />
+            </button>
+          </div>
         </header>
 
+        {overlayVisible ? (
         <div className="terr__content">
 
         <LayerSwitch value={layer} onChange={setLayer} />
@@ -201,8 +220,11 @@ export function TerritoryScreen() {
             <span className="terr__stat-label">a tiéd</span>
           </div>
           <div className="terr__stat">
-            <span className="terr__stat-value">{groups.mineDefended.length}</span>
-            <span className="terr__stat-label">védett mező</span>
+            {/* A profilból, tehát az ÖSSZES meződ — nem csak a látott
+                szakaszon lévők. A korábbi „védett mező" a nézetből számolt,
+                ezért változott pásztázáskor, és nem lehetett érteni. */}
+            <span className="terr__stat-value">{profile?.cellCount[layer] ?? 0}</span>
+            <span className="terr__stat-label">meződ</span>
           </div>
           <div className="terr__stat">
             <span className="terr__stat-value">{groups.others.length}</span>
@@ -278,6 +300,7 @@ export function TerritoryScreen() {
           ) : null}
         </div>
         </div>
+        ) : null}
       </div>
     </div>
   );
@@ -411,6 +434,26 @@ function ChevronIcon({ up }: { up: boolean }) {
       aria-hidden="true"
     >
       <path d="M6 9.5 12 15l6-5.5" />
+    </svg>
+  );
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+      {open ? null : <path d="M4 4l16 16" />}
     </svg>
   );
 }

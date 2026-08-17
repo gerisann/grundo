@@ -1,11 +1,14 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
+import { useProfile } from '@/hooks/ProfileProvider';
 import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { traceToCellPath } from '@/game/cells';
+import { processActivity } from '@/game';
+import { api, apiConfigured, type TileCell } from '@/lib/api';
 import {
   currentSpeedMps,
   lapDistances,
@@ -41,6 +44,7 @@ const ACTIVITY_TYPES: ActivityType[] = ['run', 'walk', 'ride'];
  */
 export function TrackingScreen() {
   const recorder = useRecorderContext();
+  const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
   /**
    * A mozgásforma a RÖGZÍTŐBEN él, nem itt.
@@ -78,10 +82,62 @@ export function TrackingScreen() {
    * futtatjuk minden mintánál: ötösével frissítünk.
    */
   const cellBucket = Math.floor(state.points.length / 5);
-  const cells = useMemo(
-    () => (state.points.length >= 2 ? traceToCellPath(state.points).path : []),
+
+  /**
+   * Élő előnézet: mi lenne, ha MOST fejezném be?
+   *
+   * A motort futtatjuk le a jelenlegi nyomvonalra, üres birtokviszonnyal. Ez
+   * nem a hiteles eredmény — azt a szerver számolja, a valódi tulajdonosokkal —,
+   * de megmutatja, mit zártál be, és nagyjából mennyit ér.
+   *
+   * Ötösével frissítünk: a teljes futás 11 km-es nyomvonalon ~230 ms, ami
+   * mintánként megismételve akadozó felületet adna.
+   */
+  const preview = useMemo(() => {
+    if (state.points.length < 2) {
+      return { path: [] as string[], claimable: [] as string[], gp: 0 };
+    }
+    const { path } = traceToCellPath(state.points);
+    try {
+      const result = processActivity({
+        points: state.points,
+        type: state.type,
+        distanceKm: state.distanceM / 1000,
+        actorId: 'preview',
+        ownership: new Map(),
+        streakDays: 0,
+        gpEarnedToday: 0,
+      });
+      return { path, claimable: [...result.claimedCells], gp: result.gp.total };
+    } catch {
+      // A motor túl nagy hurokra kivételt dob (GPS-ugrás). A nyom attól még
+      // rajzolható — az előnézet hiánya nem indok arra, hogy a térkép is
+      // kiessen.
+      return { path, claimable: [] as string[], gp: 0 };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cellBucket, state.status],
+  }, [cellBucket, state.status]);
+
+  const cells = preview.path;
+
+  /**
+   * A KÖRNYÉK birtokviszonya rögzítés közben.
+   *
+   * Futás közben az az érdekes kérdés, hogy „hova érdemes mennem" — arra pedig
+   * csak akkor lehet válaszolni, ha látod, mi van már elfoglalva körülötted.
+   */
+  const [nearby, setNearby] = useState<TileCell[]>([]);
+  const loadNearby = useCallback(
+    async (view: { south: number; west: number; north: number; east: number }) => {
+      if (!apiConfigured) return;
+      try {
+        const layer = state.type === 'ride' ? 'bike' : 'foot';
+        setNearby((await api.tiles(layer, view)).cells);
+      } catch {
+        setNearby([]);
+      }
+    },
+    [state.type],
   );
 
   const running = state.status === 'recording';
@@ -95,6 +151,12 @@ export function TrackingScreen() {
   /** A 100 méteres küszöb alatt nincs terület — lásd a befejezés utáni jelzést. */
   const countsAsActivity = state.distanceM >= GAMEPLAY.MIN_DISTANCE_M;
 
+  /** A környék cellái közül a MÁSOKÉ — a sajátjaimat a nyom úgyis mutatja. */
+  const nearbyOthers = useMemo(
+    () => nearby.filter((c) => c.owner !== profileUid).map((c) => c.cell),
+    [nearby, profileUid],
+  );
+
   const lastPoint = state.points.length > 0 ? state.points[state.points.length - 1]! : null;
 
   /**
@@ -105,18 +167,18 @@ export function TrackingScreen() {
    * Ezért egyszer, olcsón elkérjük a helyet: kis pontossággal, akár
    * gyorsítótárból. Nem mérünk vele, csak a nézetet igazítjuk.
    */
-  const [preview, setPreview] = useState<{ lat: number; lng: number } | null>(null);
+  const [homeFix, setHomeFix] = useState<{ lat: number; lng: number } | null>(null);
   useEffect(() => {
-    if (lastPoint !== null || preview !== null) return;
+    if (lastPoint !== null || homeFix !== null) return;
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (p) => setPreview({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => setHomeFix({ lat: p.coords.latitude, lng: p.coords.longitude }),
       () => undefined,
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
     );
-  }, [lastPoint, preview]);
+  }, [lastPoint, homeFix]);
 
-  const mapPosition = lastPoint ?? preview;
+  const mapPosition = lastPoint ?? homeFix;
 
   /**
    * TODO(F1, tesztelés után): a jelzés csak az ELSŐ indításig látszódjon.
@@ -154,10 +216,17 @@ export function TrackingScreen() {
         {mapboxConfigured ? (
           <Suspense fallback={null}>
             <MapView
-              layers={[{ role: 'trail', cells }]}
+              layers={[
+                // Sorrend = rajzolási sorrend: alul az idegen, fölötte a
+                // bezárt terület, legfelül a friss nyom.
+                { role: 'rival', cells: nearbyOthers },
+                { role: 'interior', cells: preview.claimable },
+                { role: 'trail', cells },
+              ]}
               track={state.points}
               position={mapPosition}
               follow={running}
+              onViewport={loadNearby}
               fill
             />
           </Suspense>
@@ -255,6 +324,8 @@ export function TrackingScreen() {
               distanceM={state.distanceM}
               elapsed={elapsed}
               pace={pace}
+              claimableCells={preview.claimable.length}
+              expectedGp={preview.gp}
               /* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
                  megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
                  és a profilon számít. */
@@ -387,6 +458,8 @@ function StatsPanel({
   elapsed,
   pace,
   cells,
+  claimableCells,
+  expectedGp,
   points,
   speedMps,
   hasFix,
@@ -395,11 +468,26 @@ function StatsPanel({
   elapsed: number;
   pace: number | null;
   cells: number | null;
+  /** Amit MOST megkapnál, ha befejeznéd — a bezárt területtel együtt. */
+  claimableCells: number;
+  expectedGp: number;
   points: number;
   speedMps: number | null;
   hasFix: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+
+  /**
+   * Zárójelben a VÁRHATÓ érték.
+   *
+   * A fő szám az, amin már áthaladtál; a zárójeles az, amit a bezárásokkal
+   * együtt megszerzel, ha most fejezed be. A kettő közti különbség épp az a
+   * motiváció, amiért a játék létezik — de a fő szám marad a biztos tény.
+   *
+   * Csak akkor mutatjuk, ha van különbség: „356 (356)" zaj lenne.
+   */
+  const withExpected = (main: number, expected: number) =>
+    expected > main ? `${main} (${expected})` : String(main);
 
   const stats = [
     { key: 'time', label: 'idő', value: formatDuration(elapsed), icon: <ClockIcon /> },
@@ -410,14 +498,17 @@ function StatsPanel({
       icon: <PaceIcon />,
     },
     {
-      key: 'speed',
-      label: 'sebesség',
-      // km/h-ban, mert bringán a tempó (perc/km) használhatatlan, és a
-      // sebességet mindenki ebben érzi.
-      value: speedMps === null ? '—' : `${(speedMps * 3.6).toFixed(1)}`,
-      icon: <SpeedIcon />,
+      key: 'cells',
+      label: 'mező',
+      value: cells === null ? '—' : withExpected(cells, claimableCells),
+      icon: <HexIcon />,
     },
-    { key: 'cells', label: 'mező', value: cells === null ? '—' : String(cells), icon: <HexIcon /> },
+    {
+      key: 'gp',
+      label: 'GP',
+      value: String(expectedGp),
+      icon: <SignalIcon />,
+    },
     {
       key: 'points',
       label: 'pont',
@@ -437,7 +528,20 @@ function StatsPanel({
       aria-expanded={expanded}
       aria-label={expanded ? 'Adatok összecsukása' : 'Adatok kinyitása'}
     >
-      <span className="track__distance">{formatDistance(distanceM)}</span>
+      {/* Első sor: sebesség balra, megtett táv jobbra — azonos mérettel.
+          Futás közben ez a két szám az, amit egy pillantással leolvasol. */}
+      <div className="track__primary">
+        <span className="track__primary-cell">
+          <span className="track__primary-value">
+            {speedMps === null ? '—' : (speedMps * 3.6).toFixed(1)}
+          </span>
+          <span className="track__primary-label">km/h</span>
+        </span>
+        <span className="track__primary-cell">
+          <span className="track__primary-value">{formatDistance(distanceM)}</span>
+          <span className="track__primary-label">megtett táv</span>
+        </span>
+      </div>
 
       <div className="track__stats">
         {stats.map((stat) => (
@@ -566,12 +670,3 @@ function UploadPanel({ recorder }: { recorder: RecorderApi }) {
   return null;
 }
 
-function SpeedIcon() {
-  return (
-    <svg {...iconProps}>
-      <path d="M4 18a8 8 0 1 1 16 0" />
-      <path d="M12 18l4-5" />
-      <path d="M4 18h16" />
-    </svg>
-  );
-}

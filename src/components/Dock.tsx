@@ -114,7 +114,7 @@ export function Dock() {
       <NavLink to="/" className="dock__item" aria-label="Kezdőlap">
         <HomeIcon />
       </NavLink>
-      <NavLink to="/terulet" className="dock__item" aria-label="Terület">
+      <NavLink to="/grund" className="dock__item" aria-label="Grund">
         <HexIcon />
       </NavLink>
       {controls}

@@ -104,7 +104,10 @@ function Router() {
               maradnak, különben nem lehetne rajtuk dolgozni. */}
           {devBypass ? authRoutes : null}
           <Route path="/" element={<HomeScreen />} />
-          <Route path="/terulet" element={<TerritoryScreen />} />
+          <Route path="/grund" element={<TerritoryScreen />} />
+          {/* A régi cím megmarad átirányításként: könyvjelzők és megosztott
+              hivatkozások ne törjenek el egy átnevezés miatt. */}
+          <Route path="/terulet" element={<Navigate to="/grund" replace />} />
           <Route path="/rogzites" element={<TrackingScreen />} />
           <Route path="/kozosseg" element={<CommunityScreen />} />
           <Route path="/profil" element={<ProfileScreen />} />
