@@ -217,18 +217,18 @@ export function TerritoryScreen() {
             <span className="terr__stat-value">
               {formatArea(profile?.territoryM2[layer] ?? 0)}
             </span>
-            <span className="terr__stat-label">a tiéd</span>
+            <span className="terr__stat-label">a Te grundod</span>
           </div>
           <div className="terr__stat">
             {/* A profilból, tehát az ÖSSZES meződ — nem csak a látott
                 szakaszon lévők. A korábbi „védett mező" a nézetből számolt,
                 ezért változott pásztázáskor, és nem lehetett érteni. */}
             <span className="terr__stat-value">{profile?.cellCount[layer] ?? 0}</span>
-            <span className="terr__stat-label">meződ</span>
+            <span className="terr__stat-label">mezőid</span>
           </div>
           <div className="terr__stat">
             <span className="terr__stat-value">{groups.others.length}</span>
-            <span className="terr__stat-label">másé itt</span>
+            <span className="terr__stat-label">másoké</span>
           </div>
         </div>
 

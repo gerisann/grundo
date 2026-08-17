@@ -41,7 +41,24 @@
   overflow-y: auto;
 }
 
+/*
+ * Az érintést a KÁRTYÁK fogják meg, nem a burkolójuk.
+ *
+ * A `terr__content` a fejléc bevezetése óta közvetlen gyerek, és `flex: 1`-gyel
+ * kitölti a képernyőt — így az egész felületet elnyelte, és a térképet csak az
+ * overlay elrejtésével lehetett mozgatni. A burkolók átengedik, a bennük lévő
+ * dobozok fogják meg.
+ */
 .terr__overlay > * {
+  pointer-events: none;
+}
+
+.terr__content {
+  pointer-events: none;
+}
+
+.terr__content > *,
+.terr .screen-header > * {
   pointer-events: auto;
 }
 
@@ -261,12 +278,18 @@
 
 /* ── Összecsukható jelmagyarázat ─────────────────────────────────── */
 
-/* Összecsukva csak a felirat magasságát foglalja, és legalul ül. */
+/*
+ * Összecsukva csak a felirat magasságát foglalja, és legalul ül.
+ *
+ * A saját magasságával lejjebb tolva: így nem tapad a dokkhoz, és a térképből
+ * is több marad szabadon a doboz fölött.
+ */
 .terr__legend-box {
   align-self: flex-start;
   margin-top: auto;
+  margin-bottom: calc(-1 * var(--sp-6));
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
   backdrop-filter: blur(12px);
   overflow: hidden;
 }
