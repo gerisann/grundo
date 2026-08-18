@@ -63,14 +63,22 @@ const FIRESTORE_MAX_TRANSACTION_WRITES = 500;
 /**
  * Az aktivitásonként MINDIG megírt dokumentumok száma.
  *
- * Aktivitás, teljes nyomvonal, trust, audit, GP-főkönyv, napi GP, profil.
- * A blokkok és a károsultak ezen felül jönnek, fejenként két írással.
+ * Aktivitás, teljes nyomvonal, trust, audit, GP-főkönyv, napi GP, profil, és
+ * a felhasználó blokk-indexe (rétegenként egy dokumentum). A károsultak ezen
+ * felül jönnek, fejenként kettővel.
  */
-const FIXED_ACTIVITY_WRITES = 7;
+const FIXED_ACTIVITY_WRITES = 8;
 
-/** Belefér-e ennyi blokk és károsult egyetlen tranzakcióba? */
+/**
+ * Belefér-e ennyi blokk és károsult egyetlen tranzakcióba?
+ *
+ * BLOKKONKÉNT EGY ÍRÁS. Korábban kettő volt (rács-dokumentum + blokkonkénti
+ * mutató a felhasználónál), és emiatt fele akkora körnél ütköztünk a
+ * Firestore 500-as korlátjába. A mutató mostantól rétegenként EGYETLEN,
+ * `arrayUnion`-nel bővített dokumentum — lásd `writeOwnership`.
+ */
 function transactionWrites(blockCount: number, victimCount: number): number {
-  return FIXED_ACTIVITY_WRITES + blockCount * 2 + victimCount * 2;
+  return FIXED_ACTIVITY_WRITES + blockCount + victimCount * 2;
 }
 
 function expandCellScope(cells: Iterable<string>, rings: number): Set<string> {

@@ -75,7 +75,20 @@ service cloud.firestore {
       match /followers/{sourceUid} { allow read: if signedIn(); allow write: if false; }
 
       // Tiltás és némítás: a felhasználó saját maga kezeli.
+      //
+      // ⚠️ FIGYELEM: ez a `blocks` a felhasználó-TILTÁS, nem a rács. A
+      // rács-blokk mutató szándékosan külön névtérben van (`blockIndex`),
+      // mert ez az alkollekció a felhasználó által írható — ha a rács-mutató
+      // is itt lenne, a saját területét törölhetné le a térképéről.
       match /blocks/{targetUid} { allow read, write: if isSelf(uid); }
+
+      // Mely rács-blokkokban van cellája? Szerveroldali mutató, rétegenként
+      // egy dokumentum. A tulajdonos olvashatja (a saját területképernyője
+      // ebből dolgozik), írni senki nem írhatja.
+      match /blockIndex/{layer} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if false;
+      }
       match /mutes/{targetUid}  { allow read, write: if isSelf(uid); }
 
       match /badges/{badgeId}   { allow read: if signedIn(); allow write: if false; }

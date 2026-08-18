@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest } from '../lib/errors';
-import { BLOCK_RESOLUTION, cellKey, effectiveDefense, gameDay, type GridBlock } from '../lib/grid';
+import {
+  BLOCK_RESOLUTION,
+  cellKey,
+  effectiveDefense,
+  gameDay,
+  loadUserBlockIds,
+  type GridBlock,
+} from '../lib/grid';
 import { cellsToM2 } from '../../../src/game/cells';
 import { cellToChildren, gridDisk, latLngToCell } from 'h3-js';
 import type { CellId, Layer } from '../../../src/types';
@@ -32,19 +39,21 @@ tilesRouter.get('/mine', async (req, res, next) => {
     const layer = parseLayer(req.query.layer);
     const today = gameDay(new Date());
 
-    const index = await db
-      .collection(COLLECTIONS.users)
-      .doc(uid)
-      .collection('blocks')
-      .where('layer', '==', layer)
-      .limit(MAX_BLOCKS)
-      .get();
+    /**
+     * A blokklista RÉTEGENKÉNT EGY dokumentumból jön (`blockIndex/{layer}`).
+     *
+     * Ha a felhasználónak még nincs index-dokumentuma — mert a mentése a
+     * migráció előtti —, a `loadUserBlockIds` magától visszaesik a régi,
+     * blokkonkénti alkollekcióra. Így a területe nem tűnik el a térképről,
+     * amíg a migráció le nem fut.
+     */
+    const index = await loadUserBlockIds(uid, layer, MAX_BLOCKS);
 
-    if (index.empty) {
+    if (index.blockIds.length === 0) {
       return res.json({ layer, cells: [], areaM2: 0, cellCount: 0, blockCount: 0 });
     }
 
-    const refs = index.docs.map((doc) => db.collection(COLLECTIONS.grid).doc(doc.id));
+    const refs = index.blockIds.map((id) => db.collection(COLLECTIONS.grid).doc(id));
     const blocks = await db.getAll(...refs);
 
     const cells: { cell: CellId; defense: number }[] = [];
@@ -74,9 +83,9 @@ tilesRouter.get('/mine', async (req, res, next) => {
       cells,
       cellCount: cells.length,
       areaM2: cellsToM2(cells.length),
-      blockCount: index.size,
+      blockCount: index.blockIds.length,
       // Ha ennyi blokkot olvastunk, valószínűleg van még — a felület jelezze.
-      truncated: index.size >= MAX_BLOCKS,
+      truncated: index.truncated,
     });
   } catch (error) {
     next(error);

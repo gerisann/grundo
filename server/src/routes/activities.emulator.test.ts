@@ -41,6 +41,7 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     gameDay = (await import('../lib/grid')).gameDay;
 
     const { activitiesRouter } = await import('./activities');
+    const { tilesRouter } = await import('./tiles');
     const { HttpError } = await import('../lib/errors');
 
     const app = express();
@@ -51,6 +52,7 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
       next();
     });
     app.use('/api/activities', activitiesRouter);
+    app.use('/api/tiles', tilesRouter);
     app.use(
       (
         err: unknown,
@@ -313,5 +315,103 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     const bobDoc = (await db.collection(collections.users!).doc('bob').get()).data()!;
     const claimed = aliceDoc.cellCount.foot + bobDoc.cellCount.foot;
     expect(claimed).toBeLessThanOrEqual(owners.size);
+  });
+
+  it('a blokk-mutató rétegenként EGYETLEN dokumentumba kerül', async () => {
+    const result = await upload('alice', 'activity-index01', freshLoop());
+    expect(result.status).toBe(201);
+
+    const index = await db
+      .collection(collections.users!)
+      .doc('alice')
+      .collection('blockIndex')
+      .doc('foot')
+      .get();
+
+    expect(index.exists).toBe(true);
+    const blocks = index.data()!.blocks as string[];
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.every((id) => id.startsWith('foot_'))).toBe(true);
+
+    // A rácsban pontosan ennyi blokk keletkezett — a mutató teljes.
+    const grid = await db.collection(collections.grid!).get();
+    expect(new Set(blocks)).toEqual(new Set(grid.docs.map((doc) => doc.id)));
+
+    /**
+     * A RÉGI, blokkonkénti mutató NEM íródik többé. Ez a fele az összes
+     * írásnak; enélkül fele akkora körnél ütköznénk a Firestore korlátjába.
+     * A `blocks` alkollekcióban csak felhasználó-tiltás lehet — az itt nincs.
+     */
+    const legacy = await db
+      .collection(collections.users!)
+      .doc('alice')
+      .collection('blocks')
+      .get();
+    expect(legacy.size).toBe(0);
+  });
+
+  it('ismételt kör nem duplázza a blokklistát', async () => {
+    const points = freshLoop();
+    await upload('alice', 'activity-again01', points);
+    const first = await db
+      .collection(collections.users!).doc('alice')
+      .collection('blockIndex').doc('foot').get();
+    const before = (first.data()!.blocks as string[]).length;
+
+    await upload('alice', 'activity-again02', points);
+    const second = await db
+      .collection(collections.users!).doc('alice')
+      .collection('blockIndex').doc('foot').get();
+
+    // Az arrayUnion magától kiszűri a duplikátumot.
+    expect((second.data()!.blocks as string[]).length).toBe(before);
+  });
+
+  it('a saját terület a mutatóból olvasva jön vissza', async () => {
+    const result = await upload('alice', 'activity-tiles01', freshLoop());
+    currentUid = 'alice';
+
+    const response = await fetch(`${base}/api/tiles/mine?layer=foot`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      cells: { cell: string; defense: number }[];
+      cellCount: number;
+      blockCount: number;
+      truncated?: boolean;
+    };
+
+    const summary = result.body.summary as unknown as Record<string, number>;
+    expect(body.cellCount).toBeGreaterThan(0);
+    expect(body.cellCount).toBeLessThanOrEqual(summary.claimedCells);
+    expect(body.blockCount).toBeGreaterThan(0);
+    expect(body.truncated).toBe(false);
+    expect(body.cells.every((c) => c.defense >= 1)).toBe(true);
+  });
+
+  it('a migrálatlan felhasználó területe sem tűnik el', async () => {
+    // Mentés az ÚJ úton, majd az index eltüntetése — így néz ki egy olyan
+    // felhasználó, akinek a mentése a migráció előtti.
+    await upload('alice', 'activity-legacy1', freshLoop());
+    const indexRef = db
+      .collection(collections.users!).doc('alice')
+      .collection('blockIndex').doc('foot');
+    const blocks = (await indexRef.get()).data()!.blocks as string[];
+    await indexRef.delete();
+
+    // A RÉGI alakban visszaírjuk, ahogy a migráció előtt állt volna.
+    for (const blockId of blocks) {
+      await db
+        .collection(collections.users!).doc('alice')
+        .collection('blocks').doc(blockId)
+        .set({ layer: 'foot', updatedAt: new Date() });
+    }
+
+    currentUid = 'alice';
+    const response = await fetch(`${base}/api/tiles/mine?layer=foot`);
+    const body = (await response.json()) as { cellCount: number; blockCount: number };
+
+    // A visszaesés miatt a terület látszik, index nélkül is.
+    expect(body.cellCount).toBeGreaterThan(0);
+    expect(body.blockCount).toBe(blocks.length);
   });
 });

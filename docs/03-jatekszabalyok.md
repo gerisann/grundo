@@ -181,7 +181,7 @@ Két valódi plafon maradt, és mindkettő technikai, nem játékszabály:
 | Plafon | Hol | Érték | Mi történik |
 |---|---|---|---|
 | Hurok befoglaló doboza | `GAMEPLAY.MAX_LOOP_BBOX_CELLS` | 500 000 cella ≈ **143 km²** | a hurok **kimarad** a foglalásból |
-| Tranzakció írásszáma | Firestore, `FIRESTORE_MAX_TRANSACTION_WRITES` | 500 írás ≈ 246 blokk ≈ **18 km-es kör** | az elszámolás hibaüzenetet ad |
+| Tranzakció írásszáma | Firestore, `FIRESTORE_MAX_TRANSACTION_WRITES` | 500 írás ≈ 492 blokk ≈ **26 km-es kör** | az elszámolás hibaüzenetet ad |
 
 Mért értékek négyzet alakú körökre: 10 km → 20 445 cella / 80 blokk; 20 km →
 81 114 cella / 270 blokk; 48 km → 464 996 cella / 1 444 blokk; 50 km fölött a

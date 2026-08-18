@@ -18,6 +18,7 @@
  * Részletes indoklás: docs/05-adatmodell.md → `grid/{h3res9}`
  */
 
+import { FieldValue } from 'firebase-admin/firestore';
 import type { CellId, CellOwnership, Layer, OwnershipMap } from '../../../src/types';
 import { db, COLLECTIONS } from './firebase';
 import {
@@ -32,6 +33,14 @@ import {
 // A tiszta logika a `gridMath`-ban él (tesztelhetőség miatt); innen is
 // elérhető, hogy a hívóknak ne kelljen két helyről importálniuk.
 export { BLOCK_RESOLUTION, blockIdFor, blocksFor, cellKey, effectiveDefense, gameDay } from './gridMath';
+
+/**
+ * A blokk-mutató alkollekciója.
+ *
+ * SZÁNDÉKOSAN NEM `blocks`: azt a nevet a felhasználó-tiltás foglalja
+ * (`users/{uid}/blocks/{tiltottUid}`), és a kettő egy névtérben ütközne.
+ */
+export const BLOCK_INDEX_COLLECTION = 'blockIndex';
 export type { GridBlock } from './gridMath';
 
 /**
@@ -131,22 +140,6 @@ export function writeOwnership(
       cellMap[key] = { o: next.owner, d: next.defense, u: today };
     }
 
-    /**
-     * Mutató a felhasználó blokkjairól.
-     *
-     * A Firestore nem tud térkép-KULCSOKRA keresni, tehát azt a kérdést, hogy
-     * „mely blokkokban van cellája ennek a felhasználónak", a rácsból nem
-     * lehet megválaszolni. Ezért vezetünk külön mutatót. Elavulhat (a
-     * felhasználó elveszítheti az összes celláját egy blokkban) — ezt
-     * olvasáskor szűrjük, nem törléssel, mert a törlés minden károsultnál
-     * további írásokat jelentene.
-     */
-    tx.set(
-      db.collection(COLLECTIONS.users).doc(actorId).collection('blocks').doc(blockId),
-      { layer, parent, updatedAt: now },
-      { merge: true },
-    );
-
     tx.set(
       db.collection(COLLECTIONS.grid).doc(blockId),
       {
@@ -160,6 +153,88 @@ export function writeOwnership(
       { merge: false },
     );
   }
+
+  /**
+   * Mutató a felhasználó blokkjairól — RÉTEGENKÉNT EGY DOKUMENTUM.
+   *
+   * A Firestore nem tud térkép-KULCSOKRA keresni, tehát azt a kérdést, hogy
+   * „mely blokkokban van cellája ennek a felhasználónak", magából a rácsból
+   * nem lehet megválaszolni. Ezért vezetünk külön mutatót.
+   *
+   * KORÁBBAN BLOKKONKÉNT EGY DOKUMENTUM VOLT, és ez két bajt okozott:
+   *
+   *   1. Megduplázta a tranzakció írásszámát. Egy foglalás blokkonként két
+   *      írást jelentett (rács + mutató), így a Firestore 500-as korlátjába
+   *      fele akkora körnél ütköztünk bele, mint kellett volna.
+   *   2. A `users/{uid}/blocks/` alkollekciót a felhasználó-TILTÁS is
+   *      használja (lásd `blockedBetween` a firestore.rules-ban), és azt a
+   *      felhasználó maga írhatja. Vagyis a saját rács-mutatóit letörölhette
+   *      volna, amitől a területe eltűnik a saját térképéről.
+   *
+   * Az `arrayUnion` olvasás nélkül, atomikusan fűz hozzá, és a duplikátumot
+   * magától kiszűri — tehát ismételt köröknél sem nő a lista.
+   *
+   * ELAVULHAT: a felhasználó elveszítheti az összes celláját egy blokkban, a
+   * blokk azonosítója viszont bent marad. Ezt olvasáskor szűrjük, nem
+   * törléssel — a törlés minden károsultnál további írásokat jelentene.
+   *
+   * MÉRETKORLÁT: egy Firestore-dokumentum 1 MB. Egy blokkazonosító ~23 bájt,
+   * tehát a lista nagyságrendileg 40 000 blokknál (≈4 200 km²) telik be. Ez
+   * messze a valós használat fölött van, de ha valaha közelítenénk, a
+   * megoldás a lista rétegenkénti darabolása.
+   */
+  if (blocks.size > 0) {
+    tx.set(
+      db
+        .collection(COLLECTIONS.users)
+        .doc(actorId)
+        .collection(BLOCK_INDEX_COLLECTION)
+        .doc(layer),
+      { layer, blocks: FieldValue.arrayUnion(...blocks.keys()), updatedAt: now },
+      { merge: true },
+    );
+  }
+}
+
+/**
+ * A felhasználó blokkjainak azonosítói.
+ *
+ * Visszaesés a RÉGI, blokkonkénti alkollekcióra: a migráció előtt mentett
+ * felhasználóknak még nincs index-dokumentumuk, és nem akarjuk, hogy a
+ * területük eltűnjön a térképről, amíg a migráció le nem fut.
+ */
+export async function loadUserBlockIds(
+  uid: string,
+  layer: Layer,
+  limit: number,
+): Promise<{ blockIds: string[]; truncated: boolean; legacy: boolean }> {
+  const indexRef = db
+    .collection(COLLECTIONS.users)
+    .doc(uid)
+    .collection(BLOCK_INDEX_COLLECTION)
+    .doc(layer);
+  const index = await indexRef.get();
+
+  if (index.exists) {
+    const all = ((index.data() as { blocks?: string[] }).blocks ?? []).filter(
+      (id) => typeof id === 'string',
+    );
+    return { blockIds: all.slice(0, limit), truncated: all.length > limit, legacy: false };
+  }
+
+  const legacy = await db
+    .collection(COLLECTIONS.users)
+    .doc(uid)
+    .collection('blocks')
+    .where('layer', '==', layer)
+    .limit(limit)
+    .get();
+
+  return {
+    blockIds: legacy.docs.map((doc) => doc.id),
+    truncated: legacy.size >= limit,
+    legacy: true,
+  };
 }
 
 /** A tranzakción belüli olvasás — az írás előtt, egyben. */

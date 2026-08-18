@@ -109,5 +109,12 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "//": "A blokklista tömb NEM indexelendő. A Firestore alapból minden tömbelemre külön indexbejegyzést készít, dokumentumonként 40 000-es plafonnal — egy nagy birodalomnál ez betelne. Lekérdezni sosem kell rá: mindig a teljes listát olvassuk ki egyetlen dokumentumból.",
+      "collectionGroup": "blockIndex",
+      "fieldPath": "blocks",
+      "indexes": []
+    }
+  ]
 }

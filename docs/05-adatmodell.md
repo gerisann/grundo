@@ -203,15 +203,43 @@ Egy Firestore-tranzakció **legfeljebb 500 írást** tartalmazhat. Ez platformko
 nem hangolható. Egy aktivitás írásigénye:
 
 ```
-7 + blokkok × 2 + károsultak × 2
+8 + blokkok + károsultak × 2
 ```
 
-A hetes tag állandó (aktivitás, teljes nyomvonal, trust, audit, GP-főkönyv,
-napi GP, profil), a blokkok kettes szorzója pedig a rács-dokumentum és a
-felhasználó blokk-mutatója. Ebből a gyakorlati plafon **~246 blokk**, ami egy
-nagyjából 18 km kerületű, területet ténylegesen bezáró körnek felel meg.
-Mért értékek: 10 km → 80 blokk (167 írás), 18 km → 230 blokk (467 írás),
-20 km → 270 blokk (547 írás, elutasítva).
+A nyolcas tag állandó (aktivitás, teljes nyomvonal, trust, audit, GP-főkönyv,
+napi GP, profil, blokk-index), a blokkok pedig **egy írást** jelentenek fejenként.
+Ebből a gyakorlati plafon **~492 blokk**, ami egy nagyjából 26 km kerületű,
+területet ténylegesen bezáró körnek felel meg. Mért értékek: 10 km → 80 blokk
+(88 írás), 20 km → 270 blokk (278 írás), 26 km → 465 blokk (473 írás),
+28 km → 536 blokk (544 írás, elutasítva).
+
+> Blokkonként korábban **két** írás volt: a rács-dokumentum és egy külön
+> mutató-dokumentum a felhasználónál. A mutató 2026-08-19 óta rétegenként
+> egyetlen, `arrayUnion`-nel bővített dokumentum (`users/{uid}/blockIndex/{layer}`),
+> ezért a menthető kör ~18 km-ről ~26 km-re nőtt.
+
+#### `users/{uid}/blockIndex/{layer}` — mely blokkokban van cellám
+
+A Firestore nem tud térkép-KULCSOKRA keresni, tehát a „mely blokkokban van
+cellája ennek a felhasználónak" kérdés magából a rácsból nem válaszolható meg.
+Ezért vezetünk mutatót: rétegenként egy dokumentum, benne a blokkazonosítók
+tömbje. Írja a `geo-service` a foglalás tranzakciójában, olvassa a saját
+terület képernyője.
+
+⚠️ **Szándékosan NEM `users/{uid}/blocks/`**: azt a nevet a felhasználó-tiltás
+foglalja, és azt az alkollekciót a felhasználó maga írhatja. Amíg a rács-mutató
+is ott volt, a felhasználó letörölhette a saját mutatóit — amitől a területe
+eltűnt volna a saját térképéről.
+
+A mutató **elavulhat**: a felhasználó elveszítheti az összes celláját egy
+blokkban, az azonosító viszont bent marad. Ezt olvasáskor szűrjük, nem
+törléssel — a törlés minden károsultnál további írásokat jelentene.
+
+A `blocks` tömb **nincs indexelve** (`fieldOverrides` a `firestore.indexes.json`-ban):
+a Firestore alapból minden tömbelemre külön indexbejegyzést készít,
+dokumentumonként 40 000-es plafonnal. Lekérdezni sosem kell rá, mindig a teljes
+listát olvassuk. A dokumentum 1 MB-os korlátja így ~40 000 blokknál (≈4 200 km²)
+jelentene határt.
 
 Efölött a mentés stabil `activity_too_large` hibakóddal áll meg, magyar
 üzenettel. **Részleges mentés nem keletkezhet:** a hiba a tranzakción belül
