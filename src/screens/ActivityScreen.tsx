@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
-  type WheelEvent as ReactWheelEvent,
 } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui';
@@ -430,6 +429,7 @@ function PhotoLightbox({
   onIndexChange: (index: number) => void;
   onClose: () => void;
 }) {
+  const lightboxRef = useRef<HTMLDivElement | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const pan = useRef<{
@@ -479,6 +479,31 @@ function PhotoLightbox({
       window.removeEventListener('keydown', onKey);
     };
   }, [index, onClose, onIndexChange, photos.length]);
+
+  /**
+   * A React `onWheel` figyelője passzív lehet, ezért azon belül a
+   * `preventDefault()` böngészőhibát írt minden görgetésnél. A nagyításnak
+   * meg kell állítania az oldal görgetését, ezért itt explicit nem passzív
+   * natív figyelőt használunk.
+   */
+  useEffect(() => {
+    const element = lightboxRef.current;
+    if (!element) return;
+
+    const wheelZoom = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0015);
+      setScale((current) => {
+        const next = clampZoom(current * factor);
+        if (next === 1) setOffset({ x: 0, y: 0 });
+        return next;
+      });
+      setDismissY(0);
+    };
+
+    element.addEventListener('wheel', wheelZoom, { passive: false });
+    return () => element.removeEventListener('wheel', wheelZoom);
+  }, []);
 
   if (!photo) return null;
 
@@ -567,19 +592,9 @@ function PhotoLightbox({
     setDismissY(0);
   }
 
-  function wheelZoom(event: ReactWheelEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const factor = Math.exp(-event.deltaY * 0.0015);
-    setScale((current) => {
-      const next = clampZoom(current * factor);
-      if (next === 1) setOffset({ x: 0, y: 0 });
-      return next;
-    });
-    setDismissY(0);
-  }
-
   return (
     <div
+      ref={lightboxRef}
       className="lightbox"
       role="dialog"
       aria-modal="true"
@@ -588,7 +603,6 @@ function PhotoLightbox({
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
       onPointerCancel={pointerCancel}
-      onWheel={wheelZoom}
     >
       <div className="lightbox__topbar">
         <div className="lightbox__meta" aria-live="polite">

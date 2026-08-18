@@ -124,6 +124,15 @@ export function MapView({
       dragRotate: false,
     });
 
+    /**
+     * A Mapbox vászna saját pixelméretet tart nyilván. Ha csak a konténer CSS
+     * magassága változik (például az aktivitástérkép teljes képernyőre nyílik),
+     * a vászon magától a régi 46dvh méreten maradhat. A resize observer minden
+     * ilyen elrendezésváltozás után szinkronizálja a WebGL vásznat.
+     */
+    const resizeObserver = new ResizeObserver(() => instance.resize());
+    resizeObserver.observe(container.current);
+
     instance.on('load', () => {
       ready.current = true;
       addLayers(instance);
@@ -149,6 +158,7 @@ export function MapView({
     map.current = instance;
 
     return () => {
+      resizeObserver.disconnect();
       ready.current = false;
       marker.current?.remove();
       marker.current = null;

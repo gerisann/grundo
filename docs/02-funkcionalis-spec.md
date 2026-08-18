@@ -220,7 +220,8 @@ A GRUNDO szíve (képek #49, #21).
 
 A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39).
 
-- **Térkép** a nyomvonallal, tempó szerinti színátmenettel; teljes képernyős mód (kép #39).
+- **Térkép** a nyomvonallal, tempó szerinti színátmenettel; teljes képernyős
+  módban a térkép és a Mapbox-vászon is a teljes viewportot tölti ki (kép #39).
 - Az adatlap megnyitásakor az alsó Dock teljesen eltűnik; a vissza gomb az
   adatlap saját navigációja.
 - Fejléc: avatar · dátum · időjárás (☀️ 18°C).
@@ -233,7 +234,8 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   húzással vagy nyílgombbal lapozhatók, lefelé húzással, `X`-szel vagy Escape
   billentyűvel bezárhatók; nem nyitnak új böngészőlapot. A kép kétujjas
   csippentéssel, egérgörgővel vagy a beépített `− / +` vezérlőkkel 1–4× között
-  nagyítható, nagyított állapotban húzással mozgatható.
+  nagyítható, nagyított állapotban húzással mozgatható. A bal felső képszámláló
+  felirata és száma függőlegesen középre igazított.
 - **STATS rács**: km · átlagtempó · idő · szintemelkedés · kalória · átlagpulzus.
 - **GRUNDO panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
 - Rögzítő eszköz neve („iPhone 13 Pro", „Garmin Forerunner 265").

@@ -410,7 +410,7 @@
 
 .lightbox__meta {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--sp-2);
   min-height: 42px;
   padding: 0 var(--sp-4);
@@ -418,6 +418,7 @@
 }
 
 .lightbox__meta-label {
+  line-height: 1;
   font-size: var(--fs-label);
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -426,6 +427,7 @@
 }
 
 .lightbox__counter {
+  line-height: 1;
   font-size: var(--fs-small);
   font-weight: 800;
   color: #fff;
