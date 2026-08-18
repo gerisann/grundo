@@ -103,6 +103,22 @@ export function publicBounds(points: readonly TracePoint[]) {
   return points.length > 0 ? boundsOf(points) : null;
 }
 
+/**
+ * Tulajdonosi API-válaszhoz készített teljes route. Ezt a szerver kizárólag
+ * memóriában adja hozzá a válaszhoz; a publikus aktivitásdokumentumba soha nem
+ * szabad visszaírni.
+ */
+export function buildOwnerRouteView(raw: unknown): {
+  route: string;
+  routeHidden: boolean;
+  bounds: { north: number; south: number; east: number; west: number };
+} | null {
+  if (!Array.isArray(raw) || raw.length < 2) return null;
+  const points = raw as TracePoint[];
+  const route = encodeRoute(points);
+  return { route, routeHidden: route.length === 0, bounds: boundsOf(points) };
+}
+
 function encodeRoute(points: readonly TracePoint[]): string {
   if (points.length < 2) return '';
   let simplified = simplifyTrace(points, 6);

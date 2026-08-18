@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePrivacy, publicRouteNeedsRebuild } from './publicRoute';
+import { buildOwnerRouteView, normalizePrivacy, publicRouteNeedsRebuild } from './publicRoute';
 
 describe('publikus aktivitás-útvonal', () => {
   it('biztonságos alapértékeket ad régi profilhoz', () => {
@@ -40,5 +40,22 @@ describe('publikus aktivitás-útvonal', () => {
   it('törölt aktivitást nem épít újra', () => {
     const privacy = normalizePrivacy({ routeRevision: 2 });
     expect(publicRouteNeedsRebuild({ routeVersion: 1, deletedAt: new Date() }, privacy)).toBe(false);
+  });
+
+  it('a tulajdonosi nézet a teljes nyomvonalat kódolja privacy-vágás nélkül', () => {
+    const points = [
+      { lat: 47.49, lng: 19.02, t: 1 },
+      { lat: 47.491, lng: 19.021, t: 2 },
+      { lat: 47.492, lng: 19.023, t: 3 },
+    ];
+    const view = buildOwnerRouteView(points);
+    expect(view?.route.length).toBeGreaterThan(0);
+    expect(view?.routeHidden).toBe(false);
+    expect(view?.bounds).toEqual({
+      north: 47.492,
+      south: 47.49,
+      east: 19.023,
+      west: 19.02,
+    });
   });
 });

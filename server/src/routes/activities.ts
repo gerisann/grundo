@@ -14,6 +14,7 @@ import type { ActivityType, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
 import {
   buildPublicRoutePatch,
+  buildOwnerRouteView,
   encodePublicRoute,
   normalizePrivacy,
   publicBounds,
@@ -473,6 +474,7 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       .map((data, index) => ({ data, doc: snapshot.docs[index]! }))
       .filter(({ data }) => data.deletedAt == null)
       .map(({ data, doc }) => toFeedRow(doc.id, data));
+    rows = await withOwnerFullRoutes(rows, req.uid!);
     if (scope === 'mine') rows = rows.slice(0, limit);
 
     let truncated = false;
@@ -1121,6 +1123,43 @@ async function buildRoutePatchIfNeeded(
   const privacy = normalizePrivacy((user.data() as { privacy?: unknown } | undefined)?.privacy);
   if (!publicRouteNeedsRebuild(data, privacy)) return null;
   return buildPublicRoutePatch(ref, uid, privacy);
+}
+
+/**
+ * A specifikáció szerint a tulajdonos MINDEN saját nézetben a teljes
+ * nyomvonalat látja, nem csak az aktivitás adatlapján. A fő dokumentumban
+ * továbbra is kizárólag a levágott route marad; ezt a teljes változatot csak
+ * a hitelesített tulajdonos konkrét API-válaszába tesszük bele.
+ */
+async function withOwnerFullRoutes(rows: FeedRow[], viewerUid: string): Promise<FeedRow[]> {
+  const owned = rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.userId === viewerUid);
+  if (owned.length === 0) return rows;
+
+  const refs = owned.map(({ row }) =>
+    db.collection(COLLECTIONS.activities).doc(row.id).collection('private').doc('track'),
+  );
+  const tracks = await db.getAll(...refs);
+  const replacements = new Map<number, FeedRow>();
+
+  tracks.forEach((snapshot, ownedIndex) => {
+    const target = owned[ownedIndex];
+    if (!target || !snapshot.exists) return;
+    const view = buildOwnerRouteView((snapshot.data() as { points?: unknown }).points);
+    if (!view) return;
+    replacements.set(target.index, {
+      ...target.row,
+      route: view.route,
+      routeHidden: view.routeHidden,
+      center: {
+        lat: (view.bounds.north + view.bounds.south) / 2,
+        lng: (view.bounds.east + view.bounds.west) / 2,
+      },
+    });
+  });
+
+  return rows.map((row, index) => replacements.get(index) ?? row);
 }
 
 async function repairActivityRoute(

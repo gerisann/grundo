@@ -148,6 +148,10 @@
 }
 ```
 - `activities/{id}/private/track` → `{ points, bounds }` — **a teljes, levágatlan nyomvonal és befoglaló téglalapja**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni. A publikus `route` és `bounds` kizárólag a privát zónával levágott pontokból készül. Olvasás: **csak a tulajdonos és az admin.**
+- Saját feed- és profilválasznál a backend kizárólag a hitelesített tulajdonos
+  válaszában, mentés nélkül felülírja a publikus route-ot a teljes privát
+  nyomvonallal. Így a „saját nézet mindig teljes” szabály minden képernyőn
+  érvényes, miközben más felhasználó továbbra sem fér hozzá a teljes nyomhoz.
 - `activities/{id}/likes/{uid}` → `{ createdAt }`
 - `activities/{id}/comments/{cid}` → `{ userId, text, createdAt, editedAt?, deleted? }`
 
