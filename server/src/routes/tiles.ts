@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { COLLECTIONS, db } from '../lib/firebase';
-import { badRequest } from '../lib/errors';
+import { badRequest, notFound } from '../lib/errors';
 import {
   BLOCK_RESOLUTION,
   cellKey,
@@ -10,6 +10,8 @@ import {
   type GridBlock,
 } from '../lib/grid';
 import { cellsToM2 } from '../../../src/game/cells';
+import { levelFor } from '../../../src/game/levels';
+import { GAMEPLAY } from '../../../src/config/gameplay';
 import { cellToChildren, gridDisk, latLngToCell } from 'h3-js';
 import type { CellId, Layer } from '../../../src/types';
 
@@ -217,6 +219,64 @@ tilesRouter.get('/', async (req, res, next) => {
       owners: await ownerNames(ownerIds),
       // A háló csak a nézet közepét fedi le — a széleken NEM tudjuk, mi van.
       partial,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/tiles/owner/:uid?layer=foot — kié ez a mező?
+ *
+ * A térképen egy mezőre koppintva ezt kérjük le. SZÁNDÉKOSAN külön végpont, és
+ * nem a `tiles` válaszába csomagolva: a névnél többet (profilkép, rang, terület,
+ * pont) minden csempe-lekérésnél átvinni pazarlás lenne, hiszen a felhasználó
+ * egyszerre legfeljebb egy kártyát néz.
+ *
+ * CSAK NYILVÁNOS ADAT megy ki. A bizalmi pontszám, az e-mail és a nyers
+ * összesítők itt sem jelennek meg.
+ */
+tilesRouter.get('/owner/:uid', async (req, res, next) => {
+  try {
+    const layer = parseLayer(req.query.layer);
+    const uid = String(req.params.uid ?? '');
+    if (!/^[A-Za-z0-9_-]{6,128}$/.test(uid)) {
+      throw badRequest('invalid_uid', 'Hibás felhasználó-azonosító.');
+    }
+
+    const snapshot = await db.collection(COLLECTIONS.users).doc(uid).get();
+    if (!snapshot.exists) throw notFound('owner_missing', 'Ez a játékos már nincs meg.');
+
+    const data = snapshot.data() as {
+      username?: string;
+      photoURL?: string | null;
+      gpTotal?: number;
+      territoryM2?: Partial<Record<'foot' | 'bike', number>>;
+      cellCount?: Partial<Record<'foot' | 'bike', number>>;
+    };
+
+    /**
+     * A szintet a GP-ből SZÁMOLJUK, nem a tárolt `level` mezőből.
+     *
+     * Az a mező csak gyorsítótár, és bizonyítottan el tud csúszni: a régi
+     * mentéseknél 74 833 GP mellett is 1-es szint állt benne. A számított
+     * érték mindig helyes, és a lépcső hangolása sem igényel migrációt.
+     */
+    const gpTotal = Math.round(Number(data.gpTotal ?? 0));
+    const level = levelFor(gpTotal);
+
+    res.json({
+      owner: {
+        uid,
+        username: data.username ?? 'ismeretlen',
+        photoURL: data.photoURL ?? null,
+        level,
+        rankName: GAMEPLAY.LEVEL_NAMES[level - 1] ?? GAMEPLAY.LEVEL_NAMES[0],
+        gpTotal,
+        areaM2: Math.round(Number(data.territoryM2?.[layer] ?? 0)),
+        cellCount: Number(data.cellCount?.[layer] ?? 0),
+        layer,
+      },
     });
   } catch (error) {
     next(error);

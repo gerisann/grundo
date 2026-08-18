@@ -7,6 +7,7 @@ import {
   api,
   apiConfigured,
   type LeaderboardEntry,
+  type TileOwner,
   type TilesResult,
 } from '@/lib/api';
 import { useProfile } from '@/hooks/ProfileProvider';
@@ -66,6 +67,18 @@ export function TerritoryScreen() {
    * van, ráolvasás nélkül. A fejléc marad, hogy legyen mivel visszakapcsolni.
    */
   const [overlayVisible, setOverlayVisible] = useState(true);
+  /**
+   * Látszanak-e a hexmezők a térképen?
+   *
+   * Külön kapcsoló a szem ikontól: az az ADATOKAT (fejléc, statisztikák,
+   * ranglista) rejti el, ez pedig a MEZŐKET. Aki a puszta térképet akarja
+   * nézni — mert egy utcanevet keres, vagy csak a nyomvonalára kíváncsi —,
+   * annak a háló zavaró.
+   */
+  const [cellsVisible, setCellsVisible] = useState(true);
+  /** A megkoppintott mező tulajdonosa. `null` = nincs nyitva kártya. */
+  const [ownerCard, setOwnerCard] = useState<TileOwner | null>(null);
+  const [ownerLoading, setOwnerLoading] = useState(false);
   // Alapból ZÁRVA: a jelmagyarázat egyszer hasznos, utána helyet foglal.
   const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) === 'open');
   const [helpOpen, setHelpOpen] = useState(() => read(HELP_KEY) !== 'closed');
@@ -116,17 +129,43 @@ export function TerritoryScreen() {
   const uid = profile?.uid ?? '';
 
   /**
+   * Koppintás egy foglalt mezőre → a tulajdonos kártyája.
+   *
+   * A kártya adatát KOPPINTÁSKOR kérjük le, nem a csempékkel együtt: a
+   * profilkép, a rang és az összesítők minden csempe-lekérésnél átvinni
+   * pazarlás lenne, hiszen egyszerre legfeljebb egy kártya látszik.
+   */
+  const onCellPress = useCallback(
+    async ({ owner }: { cell: string; owner: string }) => {
+      if (!apiConfigured || !owner) return;
+      setOwnerLoading(true);
+      setOwnerCard(null);
+      try {
+        const result = await api.tileOwner(owner, layer);
+        setOwnerCard(result.owner);
+      } catch {
+        // A tulajdonos időközben törölhette a fiókját — ilyenkor nincs kártya.
+        setOwnerCard(null);
+      } finally {
+        setOwnerLoading(false);
+      }
+    },
+    [layer],
+  );
+
+  /**
    * A cellák három csoportba kerülnek, mert a felhasználót három kérdés
    * érdekli: mi az enyém, mi máséé, és mi szabad.
    */
   const groups = useMemo(() => {
-    const mine: Array<{ cell: string; defense: number }> = [];
-    const others: Array<{ cell: string; defense: number }> = [];
+    const mine: Array<{ cell: string; defense: number; owner: string }> = [];
+    const others: Array<{ cell: string; defense: number; owner: string }> = [];
     const taken = new Set<string>();
 
     for (const c of tiles?.cells ?? []) {
       taken.add(c.cell);
-      const rendered = { cell: c.cell, defense: c.defense };
+      // A tulajdonos is átmegy a térképnek: koppintásra ebből lesz a kártya.
+      const rendered = { cell: c.cell, defense: c.defense, owner: c.owner };
       if (c.owner === uid) mine.push(rendered);
       else others.push(rendered);
     }
@@ -162,14 +201,19 @@ export function TerritoryScreen() {
         {mapboxConfigured ? (
           <Suspense fallback={null}>
             <MapView
-              layers={[
-                { role: 'free', cells: groups.free },
-                { role: 'rival', cells: groups.others },
-                { role: 'interior', cells: groups.mine },
-              ]}
+              layers={
+                cellsVisible
+                  ? [
+                      { role: 'free', cells: groups.free },
+                      { role: 'rival', cells: groups.others },
+                      { role: 'interior', cells: groups.mine },
+                    ]
+                  : []
+              }
               position={position}
               follow={false}
               onViewport={onViewport}
+              onCellPress={onCellPress}
               fill
             />
           </Suspense>
@@ -185,6 +229,15 @@ export function TerritoryScreen() {
         <header className="screen-header terr__header" style={{ justifyContent: 'space-between' }}>
           <h1 className="screen-header__title">Grund</h1>
           <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+            <button
+              type="button"
+              className="screen-header__back"
+              aria-label={cellsVisible ? 'Mezők elrejtése' : 'Mezők megjelenítése'}
+              aria-pressed={!cellsVisible}
+              onClick={() => setCellsVisible((v) => !v)}
+            >
+              <HexIcon on={cellsVisible} />
+            </button>
             <button
               type="button"
               className="screen-header__back"
@@ -302,6 +355,47 @@ export function TerritoryScreen() {
           ) : null}
         </div>
         </div>
+        ) : null}
+
+        {/*
+          A tulajdonos kártyája — a fejléc-kapcsolóktól FÜGGETLENÜL látszik.
+          Aki elrejtette az adatokat, hogy a puszta térképet nézze, az is
+          megkoppinthat egy mezőt, és akkor is választ vár rá.
+        */}
+        {ownerLoading || ownerCard ? (
+          <div className="terr__owner" role="dialog" aria-label="A mező tulajdonosa">
+            {ownerCard ? (
+              <>
+                <div className="terr__owner-avatar">
+                  {ownerCard.photoURL ? (
+                    <img src={ownerCard.photoURL} alt="" />
+                  ) : (
+                    <span>{ownerCard.username.slice(0, 1).toUpperCase()}</span>
+                  )}
+                </div>
+                <div className="terr__owner-body">
+                  <strong className="terr__owner-name">{ownerCard.username}</strong>
+                  <span className="terr__owner-rank">{ownerCard.rankName}</span>
+                  <span className="terr__owner-stats">
+                    {formatArea(ownerCard.areaM2)} · {ownerCard.gpTotal.toLocaleString('hu-HU')} GP
+                  </span>
+                </div>
+              </>
+            ) : (
+              <span className="terr__owner-loading">Betöltés…</span>
+            )}
+            <button
+              type="button"
+              className="terr__owner-close"
+              aria-label="Bezárás"
+              onClick={() => {
+                setOwnerCard(null);
+                setOwnerLoading(false);
+              }}
+            >
+              ×
+            </button>
+          </div>
         ) : null}
       </div>
     </div>
@@ -444,6 +538,32 @@ function ChevronIcon({ up }: { up: boolean }) {
       aria-hidden="true"
     >
       <path d="M6 9.5 12 15l6-5.5" />
+    </svg>
+  );
+}
+
+/**
+ * Hexagon — a mezők ki/be kapcsolása.
+ *
+ * A hatszög a GRUNDO alapegysége, ezért ez a legbeszédesebb ikon erre. Kikapcsolt
+ * állapotban áthúzzuk, ugyanúgy, ahogy a szem ikonnál is — így a két gomb
+ * állapota egy pillantással összehasonlítható.
+ */
+function HexIcon({ on }: { on: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 2.6 20.2 7.3v9.4L12 21.4 3.8 16.7V7.3z" />
+      {on ? null : <path d="M4 4l16 16" />}
     </svg>
   );
 }

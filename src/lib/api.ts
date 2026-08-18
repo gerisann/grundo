@@ -290,6 +290,20 @@ export interface TileCell {
   defense: number;
 }
 
+/** Egy mező tulajdonosának nyilvános kártyája — a térképi koppintáshoz. */
+export interface TileOwner {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+  level: number;
+  rankName: string;
+  gpTotal: number;
+  /** A megjelenített réteg szerinti terület és mezőszám. */
+  areaM2: number;
+  cellCount: number;
+  layer: 'foot' | 'bike';
+}
+
 export interface TilesResult {
   layer: 'foot' | 'bike';
   cells: TileCell[];
@@ -527,6 +541,10 @@ export const api = {
       `/api/tiles?layer=${layer}&south=${view.south}&west=${view.west}` +
         `&north=${view.north}&east=${view.east}`,
     ),
+
+  /** Egy mező tulajdonosának kártyája — koppintásra kérjük le, nem előre. */
+  tileOwner: (uid: string, layer: 'foot' | 'bike' = 'foot') =>
+    request<{ owner: TileOwner }>(`/api/tiles/owner/${encodeURIComponent(uid)}?layer=${layer}`),
 
   /** A legnagyobb területek. */
   leaderboard: (layer: 'foot' | 'bike' = 'foot') =>

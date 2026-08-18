@@ -56,6 +56,8 @@ export interface MapViewProps {
    * több tucatszor tüzelne, és minden alkalommal lekérdezést indítana.
    */
   onViewport?: (view: { south: number; west: number; north: number; east: number; zoom: number }) => void;
+  /** Koppintás egy FOGLALT mezőre. A szabad mezőkre nem sül el. */
+  onCellPress?: (info: { cell: CellId; owner: string }) => void;
 }
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
@@ -90,6 +92,7 @@ export function MapView({
   height = 320,
   fill = false,
   onViewport,
+  onCellPress,
 }: MapViewProps) {
   const { theme } = useThemeContext();
   const container = useRef<HTMLDivElement | null>(null);
@@ -110,6 +113,8 @@ export function MapView({
   /** Refben, hogy a térkép ne épüljön újra, ha a hívó új függvényt ad. */
   const viewportRef = useRef(onViewport);
   viewportRef.current = onViewport;
+  const pressRef = useRef(onCellPress);
+  pressRef.current = onCellPress;
 
   /* ── A térkép létrehozása, egyszer ─────────────────────────────── */
 
@@ -147,6 +152,29 @@ export function MapView({
     });
 
     instance.on('moveend', () => report(instance));
+
+    /**
+     * Koppintás egy mezőre → a tulajdonos kártyája.
+     *
+     * A kattintást a KITÖLTÉS rétegére kötjük, nem a térképre: így a Mapbox
+     * maga mondja meg, melyik hatszögre esett, és nem kell koordinátából
+     * visszafejtenünk. A szabad mezőknek nincs tulajdonosuk, azokra nem sül el.
+     */
+    instance.on('click', `${CELL_SOURCE}-fill`, (event) => {
+      const feature = event.features?.[0];
+      const owner = String(feature?.properties?.owner ?? '');
+      const cell = String(feature?.properties?.cell ?? '');
+      if (!owner || !cell) return;
+      pressRef.current?.({ cell, owner });
+    });
+
+    // Kézkurzor a foglalt mezők fölött — jelzi, hogy van mire koppintani.
+    instance.on('mouseenter', `${CELL_SOURCE}-fill`, () => {
+      instance.getCanvas().style.cursor = 'pointer';
+    });
+    instance.on('mouseleave', `${CELL_SOURCE}-fill`, () => {
+      instance.getCanvas().style.cursor = '';
+    });
 
     function report(map: mapboxgl.Map) {
       const bounds = map.getBounds();
@@ -263,6 +291,8 @@ export interface MapHexCell {
   defense?: number;
   /** Élő, még nem hiteles foglalási előnézet: kitöltött, de szintszám nélkül. */
   preview?: boolean;
+  /** A mező tulajdonosa — a koppintásra megjelenő kártyához. */
+  owner?: string;
 }
 
 function fitTrackOnce(
@@ -308,14 +338,26 @@ function addLayers(instance: mapboxgl.Map): void {
         'line-opacity': ['coalesce', ['get', 'lineOpacity'], 0.85],
       },
     });
+    /**
+     * A védelmi szint száma a mezőn.
+     *
+     * ZOOM SZERINT HALVÁNYUL, nem hirtelen tűnik el. Korábban `minzoom: 17.5`
+     * volt, vagyis a számok egyik pillanatról a másikra kapcsoltak be — és
+     * csak nagyon közelről. Így viszont a felhasználó már távolabbról látja,
+     * hol vannak erős mezők, és kifelé zoomolva a felirat fokozatosan olvad
+     * a háttérbe ahelyett, hogy olvashatatlan pöttyökké sűrűsödne.
+     *
+     * A `minzoom` 15-re csökken, a betű pedig zoommal együtt nő — távolabb
+     * apró, közelről jól olvasható.
+     */
     instance.addLayer({
       id: `${CELL_SOURCE}-defense-label`,
       type: 'symbol',
       source: CELL_SOURCE,
-      minzoom: 17.5,
+      minzoom: 15,
       layout: {
         'text-field': ['get', 'defenseLabel'],
-        'text-size': 12,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 15, 8, 17.5, 12, 20, 15],
         'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
         'text-allow-overlap': false,
         'text-ignore-placement': false,
@@ -324,6 +366,8 @@ function addLayers(instance: mapboxgl.Map): void {
         'text-color': ['get', 'labelColor'],
         'text-halo-color': ['get', 'labelHaloColor'],
         'text-halo-width': 1.2,
+        // 15-ös zoomnál épphogy dereng, 17,5-nél teljesen olvasható.
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.35, 17.5, 1],
       },
     });
   }
@@ -365,10 +409,20 @@ function syncData(
         features.push({
           type: 'Feature' as const,
           properties: {
+            cell,
+            owner: typeof entry === 'string' ? '' : (entry.owner ?? ''),
             color,
             opacity,
             lineOpacity: ROLE_LINE_OPACITY[layer.role],
-            defenseLabel: territory && !preview && defense >= 2 ? String(defense) : '',
+            /**
+             * Az 1-es mezők is kapnak számot.
+             *
+             * Korábban csak a 2-estől felfelé látszott felirat, amitől a
+             * frissen szerzett mező „jelöletlennek" tűnt — pedig az is
+             * birtok, csak a leggyengébb szinten. Így a térkép egységes: ami
+             * a tiéd vagy a riválisé, azon mindig ott a szintje.
+             */
+            defenseLabel: territory && !preview ? String(defense) : '',
             labelColor: defense >= 4
               ? cssColor('var(--territory-label-strong)')
               : cssColor('var(--text-primary)'),
