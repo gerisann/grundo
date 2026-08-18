@@ -91,7 +91,9 @@ Ebből következik, amit kértél:
 - **Minden metszet bezárás.** Nem kell a kiindulóponthoz visszaérni — a korábbi 30 m-es „visszaérkezési tűrés" szabály **megszűnik**, feleslegessé vált. A kiindulóponthoz visszaérés csak a legegyszerűbb esete az önmetszésnek.
 - **Konvex és konkáv is működik.** A kitöltés nem alakfüggő: bármilyen csavart, csillag alakú, karéjos hurkot kitölt.
 - **Nyolcas alakú útvonal két területet ad**, mert a két hurok külön-külön detektálódik.
-- **Egy aktivitás alatt több bezárás is lehet** — ahányszor metszed magad, annyiszor.
+- **Egy aktivitás alatt több bezárás is lehet** — ahányszor metszed magad, annyiszor. **De minden bezárás csak az előző bezárás UTÁN bejárt útból épülhet.** Ez nem finomhangolás, hanem a szabály lényege: enélkül a kör előtti és utáni út összeérése újra és újra „bezárná" ugyanazt a területet.
+
+> **Miért kellett ezt külön kimondani?** Mert a természetes használat pont ilyen: a rögzítést a kaputól indítod, kimész a körhöz, megcsinálod, és ugyanazon az úton jössz vissza. A rávezető szakasz mezőit így kétszer érinted, és a két érintés között ott van az egész bezárt terület. 2026-08-19-ig minden ilyen mező újabb bezárásnak számított ugyanarra a területre: egy valódi 11 km-es körnél **26 bezárás**, minden mező az **5-ös maximumon**, és **631 igénypont a helyes 126 helyett**. Már 40 méter rávezető elég volt a maximumhoz. Az ismételt kör jutalma ettől függetlenül megmarad: a másodszor megfutott kör a *saját* mezőin záródik, tehát önálló bezárás.
 - **Menet közben, azonnal.** A bezárás nem a mentéskor derül ki: a kliens élőben mutatja a kitöltött területet és a becsült pontot. (A hiteles számítás mentés után, szerveroldalon fut újra.)
 - **A bezáráshoz kihagyott mező kell.** Ha ugyanazon a nyomvonalon jössz vissza, az nem bezárás — és az sem, ha a visszaút a szomszédos cellasorban fut. Legalább **egy kihagyott mezőnek** kell lennie a két nyomvonal között; a gyakorlatban ez ~30 méteres hézag. Egy átlagos utca két járdája nem elég, egy háztömb megkerülése igen.
 

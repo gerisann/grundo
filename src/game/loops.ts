@@ -195,9 +195,36 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
           interiorCells: interior.size,
           prunedCells,
         });
-        // A felhasznált szakaszt "elfogyasztjuk", hogy a következő kör
-        // önálló bezárásként detektálódjon.
-        for (let k = previous; k < i; k++) lastSeenAt.delete(path[k]!);
+        /**
+         * A bezárás után a TELJES előzmény elfogy — nem csak a felhasznált
+         * szakasz.
+         *
+         * ⚠️ EZ EGY ÉLES HIBA JAVÍTÁSA (2026-08-19). Korábban csak a
+         * `[previous, i)` szakasz mezőit felejtettük el. Ez elég annak, hogy
+         * két EGYMÁS UTÁNI kör külön bezárásként számítson, de nem véd az
+         * ellen, ami a valódi használatban szinte mindig előfordul:
+         *
+         *   A felhasználó a kaputól indítja a rögzítést, kimegy a körhöz,
+         *   megcsinálja, és UGYANAZON az úton jön vissza.
+         *
+         * A rávezető szakasz mezőit így kétszer érinti: egyszer az elején,
+         * egyszer a legvégén. A két érintés KÖZÖTT viszont ott van az egész
+         * bezárt terület. Minden ilyen mező tehát újabb „bezárást" szült
+         * ugyanarra a területre — a `pruneDeadEnds` a rávezetőt hídként
+         * levágta, maradt a kör fala, valódi belsővel.
+         *
+         * Mért következmény egy valódi, 11 km-es körnél: 26 detektált hurok,
+         * minden mező 5-ös védelmen (a maximumon), és 631 igénypont a helyes
+         * 126 helyett. Már 40 méter rávezető szakasz maxra vitte a védelmet.
+         *
+         * A teljes törléssel a szabály egyszerű és kimondható: a következő
+         * bezárás csak a MOSTANI bezárás UTÁN bejárt útból épülhet. Az
+         * ismételt kör jutalma sértetlen marad — négy kör továbbra is négy
+         * hurok és 4-es védelem —, mert a második kör a saját mezőin záródik.
+         *
+         * Regressziós tesztek: `geometry.test.ts` → „rávezető szakasz".
+         */
+        lastSeenAt.clear();
       } else {
         rejected.push({
           reason: 'interior_too_small',

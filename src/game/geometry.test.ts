@@ -396,3 +396,97 @@ describe('két területet összekötő folyosó', () => {
     expect(both).toBeLessThan(left + right + 5);
   });
 });
+
+/**
+ * RÁVEZETŐ SZAKASZ — a legdrágább hurokfelismerési hiba regressziós tesztje.
+ *
+ * A valódi használat: a felhasználó a kaputól indítja a rögzítést, kimegy a
+ * körhöz, megcsinálja, és ugyanazon az úton jön vissza. A rávezető mezőit így
+ * kétszer érinti, és a két érintés között ott van az EGÉSZ bezárt terület.
+ *
+ * A javítás előtt ez minden rávezető mezőnél újabb bezárást szült ugyanarra a
+ * területre: egy valódi 11 km-es körnél 26 hurok, 5-ös védelem és ötszörös
+ * igénypont. Már 40 méter rávezető elég volt a maximumhoz.
+ *
+ * Lásd az indoklást a `detectLoopsDetailed` `lastSeenAt.clear()` hívásánál.
+ */
+describe('rávezető szakasz', () => {
+  const SIDE = 250;
+
+  /** Egyenes szakaszokból álló nyomvonal, 5 méterenként mintavételezve. */
+  function walk(corners: readonly (readonly [number, number])[]): TracePoint[] {
+    const points: TracePoint[] = [];
+    let t = Date.UTC(2026, 7, 19, 8, 0, 0);
+    for (let i = 1; i < corners.length; i += 1) {
+      const [ax, ay] = corners[i - 1]!;
+      const [bx, by] = corners[i]!;
+      const span = Math.hypot(bx - ax, by - ay);
+      for (let d = 0; d < span; d += 5) {
+        const k = d / span;
+        points.push({ ...offset(ORIGIN, ax + (bx - ax) * k, ay + (by - ay) * k), t: (t += 4000) });
+      }
+    }
+    return points;
+  }
+
+  const square: (readonly [number, number])[] = [
+    [0, 0], [SIDE, 0], [SIDE, SIDE], [0, SIDE], [0, 0],
+  ];
+
+  /** A kör, elé-mögé egy `spurM` hosszú oda-vissza rávezetővel. */
+  function withSpur(spurM: number): TracePoint[] {
+    return walk([[-spurM, 0], ...square, [-spurM, 0]]);
+  }
+
+  function run(points: TracePoint[]) {
+    return processActivity({
+      points,
+      type: 'run',
+      distanceKm: 1,
+      actorId: 'me',
+      ownership: new Map(),
+      streakDays: 0,
+      gpEarnedToday: 0,
+    });
+  }
+
+  function maxDefense(result: ReturnType<typeof run>): number {
+    let max = 0;
+    for (const [, ownership] of result.claim?.updates ?? []) {
+      if (ownership.defense > max) max = ownership.defense;
+    }
+    return max;
+  }
+
+  it('a rávezető nélküli kör egyetlen bezárás', () => {
+    const result = run(walk(square));
+    expect(result.loops.length).toBe(1);
+    expect(maxDefense(result)).toBe(1);
+  });
+
+  it.each([20, 40, 100, 300])(
+    '%d méteres oda-vissza rávezető sem szül több bezárást',
+    (spurM) => {
+      const result = run(withSpur(spurM));
+      // EGY fizikai kör = EGY bezárás, akármilyen hosszú a rávezető.
+      expect(result.loops.length).toBe(1);
+      // És a védelem 1-es marad — nem kúszik fel a maximumra.
+      expect(maxDefense(result)).toBe(1);
+    },
+  );
+
+  it('a rávezető nem növeli az igénypontot', () => {
+    const bare = run(walk(square));
+    const spurred = run(withSpur(300));
+    // Ugyanaz a bezárt terület ugyanannyit ér, akárhonnan közelítetted meg.
+    expect(spurred.gp.claim).toBeCloseTo(bare.gp.claim, 5);
+  });
+
+  it('az ismételt kör jutalma megmarad', () => {
+    // A javítás NEM teheti tönkre a védelemépítést: a másodszor megfutott kör
+    // továbbra is önálló bezárás, és 2-es védelmet ad.
+    const twice = run(walk([...square, ...square.slice(1)]));
+    expect(twice.loops.length).toBe(2);
+    expect(maxDefense(twice)).toBe(2);
+  });
+});
