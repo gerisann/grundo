@@ -77,12 +77,9 @@ export function ProfileScreen() {
         {/* ── Haladás a következő szintig ─────────────────────────── */}
         <section className="prof__level" aria-label="Haladás a következő szintig">
           <div className="prof__level-head">
-            <span className="prof__level-name">
-              {level.name}
-              {/* A száz szint mellett a puszta sorszám keveset mond — a
-                  „/100" adja meg, hol tart a felhasználó a létrán. */}
-              <span className="prof__level-num"> {level.level}/100</span>
-            </span>
+            {/* Csak a név. A rang és a fokozat önmagában elhelyezi a
+                felhasználót; a sorszám mellé írva csak zaj. */}
+            <span className="prof__level-name">{level.name}</span>
             <span className="prof__level-gp">{formatGp(profile?.gpTotal ?? 0)}</span>
           </div>
 

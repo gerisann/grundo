@@ -46,12 +46,6 @@
   color: var(--text-primary);
 }
 
-.prof__level-num {
-  font-weight: 400;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
 .prof__level-gp {
   font-size: var(--fs-small);
   font-weight: 700;
