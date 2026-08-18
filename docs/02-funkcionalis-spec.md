@@ -265,7 +265,7 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 
 ### Profil fül (kép #04)
 - Avatar (PRO jelvénnyel), név, `@felhasznalonev`, `Szerkesztés`.
-- **Szint-chip** (pl. ÚJONC) + **terület-chip** (m²) + **GP-chip**.
+- **Szint-chip** (pl. ROOKIE III.) + **terület-chip** (km²) + **GP-chip**.
 - **Két haladásjelző**: felül a GP-szint, alatta a távolság-jelvény (`38,4 / 50 km`).
 - Számlálók: Aktivitások · Követők · Követettek (kattintható listák).
 - **Streak-kártya** (napi + heti sorozat) és **szint-kártya**.

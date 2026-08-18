@@ -125,15 +125,5 @@ export function computeHoldBonus(heldM2: number, activeInLastDays: number): numb
   return Math.round(Math.min(gp, GAMEPLAY.HOLD_GP_DAILY_CAP));
 }
 
-/** Szint a kumulált GP-ből. 1-alapú. A szint soha nem csökken. */
-export function levelFromGp(gpTotal: number): { level: number; name: string; nextAt: number | null } {
-  let level = 1;
-  for (let i = 0; i < GAMEPLAY.LEVELS.length; i++) {
-    if (gpTotal >= GAMEPLAY.LEVELS[i]!) level = i + 1;
-  }
-  const nextAt = GAMEPLAY.LEVELS[level] ?? null;
-  return { level, name: GAMEPLAY.LEVEL_NAMES[level - 1] ?? '', nextAt };
-}
-
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;

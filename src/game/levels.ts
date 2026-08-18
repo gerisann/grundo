@@ -10,8 +10,9 @@
 import { GAMEPLAY } from '@/config/gameplay';
 
 export interface LevelProgress {
-  /** 1-től indexelve — ahogy a felhasználónak mutatjuk. */
+  /** 1-től indexelve — ahogy a felhasználónak mutatjuk. 1…100. */
   level: number;
+  /** A teljes név, fokozattal együtt: „ROOKIE III.". */
   name: string;
   /** A következő szint neve, vagy `null`, ha ez a legmagasabb. */
   nextName: string | null;
@@ -41,7 +42,7 @@ export function levelProgress(gpTotal: number): LevelProgress {
 
   return {
     level,
-    name: GAMEPLAY.LEVEL_NAMES[level - 1] ?? 'JÖVEVÉNY',
+    name: GAMEPLAY.LEVEL_NAMES[level - 1] ?? 'ROOKIE I.',
     nextName: to === null ? null : (GAMEPLAY.LEVEL_NAMES[level] ?? null),
     from,
     to,

@@ -14,6 +14,7 @@ import { trimPrivateEnds, DEFAULT_PRIVACY } from './privacy';
 import { computeSplits, elevationProfile } from './splits';
 import { levelFor, levelProgress } from './levels';
 import { distanceM } from './geo';
+import { GAMEPLAY } from '@/config/gameplay';
 import type { TracePoint } from '@/types';
 
 describe('kódolt vonallánc', () => {
@@ -162,33 +163,92 @@ describe('részidők', () => {
 });
 
 describe('szintek', () => {
+  const levels = GAMEPLAY.LEVELS;
+  const names = GAMEPLAY.LEVEL_NAMES;
+
+  it('száz szint van, száz névvel', () => {
+    expect(levels).toHaveLength(100);
+    expect(names).toHaveLength(100);
+  });
+
+  it('a nevek húsz rangból és öt fokozatból állnak', () => {
+    expect(names[0]).toBe('ROOKIE I.');
+    expect(names[4]).toBe('ROOKIE V.');
+    expect(names[5]).toBe('BEGINNER I.');
+    // Az 51. szint (50-es index) a 11. rang első fokozata.
+    expect(names[50]).toBe('ELITE I.');
+    expect(names[99]).toBe('GRUNDO V.');
+    // Minden név egyedi — két azonos szintnév értelmezhetetlen lenne.
+    expect(new Set(names).size).toBe(100);
+  });
+
+  it('a küszöbök szigorúan nőnek', () => {
+    for (let i = 1; i < levels.length; i += 1) {
+      expect(levels[i]!).toBeGreaterThan(levels[i - 1]!);
+    }
+  });
+
+  it('EGYETLEN szint sem olcsóbb az alatta lévőnél', () => {
+    /**
+     * Ez a lényegi állítás. Az első változat a KÜSZÖBÖKET kerekítette, és
+     * emiatt tizenhárom helyen előfordult, hogy egy szint kevesebb pontba
+     * került, mint az előző — például a 24. olcsóbb volt, mint a 23.
+     */
+    let previousGap = 0;
+    for (let i = 1; i < levels.length; i += 1) {
+      const gap = levels[i]! - levels[i - 1]!;
+      expect(gap).toBeGreaterThanOrEqual(previousGap);
+      previousGap = gap;
+    }
+  });
+
+  it('három aktivitás a 2. szintre visz, nem a kilencedikre', () => {
+    // Mért értékek: egy valósághű városi kör 230–560 GP.
+    expect(levelFor(231 + 297 + 380)).toBe(2);
+    expect(levelFor(560)).toBe(1);
+  });
+
+  it('a napi aktív játékosnak is több mint egy év a csúcs', () => {
+    /**
+     * A napi tetőt a lágy plafon szabja meg: efelé a pont fele értéken
+     * számít, tehát ötezer GP/nap a gyakorlati maximum. Ha a 100. szint
+     * ennél alacsonyabbra kerülne, a legkitartóbb játékos egy éven belül
+     * kifutna a rendszerből.
+     */
+    const dailyCeiling = GAMEPLAY.SOFT_CAP_GP_PER_DAY;
+    expect(levels[99]!).toBeGreaterThan(dailyCeiling * 365);
+  });
+
   it('a nulláról induló fiók az első szinten van', () => {
     expect(levelFor(0)).toBe(1);
-    expect(levelProgress(0).name).toBe('JÖVEVÉNY');
+    expect(levelProgress(0).name).toBe('ROOKIE I.');
   });
 
   it('a küszöb ELÉRÉSE már szintlépés', () => {
-    expect(levelFor(299)).toBe(1);
-    expect(levelFor(300)).toBe(2);
+    const second = levels[1]!;
+    expect(levelFor(second - 1)).toBe(1);
+    expect(levelFor(second)).toBe(2);
   });
 
   it('a hátralévő pont a következő küszöbig szól', () => {
-    const progress = levelProgress(500);
+    const progress = levelProgress(levels[1]! + 100);
     expect(progress.level).toBe(2);
-    expect(progress.remaining).toBe(400); // 900 − 500
-    expect(progress.nextName).toBe('NYOMKERESŐ');
+    expect(progress.remaining).toBe(levels[2]! - levels[1]! - 100);
+    expect(progress.nextName).toBe('ROOKIE III.');
   });
 
   it('a csúcson a sáv tele van, és nincs következő szint', () => {
-    const top = levelProgress(250_000);
-    expect(top.level).toBe(10);
+    const top = levelProgress(levels[99]! * 2);
+    expect(top.level).toBe(100);
+    expect(top.name).toBe('GRUNDO V.');
     expect(top.nextName).toBeNull();
     expect(top.ratio).toBe(1);
     expect(top.remaining).toBe(0);
   });
 
   it('a haladás a sávon belül arányos', () => {
-    // A 2. szint 300-tól 900-ig tart; a 600 pont épp a fele.
-    expect(levelProgress(600).ratio).toBeCloseTo(0.5, 5);
+    const from = levels[1]!;
+    const to = levels[2]!;
+    expect(levelProgress((from + to) / 2).ratio).toBeCloseTo(0.5, 5);
   });
 });

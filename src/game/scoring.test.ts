@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { GAMEPLAY } from '@/config/gameplay';
-import { computeActivityGp, streakMultiplier, applySoftCap, computeHoldBonus, levelFromGp } from './scoring';
+import { computeActivityGp, streakMultiplier, applySoftCap, computeHoldBonus } from './scoring';
 import { multiplierFor } from './claim';
 import type { CellFate, ClaimResult } from '@/types';
 
@@ -174,13 +174,3 @@ describe('C) példa — körbe-körbe futás', () => {
   });
 });
 
-describe('szintek', () => {
-  it('a küszöbök szerint lép', () => {
-    expect(levelFromGp(0).name).toBe('JÖVEVÉNY');
-    // Az elején sűrűn: két aktivitás már szintet hoz.
-    expect(levelFromGp(300).level).toBe(2);
-    expect(levelFromGp(299).level).toBe(1);
-    expect(levelFromGp(100_000).name).toBe('GRUNDMESTER');
-    expect(levelFromGp(999_999).nextAt).toBeNull();
-  });
-});

@@ -8,6 +8,101 @@
  * Forrás: docs/04-pontrendszer.md
  */
 
+/* ════════════════════════════════════════════════════════════════
+   Szintek — 100 szint, 20 rang × 5 fokozat
+   ════════════════════════════════════════════════════════════════ */
+
+const LEVEL_RANKS = [
+  'ROOKIE', 'BEGINNER', 'NOVICE', 'SKILLED', 'ADVANCED',
+  'PRO', 'SPECIALIST', 'EXPERT', 'VETERAN', 'ACE',
+  'ELITE', 'MASTER', 'GRANDMASTER', 'CHAMPION', 'BOSS',
+  'APEX', 'TITAN', 'ICON', 'LEGEND', 'GRUNDO',
+] as const;
+
+const LEVEL_TIERS = ['I.', 'II.', 'III.', 'IV.', 'V.'] as const;
+
+/**
+ * A második szint küszöbe — innen skálázódik minden.
+ *
+ * MÉRT ÉRTÉK, nem érzés: egy valósághű városi kör 230–560 GP-t ad
+ * (3,6 km → 231, 5,3 km → 297, 10 km → 558). Három vegyes aktivitás tehát
+ * nagyjából ennyi — vagyis az első szintlépés három aktivitás után jön.
+ */
+const LEVEL_2_GP = 900;
+
+/**
+ * A SZÁZADIK szint küszöbe.
+ *
+ * A követelmény: aki MINDEN NAP aktív, annak is legalább egy év legyen.
+ * A napi maximum a lágy plafon körül van (SOFT_CAP_GP_PER_DAY = 5000): efelé
+ * a pont fele értéken számít, tehát a gyakorlati napi tető öt-hatezer GP.
+ * 5000 × 365 = 1 825 000 — a küszöb ezért 2 000 000: még a legkitartóbb
+ * játékosnak is 400 nap.
+ *
+ * Viszonyítási pontok egy év napi aktív játék után:
+ *   ≈400 GP/nap  (napi egy közepes kör)      → 21. szint  (ADVANCED I.)
+ *   ≈1500 GP/nap (napi nagy kör + tartás)    → 46. szint  (ACE I.)
+ *   ≈5000 GP/nap (plafonon)                   → 94. szint
+ */
+const LEVEL_100_GP = 2_000_000;
+
+/**
+ * A lépcső alakja: L(n) = LEVEL_2_GP × (n−1)^p.
+ *
+ * MIÉRT NEM MÉRTANI SOROZAT? Mert az állandó százalékos növekedés a két
+ * végpont közé szórva mikroszkopikus lépéseket adna elöl (900 → 959 →
+ * 1 022…), amitől az első tíz szint egyetlen aktivitás alatt elrepülne. A
+ * hatványfüggvény különbségei folyamatosan nőnek (900-tól ~35 000-ig), de az
+ * első lépés mérete értelmes marad.
+ */
+const LEVEL_EXPONENT = Math.log(LEVEL_100_GP / LEVEL_2_GP) / Math.log(99);
+
+/**
+ * Kerekítés a LÉPCSŐ nagyságrendjéhez — nem a küszöbéhez.
+ *
+ * A felhasználó a lépcsőt látja („még 21 000 GP a következő szintig"), nem a
+ * kumulált küszöböt. Ha a küszöböket kerekítenénk, a két szomszédos
+ * kerekítési hiba összeadódna a különbségükben, és előfordulhatna, hogy a
+ * 24. szint OLCSÓBB, mint a 23. — pontosan ezt mértük ki az első változatnál.
+ */
+function roundGap(gap: number): number {
+  const step = Math.pow(10, Math.max(1, Math.floor(Math.log10(gap)) - 1));
+  return Math.round(gap / step) * step;
+}
+
+/**
+ * A száz küszöb.
+ *
+ * A lépcsőkből építkezünk, nem a küszöbökből, és két szabályt tartunk be:
+ *
+ *   1. a lépcső SOHA nem lehet kisebb az előzőnél — különben lenne egy szint,
+ *      ami olcsóbb az alatta lévőnél, és ezt a játékos észreveszi;
+ *   2. a szintértékek szigorúan nőnek — különben két szint egyszerre
+ *      teljesülne, és a haladásjelző nullával osztana.
+ *
+ * Az UTOLSÓ lépcső nyeli el a kerekítések maradékát, hogy a csúcs pontosan a
+ * tervezett kerek számon legyen. Ez a lépcső így is a legnagyobb marad.
+ */
+export function buildLevelThresholds(): number[] {
+  const thresholds = [0];
+  let previousGap = 0;
+
+  for (let level = 2; level <= 100; level += 1) {
+    const exact =
+      LEVEL_2_GP * ((level - 1) ** LEVEL_EXPONENT - (level - 2) ** LEVEL_EXPONENT);
+    const gap = Math.max(previousGap, roundGap(exact));
+    thresholds.push(thresholds[thresholds.length - 1]! + gap);
+    previousGap = gap;
+  }
+
+  thresholds[99] = LEVEL_100_GP;
+  return thresholds;
+}
+
+export function buildLevelNames(): string[] {
+  return LEVEL_RANKS.flatMap((rank) => LEVEL_TIERS.map((tier) => `${rank} ${tier}`));
+}
+
 export const GAMEPLAY = {
   // ── Rács ────────────────────────────────────────────────────────────────
   /** H3 felbontás. ~18,8 m hosszú átló — a GPS-hiba nagyságrendje.
@@ -102,23 +197,18 @@ export const GAMEPLAY = {
   SOFT_CAP_GP_PER_DAY: 5000,
   SOFT_CAP_RATE: 0.5,
 
-  // ── Szintek (kumulált GP) ───────────────────────────────────────────────
+  // ── Szintek (kumulált GP) ──────────────────────────────────────
   /**
-   * Szintlépcsők — elöl sűrűn, hátul ritkán.
+   * SZÁZ szint: 20 rangnév, mindegyik öt fokozattal (ROOKIE I. … GRUNDO V.).
    *
-   * Egy átlagos aktivitás a gyök-alapú szabállyal ~150-350 GP. Ebből:
-   * a 2. szint egy-két aktivitás, a 3. további három, a 4. további öt-hat —
-   * onnantól minden szint nagyjából kétszer annyi, mint az előző.
-   *
-   * A cél, hogy a kezdés azonnal visszajelezzen, a felső szintek viszont
-   * valóban jelentsenek valamit: a 10. szint heti négy aktivitással is évek
-   * munkája.
+   * A lépcsőket NEM kézzel írjuk le. Száz szám kézi karbantartása garantáltan
+   * eltör: egyetlen elgépelés nem monoton lépcsőt ad, amitől a szint
+   * csökkenhetne — és ezt a szemnek kéne észrevennie. A képlet ehelyett
+   * ellenőrizhető, hangolható, és a teszt állítást tud tenni a TULAJDONSÁGAIRA
+   * (monotonitás, növekvő különbségek, a két végpont).
    */
-  LEVELS: [0, 300, 900, 2000, 4200, 8500, 16000, 30000, 55000, 100000],
-  LEVEL_NAMES: [
-    'JÖVEVÉNY', 'KÓBORLÓ', 'NYOMKERESŐ', 'HATÁRJÁRÓ', 'TERÜLETŐR',
-    'GRUNDŐR', 'VÁROSJÁRÓ', 'NAGYGAZDA', 'GRUNDBÍRÓ', 'GRUNDMESTER',
-  ],
+  LEVELS: buildLevelThresholds(),
+  LEVEL_NAMES: buildLevelNames(),
   /** A távolság-létra a jelvények szintjén marad meg (rétegenként). */
   DISTANCE_BADGE_LADDER_KM: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000],
 

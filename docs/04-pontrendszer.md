@@ -172,24 +172,62 @@ A zóna másnap reggelig **4× védett**: négyszer kell áttörni, hogy elvegy�
 
 **A szint a GP-ből számít** *(döntés: 2026-08-15)*, nem a megtett távolságból. Indok: a GP már tartalmazza a távot, a területet és a kitartást is — egyetlen, mindent összefogó mérték.
 
-| Szint | Név | GP küszöb |
-|---|---|---|
-| 1 | JÖVEVÉNY | 0 |
-| 2 | KÓBORLÓ | 300 |
-| 3 | NYOMKERESŐ | 900 |
-| 4 | HATÁRJÁRÓ | 2 000 |
-| 5 | TERÜLETŐR | 4 200 |
-| 6 | GRUNDŐR | 8 500 |
-| 7 | VÁROSJÁRÓ | 16 000 |
-| 8 | NAGYGAZDA | 30 000 |
-| 9 | GRUNDBÍRÓ | 55 000 |
-| 10 | GRUNDMESTER | 100 000 |
+### 100 szint, 20 rang × 5 fokozat *(döntés: 2026-08-18)*
 
-A lépcsők **elöl sűrűk, hátul ritkák**: egy átlagos aktivitás 150-350 GP, tehát a 2. szint egy-két aktivitás, a 3. további három, a 4. további öt-hat — onnantól minden szint nagyjából kétszer annyi, mint az előző. A cél, hogy a kezdés azonnal visszajelezzen, a 10. szint viszont valóban jelentsen valamit: heti négy aktivitással is évek munkája.
+A korábbi tíz magyar rangnév helyét száz szint veszi át: húsz rang, mindegyik öt fokozattal.
 
-Nagyságrend: heti 3 közepes futás területtel ≈ 4–5 000 GP/hét → a 2. szint 4–6 hét, a 10. szint komoly, éves elköteleződés.
+```
+ROOKIE I.–V.  →  BEGINNER  →  NOVICE  →  SKILLED  →  ADVANCED  →  PRO
+SPECIALIST    →  EXPERT    →  VETERAN →  ACE      →  ELITE     →  MASTER
+GRANDMASTER   →  CHAMPION  →  BOSS    →  APEX     →  TITAN     →  ICON
+LEGEND        →  GRUNDO I.–V.
+```
 
-A szint **soha nem csökken**. A profilon: szint-chip + haladásjelző („2 340 GP a következő szintig").
+**Miért fokozatok?** Mert száz önálló név megjegyezhetetlen, és a közöttük lévő sorrend sem lenne nyilvánvaló. A rang + fokozat viszont két számjegyre sűríti a helyzetet: „ACE III." ránézésre elhelyezhető, és a rangváltás (ACE V. → ELITE I.) önálló ünnepi pillanat marad.
+
+### A lépcső
+
+A küszöböket **nem kézzel írjuk le**, hanem képlet adja (`src/config/gameplay.ts`):
+
+```
+L(n) = 900 × (n−1)^p        p = ln(2 000 000 / 900) / ln(99) ≈ 1,677
+```
+
+Száz szám kézi karbantartása garantáltan eltör; a képlet ellenőrizhető, és a teszt a **tulajdonságaira** állít (monotonitás, növekvő lépcsők, a két végpont).
+
+| Szint | Név | GP küszöb | Lépcső |
+|---|---|---|---|
+| 1 | ROOKIE I. | 0 | — |
+| 2 | ROOKIE II. | 900 | 900 |
+| 3 | ROOKIE III. | 2 900 | 2 000 |
+| 5 | ROOKIE V. | 9 200 | 3 500 |
+| 10 | BEGINNER V. | 35 900 | 6 400 |
+| 20 | SKILLED V. | 125 100 | 11 000 |
+| 30 | PRO V. | 255 100 | 15 000 |
+| 50 | ACE V. | 615 100 | 21 000 |
+| 70 | CHAMPION V. | 1 091 100 | 26 000 |
+| 90 | ICON V. | 1 671 100 | 31 000 |
+| 100 | GRUNDO V. | 2 000 000 | 34 900 |
+
+**A két végpont mért érték, nem érzés.**
+
+- **2. szint = 900 GP.** Egy valósághű városi kör 230–560 GP-t ad (3,6 km → 231, 5,3 km → 297, 10 km → 558). Három vegyes aktivitás tehát nagyjából 900 — az első szintlépés a harmadik aktivitás után jön.
+- **100. szint = 2 000 000 GP.** A napi tetőt a lágy plafon szabja meg (5 000 GP/nap, felette fele érték). 5 000 × 365 = 1 825 000, tehát **még a legkitartóbb, minden nap plafonon játszó felhasználónak is 400 nap** — a cél („legalább egy év") teljesül.
+
+**Egy év napi aktivitás után, különböző intenzitással:**
+
+| Napi GP | Ki ő? | Egy év után | A 100. szintig |
+|---|---|---|---|
+| ~200 | napi séta, ritka kör | 14. szint (NOVICE IV.) | — |
+| ~400 | napi egy közepes kör | 21. szint (ADVANCED I.) | 13,7 év |
+| ~1 500 | napi nagy kör + tartás-bónusz | 46. szint (ACE I.) | 3,7 év |
+| ~5 000 | a napi plafonon | 94. szint (LEGEND IV.) | 1,1 év |
+
+### A lépcsőt kerekítjük, nem a küszöböt
+
+A felhasználó a **lépcsőt** látja („még 21 000 GP a következő szintig"), nem a kumulált küszöböt. Az első változat a küszöböket kerekítette, és a két szomszédos kerekítési hiba összeadódott a különbségükben: **tizenhárom helyen egy szint olcsóbb lett az alatta lévőnél** (a 24. olcsóbb, mint a 23.). Ezért most a lépcsőket kerekítjük, és azokat összegezzük — a lépcső soha nem lehet kisebb az előzőnél.
+
+A szint **soha nem csökken**. A profilon: szint-chip + haladásjelző („még 2 000 GP a következő szintig · ROOKIE III.").
 
 ### A távolság-létra megmarad — a jelvények szintjén
 

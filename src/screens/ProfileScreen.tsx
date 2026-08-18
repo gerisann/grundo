@@ -78,7 +78,10 @@ export function ProfileScreen() {
         <section className="prof__level" aria-label="Haladás a következő szintig">
           <div className="prof__level-head">
             <span className="prof__level-name">
-              {level.level}. szint · {level.name}
+              {level.name}
+              {/* A száz szint mellett a puszta sorszám keveset mond — a
+                  „/100" adja meg, hol tart a felhasználó a létrán. */}
+              <span className="prof__level-num"> {level.level}/100</span>
             </span>
             <span className="prof__level-gp">{formatGp(profile?.gpTotal ?? 0)}</span>
           </div>
@@ -95,7 +98,7 @@ export function ProfileScreen() {
 
           <span className="prof__level-note">
             {level.nextName
-              ? `Még ${formatGp(level.remaining)} a(z) ${level.nextName} szintig`
+              ? `Még ${formatGp(level.remaining)} a következő szintig · ${level.nextName}`
               : 'A legmagasabb szinten vagy — innen már csak a terület nő.'}
           </span>
         </section>
