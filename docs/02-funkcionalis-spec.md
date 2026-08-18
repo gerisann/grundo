@@ -227,7 +227,9 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   backend a privát nyomból, a privát zóna alkalmazása után létrehozza.
 - A feltöltött fotók beépített, lapozható lightboxban nyílnak meg. Balra/jobbra
   húzással vagy nyílgombbal lapozhatók, lefelé húzással, `X`-szel vagy Escape
-  billentyűvel bezárhatók; nem nyitnak új böngészőlapot.
+  billentyűvel bezárhatók; nem nyitnak új böngészőlapot. A kép kétujjas
+  csippentéssel, egérgörgővel vagy a beépített `− / +` vezérlőkkel 1–4× között
+  nagyítható, nagyított állapotban húzással mozgatható.
 - **STATS rács**: km · átlagtempó · idő · szintemelkedés · kalória · átlagpulzus.
 - **GRUNDO panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
 - Rögzítő eszköz neve („iPhone 13 Pro", „Garmin Forerunner 265").
