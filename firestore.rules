@@ -105,9 +105,13 @@ service cloud.firestore {
 
       // A kliens csak a saját aktivitása leíró mezőit szerkesztheti.
       // A nyomvonal, a metrikák, a claim, a GP és a trust szerveroldali.
-      allow update: if isSelf(resource.data.userId) && onlyChanges([
-        'title', 'description', 'visibility', 'equipmentId', 'photos', 'updatedAt'
-      ]);
+      // A leíró mezők szerkesztése a PATCH /api/activities/:id végponton megy.
+      //
+      // A `photos` azért NEM maradhat kliensről írható: a hivatkozás
+      // útvonal-előtagját a szerver ellenőrzi (`activities/{uid}/{activityId}/`),
+      // különben bárki behivatkozhatná más felhasználó fájljait a saját
+      // aktivitásába. A szabály nyelve ilyen ellenőrzésre nem alkalmas.
+      allow update: if false;
 
       // Létrehozás és törlés a szerveren keresztül (feldolgozás + területvisszavonás).
       allow create, delete: if false;
@@ -122,26 +126,25 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // A kedvelés a SZERVEREN keresztul megy (POST/DELETE /api/activities/:id/like).
+      //
+      // MIÉRT nem írhatja a kliens közvetlenül, ha csak a saját dokumentumáról
+      // van szó? Mert a kedvelés KÉT dolgot változtat: ezt az aldokumentumot és
+      // az aktivitás `likeCount` mezőjét. Az utóbbit a kliens nem írhatja
+      // (lásd az `update` szabályt fent), tehát közvetlen írásnál a kettő
+      // szétcsúszna: a szív tele lenne, a számláló nulla.
       match /likes/{uid} {
         allow read: if signedIn();
-        allow create: if isSelf(uid)
-                      && request.resource.data.keys().hasOnly(['createdAt']);
-        allow delete: if isSelf(uid);
-        allow update: if false;
+        allow write: if false;
       }
 
+      // A hozzászólásírás is a szerveren megy — ugyanaz az ok, mint a
+      // kedvelésnél: a `commentCount` az aktivitás dokumentumán él, és azt a
+      // kliens nem írhatja. Ráadásul a moderáció (szűrés, jelentés,
+      // sebességkorlát) is oda tartozik majd, nem a kliensbe.
       match /comments/{commentId} {
         allow read: if signedIn();
-        allow create: if signedIn()
-          && isSelf(request.resource.data.userId)
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 1000
-          && get(/databases/$(database)/documents/activities/$(activityId))
-               .data.allowComments != false;
-        // Szerkesztés csak a saját szövegen; a törlés puha (deleted flag).
-        allow update: if isSelf(resource.data.userId) && onlyChanges(['text', 'editedAt']);
-        allow delete: if isSelf(resource.data.userId) || isAdmin();
+        allow write: if false;
       }
     }
 

@@ -1,0 +1,131 @@
+/* Mentés utáni kiegészítő űrlap: név, leírás, képek */
+
+.save {
+  display: grid;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.save--done {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.save__done {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--success);
+}
+
+.save__field {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.save__label {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.save__count {
+  color: var(--text-tertiary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.save__textarea {
+  width: 100%;
+  padding: 10px var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  resize: vertical;
+}
+
+.save__textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* ═══ Képek ═══ */
+
+.save__photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.save__thumb {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.save__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.save__thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  /* A kép bármilyen világosságú lehet, ezért a gomb saját, sötét alapot kap
+     — a témaszínek itt nem garantálnának kontrasztot. */
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.save__add {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--border-default);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+}
+
+.save__add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.save__add:disabled,
+.save__thumb-remove:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A natív fájlválasztó rejtve: a gomb a felület, ez csak a mechanizmus. */
+.save__file {
+  display: none;
+}
+
+.save__error {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--danger);
+}

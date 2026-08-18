@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
+import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import type { RecorderApi } from '@/hooks/useRecorder';
@@ -344,7 +345,9 @@ export function TrackingScreen() {
               </div>
             ) : null}
 
-            {done && countsAsActivity ? <UploadPanel recorder={recorder} /> : null}
+            {done && countsAsActivity ? (
+              <UploadPanel recorder={recorder} uid={profileUid} />
+            ) : null}
           </>
         )}
       </div>
@@ -616,7 +619,7 @@ function SignalIcon() {
  * képernyőn futás közben látott táv és mezőszám előnézet; a hiteles értéket a
  * szerver számolja újra a nyers nyomvonalból, és eltérés esetén az számít.
  */
-function UploadPanel({ recorder }: { recorder: RecorderApi }) {
+function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) {
   const { upload } = recorder;
 
   if (upload.status === 'sending') {
@@ -663,6 +666,21 @@ function UploadPanel({ recorder }: { recorder: RecorderApi }) {
             <span className="track__stat-label">bezárás</span>
           </div>
         </div>
+
+        {/*
+          A név, a leírás és a képek a feltöltés UTÁN jönnek.
+
+          A területfoglalás nem várhat arra, hogy a felhasználó címet
+          találjon ki: a nyomvonal a befejezéskor felmegy, a terület azonnal
+          a tiéd. Ez az űrlap már csak kiegészít, és nyugodtan kihagyható.
+
+          Ismételt mentésnél (`duplicate`) nem mutatjuk: olyankor az
+          aktivitásnak már lehet neve és fotója, és az üres űrlap mentése
+          felülcsapná őket.
+        */}
+        {!duplicate && uid && recorder.state.id ? (
+          <SaveActivityForm activityId={recorder.state.id} uid={uid} />
+        ) : null}
       </div>
     );
   }

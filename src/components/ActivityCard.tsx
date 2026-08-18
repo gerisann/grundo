@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/hooks/ThemeProvider';
+import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { routeImageUrl } from '@/lib/staticMap';
 import {
   activityTitle,
@@ -17,13 +18,13 @@ import './activityCard.css';
 /**
  * Egy aktivitás a feedben.
  *
- * A kártya EGÉSZE kattintható, nem csak egy „részletek" hivatkozás: a
- * felületen ez a legnagyobb elem, és mobilon hüvelykujjal a nagy célfelület a
- * használhatóság alapfeltétele.
+ * A kártya FELSŐ RÉSZE kattintható, az alsó sáv NEM: ott saját gombok vannak.
+ * Ha az egész kártya egyetlen gomb lenne, a szívre koppintás a részletek
+ * képernyőre vinne — a gomb a gombban ráadásul nem is érvényes HTML.
  *
- * A GRUNDO-sáv az, ami megkülönbözteti egy futóapp kártyájától: a táv és az
- * idő mellett ott van, hogy ebből az aktivitásból mennyi TERÜLET és mennyi
- * PONT lett. Ez a játék visszajelzése — enélkül a kártya csak napló.
+ * Az alsó sáv két fele két külön dolgot mond:
+ *   bal  — mit hozott a JÁTÉKBAN: terület és pont
+ *   jobb — mit hozott a KÖZÖSSÉGBEN: hozzászólás és kedvelés
  */
 export function ActivityCard({
   item,
@@ -42,6 +43,7 @@ export function ActivityCard({
   const [mapFailed, setMapFailed] = useState(false);
   const mapUrl = mapFailed ? null : routeImageUrl(item.route, { theme });
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
+  const title = item.title ?? activityTitle(item.type, item.startedAt);
 
   return (
     <article className="acard">
@@ -49,14 +51,12 @@ export function ActivityCard({
         type="button"
         className="acard__open"
         onClick={() => navigate(`/aktivitas/${item.id}`)}
-        aria-label={`${activityTitle(item.type, item.startedAt)} megnyitása`}
+        aria-label={`${title} megnyitása`}
       >
         <header className="acard__head">
           <Avatar url={item.author.photoURL} name={item.author.username} />
           <span className="acard__who">
-            <span className="acard__name">
-              {showAuthor ? item.author.username : activityTitle(item.type, item.startedAt)}
-            </span>
+            <span className="acard__name">{showAuthor ? item.author.username : title}</span>
             <span className="acard__when">
               <span aria-hidden="true">{ACTIVITY_ICON[item.type]}</span>{' '}
               {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}
@@ -65,9 +65,7 @@ export function ActivityCard({
           </span>
         </header>
 
-        {showAuthor ? (
-          <h3 className="acard__title">{activityTitle(item.type, item.startedAt)}</h3>
-        ) : null}
+        {showAuthor ? <h3 className="acard__title">{title}</h3> : null}
 
         {mapUrl ? (
           <img
@@ -89,6 +87,21 @@ export function ActivityCard({
           </div>
         )}
 
+        {item.photos.length > 0 ? (
+          <div className="acard__photos">
+            {item.photos.map((photo) => (
+              <img
+                key={photo.path}
+                className="acard__photo"
+                src={photo.url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+            ))}
+          </div>
+        ) : null}
+
         <dl className="acard__stats">
           <Metric label="táv" value={formatDistance(item.distanceM)} />
           <Metric label={effort.label} value={effort.value} />
@@ -96,16 +109,27 @@ export function ActivityCard({
         </dl>
       </button>
 
-      {/*
-        A GRUNDO-sáv a kártya alján, elválasztva: ez nem sportmetrika, hanem
-        a játék eredménye. Nulla területnél is kiírjuk a pontot, mert a
-        rendszer legfontosabb üzenete, hogy a be nem zárt kör is ér valamit.
-      */}
-      <footer className="acard__grund">
-        <span className="acard__gain">
-          {item.areaGainedM2 > 0 ? `+${formatArea(item.areaGainedM2)}` : 'nincs új terület'}
-        </span>
-        <span className="acard__gp">{formatGp(item.gp)}</span>
+      <footer className="acard__bar">
+        <div className="acard__grund">
+          <span className="acard__gain">
+            {item.areaGainedM2 > 0 ? `+${formatArea(item.areaGainedM2)}` : 'nincs új terület'}
+          </span>
+          <span className="acard__gp">{formatGp(item.gp)}</span>
+        </div>
+
+        <div className="acard__social">
+          {/*
+            A hozzászólás a RÉSZLETEK képernyőn nyílik meg, nem a kártyán: a
+            beszélgetéshez látni kell, mihez szólnak hozzá. A `?komment=1`
+            azért van, hogy a megnyitott szál megosztható és visszakereshető
+            legyen, és hogy a vissza gomb a szálat zárja, ne a képernyőt hagyja el.
+          */}
+          <CommentButton
+            count={item.commentCount}
+            onOpen={() => navigate(`/aktivitas/${item.id}?komment=1`)}
+          />
+          <LikeButton activityId={item.id} count={item.likeCount} liked={item.likedByMe} />
+        </div>
       </footer>
     </article>
   );
@@ -120,10 +144,25 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function Avatar({ url, name, size = 36 }: { url: string | null; name: string; size?: number }) {
+export function Avatar({
+  url,
+  name,
+  size = 36,
+}: {
+  url: string | null;
+  name: string;
+  size?: number;
+}) {
   if (url) {
     return (
-      <img className="avatar" src={url} alt="" width={size} height={size} style={{ width: size, height: size }} />
+      <img
+        className="avatar"
+        src={url}
+        alt=""
+        width={size}
+        height={size}
+        style={{ width: size, height: size }}
+      />
     );
   }
   return (

@@ -184,6 +184,27 @@ export interface FeedActivity {
   route: string;
   /** Üres a nyomvonal, mert a privát zóna lefedte — nem pedig azért, mert nincs. */
   routeHidden: boolean;
+  /** A felhasználó által adott név. `null` → automatikus cím (napszak + forma). */
+  title: string | null;
+  photos: ActivityPhoto[];
+  likeCount: number;
+  commentCount: number;
+  likedByMe: boolean;
+  author: { username: string; photoURL: string | null };
+}
+
+/** Egy feltöltött kép: a Storage-útvonal és a megjelenítéshez való cím. */
+export interface ActivityPhoto {
+  path: string;
+  url: string;
+}
+
+export interface ActivityComment {
+  id: string;
+  text: string;
+  createdAt: number;
+  /** A sajátom-e — ettől függ, törölhető-e. */
+  mine: boolean;
   author: { username: string; photoURL: string | null };
 }
 
@@ -216,6 +237,11 @@ export interface ActivityDetail {
   claimedCells: number;
   route: string;
   routeHidden: boolean;
+  description: string | null;
+  photos: ActivityPhoto[];
+  likeCount: number;
+  commentCount: number;
+  likedByMe: boolean;
   bounds: { north: number; south: number; east: number; west: number } | null;
   author: { username: string; photoURL: string | null };
   /** Csak a saját aktivitásnál. A PONTSZÁM soha nem jön le. */
@@ -345,6 +371,38 @@ export const api = {
     request<{ points: { lat: number; lng: number; t: number; elevation?: number }[] }>(
       `/api/activities/${id}/track`,
     ),
+
+  /**
+   * Az aktivitás leíró mezőinek szerkesztése.
+   *
+   * Csak cím, leírás és fotók. A metrikák, a nyomvonal és a pont
+   * szerveroldali számítás eredménye, azokat a kliens nem írhatja felül.
+   */
+  updateActivity: (
+    id: string,
+    patch: { title?: string; description?: string; photos?: ActivityPhoto[] },
+  ) => request<{ ok: true }>(`/api/activities/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  }),
+
+  /** Kedvelés be- vagy kikapcsolása. A válasz a friss számláló. */
+  setLike: (id: string, liked: boolean) =>
+    request<{ likeCount: number; likedByMe: boolean }>(`/api/activities/${id}/like`, {
+      method: liked ? 'POST' : 'DELETE',
+    }),
+
+  comments: (id: string) =>
+    request<{ comments: ActivityComment[] }>(`/api/activities/${id}/comments`),
+
+  addComment: (id: string, text: string) =>
+    request<{ id: string; text: string; createdAt: number }>(`/api/activities/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+
+  deleteComment: (id: string, commentId: string) =>
+    request<{ ok: true }>(`/api/activities/${id}/comments/${commentId}`, { method: 'DELETE' }),
 
   /** A saját területem cellái, érvényes védelmi szinttel. */
   territory: (layer: 'foot' | 'bike' = 'foot') =>

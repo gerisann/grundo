@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui';
 import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
+import { CommentButton, LikeButton } from '@/components/SocialActions';
+import { CommentSheet } from '@/components/CommentSheet';
 import { useActivityDetail } from '@/hooks/useActivityDetail';
 import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
@@ -37,6 +39,17 @@ export function ActivityScreen() {
   const navigate = useNavigate();
   const { activity, points, loading, error, reload } = useActivityDetail(id);
   const [fullscreen, setFullscreen] = useState(false);
+
+  /**
+   * A hozzászólás-lap ÁLLAPOTA a cÍMBEN van, nem a komponensben.
+   *
+   * A feed-kártya hozzászólás-gombja ide navigál `?komment=1`-gyel, tehát a
+   * lap egy új oldalbetöltésnél is nyitva kell legyen. Mellékhaszon, hogy a
+   * telefon vissza gombja a SZÁLAT zárja, nem a képernyőt hagyja el.
+   */
+  const [search, setSearch] = useSearchParams();
+  const commentsOpen = search.get('komment') === '1';
+  const [commentCount, setCommentCount] = useState<number | null>(null);
 
   // Teljes képernyős térképnél a lap alatta ne görgethessen tovább.
   useEffect(() => {
@@ -158,6 +171,37 @@ export function ActivityScreen() {
             <h1 className="act__title">
               {activity.title ?? activityTitle(activity.type, activity.startedAt)}
             </h1>
+            {activity.description ? (
+              <p className="act__description">{activity.description}</p>
+            ) : null}
+          </div>
+
+          {activity.photos.length > 0 ? (
+            <div className="act__gallery">
+              {activity.photos.map((photo) => (
+                <a
+                  key={photo.path}
+                  className="act__photo"
+                  href={photo.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img src={photo.url} alt="" loading="lazy" decoding="async" />
+                </a>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="act__social">
+            <CommentButton
+              count={commentCount ?? activity.commentCount}
+              onOpen={() => setSearch({ komment: '1' }, { replace: false })}
+            />
+            <LikeButton
+              activityId={activity.id}
+              count={activity.likeCount}
+              liked={activity.likedByMe}
+            />
           </div>
 
           {/* ── Hitelesség — csak a sajátodnál, és csak ha van mit mondani ── */}
@@ -271,6 +315,14 @@ export function ActivityScreen() {
           ) : null}
         </div>
       )}
+
+      {commentsOpen ? (
+        <CommentSheet
+          activityId={activity.id}
+          onClose={() => setSearch({}, { replace: true })}
+          onCountChange={setCommentCount}
+        />
+      ) : null}
     </div>
   );
 }

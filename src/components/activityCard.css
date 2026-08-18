@@ -94,28 +94,73 @@
   font-variant-numeric: tabular-nums;
 }
 
-.acard__grund {
-  display: flex;
+/* Az alsó sáv KÉT fele: balra a játék, jobbra a közösség. */
+.acard__bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-2);
-  padding: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
   border-top: 1px solid var(--border-subtle);
   background: var(--accent-soft);
 }
 
+/* A terület és a pont egymástól is elválasztva — két külön eredmény. */
+.acard__grund {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
 .acard__gain {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--territory-own);
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .acard__gp {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+  /* Elválasztó vonal a terület és a pont között. */
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--accent-border);
+}
+
+.acard__social {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* Fotók a térkép alatt — vízszintesen görgethető szalag, nem carousel:
+   öt kép mellett a lapozó vezérlők több helyet vinnének, mint a képek. */
+.acard__photos {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.acard__photos::-webkit-scrollbar {
+  display: none;
+}
+
+.acard__photo {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
 }
 
 /* ═══ Avatar — a kártyán és a részleteknél is ═══ */

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
-import { badRequest, notFound } from '../lib/errors';
+import { badRequest, forbidden, notFound } from '../lib/errors';
 import { blocksFor, gameDay, loadOwnership, readBlocks, writeOwnership } from '../lib/grid';
 import { computeTrustScore } from '../trust/score';
 import { processActivity } from '../../../src/game';
@@ -428,7 +428,7 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       truncated = snapshot.size >= LOCAL_SCAN_LIMIT;
     }
 
-    res.json({ activities: await withAuthors(rows), truncated });
+    res.json({ activities: await withAuthors(rows, req.uid!), truncated });
   } catch (error) {
     next(error);
   }
@@ -458,6 +458,17 @@ interface FeedRow {
   route: string;
   /** Üres a nyomvonal, mert a privát zóna teljesen lefedte? */
   routeHidden: boolean;
+  title: string | null;
+  photos: ActivityPhoto[];
+  likeCount: number;
+  commentCount: number;
+}
+
+export interface ActivityPhoto {
+  /** A Storage-beli útvonal — ez alapján lehet törölni. */
+  path: string;
+  /** Letöltési cím tokennel; ez megy az `<img src>`-be. */
+  url: string;
 }
 
 function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
@@ -478,6 +489,10 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     // kiadható, aki magát az aktivitást láthatja.
     route: String(data.route ?? ''),
     routeHidden: data.routeHidden === true,
+    title: (data.title as string | undefined) || null,
+    photos: parseStoredPhotos(data.photos),
+    likeCount: Number(data.likeCount ?? 0),
+    commentCount: Number(data.commentCount ?? 0),
     center: bounds
       ? { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 }
       : null,
@@ -491,7 +506,7 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
  * sorok listája lenne, ami használhatatlan. A neveket kötegelve olvassuk, és
  * csak az EGYEDI szerzőkre — húsz aktivitás jellemzően néhány embertől van.
  */
-async function withAuthors(rows: FeedRow[]) {
+async function withAuthors(rows: FeedRow[], viewerUid: string) {
   const ids = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
   const authors = new Map<string, { username: string; photoURL: string | null }>();
 
@@ -507,11 +522,58 @@ async function withAuthors(rows: FeedRow[]) {
     }
   }
 
+  /**
+   * „Én kedveltem-e?" — KÖTEGELVE, nem soronként.
+   *
+   * A kedvelés a `likes/{uid}` aldokumentum LÉTEZÉSE. Húsz kártyánál ez húsz
+   * dokumentum, de egyetlen `getAll` hívásban: soronkénti lekérdezésnél a feed
+   * betöltése húsz körbefordulóval lassulna.
+   */
+  const likeRefs = rows.map((row) =>
+    db.collection(COLLECTIONS.activities).doc(row.id).collection('likes').doc(viewerUid),
+  );
+  const liked = new Set<string>();
+  if (likeRefs.length > 0) {
+    const snapshots = await db.getAll(...likeRefs);
+    snapshots.forEach((snapshot, index) => {
+      if (snapshot.exists) liked.add(rows[index]!.id);
+    });
+  }
+
   return rows.map(({ userId, center, ...rest }) => ({
     ...rest,
     center,
+    likedByMe: liked.has(rest.id),
     author: authors.get(userId) ?? { username: 'ismeretlen', photoURL: null },
   }));
+}
+
+/** Kedvelte-e ez a felhasználó ezt az aktivitást? */
+async function hasLiked(activityId: string, uid: string): Promise<boolean> {
+  const snapshot = await db
+    .collection(COLLECTIONS.activities)
+    .doc(activityId)
+    .collection('likes')
+    .doc(uid)
+    .get();
+  return snapshot.exists;
+}
+
+/**
+ * A tárolt fotólista beolvasása.
+ *
+ * Védekező: a mező régi aktivitásoknál hiányzik, és sosem szabad megbízni
+ * abban, hogy a szerkezete ép — egy hibás elem miatt ne dőljön el a feed.
+ */
+function parseStoredPhotos(raw: unknown): { path: string; url: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is { path: string; url: string } => {
+      const photo = item as { path?: unknown; url?: unknown };
+      return typeof photo?.path === 'string' && typeof photo?.url === 'string';
+    })
+    .slice(0, MAX_PHOTOS)
+    .map((photo) => ({ path: photo.path, url: photo.url }));
 }
 
 /**
@@ -549,7 +611,12 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
         mine,
         type: data.type,
         layer: data.layer,
-        title: (data.title as string | undefined) ?? null,
+        title: (data.title as string | undefined) || null,
+        description: (data.description as string | undefined) || null,
+        photos: parseStoredPhotos(data.photos),
+        likeCount: Number(data.likeCount ?? 0),
+        commentCount: Number(data.commentCount ?? 0),
+        likedByMe: await hasLiked(snapshot.id, req.uid!),
         startedAt: toMillis(data.startedAt),
         endedAt: toMillis(data.endedAt),
         distanceM: Number(data.distanceM ?? 0),
@@ -591,6 +658,299 @@ activitiesRouter.get('/:id/track', async (req: AuthedRequest, res, next) => {
     }
     const track = await ref.collection('private').doc('track').get();
     res.json({ points: track.exists ? (track.data() as { points: TracePoint[] }).points : [] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   Szerkesztés — cím, leírás, fotók
+   ══════════════════════════════════════════════════════════════════ */
+
+/** Ennyi fotó tartozhat egy aktivitáshoz. */
+const MAX_PHOTOS = 5;
+const MAX_TITLE = 80;
+const MAX_DESCRIPTION = 2000;
+
+/**
+ * PATCH /api/activities/:id — a leíró mezők szerkesztése.
+ *
+ * CSAK a leíró mezők: cím, leírás, fotók. A metrikák, a nyomvonal, a foglalás
+ * és a pont szerveroldali számítás eredménye — ha ezek a klienstől jöhetnének,
+ * a játék egyetlen kéréssel hamisítható volna.
+ *
+ * A fotókat a kliens tölti fel közvetlenül a Storage-ba (a szabályok csak a
+ * saját mappájába engedik), és csak a HIVATKOZÁST küldi ide. A több
+ * megabájtos képeket értelmetlen lenne a Cloud Runon átereszteni.
+ */
+activitiesRouter.patch('/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const uid = req.uid!;
+    const ref = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
+    const snapshot = await ref.get();
+    if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+    if ((snapshot.data() as { userId?: string }).userId !== uid) {
+      throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+    }
+
+    const body = req.body as { title?: unknown; description?: unknown; photos?: unknown };
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (body.title !== undefined) {
+      const title = String(body.title ?? '').trim();
+      if (title.length > MAX_TITLE) {
+        throw badRequest('title_too_long', `A név legfeljebb ${MAX_TITLE} karakter lehet.`);
+      }
+      // Az ÜRES cím nem hiba, hanem visszatérés az automatikus névhez
+      // („Délutáni bringázás"). Ezt a `null` fejezi ki, nem az üres sztring.
+      patch.title = title.length > 0 ? title : null;
+    }
+
+    if (body.description !== undefined) {
+      const description = String(body.description ?? '').trim();
+      if (description.length > MAX_DESCRIPTION) {
+        throw badRequest(
+          'description_too_long',
+          `A leírás legfeljebb ${MAX_DESCRIPTION} karakter lehet.`,
+        );
+      }
+      patch.description = description.length > 0 ? description : null;
+    }
+
+    if (body.photos !== undefined) {
+      patch.photos = parsePhotos(body.photos, uid, ref.id);
+    }
+
+    await ref.set(patch, { merge: true });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * A fotóhivatkozások ellenőrzése.
+ *
+ * A LÉNYEG az útvonal-előtag vizsgálata. A kliens tetszőleges sztringet
+ * küldhetne, és ha elfogadnánk, egy felhasználó BEHIVATKOZHATNÁ más
+ * felhasználó fájljait a saját aktivitásába. A Storage-szabály csak az
+ * ÍRÁST korlátozza a saját mappára; a hivatkozást itt kell megkötni.
+ */
+function parsePhotos(raw: unknown, uid: string, activityId: string) {
+  if (!Array.isArray(raw)) throw badRequest('invalid_photos', 'Hibás fotólista.');
+  if (raw.length > MAX_PHOTOS) {
+    throw badRequest('too_many_photos', `Legfeljebb ${MAX_PHOTOS} kép tartozhat egy aktivitáshoz.`);
+  }
+
+  const prefix = `activities/${uid}/${activityId}/`;
+  return raw.map((item) => {
+    const photo = item as { path?: unknown; url?: unknown };
+    const path = String(photo?.path ?? '');
+    const url = String(photo?.url ?? '');
+
+    if (!path.startsWith(prefix)) {
+      throw badRequest('invalid_photo_path', 'Ez a kép nem ehhez az aktivitáshoz tartozik.');
+    }
+    if (!url.startsWith('https://')) {
+      throw badRequest('invalid_photo_url', 'Hibás képhivatkozás.');
+    }
+    return { path, url };
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Kedvelés
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * POST/DELETE /api/activities/:id/like
+ *
+ * MIÉRT A SZERVEREN, ha a `firestore.rules` a kedvelést közvetlenül is
+ * engedélyezné? Mert a SZÁMLÁLÓ nem: a `likeCount` az aktivitás
+ * dokumentumán van, amit a kliens nem írhat. Számláló nélkül minden kártya
+ * külön lekérdezést igényelne csak azért, hogy megtudjuk, hányan kedvelték.
+ *
+ * Idempotens: a kétszer elküldött kedvelés nem növeli kétszer a számlálót.
+ * A tranzakción belüli olvasás dönti el, van-e valódi változás.
+ */
+async function setLike(activityId: string, uid: string, liked: boolean) {
+  const activityRef = db.collection(COLLECTIONS.activities).doc(activityId);
+  const likeRef = activityRef.collection('likes').doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const activity = await tx.get(activityRef);
+    const existing = await tx.get(likeRef);
+    if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+    const count = Number((activity.data() as { likeCount?: number }).likeCount ?? 0);
+    if (existing.exists === liked) return { likeCount: count, likedByMe: liked };
+
+    if (liked) tx.set(likeRef, { createdAt: new Date() });
+    else tx.delete(likeRef);
+
+    const next = Math.max(0, count + (liked ? 1 : -1));
+    tx.set(activityRef, { likeCount: next }, { merge: true });
+    return { likeCount: next, likedByMe: liked };
+  });
+}
+
+activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
+  try {
+    res.json(await setLike(String(req.params.id), req.uid!, true));
+  } catch (error) {
+    next(error);
+  }
+});
+
+activitiesRouter.delete('/:id/like', async (req: AuthedRequest, res, next) => {
+  try {
+    res.json(await setLike(String(req.params.id), req.uid!, false));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   Hozzászólások
+   ══════════════════════════════════════════════════════════════════ */
+
+const MAX_COMMENT = 1000;
+const COMMENT_PAGE = 100;
+
+/** Az aktivitás, ha a kérő láthatja — különben 404. */
+async function readableActivity(activityId: string, uid: string) {
+  const ref = db.collection(COLLECTIONS.activities).doc(activityId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+  const data = snapshot.data() as { userId?: string; visibility?: string };
+  if (data.userId !== uid && data.visibility !== 'everyone') {
+    throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+  }
+  return ref;
+}
+
+/** GET /api/activities/:id/comments — időrendben, a legrégebbi elöl. */
+activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
+  try {
+    const activityRef = await readableActivity(String(req.params.id), req.uid!);
+
+    /**
+     * A beszélgetés a LEGRÉGEBBIVEL kezdődik, nem a legfrissebbel.
+     *
+     * Egy hozzászólás-szál nem hírfolyam: fordított sorrendben olvashatatlan,
+     * mert a válaszok a kérdéseik előtt állnának.
+     */
+    const snapshot = await activityRef
+      .collection('comments')
+      .orderBy('createdAt', 'asc')
+      .limit(COMMENT_PAGE)
+      .get();
+
+    const rows = snapshot.docs.map((doc) => {
+      const comment = doc.data() as Record<string, unknown>;
+      return {
+        id: doc.id,
+        userId: String(comment.userId ?? ''),
+        text: String(comment.text ?? ''),
+        createdAt: toMillis(comment.createdAt),
+      };
+    });
+
+    const authorIds = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
+    const authors = new Map<string, { username: string; photoURL: string | null }>();
+    if (authorIds.length > 0) {
+      const refs = authorIds.map((id) => db.collection(COLLECTIONS.users).doc(id));
+      for (const doc of await db.getAll(...refs)) {
+        const user = doc.data() as { username?: string; photoURL?: string | null } | undefined;
+        authors.set(doc.id, {
+          username: user?.username ?? 'ismeretlen',
+          photoURL: user?.photoURL ?? null,
+        });
+      }
+    }
+
+    res.json({
+      comments: rows.map(({ userId, ...rest }) => ({
+        ...rest,
+        mine: userId === req.uid,
+        author: authors.get(userId) ?? { username: 'ismeretlen', photoURL: null },
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** POST /api/activities/:id/comments */
+activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => {
+  try {
+    const text = String((req.body as { text?: unknown }).text ?? '').trim();
+    if (text.length === 0) throw badRequest('empty_comment', 'Írj valamit a hozzászólásba.');
+    if (text.length > MAX_COMMENT) {
+      throw badRequest('comment_too_long', `A hozzászólás legfeljebb ${MAX_COMMENT} karakter.`);
+    }
+
+    const activityRef = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
+    const commentRef = activityRef.collection('comments').doc();
+    const now = new Date();
+
+    await db.runTransaction(async (tx) => {
+      const activity = await tx.get(activityRef);
+      if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+      const data = activity.data() as {
+        userId?: string;
+        visibility?: string;
+        allowComments?: boolean;
+        commentCount?: number;
+      };
+      if (data.userId !== req.uid && data.visibility !== 'everyone') {
+        throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+      }
+      // A szerző kikapcsolhatja a hozzászólásokat; ez nem hiba, hanem döntés.
+      if (data.allowComments === false) {
+        throw forbidden('Ehhez az aktivitáshoz nem lehet hozzászólni.');
+      }
+
+      tx.set(commentRef, { userId: req.uid, text, createdAt: now });
+      tx.set(activityRef, { commentCount: Number(data.commentCount ?? 0) + 1 }, { merge: true });
+    });
+
+    res.status(201).json({ id: commentRef.id, text, createdAt: now.getTime() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** DELETE /api/activities/:id/comments/:commentId — csak a sajátodat. */
+activitiesRouter.delete('/:id/comments/:commentId', async (req: AuthedRequest, res, next) => {
+  try {
+    const activityRef = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
+    const commentRef = activityRef.collection('comments').doc(String(req.params.commentId));
+
+    await db.runTransaction(async (tx) => {
+      const activity = await tx.get(activityRef);
+      const comment = await tx.get(commentRef);
+      if (!comment.exists) throw notFound('comment_missing', 'Nincs ilyen hozzászólás.');
+
+      const data = activity.data() as { userId?: string; commentCount?: number } | undefined;
+      const author = (comment.data() as { userId?: string }).userId;
+      // A saját hozzászólásodat te törölheted, az aktivitásodon lévőt
+      // szerzőként szintén — a saját posztod alatt moderálhatsz.
+      if (author !== req.uid && data?.userId !== req.uid) {
+        throw forbidden('Ezt a hozzászólást nem törölheted.');
+      }
+
+      tx.delete(commentRef);
+      tx.set(
+        activityRef,
+        { commentCount: Math.max(0, Number(data?.commentCount ?? 0) - 1) },
+        { merge: true },
+      );
+    });
+
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

@@ -1,0 +1,37 @@
+/* Kedvelés és hozzászólás gombok */
+
+.social__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  /* Nagy célfelület: a szív ikon 20 képpont, de az ujjbegy nem az. */
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.social__btn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.social__btn--on {
+  color: var(--danger);
+}
+
+.social__btn--on:hover {
+  color: var(--danger);
+}
+
+.social__count {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .social__btn {
+    transition: none;
+  }
+}

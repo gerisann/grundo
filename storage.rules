@@ -35,8 +35,11 @@ service firebase.storage {
     }
 
     // ── Aktivitás-fotók ───────────────────────────────────────────────────
-    // Az EXIF-törlés a feltöltés után, szerveroldalon fut (a privát zóna
-    // értelmét venné el, ha a fotóban benne maradna a GPS-koordináta).
+    // Az EXIF-adatok MÁR A FELTÖLTÉS ELŐTT eltűnnek, a kliensen: a kép
+    // vászonra rajzolódik és újrakódolódik, tehát a nyers fájl el sem hagyja a
+    // készüléket (src/lib/photos.ts). A korábbi terv szerveroldali törlés volt,
+    // de az késő: addigra a GPS-koordinátát tartalmazó eredeti fájl már itt
+    // van — és a privát zóna pont ezt hivatott megakadályozni.
     match /activities/{uid}/{activityId}/{fileName} {
       allow read: if signedIn();
       allow write: if isSelf(uid) && isImage() && underMB(10);

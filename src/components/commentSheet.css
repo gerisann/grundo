@@ -1,0 +1,232 @@
+/* Hozzászólás-lap */
+
+.csheet {
+  position: fixed;
+  inset: 0;
+  /* A dokk 40-en, a teljes képernyős térkép 50-en ül — a lap mindkettő fölé. */
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+}
+
+.csheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.csheet__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* Nem teljes magasság: alatta látszódjon, mihez szólnak hozzá. */
+  max-height: 82dvh;
+  background: var(--bg-secondary);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-top: 1px solid var(--border-subtle);
+  box-shadow: 0 -8px 32px var(--shadow);
+  animation: csheet-up 200ms ease-out;
+}
+
+@keyframes csheet-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .csheet__panel { animation: none; }
+}
+
+.csheet__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* A fogantyú jelzi, hogy ez egy felcsúszó lap, nem egy új képernyő. */
+.csheet__grip {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--border-strong);
+}
+
+.csheet__title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.csheet__close,
+.csheet__del {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+}
+
+.csheet__close:hover,
+.csheet__del:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.csheet__list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.csheet__note {
+  margin: var(--sp-5) 0;
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
+
+.csheet__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+.csheet__bubble {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.csheet__meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.csheet__author {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.csheet__when {
+  font-size: var(--fs-label);
+  color: var(--text-tertiary);
+}
+
+.csheet__text {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  /* A hosszú, szóköz nélküli beírás ne feszítse szét a buborékot. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.csheet__error {
+  margin: 0;
+  padding: 0 var(--sp-4) var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--danger);
+}
+
+/* ═══ Emoji ═══ */
+
+.csheet__emoji {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.csheet__emoji-btn {
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.csheet__emoji-btn:hover {
+  background: var(--surface-2);
+}
+
+/* ═══ Beviteli sor ═══ */
+
+.csheet__compose {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + var(--safe-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.csheet__input {
+  flex: 1;
+  min-width: 0;
+  /* A mező NŐ a szöveggel, de nem nyeli el a listát. */
+  max-height: 120px;
+  padding: 10px var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  resize: none;
+}
+
+.csheet__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.csheet__emoji-toggle,
+.csheet__send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+}
+
+.csheet__emoji-toggle:hover {
+  background: var(--surface-2);
+}
+
+.csheet__emoji-toggle--on {
+  color: var(--warning);
+  background: var(--surface-2);
+}
+
+.csheet__send {
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+.csheet__send:disabled {
+  background: var(--surface-3);
+  color: var(--text-disabled);
+  cursor: default;
+}
