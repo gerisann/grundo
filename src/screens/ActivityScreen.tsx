@@ -212,9 +212,7 @@ export function ActivityScreen() {
                   ? 'Ez az aktivitás nem számított bele a játékba.'
                   : 'Ez az aktivitás ellenőrzésre vár.'}
               </strong>
-              {(activity.trustReasons ?? []).map((reason) => (
-                <span key={reason}>{reason}</span>
-              ))}
+              <span>A részletes ellenőrzési adatok biztonsági okból nem nyilvánosak.</span>
             </div>
           ) : null}
 

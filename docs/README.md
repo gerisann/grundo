@@ -45,7 +45,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | Rétegek | `foot` (futás+gyaloglás), `bike` (kerékpár) |
 | Max védelmi szint | 5× |
 | Védelem visszaállása | naponta 1×-esre, **helyi idő** szerint |
-| GP terület után | **1 GP / 1 000 m²** |
+| GP terület után | **120 GP × √(terület km²-ben)**, védelmi szorzóval |
 | Trust Score küszöbök | ≥80 érvényes · 50–79 ellenőrzés alatt · <50 elutasítva |
 | Privát zóna | kezdet/vég külön, 50/100/200 m, alap: BE 200 m |
 | Pro ár | 4,99 €/hó · 39,99 €/év (–33%) |

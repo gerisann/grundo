@@ -154,11 +154,17 @@ service cloud.firestore {
     match /grid/{blockId}          { allow read: if signedIn(); allow write: if false; }
     // Származtatott zónák (összefüggő birtokfoltok) a megjelenítéshez.
     match /zones/{zoneId}          { allow read: if signedIn(); allow write: if false; }
-    match /territoryEvents/{id}    { allow read: if signedIn(); allow write: if false; }
+    match /territoryEvents/{id} {
+      allow read: if signedIn()
+                  && (isSelf(resource.data.recipientId) || isAdmin());
+      allow write: if false;
+    }
     match /gpLedger/{entryId} {
       allow read: if signedIn() && (isSelf(resource.data.userId) || isAdmin());
       allow write: if false;
     }
+    // A napi soft cap tranzakciós állapota belső könyvelési adat.
+    match /dailyGp/{entryId}       { allow read, write: if false; }
     match /leaderboards/{board}/entries/{rank} {
       allow read: if signedIn();
       allow write: if false;

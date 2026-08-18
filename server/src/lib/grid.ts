@@ -45,20 +45,41 @@ export async function loadOwnership(
   cells: Iterable<CellId>,
   today = gameDay(new Date()),
 ): Promise<OwnershipMap> {
-  const blocks = blocksFor(layer, cells);
-  const ownership: OwnershipMap = new Map();
-  if (blocks.size === 0) return ownership;
+  const candidateCells = [...cells];
+  const blocks = blocksFor(layer, candidateCells);
+  if (blocks.size === 0) return new Map();
 
   const refs = [...blocks.keys()].map((id) => db.collection(COLLECTIONS.grid).doc(id));
   const snapshots = await db.getAll(...refs);
 
+  const storedBlocks = new Map<string, GridBlock | null>();
   for (const snapshot of snapshots) {
-    if (!snapshot.exists) continue;
-    const block = snapshot.data() as GridBlock;
-    for (const cell of blocks.get(snapshot.id) ?? []) {
+    storedBlocks.set(snapshot.id, snapshot.exists ? (snapshot.data() as GridBlock) : null);
+  }
+  return ownershipFromBlocks(layer, candidateCells, storedBlocks, today);
+}
+
+/**
+ * OwnershipMap összeállítása már beolvasott grid blokkokból.
+ *
+ * A tranzakciós aktivitásmentés ezt használja, hogy a Firestore retry minden
+ * alkalommal az éppen aktuális blokkverziókból számolja újra a foglalást.
+ * A `cells` a teljes candidate halmaz: hurokfal ÉS belső cellák.
+ */
+export function ownershipFromBlocks(
+  layer: Layer,
+  cells: Iterable<CellId>,
+  storedBlocks: ReadonlyMap<string, GridBlock | null>,
+  today = gameDay(new Date()),
+): OwnershipMap {
+  const grouped = blocksFor(layer, cells);
+  const ownership: OwnershipMap = new Map();
+
+  for (const [blockId, blockCells] of grouped) {
+    const block = storedBlocks.get(blockId);
+    if (!block) continue;
+    for (const cell of blockCells) {
       const stored = block.cells?.[cellKey(cell)];
-      // A motor az ÉRVÉNYES védelmet kapja, nem a tároltat — így a napi
-      // forduló magától érvényesül, a motor pedig mit sem tud róla.
       if (stored) {
         ownership.set(cell, { owner: stored.o, defense: effectiveDefense(stored, today) });
       }

@@ -56,7 +56,7 @@ export interface TrustResult {
   /** részjelenként 0–1 közötti érték (1 = teljesen rendben) */
   signals: Record<TrustSignal, number>;
   verdict: TrustVerdict;
-  /** a felhasználónak MUTATHATÓ indoklás — a pontszám nélkül */
+  /** belső diagnosztika — kizárólag az admin-only activityTrust rekordba */
   reasons: string[];
 }
 

@@ -244,9 +244,8 @@ export interface ActivityDetail {
   likedByMe: boolean;
   bounds: { north: number; south: number; east: number; west: number } | null;
   author: { username: string; photoURL: string | null };
-  /** Csak a saját aktivitásnál. A PONTSZÁM soha nem jön le. */
+  /** Csak a saját aktivitásnál. Pontszám és diagnosztika soha nem jön le. */
   trustVerdict?: 'trusted' | 'pending_review' | 'rejected';
-  trustReasons?: string[];
 }
 
 export interface FeedResult {

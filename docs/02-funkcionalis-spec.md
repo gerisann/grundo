@@ -200,6 +200,7 @@ A GRUNDO szíve (képek #49, #21).
   - felszerelés hozzárendelése (cipő/bringa),
   - „Ez egy verseny/edzés volt" jelölés (opcionális).
 - **Offline mentés**: nyomvonal helyben tárolva, feltöltés amint van net. A területszámítás mindig szerveroldalon fut.
+- **A rögzítés közbeni térkép pillanatkép.** Nem frissítjük valós időben a birtokviszonyokat. A végleges foglalás a mentéskor aktuális térképállapotból számolódik; konkurens foglalásnál az első sikeres adatbázis-commit nyer.
 
 ---
 

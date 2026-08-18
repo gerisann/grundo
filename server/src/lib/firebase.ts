@@ -30,5 +30,7 @@ export const COLLECTIONS = {
   grid: 'grid',
   zones: 'zones',
   gpLedger: 'gpLedger',
+  dailyGp: 'dailyGp',
   territoryEvents: 'territoryEvents',
+  activityTrust: 'activityTrust',
 } as const;

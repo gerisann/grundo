@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
-import { blocksFor, gameDay, loadOwnership, readBlocks, writeOwnership } from '../lib/grid';
+import { blocksFor, gameDay, ownershipFromBlocks, readBlocks, writeOwnership } from '../lib/grid';
 import { computeTrustScore } from '../trust/score';
 import { processActivity } from '../../../src/game';
 import { layerOf } from '../../../src/game/cells';
@@ -28,6 +28,12 @@ const MAX_POINTS = 20_000;
 
 /** Ennél régebbi aktivitást nem fogadunk el — az óra elállítása gyanús. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Firestore tranzakciós és Cloud Run memória-védőkorlátok. */
+const MAX_CANDIDATE_CELLS = 12_000;
+const MAX_GRID_BLOCKS = 80;
+const MAX_AFFECTED_OWNERS = 50;
+const MAX_TRANSACTION_WRITES = 450;
 
 interface UploadBody {
   activityId?: unknown;
@@ -99,7 +105,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       if (data.userId !== uid) {
         throw badRequest('activity_conflict', 'Ez az azonosító már foglalt.');
       }
-      return res.json({ activityId, summary: data.summary, duplicate: true });
+      return res.json({ activityId, summary: sanitizePublicSummary(data.summary), duplicate: true });
     }
 
     /* ── Újraszámolás a nyers nyomvonalból ─────────────────────── */
@@ -113,10 +119,6 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     }
 
     const layer = layerOf(type);
-
-    // A motor csak a birtokviszonyt kapja meg kívülről; a cellaláncot maga
-    // számolja. Ezért előbb egy „száraz" futtatás kell, hogy megtudjuk, mely
-    // cellákat érinti — és csak azok tulajdonosát olvassuk be.
     const probe = processActivity({
       points,
       type,
@@ -127,131 +129,131 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       gpEarnedToday: 0,
     });
 
-    const ownership = await loadOwnership(layer, probe.cellPath);
-
-    const userRef = db.collection(COLLECTIONS.users).doc(uid);
-    const userSnap = await userRef.get();
-    if (!userSnap.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
-    const user = userSnap.data() as {
-      streak?: StoredStreak;
-      trust?: { cleanActivities?: number; upheldReports?: number };
-      privacy?: Partial<PrivacySettings>;
-    };
-
-    const result = processActivity({
-      points,
-      type,
-      distanceKm: serverDistanceM / 1000,
-      actorId: uid,
-      ownership,
-      streakDays: user.streak?.current ?? 0,
-      // TODO(F2): a mai GP a gpLedger napi összegzéséből jöjjön — a napi
-      // lágy plafon enélkül nem érvényesül.
-      gpEarnedToday: 0,
-    });
-
-    /**
-     * Trust Score — MIELŐTT bármit módosítana a birtokviszonyokon.
-     *
-     * A gyanús aktivitás nem tűnik el: elmentjük, megjelenik a profilban és a
-     * feedben, de a rácshoz és a pontokhoz nem nyúl, amíg nem validálódik.
-     * Nem büntetjük az ártatlant azzal, hogy letagadjuk a futását — de nem is
-     * engedjük, hogy egy hamisított nyom átrendezze a térképet.
-     *
-     * ⚠️ A PONTSZÁM ÉS A RÉSZJELEK NEM MENNEK KI A KLIENSNEK. Csak a verdikt
-     * és a felhasználónak szánt indoklás. Ha a szám látszana, visszafejthető
-     * és kijátszható lenne.
-     */
-    const trust = computeTrustScore({
-      points,
-      type,
-      distanceKm: serverDistanceM / 1000,
-      durationS: Math.max(1, (endedAt - startedAt) / 1000),
-      history: {
-        cleanActivities: user.trust?.cleanActivities ?? 0,
-        upheldReports: user.trust?.upheldReports ?? 0,
-      },
-      credibleReports: 0,
-      largeGaps: result.diagnostics.largeGaps,
-    });
-    /**
-     * Megfigyelő módban a verdikt elmentődik, de nem blokkol — lásd
-     * `TRUST_OBSERVE_ONLY`. Így a heurisztikát valós adaton lehet kalibrálni
-     * anélkül, hogy közben ártatlan aktivitásokat nyelne el.
-     */
-    const trusted = GAMEPLAY.TRUST_OBSERVE_ONLY || trust.verdict === 'trusted';
-
-    /**
-     * A NYILVÁNOS nyomvonal — levágva és ritkítva.
-     *
-     * Ez kerül az aktivitás fő dokumentumába, amit mindenki elolvashat, aki
-     * az aktivitást látja (lásd firestore.rules). Ezért ELŐBB vágjuk le a
-     * privát zónát, és csak utána tároljuk: a levágott szakasz így soha nem
-     * kerül olyan helyre, ahonnan visszaolvasható lenne.
-     *
-     * A TELJES nyomvonal külön, a `private/track` dokumentumba megy — azt
-     * kizárólag a tulajdonos éri el.
-     */
-    const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user.privacy ?? {}) };
-    const publicRoute = encodeRoute(trimPrivateEnds(points, privacy).points);
+    // Nem csak a nyomvonalat olvassuk: a hurok teljes belseje is ownership-
+    // függő. Ez a halmaz kizárólag geometria, ezért tranzakción kívül maradhat.
+    const candidateCells = [...probe.claimedCells];
+    if (candidateCells.length > MAX_CANDIDATE_CELLS) {
+      throw badRequest(
+        'activity_too_large',
+        'A bezárt terület túl nagy az azonnali feldolgozáshoz. Próbálj kisebb köröket menteni.',
+      );
+    }
+    const blockIds = [...blocksFor(layer, candidateCells).keys()];
+    if (blockIds.length > MAX_GRID_BLOCKS) {
+      throw badRequest(
+        'activity_too_large',
+        'Az aktivitás túl sok térképrészletet érint az azonnali feldolgozáshoz.',
+      );
+    }
 
     const now = new Date();
-    const nextStreak = advanceStreak(user.streak, gameDay(now));
-    const claimUpdates = result.claim?.updates ?? new Map();
-    const blockIds = [...blocksFor(layer, claimUpdates.keys()).keys()];
+    const today = gameDay(now);
+    const userRef = db.collection(COLLECTIONS.users).doc(uid);
+    const dailyGpRef = db.collection(COLLECTIONS.dailyGp).doc(`${uid}_${today}`);
+    const ledgerRef = db.collection(COLLECTIONS.gpLedger).doc(`activity_${activityId}`);
+    const trustRef = db.collection(COLLECTIONS.activityTrust).doc(activityId);
 
-    const summary = {
-      distanceM: Math.round(serverDistanceM),
-      durationS: Math.round((endedAt - startedAt) / 1000),
-      movingS: Math.round(movingMs / 1000),
-      cellCount: result.cellPath.length,
-      loops: result.loops.length,
-      claimedCells: result.claimedCells.size,
-      areaGainedM2: result.areaGainedM2,
-      gp: result.gp.total,
-      trustVerdict: trust.verdict,
-      trustReasons: trust.reasons,
+    type CommitSummary = {
+      distanceM: number;
+      durationS: number;
+      movingS: number;
+      cellCount: number;
+      loops: number;
+      claimedCells: number;
+      areaGainedM2: number;
+      gp: number;
+      trustVerdict: 'trusted' | 'pending_review' | 'rejected';
     };
 
-    let duplicate = false;
-
-    await db.runTransaction(async (tx) => {
-      // MINDEN olvasás az írások ELŐTT — a Firestore ezt megköveteli.
-
-      /**
-       * AZ IDEMPOTENCIA IGAZI HELYE: a tranzakción BELÜL.
-       *
-       * A fenti előszűrés önmagában nem elég. Két egyszerre érkező feltöltés
-       * mindkettő „még nincs ilyen"-t lát, aztán mindkettő ír — és a terület,
-       * a pont, a táv meg az aktivitásszám kétszer könyvelődik. Élesben pontosan
-       * ez történt: 2 × 1,144 km² lett a profilon, 2 × 12,7 km táv, és három
-       * aktivitásból hat.
-       *
-       * A tranzakción belüli olvasás viszont a Firestore-nál egyben ütközés-
-       * figyelés is: ha közben más ír ugyanerre a dokumentumra, a tranzakció
-       * újrafut, és a második futásban már látja az elsőt.
-       */
+    const committed = await db.runTransaction(async (tx): Promise<{
+      duplicate: boolean;
+      summary: CommitSummary | unknown;
+    }> => {
+      // Az idempotencia dokumentuma minden más olvasás előtt jön.
       const existing = await tx.get(activityRef);
       if (existing.exists) {
-        duplicate = true;
-        return;
+        const data = existing.data() as { userId?: string; summary?: unknown };
+        if (data.userId !== uid) {
+          throw badRequest('activity_conflict', 'Ez az azonosító már foglalt.');
+        }
+        return { duplicate: true, summary: sanitizePublicSummary(data.summary) };
       }
 
-      /**
-       * A profilt a TRANZAKCIÓN BELÜL is beolvassuk, mert a szinthez a
-       * ténylegesen új GP-összeg kell — a `FieldValue.increment` értékét a
-       * kliens nem látja. A tranzakción kívüli olvasás itt elavulhatna: két
-       * egyszerre feldolgozott aktivitás közül a második régi összeget látna,
-       * és visszaírna egy alacsonyabb szintet.
-       */
+      // Minden Firestore-olvasás megelőzi az első írást. Retry esetén ezek a
+      // snapshotok frissek lesznek, és a motor új eredményt számol belőlük.
       const userNow = await tx.get(userRef);
-      const gpAfter = Number((userNow.data() as { gpTotal?: number })?.gpTotal ?? 0)
-        + result.gp.total;
-
+      if (!userNow.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
+      const dailyGpNow = await tx.get(dailyGpRef);
       const blocks = await readBlocks(tx, blockIds);
 
-      // A rácshoz CSAK hiteles aktivitás nyúlhat.
-      if (trusted && claimUpdates.size > 0) {
+      const user = userNow.data() as {
+        gpTotal?: number;
+        streak?: StoredStreak;
+        trust?: { cleanActivities?: number; upheldReports?: number };
+        privacy?: Partial<PrivacySettings>;
+      };
+      const earnedToday = Number((dailyGpNow.data() as { total?: number } | undefined)?.total ?? 0);
+      const ownership = ownershipFromBlocks(layer, candidateCells, blocks, today);
+      const result = processActivity({
+        points,
+        type,
+        distanceKm: serverDistanceM / 1000,
+        actorId: uid,
+        ownership,
+        streakDays: user.streak?.current ?? 0,
+        gpEarnedToday: earnedToday,
+      });
+
+      const trust = computeTrustScore({
+        points,
+        type,
+        distanceKm: serverDistanceM / 1000,
+        durationS: Math.max(1, (endedAt - startedAt) / 1000),
+        history: {
+          cleanActivities: user.trust?.cleanActivities ?? 0,
+          upheldReports: user.trust?.upheldReports ?? 0,
+        },
+        credibleReports: 0,
+        largeGaps: result.diagnostics.largeGaps,
+      });
+      const appliedToGameplay = GAMEPLAY.TRUST_OBSERVE_ONLY || trust.verdict === 'trusted';
+      const publicTrustVerdict = appliedToGameplay ? 'trusted' : trust.verdict;
+      const claimUpdates = result.claim?.updates ?? new Map();
+      const victims = Object.entries(result.claim?.stolenFrom ?? {}).filter(([, count]) => count > 0);
+
+      if (victims.length > MAX_AFFECTED_OWNERS) {
+        throw badRequest(
+          'activity_too_large',
+          'Az aktivitás túl sok másik játékos területét érinti az azonnali feldolgozáshoz.',
+        );
+      }
+      const estimatedWrites = 6 + blockIds.length * 2 + victims.length * 2;
+      if (estimatedWrites > MAX_TRANSACTION_WRITES) {
+        throw badRequest(
+          'activity_too_large',
+          'Az aktivitás biztonságos mentéséhez túl sok adatbázis-műveletre lenne szükség.',
+        );
+      }
+
+      const victimRefs = victims.map(([victimId]) => db.collection(COLLECTIONS.users).doc(victimId));
+      const victimSnaps = victimRefs.length > 0 ? await tx.getAll(...victimRefs) : [];
+
+      const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user.privacy ?? {}) };
+      const publicPoints = trimPrivateEnds(points, privacy).points;
+      const publicRoute = encodeRoute(publicPoints);
+      const summary: CommitSummary = {
+        distanceM: Math.round(serverDistanceM),
+        durationS: Math.round((endedAt - startedAt) / 1000),
+        movingS: Math.round(movingMs / 1000),
+        cellCount: result.cellPath.length,
+        loops: result.loops.length,
+        claimedCells: result.claimedCells.size,
+        areaGainedM2: result.areaGainedM2,
+        gp: result.gp.total,
+        trustVerdict: publicTrustVerdict,
+      };
+
+      if (appliedToGameplay && claimUpdates.size > 0) {
         writeOwnership(tx, layer, claimUpdates, blocks, now, uid);
       }
 
@@ -269,98 +271,126 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         cellCount: result.cellPath.length,
         pointCount: points.length,
         summary,
-        bounds: boundsOf(points),
-        /**
-         * A levágott, ritkított nyomvonal — a feed-kártya és a részletek
-         * térképéhez. Üres sztring, ha az egész aktivitás a védőkörön belül
-         * zajlott: ilyenkor a felület „Az útvonal rejtve" feliratot ír ki.
-         */
+        bounds: publicPoints.length > 0 ? boundsOf(publicPoints) : null,
         route: publicRoute,
-        /**
-         * Megkülönbözteti a „levágtuk"-at a „nincs"-től.
-         *
-         * A felületnek másképp kell fogalmaznia a kettőről: a rejtett útvonal
-         * a felhasználó saját döntése, a hiányzó pedig hiba vagy régi adat.
-         * Egy közös üres mezőből ez nem lenne kiolvasható.
-         */
         routeHidden: publicRoute.length === 0,
         visibility: 'everyone',
-        // A verdikt és az indoklás MEHET a kliensre; a pontszám és a
-        // részjelek maradnak itt, a szerveren.
-        trustVerdict: trust.verdict,
-        trustReasons: trust.reasons,
-        trustScore: trust.score,
+        title: null,
+        description: null,
+        photos: [],
+        likeCount: 0,
+        commentCount: 0,
+        allowComments: true,
+        // A publikus dokumentumba kizárólag a verdikt kerülhet.
+        trustVerdict: publicTrustVerdict,
         createdAt: now,
       });
 
-      /**
-       * A TELJES nyomvonal külön aldokumentumba megy.
-       *
-       * A Firestore-szabályok nem tudnak mezőszinten szűrni: ha a nyomvonal az
-       * aktivitás dokumentumában lenne, akkor vagy mindenki látná a pontos
-       * lakcímedet, vagy senki nem látná az aktivitást.
-       */
       tx.set(activityRef.collection('private').doc('track'), {
         points,
+        bounds: boundsOf(points),
+        createdAt: now,
+      });
+      tx.set(trustRef, {
+        activityId,
+        userId: uid,
+        score: trust.score,
+        signals: trust.signals,
+        reasons: trust.reasons,
+        measuredVerdict: trust.verdict,
+        appliedGameplayDecision: appliedToGameplay ? 'applied' : 'withheld',
+        observeOnly: GAMEPLAY.TRUST_OBSERVE_ONLY,
         createdAt: now,
       });
 
-      tx.set(
-        db.collection(COLLECTIONS.gpLedger).doc(),
-        // A mezőnevek az indexekhez igazodnak (`userId + at`, `userId + day`).
-        { userId: uid, activityId, gp: result.gp, at: now, day: gameDay(now) },
-      );
+      // Nem hiteles aktivitás látható marad, de nem ír gridet, GP-t vagy
+      // profilösszesítőt. Observe-only módban az appliedToGameplay továbbra is igaz.
+      if (!appliedToGameplay) return { duplicate: false, summary };
 
-      /**
-       * BEÁGYAZOTT OBJEKTUMOK, nem pontozott kulcsok.
-       *
-       * A `set(..., { merge: true })` a pontot NEM útvonalnak érti, hanem a
-       * mezőnév részének: a `{ 'territoryM2.foot': ... }` egy „territoryM2.foot"
-       * NEVŰ, felső szintű mezőt hoz létre, a beágyazott érték pedig érintetlen
-       * marad. (A pontot csak az `update()` kezeli útvonalként.)
-       *
-       * Ez a hiba élesben abban látszott, hogy a `gpTotal` nőtt, a terület
-       * viszont nulla maradt a profilon — és emiatt a ranglista is üres volt,
-       * hiszen az a `territoryM2.foot` szerint rendez.
-       */
-      /**
-       * A pontok és az összesítők is csak hiteles aktivitás után frissülnek.
-       *
-       * A `pending_review` aktivitás GP-je FÜGGŐBEN van — nem elveszett. Ha a
-       * validálás átengedi, akkor kerül jóváírásra.
-       */
-      if (!trusted) return;
+      tx.set(ledgerRef, {
+        userId: uid,
+        activityId,
+        source: 'activity',
+        gp: result.gp,
+        amount: result.gp.total,
+        at: now,
+        day: today,
+      });
+      tx.set(dailyGpRef, {
+        userId: uid,
+        day: today,
+        total: earnedToday + result.gp.total,
+        updatedAt: now,
+      });
 
+      const gainedCells = (result.claim?.counts.free ?? 0) + (result.claim?.counts.stolen ?? 0);
+      const gainedAreaM2 = gainedCells * GAMEPLAY.CELL_AREA_M2;
+      const gpAfter = Number(user.gpTotal ?? 0) + result.gp.total;
       tx.set(
         userRef,
         {
-          gpTotal: FieldValue.increment(result.gp.total),
+          gpTotal: gpAfter,
           gpWeek: FieldValue.increment(result.gp.total),
           gpMonth: FieldValue.increment(result.gp.total),
-          /**
-           * A szint SZÁMÍTOTT érték; ez a mező csak gyorsítótár. A felület a
-           * `gpTotal`-ból számolja újra (src/game/levels.ts), tehát a lépcső
-           * hangolása nem igényel migrációt. Itt azért írjuk mégis, hogy a
-           * ranglisták és az értesítések ne kényszerüljenek újraszámolásra.
-           */
           level: levelFor(gpAfter),
-          territoryM2: { [layer]: FieldValue.increment(result.areaGainedM2) },
-          cellCount: { [layer]: FieldValue.increment(result.claimedCells.size) },
+          territoryM2: { [layer]: FieldValue.increment(gainedAreaM2) },
+          cellCount: { [layer]: FieldValue.increment(gainedCells) },
           counters: {
             activities: FieldValue.increment(1),
             distanceKm: { [type]: FieldValue.increment(serverDistanceM / 1000) },
           },
-          streak: nextStreak,
-          // A tiszta aktivitások száma a történeti jel bemenete.
-          trust: { cleanActivities: FieldValue.increment(1) },
+          streak: advanceStreak(user.streak, today),
+          trust: {
+            cleanActivities: FieldValue.increment(trust.verdict === 'trusted' ? 1 : 0),
+          },
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
+
+      for (let index = 0; index < victims.length; index += 1) {
+        const [victimId, stolenCells] = victims[index]!;
+        const victimSnap = victimSnaps[index];
+        if (!victimSnap?.exists) continue;
+        const victim = victimSnap.data() as {
+          territoryM2?: Partial<Record<'foot' | 'bike', number>>;
+          cellCount?: Partial<Record<'foot' | 'bike', number>>;
+        };
+        const stolenAreaM2 = stolenCells * GAMEPLAY.CELL_AREA_M2;
+        tx.set(
+          victimRefs[index]!,
+          {
+            territoryM2: {
+              [layer]: Math.max(0, Number(victim.territoryM2?.[layer] ?? 0) - stolenAreaM2),
+            },
+            cellCount: {
+              [layer]: Math.max(0, Number(victim.cellCount?.[layer] ?? 0) - stolenCells),
+            },
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        tx.set(db.collection(COLLECTIONS.territoryEvents).doc(`${activityId}_${victimId}`), {
+          type: 'territory_stolen',
+          activityId,
+          actorId: uid,
+          recipientId: victimId,
+          layer,
+          cellCount: stolenCells,
+          areaM2: stolenAreaM2,
+          status: 'pending',
+          read: false,
+          createdAt: now,
+        });
+      }
+
+      return { duplicate: false, summary };
     });
 
-    if (duplicate) return res.json({ activityId, summary, duplicate: true });
-    res.status(201).json({ activityId, summary });
+    if (committed.duplicate) {
+      return res.json({ activityId, summary: committed.summary, duplicate: true });
+    }
+    res.status(201).json({ activityId, summary: committed.summary });
   } catch (error) {
     next(error);
   }
@@ -631,13 +661,11 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
         routeHidden: data.routeHidden === true,
         bounds: data.bounds ?? null,
         author,
-        // A verdikt és az indoklás MEHET a kliensre — a pontszám és a
-        // részjelek soha. És csak a saját aktivitásodnál: más hitelességi
-        // állapota nem tartozik rád.
+        // Csak a saját aktivitás verdiktje látható. A diagnosztika és a
+        // pontszám admin-only `activityTrust` dokumentumban marad.
         ...(mine
           ? {
               trustVerdict: data.trustVerdict ?? 'trusted',
-              trustReasons: (data.trustReasons as string[] | undefined) ?? [],
             }
           : {}),
       },
@@ -1092,4 +1120,13 @@ function boundsOf(points: readonly TracePoint[]) {
     if (p.lng < west) west = p.lng;
   }
   return { north, south, east, west };
+}
+
+/** Régi dokumentum duplikált válasza sem szivárogtathat trust diagnosztikát. */
+function sanitizePublicSummary(summary: unknown): unknown {
+  if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) return summary;
+  const clean = { ...(summary as Record<string, unknown>) };
+  delete clean.trustScore;
+  delete clean.trustReasons;
+  return clean;
 }

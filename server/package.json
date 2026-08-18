@@ -10,7 +10,8 @@
     "start": "node dist/server/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "migrate:activity-privacy": "tsx src/scripts/migrateActivityPrivacy.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",

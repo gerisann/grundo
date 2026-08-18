@@ -125,12 +125,12 @@
   commentCount: number
 
   trustVerdict: 'trusted'|'pending_review'|'rejected'   // a pontszám maga NEM itt van
-  trustReasons?: string[]                                // felhasználónak mutatható indoklás
+  // trust diagnosztika nincs ezen a publikus dokumentumon
 
   createdAt, updatedAt: Timestamp
 }
 ```
-- `activities/{id}/private/track` → `{ fullPolyline: string }` — **a teljes, levágatlan nyomvonal**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni: ha a teljes nyomvonal a fő dokumentumban lenne, bárki lekérhetné, aki az aktivitást olvashatja. Olvasás: **csak a tulajdonos és az admin.**
+- `activities/{id}/private/track` → `{ points, bounds }` — **a teljes, levágatlan nyomvonal és befoglaló téglalapja**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni. A publikus `route` és `bounds` kizárólag a privát zónával levágott pontokból készül. Olvasás: **csak a tulajdonos és az admin.**
 - `activities/{id}/likes/{uid}` → `{ createdAt }`
 - `activities/{id}/comments/{cid}` → `{ userId, text, createdAt, editedAt?, deleted? }`
 
@@ -164,7 +164,7 @@ A birtoklás **cellánként** él, de nem cellánként *tárolódik* — az egye
 
 A res 9 a jó kompromisszum: **240×-es írásmegtakarítás** a cellánkénti tároláshoz képest, miközben a dokumentum kicsi marad és az ütközés ritka. (Res 8-cal még olcsóbb lenne, de egy sűrűn játszott városrészben a nagy blokkok folyamatos tranzakció-ütközést okoznának.)
 
-**Írás:** kizárólag a `geo-service`, tranzakcióban, blokkonként. Egy foglalás jellemzően 10–15 blokkot érint; ezek egyetlen kötegelt tranzakcióban íródnak.
+**Írás:** kizárólag a `geo-service`, tranzakcióban, blokkonként. A tranzakció a teljes candidate cellahalmaz blokkjait olvassa, majd az aktuális ownership alapján újrafuttatja a játékmotort. Konkurens módosításkor a Firestore retry új ownershipből számol; az első sikeres commit nyer. Az aktivitásazonosító, a GP-ledger és a területesemények determinisztikus azonosítói biztosítják az idempotenciát.
 
 ### `zones/{zoneId}` — származtatott, megjelenítéshez
 
@@ -185,27 +185,42 @@ A „zóna" (összefüggő birtokfolt) nem tárolt igazság, hanem a rácsból s
 }
 ```
 
-### `territoryEvents/{eventId}`
+### `territoryEvents/{activityId}_{recipientId}`
 ```ts
-{ type: 'claim'|'steal'|'defend'|'breakthrough'|'reinforce',
-  actorId: string, victimId?: string,
+{ type: 'territory_stolen',
+  actorId: string, recipientId: string,
   layer: 'foot'|'bike',
   cells: number, areaM2: number,
   areaName?: string,              // fordított geokódolás: "Gazdagrét"
   centroid: GeoPoint,
-  activityId: string, at: Timestamp }
+  activityId: string, status: 'pending'|'delivered'|'failed',
+  read: boolean, createdAt: Timestamp }
 ```
 **Egy támadás = egy esemény**, nem cellánként — ez az alapja az értesítésnek („Maya átvágta a területed — –21 400 m², Gazdagrét") és az „Élő lopási riasztások" felületnek.
 
 ### `gpLedger/{entryId}`
 ```ts
 { userId, amount: number,
-  source: 'base'|'claim'|'steal'|'breakthrough'|'hold'|'streak_milestone'|
+  source: 'activity'|'hold'|'streak_milestone'|
           'challenge'|'badge'|'admin_adjust',
   activityId?, challengeId?, badgeId?: string,
-  multiplier?: number, note?: string, at: Timestamp, day: string }
+  gp?: { base, claim, steal, breakthrough, streakMult, softCapReduction, total },
+  multiplier?: number, note?: string, at: Timestamp, day: number }
 ```
 Az egyetlen igazságforrás a pontokra; a `users.gpTotal` ennek az aggregátuma.
+
+### `dailyGp/{uid}_{gameDay}`
+```ts
+{ userId: string, day: number, total: number, updatedAt: Timestamp }
+```
+A napi lágy plafon tranzakciós állapota. Kliensről nem olvasható és nem írható; ugyanabban a tranzakcióban változik, mint a determinisztikus `gpLedger/activity_{activityId}` rekord.
+
+### `activityTrust/{activityId}`
+Az aktivitás belső trust pontszáma, részjelei/indokai, `measuredVerdict` értéke és az `appliedGameplayDecision` rollout-döntés. Csak admin olvashatja. A publikus aktivitásdokumentumba kizárólag a ténylegesen alkalmazott felhasználói státusz kerül; observe-only módban ez `trusted`, miközben a mért verdikt az admin rekordban megmarad.
+
+### Régi aktivitások adatvédelmi migrációja
+
+Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`; a `grundo` projekten ezen felül `--allow-production` is kötelező. A futtatás előtt a `GOOGLE_CLOUD_PROJECT` változóval explicit meg kell adni a célt. A script eltávolítja a publikus trust diagnosztikát, admin-only rekordba menti, és a publikus route-ból újraszámolja a bounds értéket.
 
 ### Közösségi gráf
 - `users/{uid}/following/{targetUid}` → `{ createdAt }`

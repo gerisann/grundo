@@ -146,7 +146,9 @@ Nincs külön „kiharapás" és „bekebelezés" szabály — mindkettő ugyane
 
 ### Tranzakcionalitás
 
-Az igény feldolgozása egyetlen atomi művelet cellablokkonként (lásd [05](05-adatmodell.md)). Két egyszerre érkező, ugyanazt a területet érintő aktivitás közül a **korábbi befejezési idejű** nyer — nem a feltöltési sorrend. Így az offline mentés és a konnektor-import sem előny, sem hátrány.
+Az igény feldolgozása egyetlen Firestore-tranzakcióban, cellablokkonként történik (lásd [05](05-adatmodell.md)). Két egyszerre érkező, ugyanazt a területet érintő aktivitás közül az nyer, amelyiknek a tranzakciója **először sikeresen commitol**. A `startedAt` és `endedAt` nem foglal le területet előre.
+
+A tranzakció a teljes candidate halmazhoz — minden hurok fala és belseje — beolvassa az aktuális grid blockokat, majd ezekből újraszámolja a foglalást. Ha egy konkurens commit miatt a Firestore újrapróbálja a tranzakciót, az ownership, a GP és az aggregátumok is az új állapotból számolódnak. A rögzítés közben látott térkép ezért pillanatkép és előnézet; a tulajdonjog csak a mentés sikeres commitjakor dől el.
 
 ---
 
@@ -252,4 +254,4 @@ Az egyes aktivitások pontszámából épül egy hosszú távú **felhasználói
 
 Rögzítés közben a kliens **saját maga** számol cellákat és flood fillt — ez elég gyors telefonon is (egy 2 km²-es hurok ~6 500 cella). A felhasználó azonnal látja a bezáruló területet és a becsült pontot.
 
-A hiteles számítás mentés után szerveroldalon fut újra, ugyanazzal az algoritmussal. Mivel a művelet **determinisztikus és egészszám-alapú**, a kliens és a szerver eredménye ugyanaz — ellentétben a lebegőpontos poligon-műveletekkel, ahol a kettő rendszeresen eltért volna. Ez a modell egyik nem várt, de nagy előnye: **nem kell mentegetőzni a „becsült" és a „végleges" terület különbsége miatt.**
+A hiteles számítás mentéskor szerveroldalon fut újra, ugyanazzal a geometriai algoritmussal. A geometria determinisztikus, de a végleges cellasorsok eltérhetnek az előnézettől, mert közben más játékos foglalhatott, védhetett vagy veszíthetett területet. Mindig a sikeres mentési tranzakcióban beolvasott ownership az igazság.
