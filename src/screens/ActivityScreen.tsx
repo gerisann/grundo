@@ -1,0 +1,356 @@
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Button } from '@/components/ui';
+import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
+import { useActivityDetail } from '@/hooks/useActivityDetail';
+import { computeSplits, elevationProfile } from '@/game/splits';
+import { mapboxConfigured } from '@/lib/mapbox';
+import {
+  activityTitle,
+  formatArea,
+  formatDateTime,
+  formatDistance,
+  formatDuration,
+  formatEffort,
+  formatGp,
+  formatMultiplier,
+  formatPace,
+} from '@/lib/format';
+import './activity.css';
+
+const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
+
+/**
+ * Aktivitás részletei.
+ *
+ * Amíg ez nem volt meg, egy elmentett aktivitást SOHA nem lehetett újra
+ * megnyitni: a feedben látszott egy sor, de nem volt hova kattintani. Ez a
+ * képernyő zárja azt a kört.
+ *
+ * A térkép a NYOMVONALAT mutatja, nem a hexagonokat: a birtokviszony a Grund
+ * képernyőé, itt az a kérdés, hogy merre mentél.
+ *
+ * docs/02-funkcionalis-spec.md → Aktivitás részletek
+ */
+export function ActivityScreen() {
+  const { id = '' } = useParams();
+  const navigate = useNavigate();
+  const { activity, points, loading, error, reload } = useActivityDetail(id);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // Teljes képernyős térképnél a lap alatta ne görgethessen tovább.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [fullscreen]);
+
+  /**
+   * Részidő CSAK valódi időbélyegekkel.
+   *
+   * A levágott, kódolt nyomvonalban nincs idő (a dekódolás `t: 0`-t ad), és
+   * abból a `computeSplits` nullás tempókat számolna — vagyis a képernyő
+   * magabiztosan hamis részidőket mutatna. Inkább nincs táblázat.
+   */
+  const hasTimestamps = points.length >= 2 && points[points.length - 1]!.t > 0;
+  const splits = useMemo(
+    () => (hasTimestamps ? computeSplits(points) : []),
+    [points, hasTimestamps],
+  );
+  const elevation = useMemo(() => elevationProfile(points), [points]);
+
+  if (loading) {
+    return (
+      <div className="screen-body" style={{ paddingTop: 'var(--sp-6)' }}>
+        <div className="card">Betöltés…</div>
+      </div>
+    );
+  }
+
+  if (error || !activity) {
+    return (
+      <>
+        <header className="screen-header">
+          <button
+            type="button"
+            className="screen-header__back"
+            aria-label="Vissza"
+            onClick={() => navigate(-1)}
+          >
+            <BackIcon />
+          </button>
+          <h1 className="screen-header__title">Aktivitás</h1>
+        </header>
+        <div className="screen-body">
+          <div className="card" role="alert">
+            {error || 'Ez az aktivitás nem érhető el.'}
+            <div style={{ marginTop: 'var(--sp-3)' }}>
+              <Button size="sm" onClick={reload}>
+                Újrapróbálom
+              </Button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const effort = formatEffort(activity.type, activity.distanceM, activity.movingS);
+  const hasRoute = points.length >= 2;
+  const fastest = fastestSplit(splits);
+
+  return (
+    <div className={fullscreen ? 'act act--full' : 'act'}>
+      {/* ── Térkép ────────────────────────────────────────────────── */}
+      <div className="act__map">
+        {mapboxConfigured && hasRoute ? (
+          <Suspense fallback={null}>
+            <MapView track={points} follow={false} fitTrack fill />
+          </Suspense>
+        ) : (
+          <div className="act__map-empty">
+            {activity.routeHidden
+              ? 'Az útvonal rejtve'
+              : activity.route.length === 0
+                ? 'Nincs elmentett útvonal'
+                : 'A térkép nem elérhető'}
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="act__map-btn act__map-btn--back"
+          aria-label="Vissza"
+          onClick={() => (fullscreen ? setFullscreen(false) : navigate(-1))}
+        >
+          <BackIcon />
+        </button>
+
+        {hasRoute && mapboxConfigured ? (
+          <button
+            type="button"
+            className="act__map-btn act__map-btn--expand"
+            aria-label={fullscreen ? 'Kilépés a teljes képernyőből' : 'Térkép teljes képernyőn'}
+            aria-pressed={fullscreen}
+            onClick={() => setFullscreen((open) => !open)}
+          >
+            <ExpandIcon open={fullscreen} />
+          </button>
+        ) : null}
+      </div>
+
+      {fullscreen ? null : (
+        <div className="act__body stack">
+          {/* ── Fejléc ──────────────────────────────────────────── */}
+          <div>
+            <div className="act__who">
+              <Avatar url={activity.author.photoURL} name={activity.author.username} />
+              <span className="act__who-text">
+                <span className="act__author">{activity.author.username}</span>
+                <span className="act__date">
+                  {ACTIVITY_LABEL[activity.type]} · {formatDateTime(activity.startedAt)}
+                </span>
+              </span>
+            </div>
+            <h1 className="act__title">
+              {activity.title ?? activityTitle(activity.type, activity.startedAt)}
+            </h1>
+          </div>
+
+          {/* ── Hitelesség — csak a sajátodnál, és csak ha van mit mondani ── */}
+          {activity.mine && activity.trustVerdict && activity.trustVerdict !== 'trusted' ? (
+            <div className="act__notice" role="status">
+              <strong>
+                {activity.trustVerdict === 'rejected'
+                  ? 'Ez az aktivitás nem számított bele a játékba.'
+                  : 'Ez az aktivitás ellenőrzésre vár.'}
+              </strong>
+              {(activity.trustReasons ?? []).map((reason) => (
+                <span key={reason}>{reason}</span>
+              ))}
+            </div>
+          ) : null}
+
+          {/* ── Metrikák ────────────────────────────────────────── */}
+          <section aria-label="Statisztikák">
+            <div className="label" style={{ marginBottom: 'var(--sp-3)' }}>
+              Statisztikák
+            </div>
+            <dl className="act__stats">
+              <Stat label="táv" value={formatDistance(activity.distanceM)} />
+              <Stat label={effort.label} value={effort.value} />
+              <Stat label="mozgásidő" value={formatDuration(activity.movingS)} />
+              <Stat label="teljes idő" value={formatDuration(activity.durationS)} />
+              <Stat
+                label="emelkedés"
+                value={elevation.hasData ? `${elevation.gainM} m` : '--'}
+              />
+              <Stat label="érintett mező" value={String(activity.cellCount)} />
+            </dl>
+          </section>
+
+          {/* ── GRUND ───────────────────────────────────────────── */}
+          <section className="act__grund" aria-label="Játékbeli eredmény">
+            <div className="act__grund-head">
+              <span className="label">A grund</span>
+              <span className="act__grund-gp">{formatGp(activity.gp.total)}</span>
+            </div>
+
+            <dl className="act__stats act__stats--grund">
+              <Stat label="szerzett terület" value={formatArea(activity.areaGainedM2)} />
+              <Stat label="bezárt kör" value={String(activity.loops)} />
+              <Stat label="foglalt mező" value={String(activity.claimedCells)} />
+            </dl>
+
+            {/*
+              A pontok BONTÁSA, nem csak az összeg. Enélkül a szám átláthatatlan:
+              nem derül ki, hogy a megtett útért vagy a bezárt körért járt.
+            */}
+            <ul className="act__gp-rows">
+              <GpRow label="alappont a távért" value={activity.gp.base} />
+              <GpRow label="bezárt terület" value={activity.gp.claim} />
+              <GpRow label="idegentől elvéve" value={activity.gp.steal} />
+              <GpRow label="védett zóna áttörése" value={activity.gp.breakthrough} />
+              {activity.gp.streakMult && activity.gp.streakMult > 1 ? (
+                <li className="act__gp-row">
+                  <span>sorozat-szorzó</span>
+                  <span>{formatMultiplier(activity.gp.streakMult)}</span>
+                </li>
+              ) : null}
+            </ul>
+          </section>
+
+          {/* ── Részidők ────────────────────────────────────────── */}
+          {splits.length > 0 ? (
+            <section aria-label="Részidők">
+              <div className="label" style={{ marginBottom: 'var(--sp-3)' }}>
+                Részidők
+              </div>
+              <div className="act__splits">
+                {splits.map((split) => (
+                  <div
+                    key={split.index}
+                    className={`act__split${split.index === fastest ? ' act__split--fastest' : ''}`}
+                  >
+                    <span className="act__split-index">
+                      {split.partial
+                        ? formatDistance(split.distanceM)
+                        : `${split.index}. km`}
+                    </span>
+                    {/*
+                      A sáv hossza a LEGGYORSABB részidőhöz mérve: a rövidebb
+                      sáv a gyorsabb kör. Abszolút skálán minden sáv szinte
+                      egyforma lenne, és nem mondana semmit.
+                    */}
+                    <span className="act__split-track">
+                      <span
+                        className="act__split-bar"
+                        style={{ width: `${barWidth(split.paceSPerKm, splits)}%` }}
+                      />
+                    </span>
+                    <span className="act__split-pace">{formatPace(split.paceSPerKm)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {/*
+            A saját nézeted a TELJES nyomvonalat mutatja — másoknak a két vége
+            le van vágva. Ezt ki kell mondani, különben a felhasználó azt hiszi,
+            a lakcíme is látszik mindenkinek.
+          */}
+          {activity.mine && hasRoute ? (
+            <p className="act__privacy">
+              Te a teljes útvonalat látod. Másoknak az eleje és a vége rejtve marad — a
+              védőkör méretét a Beállításokban módosíthatod.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A leggyorsabb TELJES kilométer sorszáma. A töredék szakasz nem rekord. */
+function fastestSplit(splits: readonly { index: number; paceSPerKm: number; partial: boolean }[]) {
+  let best = 0;
+  let bestPace = Infinity;
+  for (const split of splits) {
+    if (split.partial) continue;
+    if (split.paceSPerKm < bestPace) {
+      bestPace = split.paceSPerKm;
+      best = split.index;
+    }
+  }
+  return best;
+}
+
+function barWidth(pace: number, splits: readonly { paceSPerKm: number }[]): number {
+  const slowest = Math.max(...splits.map((s) => s.paceSPerKm));
+  if (!Number.isFinite(slowest) || slowest <= 0) return 0;
+  // 40–100 %: a leggyorsabb kör se legyen nullaszélességű csík.
+  return 40 + (pace / slowest) * 60;
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="act__stat">
+      <dt className="act__stat-label">{label}</dt>
+      <dd className="act__stat-value">{value}</dd>
+    </div>
+  );
+}
+
+function GpRow({ label, value }: { label: string; value: number | undefined }) {
+  if (!value || Math.round(value) === 0) return null;
+  return (
+    <li className="act__gp-row">
+      <span>{label}</span>
+      <span>{formatGp(value)}</span>
+    </li>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
+function ExpandIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {open ? (
+        <path d="M9 3v6H3M15 21v-6h6M3 15h6v6M21 9h-6V3" />
+      ) : (
+        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+      )}
+    </svg>
+  );
+}

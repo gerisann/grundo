@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, SegmentedControl } from '@/components/ui';
-import {
-  api,
-  apiConfigured,
-  type FeedActivity,
-  type FeedResult,
-  type FeedScope,
-} from '@/lib/api';
-import { formatArea, formatDistance, formatDuration } from '@/lib/format';
+import { ActivityCard } from '@/components/ActivityCard';
+import { useActivities } from '@/hooks/useActivities';
+import type { FeedActivity, FeedResult, FeedScope } from '@/lib/api';
 import './feed.css';
 
 /**
@@ -33,26 +28,12 @@ type GlobalView = 'world' | 'local';
  *  kézzel senki nem akar számot gépelni. */
 const RADII = [1, 5, 10, 25, 50] as const;
 
-export interface FeedProps {
-  /**
-   * Rögzített nézet — ilyenkor NINCSENEK fülek.
-   *
-   * A profilon a felhasználó a SAJÁT aktivitásait nézi; ott a „Globális" fül
-   * félrevezető lenne, mert nem az ő oldala többé.
-   */
-  fixedScope?: FeedScope;
-}
-
-export function Feed({ fixedScope }: FeedProps = {}) {
+export function Feed() {
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>(() => (read(TAB_KEY) as Tab) ?? 'mine');
   const [view, setView] = useState<GlobalView>('world');
   const [radiusKm, setRadiusKm] = useState<number>(() => Number(read(RADIUS_KEY)) || 10);
-
-  const [result, setResult] = useState<FeedResult | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   /**
    * A helyi nézethez a saját pozíció kell.
@@ -79,43 +60,19 @@ export function Feed({ fixedScope }: FeedProps = {}) {
   }, [tab, view, position]);
 
   const scope: FeedScope =
-    fixedScope ??
-    (tab === 'mine'
+    tab === 'mine'
       ? 'mine'
       : tab === 'following'
         ? 'following'
         : view === 'local'
           ? 'local'
-          : 'world');
+          : 'world';
 
-  const load = useCallback(async () => {
-    if (!apiConfigured) {
-      setResult({ activities: [] });
-      return;
-    }
-    // A helyi nézet pozíció nélkül nem kérdezhető le — várunk rá.
-    if (scope === 'local' && position === null) return;
-
-    setLoading(true);
-    setError('');
-    try {
-      setResult(
-        await api.activities({
-          scope,
-          ...(scope === 'local' ? { ...position!, radiusKm } : {}),
-        }),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nem sikerült betölteni a feedet.');
-      setResult(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [scope, position, radiusKm]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // A helyi nézet pozíció nélkül nem kérdezhető le — addig nem indítunk kérést.
+  const awaitingPosition = scope === 'local' && position === null;
+  const { result, loading, error, reload } = useActivities(
+    awaitingPosition ? null : { scope, ...(scope === 'local' ? { ...position!, radiusKm } : {}) },
+  );
 
   function chooseTab(next: Tab) {
     setTab(next);
@@ -129,7 +86,6 @@ export function Feed({ fixedScope }: FeedProps = {}) {
 
   return (
     <div className="feed">
-      {fixedScope ? null : (
       <SegmentedControl
         label="Feed nézet"
         block
@@ -141,9 +97,8 @@ export function Feed({ fixedScope }: FeedProps = {}) {
           { value: 'mine', label: 'Saját' },
         ]}
       />
-      )}
 
-      {!fixedScope && tab === 'global' ? (
+      {tab === 'global' ? (
         <SegmentedControl
           label="Globális nézet"
           block
@@ -157,7 +112,7 @@ export function Feed({ fixedScope }: FeedProps = {}) {
         />
       ) : null}
 
-      {!fixedScope && tab === 'global' && view === 'local' ? (
+      {tab === 'global' && view === 'local' ? (
         <div className="feed__radius">
           <span className="feed__radius-label">Ekkora körzetben:</span>
           <div className="feed__radius-options">
@@ -175,52 +130,54 @@ export function Feed({ fixedScope }: FeedProps = {}) {
         </div>
       ) : null}
 
-      <FeedBody
-        scope={scope}
-        result={result}
-        loading={loading}
-        error={error}
-        positionDenied={positionDenied && scope === 'local'}
-        awaitingPosition={scope === 'local' && position === null && !positionDenied}
-        radiusKm={radiusKm}
-        onRetry={() => void load()}
-        onStart={() => navigate('/rogzites')}
-      />
+      {positionDenied && scope === 'local' ? (
+        <div className="card">
+          A helyi nézethez tudnunk kell, hol vagy. Engedélyezd a helyhozzáférést, vagy válts a
+          Világ nézetre.
+        </div>
+      ) : awaitingPosition ? (
+        <div className="card">Helymeghatározás…</div>
+      ) : (
+        <ActivityList
+          scope={scope}
+          result={result}
+          loading={loading}
+          error={error}
+          radiusKm={radiusKm}
+          onRetry={reload}
+          onStart={() => navigate('/rogzites')}
+        />
+      )}
     </div>
   );
 }
 
-function FeedBody({
-  scope,
-  result,
-  loading,
-  error,
-  positionDenied,
-  awaitingPosition,
-  radiusKm,
-  onRetry,
-  onStart,
-}: {
+export interface ActivityListProps {
   scope: FeedScope;
   result: FeedResult | null;
   loading: boolean;
   error: string;
-  positionDenied: boolean;
-  awaitingPosition: boolean;
-  radiusKm: number;
+  radiusKm?: number;
   onRetry: () => void;
   onStart: () => void;
-}) {
-  if (positionDenied) {
-    return (
-      <div className="card">
-        A helyi nézethez tudnunk kell, hol vagy. Engedélyezd a helyhozzáférést, vagy válts a
-        Világ nézetre.
-      </div>
-    );
-  }
+}
 
-  if (awaitingPosition) return <div className="card">Helymeghatározás…</div>;
+/**
+ * A lista maga — a profil is ezt használja, saját lekérdezéssel.
+ *
+ * Külön exportált, mert a profil UGYANABBÓL a betöltésből építi a heti
+ * oszlopdiagramot és az összegzőket is. Ha ott is a teljes `Feed` futna,
+ * ugyanaz az adat kétszer jönne le.
+ */
+export function ActivityList({
+  scope,
+  result,
+  loading,
+  error,
+  radiusKm = 10,
+  onRetry,
+  onStart,
+}: ActivityListProps) {
   if (error) {
     return (
       <div className="card" role="alert">
@@ -273,8 +230,8 @@ function FeedBody({
   return (
     <>
       <div className="feed__list">
-        {result.activities.map((item) => (
-          <FeedRow key={item.id} item={item} showAuthor={scope !== 'mine'} />
+        {result.activities.map((item: FeedActivity) => (
+          <ActivityCard key={item.id} item={item} showAuthor={scope !== 'mine'} />
         ))}
       </div>
       {result.truncated ? (
@@ -284,60 +241,6 @@ function FeedBody({
       ) : null}
     </>
   );
-}
-
-const ACTIVITY_LABEL: Record<FeedActivity['type'], string> = {
-  run: 'Futás',
-  walk: 'Séta',
-  ride: 'Bringa',
-};
-
-const ACTIVITY_ICON: Record<FeedActivity['type'], string> = {
-  run: '🏃',
-  walk: '🚶',
-  ride: '🚲',
-};
-
-function FeedRow({ item, showAuthor }: { item: FeedActivity; showAuthor: boolean }) {
-  return (
-    <div className="feed__item">
-      <span className="feed__icon" aria-hidden="true">
-        {ACTIVITY_ICON[item.type]}
-      </span>
-      <span>
-        <span className="feed__title">
-          {showAuthor ? item.author.username : ACTIVITY_LABEL[item.type]}
-        </span>
-        <span className="feed__meta">
-          {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}
-          {formatRelativeDay(item.startedAt)} · {formatDistance(item.distanceM)} ·{' '}
-          {formatDuration(item.movingS)}
-        </span>
-      </span>
-      <span className="feed__gain">
-        <span className="feed__gain-value">
-          {item.areaGainedM2 > 0 ? formatArea(item.areaGainedM2) : `${item.gp} GP`}
-        </span>
-        <span className="feed__gain-label">{item.areaGainedM2 > 0 ? 'szerzett' : 'pont'}</span>
-      </span>
-    </div>
-  );
-}
-
-/**
- * „ma", „tegnap", vagy dátum.
- *
- * Naptári napokat hasonlítunk, nem eltelt órákat: egy tegnap este 23:00-kor
- * kezdett futás ma reggel 7-kor „9 órája" lenne, pedig a felhasználó fejében
- * egyértelműen tegnapi.
- */
-function formatRelativeDay(at: number): string {
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(at))) / 86_400_000);
-  if (days <= 0) return 'ma';
-  if (days === 1) return 'tegnap';
-  if (days < 7) return `${days} napja`;
-  return new Date(at).toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' });
 }
 
 function read(key: string): string | null {

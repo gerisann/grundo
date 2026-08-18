@@ -1,5 +1,88 @@
 /* Profil képernyő */
 
+.prof__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.prof__names {
+  display: grid;
+  min-width: 0;
+}
+
+.prof__display {
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.prof__handle {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+/* ═══ Szint-haladás ═══ */
+
+.prof__level {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+
+.prof__level-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.prof__level-name {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.prof__level-gp {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.prof__bar {
+  height: 10px;
+  border-radius: var(--r-pill);
+  /* Nem `--surface-*`: a sáv accent hátéren ül, ott a felületszínek
+     gyakorlatilag eltűnnének. */
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  overflow: hidden;
+}
+
+.prof__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent), var(--territory-rival));
+  transition: width 400ms ease;
+}
+
+.prof__level-note {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prof__bar-fill {
+    transition: none;
+  }
+}
+
+/* ═══ Számlálók ═══ */
+
 .prof__stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -11,6 +94,7 @@
   padding: var(--sp-3) var(--sp-2);
   background: var(--bg-elevated);
   border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
 }
 
 .prof__stat-value {
@@ -26,4 +110,95 @@
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 2px;
+}
+
+/* ═══ Ez a hét ═══ */
+
+.prof__week {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.prof__week-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.prof__week-total {
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.prof__week-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--sp-2);
+}
+
+.prof__day {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: center;
+}
+
+/* Fix magasságú sín, benne alulról növő oszlop — így a hét napjai akkor is
+   egy vonalban állnak, ha valamelyik nap üres. */
+.prof__day-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 72px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.prof__day-bar {
+  width: 100%;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+}
+
+.prof__day-bar--today {
+  background: linear-gradient(180deg, var(--territory-rival), var(--accent));
+}
+
+.prof__day-label {
+  font-size: var(--fs-label);
+  color: var(--text-tertiary);
+}
+
+.prof__day-label--today {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.prof__week-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.prof__summary {
+  min-width: 0;
+}
+
+.prof__summary-label {
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.prof__summary-value {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }

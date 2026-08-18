@@ -6,6 +6,9 @@ import { blocksFor, gameDay, loadOwnership, readBlocks, writeOwnership } from '.
 import { computeTrustScore } from '../trust/score';
 import { processActivity } from '../../../src/game';
 import { layerOf } from '../../../src/game/cells';
+import { levelFor } from '../../../src/game/levels';
+import { encodePolyline, simplifyTrace } from '../../../src/game/polyline';
+import { DEFAULT_PRIVACY, trimPrivateEnds, type PrivacySettings } from '../../../src/game/privacy';
 import { GAMEPLAY } from '../../../src/config/gameplay';
 import { distanceM } from '../../../src/game/geo';
 import type { ActivityType, TracePoint } from '../../../src/types';
@@ -132,6 +135,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     const user = userSnap.data() as {
       streak?: StoredStreak;
       trust?: { cleanActivities?: number; upheldReports?: number };
+      privacy?: Partial<PrivacySettings>;
     };
 
     const result = processActivity({
@@ -177,6 +181,20 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
      */
     const trusted = GAMEPLAY.TRUST_OBSERVE_ONLY || trust.verdict === 'trusted';
 
+    /**
+     * A NYILVÁNOS nyomvonal — levágva és ritkítva.
+     *
+     * Ez kerül az aktivitás fő dokumentumába, amit mindenki elolvashat, aki
+     * az aktivitást látja (lásd firestore.rules). Ezért ELŐBB vágjuk le a
+     * privát zónát, és csak utána tároljuk: a levágott szakasz így soha nem
+     * kerül olyan helyre, ahonnan visszaolvasható lenne.
+     *
+     * A TELJES nyomvonal külön, a `private/track` dokumentumba megy — azt
+     * kizárólag a tulajdonos éri el.
+     */
+    const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user.privacy ?? {}) };
+    const publicRoute = encodeRoute(trimPrivateEnds(points, privacy).points);
+
     const now = new Date();
     const nextStreak = advanceStreak(user.streak, gameDay(now));
     const claimUpdates = result.claim?.updates ?? new Map();
@@ -219,6 +237,17 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         return;
       }
 
+      /**
+       * A profilt a TRANZAKCIÓN BELÜL is beolvassuk, mert a szinthez a
+       * ténylegesen új GP-összeg kell — a `FieldValue.increment` értékét a
+       * kliens nem látja. A tranzakción kívüli olvasás itt elavulhatna: két
+       * egyszerre feldolgozott aktivitás közül a második régi összeget látna,
+       * és visszaírna egy alacsonyabb szintet.
+       */
+      const userNow = await tx.get(userRef);
+      const gpAfter = Number((userNow.data() as { gpTotal?: number })?.gpTotal ?? 0)
+        + result.gp.total;
+
       const blocks = await readBlocks(tx, blockIds);
 
       // A rácshoz CSAK hiteles aktivitás nyúlhat.
@@ -241,6 +270,20 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         pointCount: points.length,
         summary,
         bounds: boundsOf(points),
+        /**
+         * A levágott, ritkított nyomvonal — a feed-kártya és a részletek
+         * térképéhez. Üres sztring, ha az egész aktivitás a védőkörön belül
+         * zajlott: ilyenkor a felület „Az útvonal rejtve" feliratot ír ki.
+         */
+        route: publicRoute,
+        /**
+         * Megkülönbözteti a „levágtuk"-at a „nincs"-től.
+         *
+         * A felületnek másképp kell fogalmaznia a kettőről: a rejtett útvonal
+         * a felhasználó saját döntése, a hiányzó pedig hiba vagy régi adat.
+         * Egy közös üres mezőből ez nem lenne kiolvasható.
+         */
+        routeHidden: publicRoute.length === 0,
         visibility: 'everyone',
         // A verdikt és az indoklás MEHET a kliensre; a pontszám és a
         // részjelek maradnak itt, a szerveren.
@@ -294,6 +337,13 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
           gpTotal: FieldValue.increment(result.gp.total),
           gpWeek: FieldValue.increment(result.gp.total),
           gpMonth: FieldValue.increment(result.gp.total),
+          /**
+           * A szint SZÁMÍTOTT érték; ez a mező csak gyorsítótár. A felület a
+           * `gpTotal`-ból számolja újra (src/game/levels.ts), tehát a lépcső
+           * hangolása nem igényel migrációt. Itt azért írjuk mégis, hogy a
+           * ranglisták és az értesítések ne kényszerüljenek újraszámolásra.
+           */
+          level: levelFor(gpAfter),
           territoryM2: { [layer]: FieldValue.increment(result.areaGainedM2) },
           cellCount: { [layer]: FieldValue.increment(result.claimedCells.size) },
           counters: {
@@ -404,6 +454,10 @@ interface FeedRow {
   gp: number;
   /** A nyomvonal közepe — a helyi szűréshez és a térképhez. */
   center: { lat: number; lng: number } | null;
+  /** A levágott, kódolt nyomvonal a kártya térképéhez. */
+  route: string;
+  /** Üres a nyomvonal, mert a privát zóna teljesen lefedte? */
+  routeHidden: boolean;
 }
 
 function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
@@ -420,6 +474,10 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     movingS: Number(data.movingS ?? 0),
     areaGainedM2: Number(data.areaGainedM2 ?? 0),
     gp: (data.gp as { total?: number } | undefined)?.total ?? 0,
+    // Ez már levágott nyomvonal (lásd a feltöltésnél), tehát mindenkinek
+    // kiadható, aki magát az aktivitást láthatja.
+    route: String(data.route ?? ''),
+    routeHidden: data.routeHidden === true,
     center: bounds
       ? { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 }
       : null,
@@ -456,6 +514,72 @@ async function withAuthors(rows: FeedRow[]) {
   }));
 }
 
+/**
+ * GET /api/activities/:id — egy aktivitás részletei.
+ *
+ * A nyomvonal itt a LEVÁGOTT, nyilvános változat. A tulajdonos a teljes
+ * nyomvonalat a `/:id/track` végpontról kapja meg, és a felület jelzi neki,
+ * hogy a két vég mások elől rejtve van.
+ */
+activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const snapshot = await db.collection(COLLECTIONS.activities).doc(String(req.params.id)).get();
+    if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+    const data = snapshot.data() as Record<string, unknown>;
+    const owner = String(data.userId ?? '');
+    const mine = owner === req.uid;
+
+    /**
+     * A nem látható aktivitás NEM 403, hanem 404.
+     *
+     * A 403 elárulná, hogy az azonosító létezik — egy privát aktivitás
+     * puszta létezése is információ. A „nincs ilyen" nem szivárogtat.
+     */
+    if (!mine && data.visibility !== 'everyone') {
+      throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+    }
+
+    const summary = (data.summary ?? {}) as Record<string, unknown>;
+    const author = await loadAuthor(owner);
+
+    res.json({
+      activity: {
+        id: snapshot.id,
+        mine,
+        type: data.type,
+        layer: data.layer,
+        title: (data.title as string | undefined) ?? null,
+        startedAt: toMillis(data.startedAt),
+        endedAt: toMillis(data.endedAt),
+        distanceM: Number(data.distanceM ?? 0),
+        durationS: Number(data.durationS ?? 0),
+        movingS: Number(data.movingS ?? 0),
+        areaGainedM2: Number(data.areaGainedM2 ?? 0),
+        gp: (data.gp ?? { total: 0 }) as Record<string, number>,
+        cellCount: Number(data.cellCount ?? 0),
+        loops: Number(summary.loops ?? 0),
+        claimedCells: Number(summary.claimedCells ?? 0),
+        route: String(data.route ?? ''),
+        routeHidden: data.routeHidden === true,
+        bounds: data.bounds ?? null,
+        author,
+        // A verdikt és az indoklás MEHET a kliensre — a pontszám és a
+        // részjelek soha. És csak a saját aktivitásodnál: más hitelességi
+        // állapota nem tartozik rád.
+        ...(mine
+          ? {
+              trustVerdict: data.trustVerdict ?? 'trusted',
+              trustReasons: (data.trustReasons as string[] | undefined) ?? [],
+            }
+          : {}),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /** GET /api/activities/:id/track — a teljes nyomvonal, csak a tulajdonosnak. */
 activitiesRouter.get('/:id/track', async (req: AuthedRequest, res, next) => {
   try {
@@ -480,6 +604,36 @@ activitiesRouter.post('/:id/report', async (_req: AuthedRequest, res) => {
 /* ═══════════════════════════════════════════════════════════════════
    Segédek
    ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Ennyi pontnál többet nem tárolunk a nyilvános nyomvonalban.
+ *
+ * Egy négyórás bringázás ritkítás után is ezres nagyságrendű pontot adhat, és
+ * ez a mező MINDEN feed-lekérdezésben átmegy a hálózaton — húsz kártyánál
+ * húszszor. A hatszáz pont egy telefonképernyőn már bőven a pixelfelbontás
+ * alatt van: több pontnak nincs látható haszna, csak forgalma.
+ */
+const MAX_ROUTE_POINTS = 600;
+
+function encodeRoute(points: readonly TracePoint[]): string {
+  if (points.length < 2) return '';
+
+  // A küszöböt addig lazítjuk, amíg a nyomvonal be nem fér. Egy városi
+  // futásnál az első kör elég; a plafon a nagyon hosszú túrákra szól.
+  let simplified = simplifyTrace(points, 6);
+  for (let epsilon = 12; simplified.length > MAX_ROUTE_POINTS && epsilon <= 200; epsilon *= 2) {
+    simplified = simplifyTrace(points, epsilon);
+  }
+
+  return encodePolyline(simplified);
+}
+
+async function loadAuthor(uid: string) {
+  if (!uid) return { username: 'ismeretlen', photoURL: null };
+  const snapshot = await db.collection(COLLECTIONS.users).doc(uid).get();
+  const data = snapshot.data() as { username?: string; photoURL?: string | null } | undefined;
+  return { username: data?.username ?? 'ismeretlen', photoURL: data?.photoURL ?? null };
+}
 
 function parsePoints(raw: unknown): TracePoint[] {
   if (!Array.isArray(raw)) throw badRequest('invalid_points', 'Hiányzó nyomvonal.');

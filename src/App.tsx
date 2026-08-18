@@ -10,6 +10,7 @@ import { TerritoryScreen } from './screens/TerritoryScreen';
 import { TrackingScreen } from './screens/TrackingScreen';
 import { CommunityScreen } from './screens/CommunityScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { ActivityScreen } from './screens/ActivityScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
 import { ReplayScreen } from './screens/dev/ReplayScreen';
@@ -111,6 +112,7 @@ function Router() {
           <Route path="/rogzites" element={<TrackingScreen />} />
           <Route path="/kozosseg" element={<CommunityScreen />} />
           <Route path="/profil" element={<ProfileScreen />} />
+          <Route path="/aktivitas/:id" element={<ActivityScreen />} />
           <Route path="/beallitasok" element={<SettingsScreen />} />
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
           <Route path="/dev/replay" element={<ReplayScreen />} />

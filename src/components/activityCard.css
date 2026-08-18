@@ -1,0 +1,136 @@
+/* Aktivitás-kártya a feedben */
+
+.acard {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+/* A kártya egésze egyetlen nagy célfelület — mobilon ez a lényeg. */
+.acard__open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-3) var(--sp-3) 0;
+}
+
+.acard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.acard__who {
+  display: grid;
+  min-width: 0;
+}
+
+.acard__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acard__when {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.acard__title {
+  margin: var(--sp-3) 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.acard__map {
+  display: block;
+  width: 100%;
+  /* Fix arány: a kép betöltése előtt is ekkora helyet foglal, tehát a lista
+     nem ugrik meg alatta (layout shift). */
+  aspect-ratio: 16 / 7;
+  object-fit: cover;
+  margin-top: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--map-bg);
+}
+
+.acard__map--empty {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  border: 1px dashed var(--border-default);
+}
+
+.acard__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
+}
+
+.acard__metric {
+  min-width: 0;
+}
+
+.acard__metric-label {
+  font-size: var(--fs-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.acard__metric-value {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.acard__grund {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--accent-soft);
+}
+
+.acard__gain {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--territory-own);
+  font-variant-numeric: tabular-nums;
+}
+
+.acard__gp {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ═══ Avatar — a kártyán és a részleteknél is ═══ */
+
+.avatar {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-3);
+}
+
+.avatar--empty {
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}

@@ -177,7 +177,50 @@ export interface FeedActivity {
   gp: number;
   /** A nyomvonal közepe — a helyi szűréshez és a térképhez. */
   center: { lat: number; lng: number } | null;
+  /**
+   * A kódolt nyomvonal a kártya térképéhez — MÁR LEVÁGVA a privát zónával.
+   * Üres sztring, ha az egész aktivitás a védőkörön belül zajlott.
+   */
+  route: string;
+  /** Üres a nyomvonal, mert a privát zóna lefedte — nem pedig azért, mert nincs. */
+  routeHidden: boolean;
   author: { username: string; photoURL: string | null };
+}
+
+/** Egy aktivitás teljes adatlapja — a részletek képernyőhöz. */
+export interface ActivityDetail {
+  id: string;
+  /** A sajátom-e. Ettől függ, mit szabad mutatni és mit lehet szerkeszteni. */
+  mine: boolean;
+  type: 'run' | 'walk' | 'ride';
+  layer: 'foot' | 'bike';
+  title: string | null;
+  startedAt: number;
+  endedAt: number;
+  distanceM: number;
+  durationS: number;
+  movingS: number;
+  areaGainedM2: number;
+  /** A GP teljes bontása: alap, igény, lopás, áttörés, sorozatszorzó. */
+  gp: {
+    base?: number;
+    claim?: number;
+    steal?: number;
+    breakthrough?: number;
+    streakMult?: number;
+    softCapReduction?: number;
+    total: number;
+  };
+  cellCount: number;
+  loops: number;
+  claimedCells: number;
+  route: string;
+  routeHidden: boolean;
+  bounds: { north: number; south: number; east: number; west: number } | null;
+  author: { username: string; photoURL: string | null };
+  /** Csak a saját aktivitásnál. A PONTSZÁM soha nem jön le. */
+  trustVerdict?: 'trusted' | 'pending_review' | 'rejected';
+  trustReasons?: string[];
 }
 
 export interface FeedResult {
@@ -288,6 +331,20 @@ export const api = {
     }
     return request<FeedResult>(`/api/activities?${params.toString()}`);
   },
+
+  /** Egy aktivitás adatlapja. */
+  activity: (id: string) => request<{ activity: ActivityDetail }>(`/api/activities/${id}`),
+
+  /**
+   * A TELJES, levágatlan nyomvonal — csak a saját aktivitásodhoz.
+   *
+   * A részletek képernyőn ebből rajzoljuk a térképet és számoljuk a
+   * részidőket. Másnál a levágott `route` az egyetlen elérhető változat.
+   */
+  activityTrack: (id: string) =>
+    request<{ points: { lat: number; lng: number; t: number; elevation?: number }[] }>(
+      `/api/activities/${id}/track`,
+    ),
 
   /** A saját területem cellái, érvényes védelmi szinttel. */
   territory: (layer: 'foot' | 'bike' = 'foot') =>

@@ -67,7 +67,90 @@ export function formatElevation(meters: number): string {
   return `${sign}${hu({ maximumFractionDigits: 0 }).format(meters)} m`;
 }
 
+/** Szorzó magyar tizedesvesszővel: `×1,15` */
+export function formatMultiplier(value: number): string {
+  return `×${hu({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
+}
+
 /** `1×` … `5×` */
 export function formatDefense(level: number): string {
   return `${level}×`;
+}
+
+/** Átlagsebesség km/h-ban: `21,4 km/h` — bringánál ez a beszélt mérték. */
+export function formatSpeed(metersPerSecond: number): string {
+  if (!Number.isFinite(metersPerSecond) || metersPerSecond <= 0) return '--';
+  return `${hu({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(metersPerSecond * 3.6)} km/h`;
+}
+
+/**
+ * A mozgásforma fő tempó-mérőszáma.
+ *
+ * Futásnál és sétánál a TEMPÓ (perc/km) a beszélt mérték, bringánál a
+ * SEBESSÉG (km/h). Ugyanaz az adat, de aki bringázik, annak a „3:00/km"
+ * semmit nem mond — és fordítva.
+ */
+export function formatEffort(
+  type: 'run' | 'walk' | 'ride',
+  meters: number,
+  seconds: number,
+): { value: string; label: string } {
+  if (meters <= 0 || seconds <= 0) return { value: '--', label: type === 'ride' ? 'seb.' : 'tempó' };
+  return type === 'ride'
+    ? { value: formatSpeed(meters / seconds), label: 'seb.' }
+    : { value: `${formatPace(seconds / (meters / 1000))}/km`, label: 'tempó' };
+}
+
+/**
+ * „ma", „tegnap", vagy dátum.
+ *
+ * Naptári napokat hasonlítunk, nem eltelt órákat: egy tegnap este 23:00-kor
+ * kezdett futás ma reggel 7-kor „9 órája" lenne, pedig a felhasználó fejében
+ * egyértelműen tegnapi.
+ */
+export function formatRelativeDay(at: number): string {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(at))) / 86_400_000);
+  if (days <= 0) return 'ma';
+  if (days === 1) return 'tegnap';
+  if (days < 7) return `${days} napja`;
+  return new Date(at).toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' });
+}
+
+/** Teljes dátum és időpont: `2026. aug. 15. 15:54` */
+export function formatDateTime(at: number): string {
+  return new Date(at).toLocaleString('hu-HU', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+const DAY_PART = [
+  { until: 5, name: 'Éjszakai' },
+  { until: 10, name: 'Reggeli' },
+  { until: 14, name: 'Délelőtti' },
+  { until: 18, name: 'Délutáni' },
+  { until: 22, name: 'Esti' },
+];
+
+const MOVEMENT: Record<'run' | 'walk' | 'ride', string> = {
+  run: 'futás',
+  walk: 'séta',
+  ride: 'bringázás',
+};
+
+/**
+ * Automatikus cím: „Délutáni bringázás".
+ *
+ * Az aktivitásnak lesz szerkeszthető címe, de amíg a felhasználó nem ad neki,
+ * a napszak + mozgásforma sokkal használhatóbb, mint egy azonosító. Egy
+ * listában így is meg lehet különböztetni a reggeli futást az estitől.
+ */
+export function activityTitle(type: 'run' | 'walk' | 'ride', startedAt: number): string {
+  const hour = new Date(startedAt).getHours();
+  const part = DAY_PART.find((p) => hour < p.until)?.name ?? 'Éjszakai';
+  return `${part} ${MOVEMENT[type]}`;
 }

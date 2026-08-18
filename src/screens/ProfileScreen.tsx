@@ -1,29 +1,46 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chip } from '@/components/ui';
-import { Feed } from '@/components/Feed';
+import { ActivityList } from '@/components/Feed';
+import { Avatar } from '@/components/ActivityCard';
+import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
-import { formatArea, formatDistance, formatGp } from '@/lib/format';
-import { GAMEPLAY } from '@/config/gameplay';
+import { levelProgress } from '@/game/levels';
+import { weekSummary } from '@/lib/week';
+import { formatArea, formatDistance, formatDuration, formatGp, formatPace } from '@/lib/format';
 import './profile.css';
 
 /**
- * Profil — Profil · Statisztikák · Útvonalak · Edzés · Jelvények.
+ * Profil.
  *
- * A számok a VALÓDI profilból jönnek. Korábban be voltak drótozva nullára,
- * ezért mutatott a fejléc 0 m²-t és 0 GP-t azoknak is, akiknek volt területük.
+ * A képernyő két kérdésre válaszol, ebben a sorrendben:
+ *   1. hol tartok? — szint, haladás a következőig, terület, GP
+ *   2. mit csináltam? — ez a hét, összegzők, és a saját aktivitásaim
  *
- * TODO(F2): a profilon KÉT haladásjelző fut majd egymás alatt: felül a
- * GP-szint, alatta a távolság-jelvény („38,4 / 50 km").
+ * A SZINT SZÁMÍTOTT érték a `gpTotal`-ból (src/game/levels.ts), nem a tárolt
+ * `profile.level` mező. Korábban az utóbbit mutattuk, ami a profil
+ * létrehozásakor 1-re állt és soha nem frissült — mindenki örökre az első
+ * szinten maradt, akármennyi pontot gyűjtött.
+ *
+ * TODO(F2): a második haladásjelző, a távolság-jelvény („38,4 / 50 km").
  */
+
+/** Ennyi aktivitást kérünk le: bőven fedi az aktuális hetet is. */
+const HISTORY_LIMIT = 50;
+
 export function ProfileScreen() {
   const navigate = useNavigate();
   const { profile } = useProfile();
+  const { result, loading, error, reload } = useActivities({ scope: 'mine', limit: HISTORY_LIMIT });
 
   const territoryM2 = (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0);
   const distanceKm =
     (profile?.counters.distanceKm.run ?? 0) +
     (profile?.counters.distanceKm.walk ?? 0) +
     (profile?.counters.distanceKm.ride ?? 0);
+
+  const level = levelProgress(profile?.gpTotal ?? 0);
+  const week = useMemo(() => weekSummary(result?.activities ?? []), [result]);
 
   return (
     <>
@@ -38,48 +55,167 @@ export function ProfileScreen() {
           aria-label="Beállítások"
           onClick={() => navigate('/beallitasok')}
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.9"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-          </svg>
+          <GearIcon />
         </button>
       </header>
 
       <div className="screen-body stack">
+        <div className="prof__identity">
+          <Avatar url={profile?.photoURL ?? null} name={profile?.username ?? '?'} size={64} />
+          <div className="prof__names">
+            <span className="prof__display">{profile?.username ?? 'Profil'}</span>
+            <span className="prof__handle">@{profile?.usernameLower ?? ''}</span>
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-          <Chip variant="accent">{GAMEPLAY.LEVEL_NAMES[(profile?.level ?? 1) - 1] ?? 'ÚJONC'}</Chip>
+          <Chip variant="accent">{level.name}</Chip>
           <Chip variant="territory">{formatArea(territoryM2)}</Chip>
           <Chip>{formatGp(profile?.gpTotal ?? 0)}</Chip>
         </div>
 
+        {/* ── Haladás a következő szintig ─────────────────────────── */}
+        <section className="prof__level" aria-label="Haladás a következő szintig">
+          <div className="prof__level-head">
+            <span className="prof__level-name">
+              {level.level}. szint · {level.name}
+            </span>
+            <span className="prof__level-gp">{formatGp(profile?.gpTotal ?? 0)}</span>
+          </div>
+
+          <div
+            className="prof__bar"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(level.ratio * 100)}
+          >
+            <span className="prof__bar-fill" style={{ width: `${level.ratio * 100}%` }} />
+          </div>
+
+          <span className="prof__level-note">
+            {level.nextName
+              ? `Még ${formatGp(level.remaining)} a(z) ${level.nextName} szintig`
+              : 'A legmagasabb szinten vagy — innen már csak a terület nő.'}
+          </span>
+        </section>
+
         <div className="prof__stats">
-          <div className="prof__stat">
-            <span className="prof__stat-value">{profile?.counters.activities ?? 0}</span>
-            <span className="prof__stat-label">aktivitás</span>
+          <Stat value={String(profile?.counters.activities ?? 0)} label="aktivitás" />
+          <Stat value={String(profile?.counters.followers ?? 0)} label="követő" />
+          <Stat value={String(profile?.counters.following ?? 0)} label="követett" />
+        </div>
+
+        {/* ── Ez a hét ────────────────────────────────────────────── */}
+        <section className="prof__week card" aria-label="Ez a hét">
+          <div className="prof__week-head">
+            <span className="label">Ez a hét</span>
+            <span className="prof__week-total">{formatDistance(week.distanceM)}</span>
           </div>
-          <div className="prof__stat">
-            <span className="prof__stat-value">{formatDistance(distanceKm * 1000)}</span>
-            <span className="prof__stat-label">összes táv</span>
+
+          <div className="prof__week-bars">
+            {week.days.map((day) => (
+              <div key={day.startOfDay} className="prof__day">
+                <div className="prof__day-track">
+                  {/*
+                    A magasság a hét LEGHOSSZABB napjához mérve, nem fix
+                    skálához: így egy 2 km-es és egy 40 km-es hét diagramja is
+                    olvasható marad. A minimum 4 % azért kell, hogy egy rövid
+                    aktivitás is látható csíkot adjon.
+                  */}
+                  <span
+                    className={`prof__day-bar${day.today ? ' prof__day-bar--today' : ''}`}
+                    style={{
+                      height:
+                        day.distanceM > 0 && week.peakM > 0
+                          ? `${Math.max(4, (day.distanceM / week.peakM) * 100)}%`
+                          : '0%',
+                    }}
+                  />
+                </div>
+                <span className={`prof__day-label${day.today ? ' prof__day-label--today' : ''}`}>
+                  {day.label}
+                </span>
+              </div>
+            ))}
           </div>
-          <div className="prof__stat">
-            <span className="prof__stat-value">{profile?.streak.current ?? 0}</span>
-            <span className="prof__stat-label">napos sorozat</span>
-          </div>
+
+          <dl className="prof__week-summary">
+            <Summary label="aktivitás" value={String(week.activities)} />
+            <Summary label="idő" value={formatDuration(week.movingS)} />
+            <Summary
+              label="átlagtempó"
+              value={
+                week.distanceM > 0
+                  ? `${formatPace(week.movingS / (week.distanceM / 1000))}/km`
+                  : '--:--'
+              }
+            />
+            <Summary label="pont" value={formatGp(week.gp)} />
+          </dl>
+        </section>
+
+        <div className="prof__stats">
+          <Stat value={formatDistance(distanceKm * 1000)} label="összes táv" />
+          <Stat value={String(profile?.streak.current ?? 0)} label="napos sorozat" />
+          <Stat
+            value={String((profile?.cellCount.foot ?? 0) + (profile?.cellCount.bike ?? 0))}
+            label="meződ"
+          />
         </div>
 
         {/* A saját aktivitások — fülek nélkül: ez a te oldalad. */}
-        <Feed fixedScope="mine" />
+        <div>
+          <div className="label" style={{ marginBottom: 'var(--sp-3)' }}>
+            Aktivitásaid
+          </div>
+          <ActivityList
+            scope="mine"
+            result={result}
+            loading={loading}
+            error={error}
+            onRetry={reload}
+            onStart={() => navigate('/rogzites')}
+          />
+        </div>
       </div>
     </>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="prof__stat">
+      <span className="prof__stat-value">{value}</span>
+      <span className="prof__stat-label">{label}</span>
+    </div>
+  );
+}
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="prof__summary">
+      <dt className="prof__summary-label">{label}</dt>
+      <dd className="prof__summary-value">{value}</dd>
+    </div>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </svg>
   );
 }

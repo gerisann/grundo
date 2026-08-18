@@ -33,6 +33,14 @@ export interface MapViewProps {
   position?: { lat: number; lng: number } | null;
   /** Kövesse-e a térkép a pozíciót. */
   follow?: boolean;
+  /**
+   * Igazítsa a nézetet a nyomvonalra, amint az megérkezik.
+   *
+   * A rögzítésnél NEM ezt akarjuk (ott a mozgó pozíciót követjük), egy kész
+   * aktivitás megjelenítésénél viszont pontosan ezt: a teljes útvonal
+   * látszódjon, ne egy véletlen nagyítás egy részletén.
+   */
+  fitTrack?: boolean;
   height?: number;
   /** Töltse ki a szülőt — teljes képernyős háttérként. */
   fill?: boolean;
@@ -73,6 +81,7 @@ export function MapView({
   layers,
   position,
   follow = true,
+  fitTrack = false,
   height = 320,
   fill = false,
   onViewport,
@@ -84,6 +93,8 @@ export function MapView({
   const ready = useRef(false);
   /** Az ELSŐ pozícióra ugrunk, nem odaúszunk — lásd lejjebb. */
   const centered = useRef(false);
+  /** A nyomvonalra egyszer igazítunk, utána a felhasználóé a nézet. */
+  const fitted = useRef(false);
   /** Refben, hogy a térkép ne épüljön újra, ha a hívó új függvényt ad. */
   const viewportRef = useRef(onViewport);
   viewportRef.current = onViewport;
@@ -167,7 +178,21 @@ export function MapView({
     const instance = map.current;
     if (instance === null || !ready.current) return;
     syncData(instance, track, layers);
-  }, [track, layers]);
+
+    /**
+     * Egyszer igazítunk, az első valódi nyomvonalnál.
+     *
+     * Ha minden frissítésnél igazítanánk, a felhasználó nem tudná
+     * körbenézni a térképet: minden újrarajzolás visszarántaná a kiindulási
+     * nézetre.
+     */
+    if (fitTrack && !fitted.current && track && track.length >= 2) {
+      fitted.current = true;
+      const bounds = new mapboxgl.LngLatBounds();
+      for (const point of track) bounds.extend([point.lng, point.lat]);
+      instance.fitBounds(bounds, { padding: 48, duration: 0, maxZoom: 17 });
+    }
+  }, [track, layers, fitTrack]);
 
   /* ── Pozíció és követés ────────────────────────────────────────── */
 

@@ -3,74 +3,15 @@
 .feed {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.feed__item {
-  display: grid;
-  grid-template-columns: 40px 1fr auto;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
-  background: var(--bg-elevated);
-  border-radius: var(--r-md);
-  text-align: left;
-  width: 100%;
-}
-
-.feed__icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 18px;
-}
-
-.feed__title {
-  display: block;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.feed__meta {
-  display: block;
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.feed__gain {
-  text-align: right;
-}
-
-.feed__gain-value {
-  display: block;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.feed__gain-label {
-  display: block;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.feed {
-  display: flex;
-  flex-direction: column;
   gap: var(--sp-3);
 }
 
+/* A kártyák önmagukban is dobozok, ezért nagyobb a köz köztük, mint a feed
+   vezérlői között — különben egybefolynak. */
 .feed__list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-4);
 }
 
 .feed__radius {
