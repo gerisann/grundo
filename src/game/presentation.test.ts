@@ -109,6 +109,26 @@ describe('privát zóna', () => {
     const tiny = buildTrace([ORIGIN, offset(ORIGIN, 80, 0), ORIGIN], { stepM: 5 });
     expect(trimPrivateEnds(tiny).points).toEqual([]);
   });
+
+  it('zárt körnél nem rejti el tévesen az egész útvonalat', () => {
+    const loop = buildTrace(
+      [
+        ORIGIN,
+        offset(ORIGIN, 0, 800),
+        offset(ORIGIN, 800, 800),
+        offset(ORIGIN, 800, 0),
+        ORIGIN,
+      ],
+      { stepM: 5 },
+    );
+    const { points, trimmedStart, trimmedEnd } = trimPrivateEnds(loop);
+
+    expect(points.length).toBeGreaterThan(100);
+    expect(trimmedStart).toBe(true);
+    expect(trimmedEnd).toBe(true);
+    expect(distanceM(ORIGIN, points[0]!)).toBeGreaterThan(200);
+    expect(distanceM(ORIGIN, points[points.length - 1]!)).toBeGreaterThan(200);
+  });
 });
 
 describe('részidők', () => {

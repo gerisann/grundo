@@ -95,6 +95,13 @@ export function MapView({
   const centered = useRef(false);
   /** A nyomvonalra egyszer igazítunk, utána a felhasználóé a nézet. */
   const fitted = useRef(false);
+  /** A Mapbox `load` később fut le, ezért mindig a legfrissebb propokat olvassa. */
+  const trackRef = useRef(track);
+  const layersRef = useRef(layers);
+  const fitTrackRef = useRef(fitTrack);
+  trackRef.current = track;
+  layersRef.current = layers;
+  fitTrackRef.current = fitTrack;
   /** Refben, hogy a térkép ne épüljön újra, ha a hívó új függvényt ad. */
   const viewportRef = useRef(onViewport);
   viewportRef.current = onViewport;
@@ -120,7 +127,8 @@ export function MapView({
     instance.on('load', () => {
       ready.current = true;
       addLayers(instance);
-      syncData(instance, track, layers);
+      syncData(instance, trackRef.current, layersRef.current);
+      fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
       report(instance);
     });
 
@@ -165,7 +173,7 @@ export function MapView({
      */
     const restore = () => {
       addLayers(instance);
-      syncData(instance, track, layers);
+      syncData(instance, trackRef.current, layersRef.current);
     };
     instance.once('style.load', restore);
     instance.setStyle(mapStyleFor(theme));
@@ -186,12 +194,7 @@ export function MapView({
      * körbenézni a térképet: minden újrarajzolás visszarántaná a kiindulási
      * nézetre.
      */
-    if (fitTrack && !fitted.current && track && track.length >= 2) {
-      fitted.current = true;
-      const bounds = new mapboxgl.LngLatBounds();
-      for (const point of track) bounds.extend([point.lng, point.lat]);
-      instance.fitBounds(bounds, { padding: 48, duration: 0, maxZoom: 17 });
-    }
+    fitTrackOnce(instance, track, fitTrack, fitted);
   }, [track, layers, fitTrack]);
 
   /* ── Pozíció és követés ────────────────────────────────────────── */
@@ -237,6 +240,19 @@ export function MapView({
       style={fill ? { height: '100%' } : { height }}
     />
   );
+}
+
+function fitTrackOnce(
+  instance: mapboxgl.Map,
+  track: MapViewProps['track'],
+  enabled: boolean,
+  fitted: { current: boolean },
+): void {
+  if (!enabled || fitted.current || !track || track.length < 2) return;
+  fitted.current = true;
+  const bounds = new mapboxgl.LngLatBounds();
+  for (const point of track) bounds.extend([point.lng, point.lat]);
+  instance.fitBounds(bounds, { padding: 48, duration: 0, maxZoom: 17 });
 }
 
 /* ═══════════════════════════════════════════════════════════════════

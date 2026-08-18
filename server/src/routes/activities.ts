@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { FieldValue, type Query } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { blocksFor, gameDay, ownershipFromBlocks, readBlocks, writeOwnership } from '../lib/grid';
@@ -25,6 +25,9 @@ export const activitiesRouter = Router();
  * szolgáltatást.
  */
 const MAX_POINTS = 20_000;
+
+/** A publikus útvonal-vágó algoritmus verziója; a 2-es javítja a zárt köröket. */
+const PUBLIC_ROUTE_VERSION = 2;
 
 /** Ennél régebbi aktivitást nem fogadunk el — az óra elállítása gyanús. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -274,6 +277,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         bounds: publicPoints.length > 0 ? boundsOf(publicPoints) : null,
         route: publicRoute,
         routeHidden: publicRoute.length === 0,
+        routeVersion: PUBLIC_ROUTE_VERSION,
         visibility: 'everyone',
         title: null,
         description: null,
@@ -624,7 +628,7 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
     const snapshot = await db.collection(COLLECTIONS.activities).doc(String(req.params.id)).get();
     if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
 
-    const data = snapshot.data() as Record<string, unknown>;
+    let data = snapshot.data() as Record<string, unknown>;
     const owner = String(data.userId ?? '');
     const mine = owner === req.uid;
 
@@ -636,6 +640,17 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
      */
     if (!mine && data.visibility !== 'everyone') {
       throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+    }
+
+    // A hibás régi privátzóna-vágó a zárt hurkok teljes útvonalát elrejthette.
+    // Saját részletek megnyitásakor egyszer, verzió alapján javítjuk a tárolt
+    // publikus route-ot; így a feed-kártya is helyreáll külön migráció nélkül.
+    if (mine && Number(data.routeVersion ?? 0) < PUBLIC_ROUTE_VERSION) {
+      const routePatch = await rebuildPublicRoute(snapshot.ref, owner);
+      if (routePatch) {
+        await snapshot.ref.set(routePatch, { merge: true });
+        data = { ...data, ...routePatch };
+      }
     }
 
     const summary = (data.summary ?? {}) as Record<string, unknown>;
@@ -757,34 +772,18 @@ activitiesRouter.patch('/:id', async (req: AuthedRequest, res, next) => {
     }
 
     /**
-     * Régi aktivitásoknál előfordul, hogy a leíró adatok megvannak, a feedhez
-     * való nyilvános útvonal viszont még nem készült el. Az első szerkesztés
+     * Régi aktivitásoknál a nyilvános útvonal hiányozhat, illetve a korábbi
+     * vágó a zárt hurkot tévesen teljesen elrejthette. Az első szerkesztés
      * ilyenkor migráció is: a privát teljes nyomból, a felhasználó AKTUÁLIS
      * privátzóna-beállításával állítjuk elő ugyanazt a levágott útvonalat,
      * amelyből a kliens a Mapbox statikus előnézetét rajzolja.
      *
-     * A szándékosan üres, `routeHidden: true` útvonalhoz nem nyúlunk: az nem
-     * hiányzó generálás, hanem adatvédelmi eredmény.
+     * A verziójel megakadályozza, hogy egy valóban, helyesen rejtett rövid
+     * aktivitást minden későbbi szerkesztés újra meg újra feldolgozzunk.
      */
-    if (typeof stored.route !== 'string') {
-      const [trackSnapshot, userSnapshot] = await Promise.all([
-        ref.collection('private').doc('track').get(),
-        db.collection(COLLECTIONS.users).doc(uid).get(),
-      ]);
-      const rawPoints = (trackSnapshot.data() as { points?: unknown } | undefined)?.points;
-      if (Array.isArray(rawPoints) && rawPoints.length >= 2) {
-        const points = rawPoints as TracePoint[];
-        const user = userSnapshot.data() as
-          | { privacy?: Partial<PrivacySettings> }
-          | undefined;
-        const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user?.privacy ?? {}) };
-        const publicPoints = trimPrivateEnds(points, privacy).points;
-        const route = encodeRoute(publicPoints);
-        patch.route = route;
-        patch.routeHidden = route.length === 0;
-        patch.bounds = publicPoints.length > 0 ? boundsOf(publicPoints) : null;
-        patch.mapPreviewGeneratedAt = new Date();
-      }
+    if (Number(stored.routeVersion ?? 0) < PUBLIC_ROUTE_VERSION) {
+      const routePatch = await rebuildPublicRoute(ref, uid);
+      if (routePatch) Object.assign(patch, routePatch);
     }
 
     await ref.set(patch, { merge: true });
@@ -1040,6 +1039,31 @@ activitiesRouter.post('/:id/report', async (_req: AuthedRequest, res) => {
  * alatt van: több pontnak nincs látható haszna, csak forgalma.
  */
 const MAX_ROUTE_POINTS = 600;
+
+async function rebuildPublicRoute(
+  ref: DocumentReference,
+  uid: string,
+): Promise<Record<string, unknown> | null> {
+  const [trackSnapshot, userSnapshot] = await Promise.all([
+    ref.collection('private').doc('track').get(),
+    db.collection(COLLECTIONS.users).doc(uid).get(),
+  ]);
+  const rawPoints = (trackSnapshot.data() as { points?: unknown } | undefined)?.points;
+  if (!Array.isArray(rawPoints) || rawPoints.length < 2) return null;
+
+  const points = rawPoints as TracePoint[];
+  const user = userSnapshot.data() as { privacy?: Partial<PrivacySettings> } | undefined;
+  const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user?.privacy ?? {}) };
+  const publicPoints = trimPrivateEnds(points, privacy).points;
+  const route = encodeRoute(publicPoints);
+  return {
+    route,
+    routeHidden: route.length === 0,
+    routeVersion: PUBLIC_ROUTE_VERSION,
+    bounds: publicPoints.length > 0 ? boundsOf(publicPoints) : null,
+    mapPreviewGeneratedAt: new Date(),
+  };
+}
 
 function encodeRoute(points: readonly TracePoint[]): string {
   if (points.length < 2) return '';

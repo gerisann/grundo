@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
@@ -54,6 +54,7 @@ export function App() {
 function Router() {
   const { status } = useAuth();
   const { status: profileStatus } = useProfile();
+  const { pathname } = useLocation();
 
   if (status === 'loading') return <Splash />;
 
@@ -119,10 +120,10 @@ function Router() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      {/* A dokk MINDIG látszik: a rögzítés vezérlői benne vannak, és a
-          rögzítő az alkalmazás szintjén él, tehát a képernyőváltás nem
-          állítja le a mérést. */}
-      <Dock />
+      {/* Az aktivitás adatlapja saját, teljes képernyős navigációt kap. A
+          rögzítő ettől továbbra is app-szinten él; csak a Dock nem takarja el
+          az adatlap alsó tartalmát. */}
+      {pathname.startsWith('/aktivitas/') ? null : <Dock />}
     </>
   );
 }

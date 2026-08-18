@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui';
 import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
@@ -9,6 +17,7 @@ import { useActivityDetail } from '@/hooks/useActivityDetail';
 import { useAuth } from '@/hooks/AuthProvider';
 import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
+import type { ActivityPhoto } from '@/lib/api';
 import {
   activityTitle,
   formatArea,
@@ -43,6 +52,7 @@ export function ActivityScreen() {
   const { activity, points, loading, error, reload } = useActivityDetail(id);
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState<number | null>(null);
 
   /**
    * A hozzászólás-lap ÁLLAPOTA a cÍMBEN van, nem a komponensben.
@@ -209,16 +219,16 @@ export function ActivityScreen() {
 
           {!editing && activity.photos.length > 0 ? (
             <div className="act__gallery">
-              {activity.photos.map((photo) => (
-                <a
+              {activity.photos.map((photo, index) => (
+                <button
+                  type="button"
                   key={photo.path}
                   className="act__photo"
-                  href={photo.url}
-                  target="_blank"
-                  rel="noreferrer"
+                  aria-label={`${index + 1}. kép megnyitása`}
+                  onClick={() => setPhotoIndex(index)}
                 >
                   <img src={photo.url} alt="" loading="lazy" decoding="async" />
-                </a>
+                </button>
               ))}
             </div>
           ) : null}
@@ -352,6 +362,134 @@ export function ActivityScreen() {
           onCountChange={setCommentCount}
         />
       ) : null}
+
+      {photoIndex !== null ? (
+        <PhotoLightbox
+          photos={activity.photos}
+          index={photoIndex}
+          onIndexChange={setPhotoIndex}
+          onClose={() => setPhotoIndex(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PhotoLightbox({
+  photos,
+  index,
+  onIndexChange,
+  onClose,
+}: {
+  photos: readonly ActivityPhoto[];
+  index: number;
+  onIndexChange: (index: number) => void;
+  onClose: () => void;
+}) {
+  const gesture = useRef<{ x: number; y: number } | null>(null);
+  const [dragY, setDragY] = useState(0);
+  const photo = photos[index];
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft') onIndexChange((index - 1 + photos.length) % photos.length);
+      if (event.key === 'ArrowRight') onIndexChange((index + 1) % photos.length);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [index, onClose, onIndexChange, photos.length]);
+
+  if (!photo) return null;
+
+  function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if ((event.target as Element).closest('button')) return;
+    gesture.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function pointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!gesture.current) return;
+    setDragY(Math.max(0, event.clientY - gesture.current.y));
+  }
+
+  function pointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = gesture.current;
+    gesture.current = null;
+    setDragY(0);
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (dy > 90 && Math.abs(dy) > Math.abs(dx)) {
+      onClose();
+    } else if (photos.length > 1 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      onIndexChange(
+        dx < 0 ? (index + 1) % photos.length : (index - 1 + photos.length) % photos.length,
+      );
+    }
+  }
+
+  return (
+    <div
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Aktivitás képei"
+      onPointerDown={pointerDown}
+      onPointerMove={pointerMove}
+      onPointerUp={pointerUp}
+      onPointerCancel={() => {
+        gesture.current = null;
+        setDragY(0);
+      }}
+    >
+      <button
+        type="button"
+        className="lightbox__close"
+        aria-label="Képnézegető bezárása"
+        onClick={onClose}
+      >
+        <CloseIcon />
+      </button>
+
+      <div
+        className="lightbox__frame"
+        style={{
+          transform: `translateY(${dragY}px)`,
+          opacity: Math.max(0.35, 1 - dragY / 360),
+        }}
+      >
+        <img src={photo.url} alt={`Aktivitás képe, ${index + 1}/${photos.length}`} />
+      </div>
+
+      {photos.length > 1 ? (
+        <>
+          <button
+            type="button"
+            className="lightbox__nav lightbox__nav--prev"
+            aria-label="Előző kép"
+            onClick={() => onIndexChange((index - 1 + photos.length) % photos.length)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            className="lightbox__nav lightbox__nav--next"
+            aria-label="Következő kép"
+            onClick={() => onIndexChange((index + 1) % photos.length)}
+          >
+            ›
+          </button>
+        </>
+      ) : null}
+
+      <span className="lightbox__counter">{index + 1} / {photos.length}</span>
+      <span className="lightbox__hint">Húzd lefelé a bezáráshoz</span>
     </div>
   );
 }
@@ -410,6 +548,23 @@ function BackIcon() {
       aria-hidden="true"
     >
       <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }

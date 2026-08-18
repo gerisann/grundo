@@ -35,15 +35,15 @@ export const DEFAULT_PRIVACY: PrivacySettings = {
 /**
  * A nyomvonal két végének levágása.
  *
- * A szabály: az elejéről addig dobjuk a pontokat, amíg TARTÓSAN el nem
- * hagyják az első pont körüli R sugarú kört. A „tartósan" nem díszítés — egy
- * bemelegítő kör a ház körül többször is kilép és visszatér a körbe, és ha az
- * első kilépésnél megállnánk, a visszatérő szakasz újra megmutatná a kezdetet.
- * Ezért az UTOLSÓ olyan pontig vágunk, ami még a körön belül van.
+ * Először a VÉGÉRŐL vágjuk le a célpont védőkörében lévő összefüggő
+ * szakaszt. Ezután az elejéről az utolsó olyan pontig vágunk, amely még a
+ * rajt védőkörében van — de már csak a megmaradt tartományban.
  *
- * Körfutásnál a két levágás ugyanoda esik, tehát a hurok „nyitva marad" a
- * megjelenítésen. Ez így helyes: pont ezért nem azonosítható, hogy a kör
- * melyik pontján van a lakás.
+ * A sorrend lényeges. Zárt körnél az utolsó pont újra a rajt közelében van.
+ * Ha az eleji vágás előbb a TELJES nyomot vizsgálná, ezt a célba érkezést is
+ * „rajt közeli" pontnak hinné, és az egész aktivitást elrejtené. A végi
+ * szakasz előzetes levágásával a hurok közepe megmarad, a két érzékeny vég
+ * viszont nem látszik.
  */
 export function trimPrivateEnds<T extends { lat: number; lng: number }>(
   points: readonly T[],
@@ -51,19 +51,19 @@ export function trimPrivateEnds<T extends { lat: number; lng: number }>(
 ): { points: T[]; trimmedStart: boolean; trimmedEnd: boolean } {
   if (points.length < 2) return { points: [...points], trimmedStart: false, trimmedEnd: false };
 
-  let start = 0;
-  if (settings.hideStart && settings.startRadiusM > 0) {
-    const origin = points[0]!;
-    for (let i = 0; i < points.length; i += 1) {
-      if (distanceM(origin, points[i]!) <= settings.startRadiusM) start = i + 1;
-    }
-  }
-
   let end = points.length - 1;
   if (settings.hideEnd && settings.endRadiusM > 0) {
     const origin = points[points.length - 1]!;
-    for (let i = points.length - 1; i >= 0; i -= 1) {
-      if (distanceM(origin, points[i]!) <= settings.endRadiusM) end = i - 1;
+    while (end >= 0 && distanceM(origin, points[end]!) <= settings.endRadiusM) {
+      end -= 1;
+    }
+  }
+
+  let start = 0;
+  if (settings.hideStart && settings.startRadiusM > 0 && end >= 0) {
+    const origin = points[0]!;
+    for (let i = 0; i <= end; i += 1) {
+      if (distanceM(origin, points[i]!) <= settings.startRadiusM) start = i + 1;
     }
   }
 

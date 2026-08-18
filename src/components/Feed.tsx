@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, SegmentedControl } from '@/components/ui';
 import { ActivityCard } from '@/components/ActivityCard';
@@ -69,7 +69,13 @@ export function Feed() {
       : view === 'local'
         ? 'local'
         : 'world';
-  const dateRange = feedDateRange(datePreset, customFrom, customTo);
+  // A „most" időbélyeg egy renderen belül stabil marad. Korábban minden
+  // render új `dateTo` értéket adott, ami új lekérést, majd újabb rendert
+  // indított — ettől vibrált a feed minden nem-MINDIG szűrőnél.
+  const dateRange = useMemo(
+    () => feedDateRange(datePreset, customFrom, customTo),
+    [datePreset, customFrom, customTo],
+  );
 
   // A helyi nézet pozíció nélkül nem kérdezhető le — addig nem indítunk kérést.
   const awaitingPosition = scope === 'local' && position === null;
@@ -134,8 +140,8 @@ export function Feed() {
         )}
 
         <label className="feed__date-select">
-          <span className="sr-only">Dátumszűrés</span>
           <select
+            aria-label="Dátumszűrés"
             value={datePreset}
             onChange={(event) => chooseDate(event.target.value as DatePreset)}
           >

@@ -217,12 +217,17 @@ A GRUNDO szíve (képek #49, #21).
 A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39).
 
 - **Térkép** a nyomvonallal, tempó szerinti színátmenettel; teljes képernyős mód (kép #39).
+- Az adatlap megnyitásakor az alsó Dock teljesen eltűnik; a vissza gomb az
+  adatlap saját navigációja.
 - Fejléc: avatar · dátum · időjárás (☀️ 18°C).
 - Cím + leírás.
 - Saját aktivitásnál **Szerkesztés**: cím és leírás módosítása, legfeljebb öt
   fotó hozzáadása vagy eltávolítása, szaggatott `+` képkártyával. Ha egy régi
   aktivitásnak még nincs nyilvános térképes útvonala, az első szerkesztéskor a
   backend a privát nyomból, a privát zóna alkalmazása után létrehozza.
+- A feltöltött fotók beépített, lapozható lightboxban nyílnak meg. Balra/jobbra
+  húzással vagy nyílgombbal lapozhatók, lefelé húzással, `X`-szel vagy Escape
+  billentyűvel bezárhatók; nem nyitnak új böngészőlapot.
 - **STATS rács**: km · átlagtempó · idő · szintemelkedés · kalória · átlagpulzus.
 - **GRUNDO panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
 - Rögzítő eszköz neve („iPhone 13 Pro", „Garmin Forerunner 265").

@@ -105,6 +105,7 @@
 
   route: string               // LEVÁGOTT, kódolt nyomvonal — ez a publikus
   routeHidden: boolean        // üres, mert a privát zóna mindent lefedett
+  routeVersion: number        // a privátzóna-vágó algoritmus verziója
   streamsPath?: string        // gs:// az idősorhoz
   splits: Array<{ km: number, timeS: number, paceSPerKm: number, elevM: number }>
   bounds: { north, south, east, west: number }
