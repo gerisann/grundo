@@ -197,6 +197,38 @@ halmaz **kétgyűrűs H3-környezetét** is beolvassa. A változatlan 5→5
 mezőérintések az auditban és a pontozásban események maradnak, de nem írják
 vissza feleslegesen ugyanazt az állapotot a grid dokumentumaiba.
 
+#### Nagy foglalások
+
+Egy Firestore-tranzakció **legfeljebb 500 írást** tartalmazhat. Ez platformkorlát,
+nem hangolható. Egy aktivitás írásigénye:
+
+```
+7 + blokkok × 2 + károsultak × 2
+```
+
+A hetes tag állandó (aktivitás, teljes nyomvonal, trust, audit, GP-főkönyv,
+napi GP, profil), a blokkok kettes szorzója pedig a rács-dokumentum és a
+felhasználó blokk-mutatója. Ebből a gyakorlati plafon **~246 blokk**, ami egy
+nagyjából 18 km kerületű, területet ténylegesen bezáró körnek felel meg.
+Mért értékek: 10 km → 80 blokk (167 írás), 18 km → 230 blokk (467 írás),
+20 km → 270 blokk (547 írás, elutasítva).
+
+Efölött a mentés stabil `activity_too_large` hibakóddal áll meg, magyar
+üzenettel. **Részleges mentés nem keletkezhet:** a hiba a tranzakción belül
+dobódik, tehát a Firestore minden addigi írást eldob.
+
+**FONTOS: az írásszám a TERÜLETTŐL függ, nem a cellafelbontástól.** Egy blokk
+egy res 9 hatszög (~0,105 km²) — hogy 343 db res 12 vagy 49 db res 11 cella van
+benne, az a dokumentum méretét változtatja, az érintett blokkok SZÁMÁT nem.
+
+**Ez nem végállapot.** A 200 km-es körök (a Balaton-kör ~5 700 blokk, ~11 400
+írás) kiszolgálásához a foglalást több tranzakcióra kell bontani vagy
+sorbaállítani. A darabolás ára az atomicitás: blokkonként külön commitolva egy
+konkurens foglalás félig kész állapotot láthat. A várható megoldás egy
+Cloud Tasks sor, aktivitásonként egy feldolgozóval és blokkcsoportonként egy
+tranzakcióval, az aktivitáson `claimPending` jelöléssel — ez még tervezés alatt
+áll.
+
 ### `zones/{zoneId}` — származtatott, megjelenítéshez
 
 A „zóna" (összefüggő birtokfolt) nem tárolt igazság, hanem a rácsból számolt **összefüggő komponens**. A `daily-rollover` és minden foglalás után frissül; ebből jön a ranglista „36 terület" száma és a térkép határvonala.

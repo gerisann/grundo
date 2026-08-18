@@ -39,11 +39,39 @@ const MAX_POINTS = 20_000;
 /** Ennél régebbi aktivitást nem fogadunk el — az óra elállítása gyanús. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Firestore tranzakciós és Cloud Run memória-védőkorlátok. */
-const MAX_CANDIDATE_CELLS = 12_000;
-const MAX_GRID_BLOCKS = 80;
-const MAX_AFFECTED_OWNERS = 50;
-const MAX_TRANSACTION_WRITES = 450;
+/**
+ * A Firestore KEMÉNY korlátja: egy tranzakció legfeljebb 500 írást tartalmazhat.
+ *
+ * Ez NEM termékdöntés, és nem is hangolható — a platform mondja ki. Korábban
+ * álltak itt saját, jóval szigorúbb korlátok is (12 000 cella, 80 blokk), de
+ * azok egy hétköznapi, 8 km-nél hosszabb körfutást is elutasítottak, méghozzá
+ * úgy, hogy az aktivitás EGYÁLTALÁN nem mentődött el. Ezeket kivettük: a méret
+ * önmagában nem lehet ok arra, hogy valakinek elvesszen a futása.
+ *
+ * Ami marad, az a platform határának őszinte megjelenítése. Egy blokk két
+ * írást jelent (a rács-dokumentum és a felhasználó blokk-mutatója), tehát a
+ * gyakorlati plafon ~246 blokk ≈ 18 km-es kör. Efölött ma tiszta magyar
+ * hibaüzenet jön, nem nyers Firestore-kivétel.
+ *
+ * ⚠️ EZ ÍGY NEM VÉGLEGES. A 200 km-es körökhöz (a Balaton-kör ~5 700 blokk)
+ * a tranzakció darabolása vagy sorbaállítása kell — lásd docs/05-adatmodell.md
+ * → „Nagy foglalások". Addig a nagyon nagy kör hibaüzenetet kap, de nem
+ * mentődik el félig: a tranzakció mindent eldob.
+ */
+const FIRESTORE_MAX_TRANSACTION_WRITES = 500;
+
+/**
+ * Az aktivitásonként MINDIG megírt dokumentumok száma.
+ *
+ * Aktivitás, teljes nyomvonal, trust, audit, GP-főkönyv, napi GP, profil.
+ * A blokkok és a károsultak ezen felül jönnek, fejenként két írással.
+ */
+const FIXED_ACTIVITY_WRITES = 7;
+
+/** Belefér-e ennyi blokk és károsult egyetlen tranzakcióba? */
+function transactionWrites(blockCount: number, victimCount: number): number {
+  return FIXED_ACTIVITY_WRITES + blockCount * 2 + victimCount * 2;
+}
 
 function expandCellScope(cells: Iterable<string>, rings: number): Set<string> {
   const expanded = new Set<string>();
@@ -77,9 +105,10 @@ interface UploadBody {
  * a hálózat elszáll és a kliens újrapróbál, ugyanaz az aktivitás nem íródik be
  * kétszer — a terület és a pont nem duplázódik.
  *
- * Ami MÉG NINCS benne (F2): Trust Score, területvesztés-események és
- * értesítések, zónák újraszámolása, előnézeti térképkép, Cloud Tasks szerinti
- * sorbaállítás. Ezek nélkül a foglalás működik, de a csalásszűrés nem.
+ * A Trust Score, a területvesztés-események és a napi GP-plafon MÁR ITT VAN,
+ * mind a mentés tranzakciójában. Ami még hiányzik: a zónák újraszámolása, az
+ * előnézeti térképkép, és a nagy foglalások sorbaállítása — az utóbbi a
+ * jelenlegi egyetlen valódi méretkorlát (lásd FIRESTORE_MAX_TRANSACTION_WRITES).
  */
 activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
   try {
@@ -150,22 +179,22 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     // Nem csak a nyomvonalat olvassuk: a hurok teljes belseje is ownership-
     // függő. Ez a halmaz kizárólag geometria, ezért tranzakción kívül maradhat.
     const candidateCells = [...probe.claimedCells];
-    if (candidateCells.length > MAX_CANDIDATE_CELLS) {
-      throw badRequest(
-        'activity_too_large',
-        'A bezárt terület túl nagy az azonnali feldolgozáshoz. Próbálj kisebb köröket menteni.',
-      );
-    }
     // Egy potenciális egycellás maradvány teljes szomszédságának ismeretéhez
     // két H3-gyűrű kell a geometriai claim körül. Ugyanezek a blokkok kerülnek
     // a tranzakcióba, ezért konkurens mentésnél a Firestore friss állapottal
     // próbálja újra az árva mező szabályát is.
     const orphanScope = expandCellScope(candidateCells, 2);
     const blockIds = [...blocksFor(layer, orphanScope).keys()];
-    if (blockIds.length > MAX_GRID_BLOCKS) {
+    /**
+     * A blokkszám a tranzakció méretének DÖNTŐ tényezője, és már itt ismert —
+     * a károsultak még nem. Ezért itt károsultak nélkül számolunk: ha már így
+     * sem fér bele, felesleges elindítani a tranzakciót. A pontos, károsultakat
+     * is tartalmazó ellenőrzés a tranzakción belül van.
+     */
+    if (transactionWrites(blockIds.length, 0) > FIRESTORE_MAX_TRANSACTION_WRITES) {
       throw badRequest(
         'activity_too_large',
-        'Az aktivitás túl sok térképrészletet érint az azonnali feldolgozáshoz.',
+        'Ez a kör akkora területet zár be, amit egyetlen mentésben még nem tudunk elszámolni. Az aktivitás adatai megvannak — szólj nekünk, és feldolgozzuk.',
       );
     }
 
@@ -186,6 +215,16 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       claimedCells: number;
       areaGainedM2: number;
       gp: number;
+      /**
+       * Hány bezárás esett ki azért, mert nagyobb volt a motor
+       * `MAX_LOOP_BBOX_CELLS` plafonjánál (~143 km²).
+       *
+       * Ez eddig NYOMTALANUL eltűnt: a `detectLoopsDetailed` elkapja a
+       * `LoopTooLargeError`-t és kihagyja a hurkot, tehát a felhasználó nulla
+       * területet kapott mindenféle magyarázat nélkül. Amíg a felület nem
+       * mondja meg neki, legalább mérhető legyen, hogy élesben előfordul-e.
+       */
+      oversizedLoops: number;
       trustVerdict: 'trusted' | 'pending_review' | 'rejected';
     };
 
@@ -254,17 +293,23 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       );
       const victims = Object.entries(result.claim?.stolenFrom ?? {}).filter(([, count]) => count > 0);
 
-      if (victims.length > MAX_AFFECTED_OWNERS) {
+      /**
+       * A pontos méretellenőrzés — most már a károsultakkal együtt.
+       *
+       * Felfelé konzervatív: a `blockIds` az orphan-scope minden blokkját
+       * tartalmazza, a `writeOwnership` viszont csak a ténylegesen változó
+       * cellák blokkjait írja. Inkább utasítsunk el egy határesetet, mint hogy
+       * a Firestore szakítsa félbe a commitot.
+       *
+       * Ha ez eldobódik, a tranzakció MINDEN írása eldobódik vele — részleges
+       * mentés nem keletkezhet.
+       */
+      if (
+        transactionWrites(blockIds.length, victims.length) > FIRESTORE_MAX_TRANSACTION_WRITES
+      ) {
         throw badRequest(
           'activity_too_large',
-          'Az aktivitás túl sok másik játékos területét érinti az azonnali feldolgozáshoz.',
-        );
-      }
-      const estimatedWrites = 7 + blockIds.length * 2 + victims.length * 2;
-      if (estimatedWrites > MAX_TRANSACTION_WRITES) {
-        throw badRequest(
-          'activity_too_large',
-          'Az aktivitás biztonságos mentéséhez túl sok adatbázis-műveletre lenne szükség.',
+          'Ez a kör egyszerre túl sok játékos területét érinti ahhoz, hogy egy mentésben elszámoljuk. Szólj nekünk, és feldolgozzuk.',
         );
       }
 
@@ -283,6 +328,9 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         claimedCells: result.claimedCells.size,
         areaGainedM2: result.areaGainedM2,
         gp: result.gp.total,
+        oversizedLoops: result.diagnostics.loops.rejected.filter(
+          (loop) => loop.reason === 'too_large',
+        ).length,
         trustVerdict: publicTrustVerdict,
       };
 

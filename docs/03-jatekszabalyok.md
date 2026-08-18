@@ -166,6 +166,35 @@ Az igény feldolgozása egyetlen Firestore-tranzakcióban, cellablokkonként tö
 
 A tranzakció a teljes candidate halmazhoz — minden hurok fala és belseje — beolvassa az aktuális grid blockokat, majd ezekből újraszámolja a foglalást. Ha egy konkurens commit miatt a Firestore újrapróbálja a tranzakciót, az ownership, a GP és az aggregátumok is az új állapotból számolódnak. A rögzítés közben látott térkép ezért pillanatkép és előnézet; a tulajdonjog csak a mentés sikeres commitjakor dől el.
 
+### Mekkora kör fér bele?
+
+**A méret önmagában nem ok az elutasításra.** Egy hosszú aktivitás mindig
+elmentődik a metrikáival, az alap-GP-jével és az útvonalával együtt — korábban
+állt itt egy jóval szigorúbb korlát, ami egy hétköznapi, 8 km-nél hosszabb
+körfutást is visszautasított, méghozzá úgy, hogy a futás egyáltalán nem
+mentődött el. Ez megszűnt.
+
+Két valódi plafon maradt, és mindkettő technikai, nem játékszabály:
+
+| Plafon | Hol | Érték | Mi történik |
+|---|---|---|---|
+| Hurok befoglaló doboza | `GAMEPLAY.MAX_LOOP_BBOX_CELLS` | 500 000 cella ≈ **143 km²** | a hurok **kimarad** a foglalásból |
+| Tranzakció írásszáma | Firestore, `FIRESTORE_MAX_TRANSACTION_WRITES` | 500 írás ≈ 246 blokk ≈ **18 km-es kör** | az elszámolás hibaüzenetet ad |
+
+Mért értékek négyzet alakú körökre: 10 km → 20 445 cella / 80 blokk; 20 km →
+81 114 cella / 270 blokk; 48 km → 464 996 cella / 1 444 blokk; 50 km fölött a
+hurok már a befoglaló doboz plafonjába ütközik.
+
+⚠️ **A befoglaló doboz plafonja ma NÉMÁN vág.** A `detectLoopsDetailed`
+`too_large` okkal rögzíti a kihagyott hurkot a diagnosztikában, és az aktivitás
+összegzőjébe is bekerül `oversizedLoops` néven — de a felhasználó ebből semmit
+nem lát: nulla területet kap magyarázat nélkül. Ez ismert hiányosság.
+
+A cél a **200 km-es kör** kiszolgálása (a Balaton-kör ~600 km², ~1,95 millió
+cella, ~5 700 blokk). Ehhez mindkét plafon feloldása kell: a flood fillnek
+darabolva kell futnia, a foglalásnak pedig több tranzakcióra bontva vagy
+sorbaállítva — lásd [05](05-adatmodell.md) → „Nagy foglalások".
+
 ---
 
 ## Védelem
