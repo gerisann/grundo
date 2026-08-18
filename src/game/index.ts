@@ -13,11 +13,12 @@ export * from './claim';
 export * from './scoring';
 
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
-import { detectLoops, loopCells } from './loops';
+import { detectLoopsDetailed, loopCells } from './loops';
 import { mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import type {
-  ActivityType, CellId, ClaimResult, DetectedLoop, GpBreakdown, OwnershipMap, TracePoint,
+  ActivityType, CellId, ClaimResult, DetectedLoop, GpBreakdown, LoopDiagnostics,
+  OwnershipMap, TracePoint,
 } from '@/types';
 
 export interface ProcessInput {
@@ -37,9 +38,11 @@ export interface ProcessResult {
   loops: DetectedLoop[];
   claimedCells: Set<CellId>;
   claim: ClaimResult | null;
+  /** Hurkonkénti eredmény, kizárólag auditáláshoz és visszajátszáshoz. */
+  loopClaims: ClaimResult[];
   gp: GpBreakdown;
   areaGainedM2: number;
-  diagnostics: { droppedPoints: number; largeGaps: number };
+  diagnostics: { droppedPoints: number; largeGaps: number; loops: LoopDiagnostics };
 }
 
 /**
@@ -52,7 +55,8 @@ export interface ProcessResult {
  */
 export function processActivity(input: ProcessInput): ProcessResult {
   const { path, droppedPoints, largeGaps } = traceToCellPath(input.points);
-  const loops = detectLoops(path);
+  const loopDetection = detectLoopsDetailed(path);
+  const loops = loopDetection.loops;
 
   // A bezárásokat SORBAN dolgozzuk fel, mindegyiket az előző által frissített
   // állapot ellen. Ha egyetlen egyesített halmazként kezelnénk, ugyanaz a kör
@@ -89,9 +93,10 @@ export function processActivity(input: ProcessInput): ProcessResult {
     loops,
     claimedCells,
     claim,
+    loopClaims: perLoop,
     gp,
     areaGainedM2: claim ? Math.round(claim.gainedM2) : 0,
-    diagnostics: { droppedPoints, largeGaps },
+    diagnostics: { droppedPoints, largeGaps, loops: loopDetection.diagnostics },
   };
 }
 

@@ -17,6 +17,7 @@ import { authRouter, loginHandler, meHandler } from './src/routes/auth';
 import { activitiesRouter } from './src/routes/activities';
 import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
+import { devRouter } from './src/routes/dev';
 
 export { db, FIRESTORE_DATABASE_ID };
 
@@ -104,6 +105,7 @@ app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);
 app.use('/api/tiles', authenticate, tilesRouter);
 app.use('/api/missions', authenticate, missionsRouter);
+app.use('/api/dev', authenticate, devRouter);
 
 /* ── Ismeretlen API-útvonal ──────────────────────────────────────────
    Enélkül az Express beépített 404-ese válaszol, ami HTML-t ad. A kliens

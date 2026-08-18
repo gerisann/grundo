@@ -244,6 +244,19 @@ A napi lágy plafon tranzakciós állapota. Kliensről nem olvasható és nem í
 ### `activityTrust/{activityId}`
 Az aktivitás belső trust pontszáma, részjelei/indokai, `measuredVerdict` értéke és az `appliedGameplayDecision` rollout-döntés. Csak admin olvashatja. A publikus aktivitásdokumentumba kizárólag a ténylegesen alkalmazott felhasználói státusz kerül; observe-only módban ez `trusted`, miközben a mért verdikt az admin rekordban megmarad.
 
+### `activityAudits/{activityId}`
+
+A mentéskori, tranzakcióban látott birtokállapotból készülő belső játékmenet-audit.
+Tartalmazza a szabad foglalások, gazdaváltások, erősítések és gyengítések
+darabszámát, az 1–5 közötti védelmi átmeneteket, az érintett tulajdonosonkénti
+összesítést, valamint a sikeres és sikertelen hurkok diagnosztikáját. Nyers
+cellaazonosítókat nem duplikál; a hiteles aktuális állapot továbbra is a `grid`.
+
+A dokumentumot kizárólag a szerver írja. Közvetlen kliensolvasása tiltott; a
+`GET /api/dev/activities/:id` csak `owner`, `admin` vagy `moderator` szerepkörrel
+adja vissza. Az audit bevezetése előtt készült aktivitásoknál a nyomvonal és a
+hurokgeometria rekonstruálható, a korabeli birtokviszony és gazdaváltás nem.
+
 ### Régi aktivitások adatvédelmi migrációja
 
 Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`; a `grundo` projekten ezen felül `--allow-production` is kötelező. A futtatás előtt a `GOOGLE_CLOUD_PROJECT` változóval explicit meg kell adni a célt. A script eltávolítja a publikus trust diagnosztikát, admin-only rekordba menti, és a publikus route-ból újraszámolja a bounds értéket.
@@ -297,6 +310,7 @@ Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`
 | `leaderboards/{scope}_{period}_{layer}/entries/{rank}` | előre számolt top 100 |
 | `appConfig/{doc}` | gameplay-konstansok, feature flag-ek |
 | `adminAudit/{id}` | `adminUid, action, targetType, targetId, before, after, at` |
+| `activityAudits/{activityId}` | szerveroldali foglalás-, szint-, tulajdonos- és hurokdiagnosztika |
 
 ---
 
@@ -376,7 +390,7 @@ A csempék Cloud CDN-ben cache-elődnek, és a blokk `version` mezőjének vált
 4b. **Privát zóna:** a teljes nyomvonal (`activities/{id}/private/track`) és a nyers idősor **kizárólag a tulajdonosnak** olvasható — a láthatósági beállítástól függetlenül, akkor is, ha az aktivitás publikus. A `mapImagePath` képet a szerver mindig a levágott nyomvonalból generálja. Az export két különböző fájlt ad: a sajátod teljes, a másoké levágott.
 5. **Rate limit** a kommentre, jelentésre, követésre (App Check + szerveroldali számláló).
 6. **App Check** kötelező minden hívásra (Play Integrity / DeviceCheck).
-7. A `pro`, `level`, `gpTotal`, `territoryM2`, `cellCount`, `trust`, `counters`, `status` mezők **klienstől soha nem írhatók**. A `grid`, `zones`, `gpLedger`, `activityTrust` kollekciók **klienstől egyáltalán nem írhatók**, a `activityTrust.score` pedig nem is olvasható.
+7. A `pro`, `level`, `gpTotal`, `territoryM2`, `cellCount`, `trust`, `counters`, `status` mezők **klienstől soha nem írhatók**. A `grid`, `zones`, `gpLedger`, `activityTrust`, `activityAudits` kollekciók **klienstől egyáltalán nem írhatók**, a `activityTrust.score` pedig nem is olvasható.
 
 ---
 

@@ -21,6 +21,7 @@ import {
   publicRouteNeedsRebuild,
   PUBLIC_ROUTE_VERSION,
 } from '../lib/publicRoute';
+import { buildActivityAudit } from '../lib/activityAudit';
 
 export const activitiesRouter = Router();
 
@@ -160,6 +161,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     const dailyGpRef = db.collection(COLLECTIONS.dailyGp).doc(`${uid}_${today}`);
     const ledgerRef = db.collection(COLLECTIONS.gpLedger).doc(`activity_${activityId}`);
     const trustRef = db.collection(COLLECTIONS.activityTrust).doc(activityId);
+    const auditRef = db.collection(COLLECTIONS.activityAudits).doc(activityId);
 
     type CommitSummary = {
       distanceM: number;
@@ -235,7 +237,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
           'Az aktivitás túl sok másik játékos területét érinti az azonnali feldolgozáshoz.',
         );
       }
-      const estimatedWrites = 6 + blockIds.length * 2 + victims.length * 2;
+      const estimatedWrites = 7 + blockIds.length * 2 + victims.length * 2;
       if (estimatedWrites > MAX_TRANSACTION_WRITES) {
         throw badRequest(
           'activity_too_large',
@@ -313,6 +315,15 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         appliedGameplayDecision: appliedToGameplay ? 'applied' : 'withheld',
         observeOnly: GAMEPLAY.TRUST_OBSERVE_ONLY,
         createdAt: now,
+      });
+      tx.set(auditRef, {
+        activityId,
+        userId: uid,
+        type,
+        layer,
+        startedAt: new Date(startedAt),
+        createdAt: now,
+        ...buildActivityAudit(result, ownership, uid, points.length, appliedToGameplay),
       });
 
       // Nem hiteles aktivitás látható marad, de nem ír gridet, GP-t vagy

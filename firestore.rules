@@ -177,6 +177,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // A részletes játékmenet-auditot kizárólag a szerver API-ja adja vissza
+    // szerepkör-ellenőrzés után. Közvetlen kliensolvasásra nincs szükség.
+    match /activityAudits/{activityId} {
+      allow read, write: if false;
+    }
+
     // ── clubs ─────────────────────────────────────────────────────────────
 
     match /clubs/{clubId} {

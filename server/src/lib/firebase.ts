@@ -33,4 +33,5 @@ export const COLLECTIONS = {
   dailyGp: 'dailyGp',
   territoryEvents: 'territoryEvents',
   activityTrust: 'activityTrust',
+  activityAudits: 'activityAudits',
 } as const;

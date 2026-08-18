@@ -15,6 +15,7 @@ import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
 import { PrivacyScreen } from './screens/settings/PrivacyScreen';
 import { ReplayScreen } from './screens/dev/ReplayScreen';
+import { ActivityAuditScreen } from './screens/dev/ActivityAuditScreen';
 import { WelcomeScreen } from './screens/auth/WelcomeScreen';
 import { LoginScreen } from './screens/auth/LoginScreen';
 import { RegisterScreen } from './screens/auth/RegisterScreen';
@@ -119,13 +120,14 @@ function Router() {
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
           <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
           <Route path="/dev/replay" element={<ReplayScreen />} />
+          <Route path="/dev/activities" element={<ActivityAuditScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
       {/* Az aktivitás adatlapja saját, teljes képernyős navigációt kap. A
           rögzítő ettől továbbra is app-szinten él; csak a Dock nem takarja el
           az adatlap alsó tartalmát. */}
-      {pathname.startsWith('/aktivitas/') ? null : <Dock />}
+      {pathname.startsWith('/aktivitas/') || pathname.startsWith('/dev/') ? null : <Dock />}
     </>
   );
 }

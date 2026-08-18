@@ -12,7 +12,12 @@
 
 import { cellToLatLng, polygonToCells, gridDisk, getResolution } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
-import type { CellId, DetectedLoop } from '@/types';
+import type {
+  CellId,
+  DetectedLoop,
+  LoopDiagnostics,
+  RejectedLoopDiagnostic,
+} from '@/types';
 
 export class LoopTooLargeError extends Error {
   constructor(public readonly candidateCells: number) {
@@ -137,23 +142,44 @@ function findBridges(neighbours: ReadonlyMap<CellId, readonly CellId[]>): Set<st
   return bridges;
 }
 
-export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
+export function detectLoopsDetailed(path: readonly CellId[]): {
+  loops: DetectedLoop[];
+  diagnostics: LoopDiagnostics;
+} {
   const loops: DetectedLoop[] = [];
+  const successful: LoopDiagnostics['successful'] = [];
+  const rejected: RejectedLoopDiagnostic[] = [];
+  let shortRevisits = 0;
   const lastSeenAt = new Map<CellId, number>();
 
   for (let i = 0; i < path.length; i++) {
     const cell = path[i]!;
     const previous = lastSeenAt.get(cell);
 
+    if (previous !== undefined && i - previous < GAMEPLAY.MIN_LOOP_STEPS) {
+      shortRevisits += 1;
+    }
+
     if (previous !== undefined && i - previous >= GAMEPLAY.MIN_LOOP_STEPS) {
       // A zsákutcákat a bezárás ELŐTT vágjuk le: ami csak egy szomszéddal
       // érintkezik, az nem része a körnek. Lásd `pruneDeadEnds`.
-      const wall = pruneDeadEnds(new Set(path.slice(previous, i + 1)));
+      const rawWall = new Set(path.slice(previous, i + 1));
+      const wall = pruneDeadEnds(rawWall);
+      const prunedCells = Math.max(0, rawWall.size - wall.size);
       let interior: Set<CellId>;
       try {
         interior = floodFillInterior(wall);
       } catch (err) {
         if (err instanceof LoopTooLargeError) {
+          rejected.push({
+            reason: 'too_large',
+            fromIndex: previous,
+            toIndex: i,
+            wallCells: wall.size,
+            interiorCells: 0,
+            prunedCells,
+            candidateCells: err.candidateCells,
+          });
           lastSeenAt.set(cell, i);
           continue;
         }
@@ -162,16 +188,36 @@ export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
 
       if (interior.size >= GAMEPLAY.MIN_INTERIOR_CELLS) {
         loops.push({ wall, interior, fromIndex: previous, toIndex: i });
+        successful.push({
+          fromIndex: previous,
+          toIndex: i,
+          wallCells: wall.size,
+          interiorCells: interior.size,
+          prunedCells,
+        });
         // A felhasznált szakaszt "elfogyasztjuk", hogy a következő kör
         // önálló bezárásként detektálódjon.
         for (let k = previous; k < i; k++) lastSeenAt.delete(path[k]!);
+      } else {
+        rejected.push({
+          reason: 'interior_too_small',
+          fromIndex: previous,
+          toIndex: i,
+          wallCells: wall.size,
+          interiorCells: interior.size,
+          prunedCells,
+        });
       }
     }
 
     lastSeenAt.set(cell, i);
   }
 
-  return loops;
+  return { loops, diagnostics: { successful, rejected, shortRevisits } };
+}
+
+export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
+  return detectLoopsDetailed(path).loops;
 }
 
 /**

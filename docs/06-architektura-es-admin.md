@@ -170,6 +170,24 @@ Kötelező tesztnyomvonalak a `scripts/fixtures/` alatt:
 
 A böngészős előnézet és a szerver eredményének **azonosnak kell lennie** minden fixture-re — ez a rácsos modell egyik fő ígérete, és pont ez az, amit tesztelni kell.
 
+### Fejlesztői eszköz: valós aktivitás-audit
+
+A `/dev/activities` oldal a fixture-visszajátszó kezelési mintáját használja,
+de az éles `activities` dokumentumokat és azok teljes privát nyomvonalát játssza
+vissza. A felület listázza az aktivitásokat, és a lejátszás mellett mutatja:
+
+- a szabadon elfoglalt és gazdát cserélt mezőket;
+- felhasználónként az elvett és meggyengített mezőket;
+- az 1–5 közötti védelmi szintváltozásokat;
+- a sikeres hurkok méretét, valamint a sikertelen jelölteket;
+- a zsákutca/összekötő-folyosó metszésekor levágott mezőket és a GPS-diagnosztikát.
+
+A teljes nyomvonal miatt mindkét API-végpont (`GET /api/dev/activities` és
+`GET /api/dev/activities/:id`) szerepkör-védett. A hozzáférés `owner`, `admin`
+és `moderator` szerepkörre korlátozott. A mentéskori tulajdonviszonyt az
+`activityAudits` rekord őrzi; enélkül régi aktivitásnál csak a geometriai
+eredmény rekonstruálható, amit a felület egyértelműen jelez.
+
 ### Teljesítmény-célok
 | Metrika | Cél |
 |---|---|

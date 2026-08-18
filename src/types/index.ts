@@ -42,6 +42,28 @@ export interface DetectedLoop {
   toIndex: number;
 }
 
+export type LoopRejectionReason = 'interior_too_small' | 'too_large';
+
+export interface SuccessfulLoopDiagnostic {
+  fromIndex: number;
+  toIndex: number;
+  wallCells: number;
+  interiorCells: number;
+  prunedCells: number;
+}
+
+export interface RejectedLoopDiagnostic extends SuccessfulLoopDiagnostic {
+  reason: LoopRejectionReason;
+  candidateCells?: number;
+}
+
+export interface LoopDiagnostics {
+  successful: SuccessfulLoopDiagnostic[];
+  rejected: RejectedLoopDiagnostic[];
+  /** Ismételt cellák, amelyek túl rövid szakaszt zártak a hurokpróbához. */
+  shortRevisits: number;
+}
+
 /** Egy cella sorsa a foglalás során. */
 export type CellFate =
   | 'free'          // szabad volt, most a tiéd

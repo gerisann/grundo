@@ -319,6 +319,84 @@ export interface OtpSendResult {
   devCode?: string;
 }
 
+export interface DevActivityListItem {
+  id: string;
+  userId: string;
+  username: string;
+  type: 'run' | 'walk' | 'ride';
+  layer: 'foot' | 'bike';
+  title: string | null;
+  startedAt: number;
+  distanceM: number;
+  durationS: number;
+  loops: number;
+  claimedCells: number;
+  areaGainedM2: number;
+  gp: number;
+  trustVerdict: 'trusted' | 'pending_review' | 'rejected';
+  deleted: boolean;
+  hasAudit: boolean;
+}
+
+export interface DevClaimAudit {
+  affectedCells: number;
+  capturedFree: number;
+  stolen: number;
+  reinforced: number;
+  weakened: number;
+  unchangedAtMax: number;
+  ownershipChanges: number;
+  areaGainedM2: number;
+  transitions: Array<{
+    kind: 'captured_free' | 'reinforced' | 'stolen' | 'weakened' | 'unchanged_max';
+    fromLevel: number;
+    toLevel: number;
+    count: number;
+  }>;
+  victims: Array<{
+    userId: string;
+    username: string;
+    stolenCells: number;
+    weakenedCells: number;
+  }>;
+}
+
+export interface DevActivityAudit {
+  version: 1;
+  appliedToGameplay: boolean;
+  claim: DevClaimAudit;
+  loops: {
+    successful: Array<{
+      index: number;
+      fromIndex: number;
+      toIndex: number;
+      wallCells: number;
+      interiorCells: number;
+      totalCells: number;
+      areaM2: number;
+      prunedCells: number;
+      claim: DevClaimAudit;
+    }>;
+    rejected: Array<{
+      reason: 'interior_too_small' | 'too_large';
+      fromIndex: number;
+      toIndex: number;
+      wallCells: number;
+      interiorCells: number;
+      prunedCells: number;
+      candidateCells?: number;
+    }>;
+    shortRevisits: number;
+    prunedCells: number;
+  };
+  gps: { sourcePoints: number; cellPath: number; droppedPoints: number; largeGaps: number };
+}
+
+export interface DevActivityDetail extends DevActivityListItem {
+  endedAt: number;
+  movingS: number;
+}
+
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
 
@@ -462,4 +540,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
+
+  devActivities: (cursor?: string) =>
+    request<{ activities: DevActivityListItem[]; nextCursor: string | null }>(
+      `/api/dev/activities?limit=30${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+
+  devActivity: (id: string) =>
+    request<{
+      activity: DevActivityDetail;
+      points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
+      audit: DevActivityAudit | null;
+    }>(`/api/dev/activities/${encodeURIComponent(id)}`),
 };
