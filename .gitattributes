@@ -1,0 +1,49 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# GRUNDO — sorvégek
+#
+# MIÉRT KELL EZ? A repót Windowson szerkesztjük, de Linuxon buildeljük
+# (Cloud Build, Cloud Run, Docker). A Windowsra telepített GitHub Desktop
+# bekapcsolja a `core.autocrlf=true` beállítást, ami a munkamásolatba CRLF-et
+# ír — a szerkesztők és a szkriptek viszont LF-fel írnak vissza. Így születtek
+# VEGYES sorvégű fájlok, amikben egy néhány soros javítás is több száz sornyi
+# álkülönbséget produkál a diffben, és amikben a szövegkeresés is elhasal.
+#
+# A szabály innentől: MINDENHOL LF — a repóban is, a munkamásolatban is. Az
+# `eol=lf` felülírja a `core.autocrlf` beállítást, tehát nem számít, kinek
+# hogyan van konfigurálva a gépe.
+#
+# ⚠️ EGYSZERI LÉPÉS KELL HOZZÁ. Ez a fájl csak a JÖVŐBELI írásokra hat; a már
+# elkövetett fájlokat egyszer újra kell normalizálni:
+#
+#     git add --renormalize .
+#
+# Erre a GitHub Desktopban nincs gomb, ezért ezt terminálból kell futtatni.
+# Utána a változás sima commitként megjelenik a Desktopban.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Alapszabály: a git maga dönti el, mi szöveg, és minden szöveget LF-fel tárol
+# és LF-fel is tesz ki a munkamásolatba.
+* text=auto eol=lf
+
+# ── Binárisok ──────────────────────────────────────────────────────────────
+# Ezeket SOHA nem szabad konvertálni: a sorvég-csere megsérti a fájlt. A
+# `text=auto` tartalom alapján általában felismeri őket, de a kritikus
+# típusoknál nem hagyatkozunk a felismerésre.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.svg  text eol=lf
+*.psd  binary
+*.zip  binary
+*.pdf  binary
+*.woff  binary
+*.woff2 binary
+
+# ── Diff-olvashatóság ──────────────────────────────────────────────────────
+# A lockfile-ok gépi termékek: a diffjük zaj, a felülvizsgálatuk értelmetlen.
+# Nem rejtjük el őket, csak jelezzük, hogy generált tartalom.
+bun.lock              linguist-generated=true
+server/package-lock.json linguist-generated=true

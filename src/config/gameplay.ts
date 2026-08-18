@@ -132,14 +132,28 @@ export const GAMEPLAY = {
    * a folyosót azonnal 5-ös védelemre vitte. Az egy kihagyott mező
    * megkövetelése ezt a kaszkádot tövében vágja el.
    *
+   * ⚠️ VOLT EGY KITÉRŐ 4-RE (2026-08-18), azzal az indoklással, hogy az 1–3
+   * mezős önmetszések GPS-remegésből születnek. MEGMÉRTÜK, és nem így van:
+   *
+   *   - egyenes és oda-vissza séta ±3…±12 m zajjal, 320 futásban: a legnagyobb
+   *     belső mezőszám MINDIG 0 — az 1-es küszöb tehát már teljesen kiszűri;
+   *   - oda-vissza „folyosó" 10–60 m szélességgel: hurok nem is keletkezik,
+   *     mert nincs újralátogatott cella;
+   *   - amit a 4 ténylegesen levágott, az VALÓDI kis kör volt: 40 m oldal
+   *     (2 belső mező) és 50 m oldal (3 belső mező) — egy belső udvar vagy egy
+   *     kisebb háztömb.
+   *
+   * Ezért állítottuk vissza 1-re. Ha valaki megint emelni akarja, előbb a
+   * /dev/activities auditban nézze meg VALÓDI aktivitásokon, hány hurok esik
+   * ki `interior_too_small` okkal — a szintetikus zajmodell nem mutatja a
+   * városi kanyonban sodródó GPS-hibát.
+   *
    * A gyakorlatban ez ~30 méteres hézagot jelent a két nyomvonal között: egy
    * átlagos utca két járdája NEM elég, egy háztömb megkerülése igen.
    *
    * A GPS-remegésből eredő ál-hurkokat emellett a `MIN_LOOP_STEPS` szűri.
    */
-  /** A specifikáció szerinti legkisebb valódi foglalás: 4 belső mező.
-   *  Az 1–3 mezős önmetszések tipikusan GPS-remegésből születő mikrohurkok. */
-  MIN_INTERIOR_CELLS: 4,
+  MIN_INTERIOR_CELLS: 1,
   /**
    * Ennyi cellát kell bejárni két látogatás között, hogy bezárásnak számítson.
    *

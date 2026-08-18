@@ -288,7 +288,7 @@ Minden érték szerveroldali konfiguráció, admin felületről verziózva áll�
   "H3_RESOLUTION": 12,
   "CELL_AREA_M2": 307.09,
   "MIN_DISTANCE_M": 100,
-  "MIN_INTERIOR_CELLS": 4,
+  "MIN_INTERIOR_CELLS": 1,
   "MIN_LOOP_STEPS": 6,
   "MAX_LOOP_BBOX_CELLS": 500000,
   "MAX_DEFENSE": 5,

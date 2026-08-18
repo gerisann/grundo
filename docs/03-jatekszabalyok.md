@@ -122,10 +122,12 @@ Ez a hexagon-modell legnagyobb nyeresége. Szabad alakú poligonnál egy önmets
 | Szabály | Érték | Mikor számít |
 |---|---|---|
 | Az aktivitás menthető | **≥ 100 m** | ez alatt nincs mentés (kép #45) |
-| Bezárt terület elfogadva | **≥ 4 belső cella** (≈1 228 m²) | ez alatt a hurok nem ad területet |
+| Bezárt terület elfogadva | **≥ 1 belső cella** (≈307 m²) | ez alatt a hurok nem ad területet |
 | Hurok minimális hossza | **≥ 6 lépés** | GPS-remegésből eredő ál-hurkok kiszűrése |
 
-> **Számtani megjegyzés:** egy 100 m kerületű, tökéletes kör területe 796 m² — kevesebb, mint az 1 000 m²-es minimum. A 100 m-es szabály tehát a *mentés* küszöbe; a *területszerzés* valós alsó határa ~112 m tökéletes kör, a gyakorlatban egy 250–400 m-es háztömbkör (≈6 000–10 000 m²). Ez rendben van: a legkisebb értelmes zsákmány egy háztömb.
+> **Számtani megjegyzés:** a küszöb egyetlen belső cella, ami névlegesen 307 m² — de a *bezárás* geometriája ennél szigorúbb. Mérve (res 12): egy 30 m oldalú négyzetes kör még nulla belső mezőt zár be, egy 40 m oldalú (160 m kerület, 1 600 m²) már kettőt. A területszerzés gyakorlati alsó határa tehát egy **~40 méteres kör** — egy belső udvar vagy egy kicsi háztömb —, nem a névleges 307 m².
+>
+> A küszöb 2026-08-18-án rövid ideig 4 volt. Méréssel kiderült, hogy ez nem GPS-remegést szűrt (az nulla belső mezőt ad), hanem valódi kis köröket vágott le; ezért állt vissza 1-re. Az indoklás a `MIN_INTERIOR_CELLS` mellett van a `src/config/gameplay.ts`-ben.
 
 ---
 
