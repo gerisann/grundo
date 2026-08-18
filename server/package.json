@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "migrate:activity-privacy": "tsx src/scripts/migrateActivityPrivacy.ts",
     "role:set": "tsx src/scripts/setUserRole.ts",
-    "inspect:world": "tsx src/scripts/inspectWorld.ts"
+    "inspect:world": "tsx src/scripts/inspectWorld.ts",
+    "replay:world": "tsx src/scripts/replayWorld.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",
