@@ -131,7 +131,9 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
 4. **Napi küldetés-kártya** — a [küldetés-ajánló](#útvonalak-fül--küldetés-ajánló) legjobb aktuális ajánlata, egy koppintással indítható.
 5. **Feed-váltó**: `MINDENKI` / `KÖVETED`. A Mindenki nézeten belül
    `GLOBÁLIS` / `HELYI` földrajzi szűrő és `MA` / `HÉT` / `HÓNAP` /
-   `MINDIG` / `EGYEDI` dátumszűrő van. Az egyedi időszak kezdő- és végdátumot kér.
+   `MINDIG` / `EGYEDI` dátumszűrő van. A dátumválasztó az app saját lekerekített
+   lenyíló paneljét használja, nem az operációs rendszer alapértelmezett listáját.
+   Az egyedi időszak kezdő- és végdátumot kér.
 6. **Aktivitás-feed** (végtelen görgetés, oldalanként 15).
 
 ### Feed-kártya (képek #09, #14, #15)
@@ -158,7 +160,7 @@ A GRUNDO szíve (képek #49, #21).
 - Bal felül **`0 m² — A TE TERÜLETED`** chip.
 - Középen fent **réteg-váltó**: 🏃 Gyalogos ⇄ 🚴 Kerékpáros. A két réteg teljesen külön világ (külön poligonok, külön ranglista).
 - Jobb felül: **ranglista** gomb, alatta **helyzet-központosítás** és **info**.
-- **Hexagon-rács** ([lásd 03](03-jatekszabalyok.md)): saját cellák = narancs kitöltés; másé = a tulajdonos színe 25 % átlátszósággal; a zóna külső kontúrja kiemelve. A **védelmi szint** a kitöltés telítettségével látszik (1× halvány → 5× tömör), és a zóna sarkában 1–5 pötty.
+- **Hexagon-rács** ([lásd 03](03-jatekszabalyok.md)): saját cellák = narancs kitöltés; másé = a tulajdonos színe 25 % átlátszósággal; a zóna külső kontúrja kiemelve. A szabad cellák hálója csak nagyon halvány tájékozódási réteg, nem fedheti el az utcatérképet. A **védelmi szint** a kitöltés telítettségével látszik (1× halvány → 5× tömör), és a zóna sarkában 1–5 pötty.
 - Zoom-függő megjelenítés: utcaszinten egyedi hexagonok, kerületszinten aggregált foltok, városszinten zóna-kontúrok és hőtérkép.
 - Zónára koppintva **terület-lap**: tulajdonos · méret (m²) · védelem · leggyengébb pontja · mikor szerezte · hányszor cserélt gazdát · **„Foglald vissza"** gomb → közvetlenül a [küldetés-ajánlóba](#útvonalak-fül--küldetés-ajánló), ami útvonalat javasol erre a zónára.
 - Üres állapot: „Még nincs területed — zárj be egy kört" + Indítás gomb.
@@ -178,7 +180,9 @@ A GRUNDO szíve (képek #49, #21).
 - Nagy `0.00 KILOMÉTER` / `00:00` kijelző.
 - Metrika-dobozok: tempó · átlagtempó · szint · lépésfrekvencia (bringánál: sebesség · átlagsebesség · szint · pedálfordulat).
 - **GPS-jelerősség**: „Erős jel ±10 m" (zöld/sárga/piros). Gyenge jelnél figyelmeztetés indítás előtt.
-- **Típusválasztó**: FUTÁS · SÉTA · BRINGA (a futás és séta ugyanabba a `foot` rétegbe megy).
+- **Típusválasztó**: FUTÁS · SÉTA · BRINGA (a futás és séta ugyanabba a `foot`
+  rétegbe megy). Indítás előtt a váltás az aktuális térképkivágás celláit is
+  azonnal újratölti: Bringa = `bike`, Futás/Séta = `foot`.
 - Nagy play gomb + **Mentett útvonalak** gomb.
 
 ### Aktív rögzítés (kép #48)

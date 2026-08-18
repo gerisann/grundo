@@ -38,9 +38,9 @@
 }
 
 .feed__geo-btn--on {
-  background: var(--bg-elevated);
+  background: var(--accent-soft);
   color: var(--accent);
-  box-shadow: var(--shadow-card);
+  box-shadow: inset 0 0 0 1px var(--accent-border), var(--shadow-card);
 }
 
 .feed__date-select {
@@ -48,9 +48,14 @@
   flex: 0 0 auto;
 }
 
-.feed__date-select select {
+.feed__date-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 108px;
   min-height: 32px;
-  padding: 5px 28px 5px 10px;
+  padding: 5px 10px 5px 13px;
   border: 1px solid var(--accent-border);
   border-radius: var(--r-pill);
   background: var(--accent-soft);
@@ -59,6 +64,68 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+.feed__date-trigger:hover,
+.feed__date-trigger:focus-visible {
+  border-color: var(--accent);
+}
+
+.feed__date-chevron {
+  flex: none;
+  transition: transform 150ms ease;
+}
+
+.feed__date-chevron--open {
+  transform: rotate(180deg);
+}
+
+.feed__date-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 132px;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.feed__date-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+
+.feed__date-option:hover,
+.feed__date-option:focus-visible {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.feed__date-option--on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed__date-chevron {
+    transition: none;
+  }
 }
 
 .feed__custom-dates {

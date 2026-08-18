@@ -39,5 +39,17 @@ export const ROLE_FILL_OPACITY: Record<HexRole, number> = {
   interior: 0.42,
   stolen: 0.14,
   rival: 0.24,
-  free: 0.05,
+  free: 0.012,
+};
+
+/**
+ * A szabad rács csak tájékozódási segéd: a térképnek kell dominálnia mögötte.
+ * A foglalt/aktív cellák erősek maradnak, csak a teljes háttérhálót halkítjuk.
+ */
+export const ROLE_LINE_OPACITY: Record<HexRole, number> = {
+  trail: 0.85,
+  interior: 0.82,
+  stolen: 0.68,
+  rival: 0.82,
+  free: 0.14,
 };

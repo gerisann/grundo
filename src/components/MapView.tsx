@@ -6,7 +6,7 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import type { HexRole } from './HexMap';
-import { ROLE_COLOR, ROLE_FILL_OPACITY } from '@/lib/hexColors';
+import { ROLE_COLOR, ROLE_FILL_OPACITY, ROLE_LINE_OPACITY } from '@/lib/hexColors';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './mapview.css';
 
@@ -277,8 +277,13 @@ function addLayers(instance: mapboxgl.Map): void {
       id: `${CELL_SOURCE}-line`,
       type: 'line',
       source: CELL_SOURCE,
-      // A körvonal viszont marad erős: ez hordozza a határt.
-      paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.85 },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 1.2,
+        // A szabad háttérháló sokkal halványabb, az aktív/foglalt cellák
+        // határa viszont továbbra is egyértelmű marad.
+        'line-opacity': ['coalesce', ['get', 'lineOpacity'], 0.85],
+      },
     });
   }
 
@@ -309,6 +314,7 @@ function syncData(
           properties: {
             color: ROLE_COLOR[layer.role],
             opacity: ROLE_FILL_OPACITY[layer.role],
+            lineOpacity: ROLE_LINE_OPACITY[layer.role],
           },
           geometry: {
             type: 'Polygon' as const,

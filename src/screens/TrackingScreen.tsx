@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
@@ -7,7 +7,7 @@ import { useProfile } from '@/hooks/ProfileProvider';
 import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
-import { traceToCellPath } from '@/game/cells';
+import { layerOf, traceToCellPath } from '@/game/cells';
 import { processActivity } from '@/game';
 import { api, apiConfigured, type TileCell } from '@/lib/api';
 import {
@@ -47,9 +47,15 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
+  const { pendingType: type, setPendingType } = recorder;
   const remoteState = state.status === 'idle' ? recorder.remoteState : null;
   const displayPoints = remoteState?.points ?? state.points;
-  const displayType = remoteState?.type ?? state.type;
+  /**
+   * Indítás előtt a kiválasztott típust kell megjeleníteni, nem a még el sem
+   * indult rögzítő előző/alapértelmezett típusát. Enélkül a Bringa gomb aktív
+   * lehetett úgy, hogy a térkép továbbra is a gyalogos réteget kérte le.
+   */
+  const displayType = remoteState?.type ?? (state.status === 'idle' ? type : state.type);
   const displayDistanceM = remoteState?.distanceM ?? state.distanceM;
   const distanceBucket = Math.floor(displayDistanceM / 25);
   /**
@@ -62,8 +68,6 @@ export function TrackingScreen() {
    * A legutóbbi választást megjegyezzük: aki bringázik, jellemzően minden nap
    * bringázik, neki minden indításnál átállítani fölösleges lépés.
    */
-  const { pendingType: type, setPendingType } = recorder;
-
   useEffect(() => {
     const saved = readFlag(LAST_TYPE_KEY);
     if (ACTIVITY_TYPES.includes(saved as ActivityType)) setPendingType(saved as ActivityType);
@@ -133,18 +137,35 @@ export function TrackingScreen() {
    * csak akkor lehet válaszolni, ha látod, mi van már elfoglalva körülötted.
    */
   const [nearby, setNearby] = useState<TileCell[]>([]);
-  const loadNearby = useCallback(
-    async (view: { south: number; west: number; north: number; east: number }) => {
-      if (!apiConfigured) return;
-      try {
-        const layer = displayType === 'ride' ? 'bike' : 'foot';
-        setNearby((await api.tiles(layer, view)).cells);
-      } catch {
-        setNearby([]);
-      }
-    },
-    [displayType],
-  );
+  const [nearbyView, setNearbyView] = useState<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+    zoom: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!apiConfigured || nearbyView === null) return;
+
+    let alive = true;
+    // A régi réteg ne maradjon látható az új lekérés alatt sem.
+    setNearby([]);
+    void api
+      .tiles(layerOf(displayType), nearbyView)
+      .then((result) => {
+        if (alive) setNearby(result.cells);
+      })
+      .catch(() => {
+        if (alive) setNearby([]);
+      });
+
+    // Gyors oda-vissza váltásnál a lassabban visszaérő régi kérés nem írhatja
+    // felül az új mozgásformához tartozó cellákat.
+    return () => {
+      alive = false;
+    };
+  }, [displayType, nearbyView]);
 
   const running = state.status === 'recording';
   const paused = state.status === 'paused';
@@ -244,7 +265,7 @@ export function TrackingScreen() {
               track={displayPoints}
               position={mapPosition}
               follow={running || remoteState?.status === 'recording'}
-              onViewport={loadNearby}
+              onViewport={setNearbyView}
               fill
             />
           </Suspense>

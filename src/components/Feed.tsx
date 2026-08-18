@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, SegmentedControl } from '@/components/ui';
 import { ActivityCard } from '@/components/ActivityCard';
@@ -25,6 +25,14 @@ type Tab = 'global' | 'following';
 type GlobalView = 'world' | 'local';
 type DatePreset = 'today' | 'week' | 'month' | 'always' | 'custom';
 
+const DATE_OPTIONS: readonly { value: DatePreset; label: string }[] = [
+  { value: 'today', label: 'MA' },
+  { value: 'week', label: 'HÉT' },
+  { value: 'month', label: 'HÓNAP' },
+  { value: 'always', label: 'MINDIG' },
+  { value: 'custom', label: 'EGYEDI' },
+];
+
 /** A választható sugarak. Nem szabad szöveges beviteli mező: futás után, egy
  *  kézzel senki nem akar számot gépelni. */
 const RADII = [1, 5, 10, 25, 50] as const;
@@ -38,6 +46,29 @@ export function Feed() {
   const [datePreset, setDatePreset] = useState<DatePreset>(() => readDatePreset());
   const [customFrom, setCustomFrom] = useState(() => localDateValue(new Date()));
   const [customTo, setCustomTo] = useState(() => localDateValue(new Date()));
+  const [dateMenuOpen, setDateMenuOpen] = useState(false);
+  const dateSelectRef = useRef<HTMLDivElement | null>(null);
+  const dateTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!dateMenuOpen) return;
+
+    const closeFromOutside = (event: PointerEvent) => {
+      if (!dateSelectRef.current?.contains(event.target as Node)) setDateMenuOpen(false);
+    };
+    const closeFromKeyboard = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setDateMenuOpen(false);
+      dateTriggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', closeFromOutside);
+    window.addEventListener('keydown', closeFromKeyboard);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      window.removeEventListener('keydown', closeFromKeyboard);
+    };
+  }, [dateMenuOpen]);
 
   /**
    * A helyi nézethez a saját pozíció kell.
@@ -102,6 +133,17 @@ export function Feed() {
   function chooseDate(next: DatePreset) {
     setDatePreset(next);
     write(DATE_KEY, next);
+    setDateMenuOpen(false);
+    dateTriggerRef.current?.focus();
+  }
+
+  function focusDateOption(direction: 1 | -1, event: KeyboardEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const options = Array.from(
+      dateSelectRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [],
+    );
+    const current = options.indexOf(event.currentTarget);
+    options[(current + direction + options.length) % options.length]?.focus();
   }
 
   return (
@@ -139,19 +181,55 @@ export function Feed() {
           <span />
         )}
 
-        <label className="feed__date-select">
-          <select
+        <div className="feed__date-select" ref={dateSelectRef}>
+          <button
+            ref={dateTriggerRef}
+            type="button"
+            className="feed__date-trigger"
             aria-label="Dátumszűrés"
-            value={datePreset}
-            onChange={(event) => chooseDate(event.target.value as DatePreset)}
+            aria-haspopup="listbox"
+            aria-expanded={dateMenuOpen}
+            onClick={() => setDateMenuOpen((open) => !open)}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+              event.preventDefault();
+              setDateMenuOpen(true);
+              window.requestAnimationFrame(() => {
+                dateSelectRef.current
+                  ?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')
+                  ?.focus();
+              });
+            }}
           >
-            <option value="today">MA</option>
-            <option value="week">HÉT</option>
-            <option value="month">HÓNAP</option>
-            <option value="always">MINDIG</option>
-            <option value="custom">EGYEDI</option>
-          </select>
-        </label>
+            <span>{DATE_OPTIONS.find((option) => option.value === datePreset)?.label}</span>
+            <ChevronIcon open={dateMenuOpen} />
+          </button>
+
+          {dateMenuOpen ? (
+            <div className="feed__date-menu" role="listbox" aria-label="Időszak">
+              {DATE_OPTIONS.map((option) => {
+                const selected = option.value === datePreset;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={`feed__date-option${selected ? ' feed__date-option--on' : ''}`}
+                    onClick={() => chooseDate(option.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowDown') focusDateOption(1, event);
+                      else if (event.key === 'ArrowUp') focusDateOption(-1, event);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {selected ? <CheckIcon /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {datePreset === 'custom' ? (
@@ -206,6 +284,43 @@ export function Feed() {
         />
       )}
     </div>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`feed__date-chevron${open ? ' feed__date-chevron--open' : ''}`}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m5 12 4 4L19 6" />
+    </svg>
   );
 }
 

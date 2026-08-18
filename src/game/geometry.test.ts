@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { GAMEPLAY } from '@/config/gameplay';
-import { cellsToM2, traceToCellPath } from './cells';
+import { cellsToM2, layerOf, traceToCellPath } from './cells';
 import { detectLoops, floodFillInterior, loopCells, pruneDeadEnds } from './loops';
 import { processActivity } from './index';
 import {
@@ -38,6 +38,14 @@ function isContiguous(path: readonly string[]): boolean {
   }
   return true;
 }
+
+describe('layerOf', () => {
+  it('a futást és sétát a foot, a bringát a bike réteghez rendeli', () => {
+    expect(layerOf('run')).toBe('foot');
+    expect(layerOf('walk')).toBe('foot');
+    expect(layerOf('ride')).toBe('bike');
+  });
+});
 
 describe('traceToCellPath', () => {
   it('összefüggő láncot ad — nincs lyuk a falban', () => {
