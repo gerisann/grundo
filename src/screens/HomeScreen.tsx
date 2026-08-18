@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Chip } from '@/components/ui';
 import { OtpDialog } from '@/components/OtpDialog';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea, formatGp } from '@/lib/format';
 import { Feed } from '@/components/Feed';
+import './home.css';
 
 /**
  * Home — aktivitás-feed.
@@ -47,18 +47,20 @@ export function HomeScreen() {
           </button>
         ) : null}
 
-        <div>
-          <div className="label">Jó napot</div>
-          <h2 style={{ margin: 'var(--sp-1) 0 var(--sp-3)', fontSize: 'var(--fs-title)' }}>
-            {name}
+        <div className="home__hero">
+          <h2 className="home__greeting">
+            Szia, <strong>{name}</strong>
           </h2>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-            <Chip variant="territory">
-              {formatArea((profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0))}
-            </Chip>
-            <Chip>{formatGp(profile?.gpTotal ?? 0)}</Chip>
-            <Chip variant="accent">{profile?.streak.current ?? 0} napos sorozat</Chip>
-          </div>
+          <dl className="home__summary">
+            <HomeMetric
+              label="Terület"
+              value={formatArea(
+                (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0),
+              )}
+            />
+            <HomeMetric label="GP" value={formatGp(profile?.gpTotal ?? 0)} />
+            <HomeMetric label="Sorozat" value={`${profile?.streak.current ?? 0} nap`} />
+          </dl>
         </div>
 
         <Feed />
@@ -75,5 +77,14 @@ export function HomeScreen() {
         />
       ) : null}
     </>
+  );
+}
+
+function HomeMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="home__metric">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }

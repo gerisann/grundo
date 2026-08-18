@@ -67,40 +67,36 @@ export function ActivityCard({
 
         {showAuthor ? <h3 className="acard__title">{title}</h3> : null}
 
-        {mapUrl ? (
-          <img
-            className="acard__map"
-            src={mapUrl}
-            alt="Az aktivitás útvonala a térképen"
-            /* A képernyőn kívüli kártyák képe le se töltődik. */
-            loading="lazy"
-            decoding="async"
-            onError={() => setMapFailed(true)}
-          />
-        ) : (
-          <div className="acard__map acard__map--empty">
-            {item.routeHidden
-              ? 'Az útvonal rejtve'
-              : item.route.length === 0
-                ? 'Nincs elmentett útvonal'
-                : 'A térkép nem elérhető'}
-          </div>
-        )}
+        <div className="acard__media">
+          {mapUrl ? (
+            <img
+              className="acard__map"
+              src={mapUrl}
+              alt="Az aktivitás útvonala a térképen"
+              /* A képernyőn kívüli kártyák képe le se töltődik. */
+              loading="lazy"
+              decoding="async"
+              onError={() => setMapFailed(true)}
+            />
+          ) : (
+            <div className="acard__map acard__map--empty">
+              {item.routeHidden
+                ? 'Az útvonal rejtve'
+                : item.route.length === 0
+                  ? 'Nincs elmentett útvonal'
+                  : 'A térkép nem elérhető'}
+            </div>
+          )}
 
-        {item.photos.length > 0 ? (
-          <div className="acard__photos">
-            {item.photos.map((photo) => (
-              <img
-                key={photo.path}
-                className="acard__photo"
-                src={photo.url}
-                alt=""
-                loading="lazy"
-                decoding="async"
-              />
-            ))}
-          </div>
-        ) : null}
+          {item.photos.length > 0 ? (
+            <span
+              className="acard__photo-count"
+              aria-label={`${item.photos.length} saját fotó tartozik az aktivitáshoz`}
+            >
+              <CameraIcon /> +{Math.min(5, item.photos.length)}
+            </span>
+          ) : null}
+        </div>
 
         <dl className="acard__stats">
           <Metric label="táv" value={formatDistance(item.distanceM)} />
@@ -132,6 +128,20 @@ export function ActivityCard({
         </div>
       </footer>
     </article>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 7.5h3l1.4-2h7.2l1.4 2h3v11H4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
   );
 }
 

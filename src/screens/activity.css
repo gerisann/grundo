@@ -94,10 +94,32 @@
 }
 
 .act__title {
-  margin: var(--sp-3) 0 0;
+  margin: 0;
   font-size: var(--fs-title);
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.act__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+.act__title-row .btn {
+  flex: 0 0 auto;
+}
+
+.act__editor {
+  padding: var(--sp-4);
+}
+
+.act__editor .save {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .act__notice {

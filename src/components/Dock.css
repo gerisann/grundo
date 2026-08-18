@@ -104,11 +104,11 @@
   margin-top: calc(-1 * var(--dock-fab-overhang));
   border-radius: 50%;
   color: var(--accent-on);
-  background: var(--accent);
-  box-shadow: 0 0 28px color-mix(in srgb, var(--accent) 45%, transparent);
+  background: linear-gradient(135deg, var(--accent), var(--territory-rival));
+  box-shadow: 0 0 28px color-mix(in srgb, var(--territory-rival) 38%, transparent);
   transition:
     transform 120ms ease,
-    background-color 120ms ease;
+    filter 120ms ease;
 }
 
 /*
@@ -158,12 +158,12 @@
 }
 
 .dock__play:hover {
-  background: var(--accent-hover);
+  filter: brightness(1.08);
 }
 
 .dock__play:active {
   transform: scale(0.94);
-  background: var(--accent-active);
+  filter: brightness(0.92);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -259,6 +259,9 @@ export interface FeedResult {
 export interface FeedQuery {
   scope: FeedScope;
   limit?: number;
+  /** Opcionális kezdő- és végidő (Unix ms), a felhasználó helyi naptárából. */
+  dateFrom?: number;
+  dateTo?: number;
   /** Csak a `local` nézethez. */
   lat?: number;
   lng?: number;
@@ -349,6 +352,8 @@ export const api = {
       scope: query.scope,
       limit: String(query.limit ?? 20),
     });
+    if (query.dateFrom !== undefined) params.set('dateFrom', String(query.dateFrom));
+    if (query.dateTo !== undefined) params.set('dateTo', String(query.dateTo));
     if (query.scope === 'local') {
       params.set('lat', String(query.lat ?? 0));
       params.set('lng', String(query.lng ?? 0));

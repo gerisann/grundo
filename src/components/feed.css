@@ -14,6 +14,84 @@
   gap: var(--sp-4);
 }
 
+.feed__filterbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.feed__geo {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+}
+
+.feed__geo-btn {
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.feed__geo-btn--on {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+
+.feed__date-select {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.feed__date-select select {
+  min-height: 32px;
+  padding: 5px 28px 5px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.feed__custom-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+
+.feed__custom-dates label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.feed__custom-dates input {
+  min-width: 0;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--r-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
 .feed__radius {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { api, apiConfigured } from '@/lib/api';
 import './socialActions.css';
 
@@ -23,6 +23,7 @@ export function LikeButton({
 }) {
   const [state, setState] = useState({ count, liked });
   const [busy, setBusy] = useState(false);
+  const gradientId = `heart-${useId().replace(/:/g, '')}`;
 
   // A szülő frissebb adatot hozhat (újratöltés, másik aktivitás) — kövessük.
   useEffect(() => setState({ count, liked }), [count, liked]);
@@ -49,12 +50,12 @@ export function LikeButton({
   return (
     <button
       type="button"
-      className={`social__btn${state.liked ? ' social__btn--on' : ''}`}
+      className={`social__btn social__btn--like${state.liked ? ' social__btn--on' : ''}`}
       aria-pressed={state.liked}
       aria-label={state.liked ? 'Kedvelés visszavonása' : 'Kedvelem'}
       onClick={() => void toggle()}
     >
-      <HeartIcon filled={state.liked} />
+      <HeartIcon filled={state.liked} gradientId={gradientId} />
       <span className="social__count">{state.count}</span>
     </button>
   );
@@ -74,19 +75,26 @@ export function CommentButton({ count, onOpen }: { count: number; onOpen: () => 
   );
 }
 
-function HeartIcon({ filled }: { filled: boolean }) {
+function HeartIcon({ filled, gradientId }: { filled: boolean; gradientId: string }) {
+  const color = filled ? `url(#${gradientId})` : 'currentColor';
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 24 24"
-      fill={filled ? 'currentColor' : 'none'}
-      stroke="currentColor"
+      fill={filled ? color : 'none'}
+      stroke={color}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
+      <defs>
+        <linearGradient id={gradientId} x1="3" y1="4" x2="21" y2="21">
+          <stop stopColor="var(--accent)" />
+          <stop offset="1" stopColor="var(--territory-rival)" />
+        </linearGradient>
+      </defs>
       <path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21.2l7.7-7.7 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
     </svg>
   );

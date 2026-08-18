@@ -17,11 +17,18 @@
 }
 
 .social__btn--on {
-  color: var(--danger);
+  color: var(--accent);
 }
 
 .social__btn--on:hover {
-  color: var(--danger);
+  color: var(--accent);
+}
+
+.social__btn--like.social__btn--on .social__count {
+  background: linear-gradient(90deg, var(--accent), var(--territory-rival));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
 }
 
 .social__count {

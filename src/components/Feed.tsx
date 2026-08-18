@@ -9,10 +9,9 @@ import './feed.css';
 /**
  * Aktivitás-feed, nézetekkel.
  *
- *   Globális → Világ   — minden aktivitás, időrendben
- *   Globális → Helyi   — csak a közelben történtek, állítható sugárral
- *   Követés            — akiket követsz (még nincs követési gráf)
- *   Saját              — a te aktivitásaid
+ *   Mindenki → Globális — minden aktivitás, időrendben
+ *   Mindenki → Helyi    — csak a közelben történtek, állítható sugárral
+ *   Követed              — akiket követsz (még nincs követési gráf)
  *
  * A választás megmarad: aki a helyi nézetet szereti, annak minden megnyitáskor
  * átkattintani fölösleges lépés.
@@ -20,9 +19,11 @@ import './feed.css';
 
 const TAB_KEY = 'grundo.feed.tab';
 const RADIUS_KEY = 'grundo.feed.radiusKm';
+const DATE_KEY = 'grundo.feed.date';
 
-type Tab = 'global' | 'following' | 'mine';
+type Tab = 'global' | 'following';
 type GlobalView = 'world' | 'local';
+type DatePreset = 'today' | 'week' | 'month' | 'always' | 'custom';
 
 /** A választható sugarak. Nem szabad szöveges beviteli mező: futás után, egy
  *  kézzel senki nem akar számot gépelni. */
@@ -31,9 +32,12 @@ const RADII = [1, 5, 10, 25, 50] as const;
 export function Feed() {
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<Tab>(() => (read(TAB_KEY) as Tab) ?? 'mine');
+  const [tab, setTab] = useState<Tab>(() => read(TAB_KEY) === 'following' ? 'following' : 'global');
   const [view, setView] = useState<GlobalView>('world');
   const [radiusKm, setRadiusKm] = useState<number>(() => Number(read(RADIUS_KEY)) || 10);
+  const [datePreset, setDatePreset] = useState<DatePreset>(() => readDatePreset());
+  const [customFrom, setCustomFrom] = useState(() => localDateValue(new Date()));
+  const [customTo, setCustomTo] = useState(() => localDateValue(new Date()));
 
   /**
    * A helyi nézethez a saját pozíció kell.
@@ -60,18 +64,23 @@ export function Feed() {
   }, [tab, view, position]);
 
   const scope: FeedScope =
-    tab === 'mine'
-      ? 'mine'
-      : tab === 'following'
-        ? 'following'
-        : view === 'local'
-          ? 'local'
-          : 'world';
+    tab === 'following'
+      ? 'following'
+      : view === 'local'
+        ? 'local'
+        : 'world';
+  const dateRange = feedDateRange(datePreset, customFrom, customTo);
 
   // A helyi nézet pozíció nélkül nem kérdezhető le — addig nem indítunk kérést.
   const awaitingPosition = scope === 'local' && position === null;
   const { result, loading, error, reload } = useActivities(
-    awaitingPosition ? null : { scope, ...(scope === 'local' ? { ...position!, radiusKm } : {}) },
+    awaitingPosition || dateRange === null
+      ? null
+      : {
+          scope,
+          ...dateRange,
+          ...(scope === 'local' ? { ...position!, radiusKm } : {}),
+        },
   );
 
   function chooseTab(next: Tab) {
@@ -84,6 +93,11 @@ export function Feed() {
     write(RADIUS_KEY, String(next));
   }
 
+  function chooseDate(next: DatePreset) {
+    setDatePreset(next);
+    write(DATE_KEY, next);
+  }
+
   return (
     <div className="feed">
       <SegmentedControl
@@ -92,24 +106,59 @@ export function Feed() {
         value={tab}
         onChange={chooseTab}
         options={[
-          { value: 'global', label: 'Globális' },
-          { value: 'following', label: 'Követés' },
-          { value: 'mine', label: 'Saját' },
+          { value: 'global', label: 'Mindenki' },
+          { value: 'following', label: 'Követed' },
         ]}
       />
 
-      {tab === 'global' ? (
-        <SegmentedControl
-          label="Globális nézet"
-          block
-          size="sm"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'world', label: 'Világ' },
-            { value: 'local', label: 'Helyi' },
-          ]}
-        />
+      <div className="feed__filterbar">
+        {tab === 'global' ? (
+          <div className="feed__geo" role="group" aria-label="Területi szűrés">
+            <button
+              type="button"
+              className={view === 'world' ? 'feed__geo-btn feed__geo-btn--on' : 'feed__geo-btn'}
+              onClick={() => setView('world')}
+            >
+              Globális
+            </button>
+            <button
+              type="button"
+              className={view === 'local' ? 'feed__geo-btn feed__geo-btn--on' : 'feed__geo-btn'}
+              onClick={() => setView('local')}
+            >
+              Helyi
+            </button>
+          </div>
+        ) : (
+          <span />
+        )}
+
+        <label className="feed__date-select">
+          <span className="sr-only">Dátumszűrés</span>
+          <select
+            value={datePreset}
+            onChange={(event) => chooseDate(event.target.value as DatePreset)}
+          >
+            <option value="today">MA</option>
+            <option value="week">HÉT</option>
+            <option value="month">HÓNAP</option>
+            <option value="always">MINDIG</option>
+            <option value="custom">EGYEDI</option>
+          </select>
+        </label>
+      </div>
+
+      {datePreset === 'custom' ? (
+        <div className="feed__custom-dates">
+          <label>
+            <span>Ettől</span>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          </label>
+          <label>
+            <span>Eddig</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+          </label>
+        </div>
       ) : null}
 
       {tab === 'global' && view === 'local' ? (
@@ -130,10 +179,12 @@ export function Feed() {
         </div>
       ) : null}
 
-      {positionDenied && scope === 'local' ? (
+      {dateRange === null ? (
+        <div className="card" role="alert">Az egyedi időszak kezdete nem lehet később a végénél.</div>
+      ) : positionDenied && scope === 'local' ? (
         <div className="card">
           A helyi nézethez tudnunk kell, hol vagy. Engedélyezd a helyhozzáférést, vagy válts a
-          Világ nézetre.
+          Globális nézetre.
         </div>
       ) : awaitingPosition ? (
         <div className="card">Helymeghatározás…</div>
@@ -257,4 +308,55 @@ function write(key: string, value: string): void {
   } catch {
     /* privát böngészés — a választás nem marad meg, de működik */
   }
+}
+
+function readDatePreset(): DatePreset {
+  const value = read(DATE_KEY);
+  return value === 'today' || value === 'week' || value === 'month' || value === 'custom'
+    ? value
+    : 'always';
+}
+
+function feedDateRange(
+  preset: DatePreset,
+  customFrom: string,
+  customTo: string,
+): { dateFrom?: number; dateTo?: number } | null {
+  const now = new Date();
+  const end = new Date(now);
+  let start: Date | null = null;
+
+  if (preset === 'today') {
+    start = startOfDay(now);
+  } else if (preset === 'week') {
+    start = startOfDay(now);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  } else if (preset === 'month') {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (preset === 'custom') {
+    const from = dateInputToLocal(customFrom);
+    const to = dateInputToLocal(customTo);
+    if (!from || !to || from.getTime() > to.getTime()) return null;
+    to.setHours(23, 59, 59, 999);
+    return { dateFrom: from.getTime(), dateTo: to.getTime() };
+  }
+
+  return start ? { dateFrom: start.getTime(), dateTo: end.getTime() } : {};
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function localDateValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateInputToLocal(value: string): Date | null {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
 }

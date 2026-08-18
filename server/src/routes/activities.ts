@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { blocksFor, gameDay, ownershipFromBlocks, readBlocks, writeOwnership } from '../lib/grid';
@@ -426,6 +426,11 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
   try {
     const scope = parseScope(req.query.scope);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const dateFrom = parseFeedDate(req.query.dateFrom, 'dateFrom');
+    const dateTo = parseFeedDate(req.query.dateTo, 'dateTo');
+    if (dateFrom !== null && dateTo !== null && dateFrom > dateTo) {
+      throw badRequest('invalid_date_range', 'Az időszak kezdete nem lehet később a végénél.');
+    }
 
     if (scope === 'following') {
       return res.json({ activities: [], unavailable: 'following' });
@@ -433,13 +438,14 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
 
     const collection = db.collection(COLLECTIONS.activities);
 
-    const query =
-      scope === 'mine'
-        ? collection.where('userId', '==', req.uid!).orderBy('startedAt', 'desc').limit(limit)
-        : collection
-            .where('visibility', '==', 'everyone')
-            .orderBy('startedAt', 'desc')
-            .limit(scope === 'local' ? LOCAL_SCAN_LIMIT : limit);
+    let query: Query = scope === 'mine'
+      ? collection.where('userId', '==', req.uid!)
+      : collection.where('visibility', '==', 'everyone');
+    if (dateFrom !== null) query = query.where('startedAt', '>=', new Date(dateFrom));
+    if (dateTo !== null) query = query.where('startedAt', '<=', new Date(dateTo));
+    query = query
+      .orderBy('startedAt', 'desc')
+      .limit(scope === 'local' ? LOCAL_SCAN_LIMIT : limit);
 
     const snapshot = await query.get();
     let rows = snapshot.docs.map((doc) => toFeedRow(doc.id, doc.data() as Record<string, unknown>));
@@ -717,7 +723,8 @@ activitiesRouter.patch('/:id', async (req: AuthedRequest, res, next) => {
     const ref = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
     const snapshot = await ref.get();
     if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-    if ((snapshot.data() as { userId?: string }).userId !== uid) {
+    const stored = snapshot.data() as Record<string, unknown>;
+    if (stored.userId !== uid) {
       throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
     }
 
@@ -747,6 +754,37 @@ activitiesRouter.patch('/:id', async (req: AuthedRequest, res, next) => {
 
     if (body.photos !== undefined) {
       patch.photos = parsePhotos(body.photos, uid, ref.id);
+    }
+
+    /**
+     * Régi aktivitásoknál előfordul, hogy a leíró adatok megvannak, a feedhez
+     * való nyilvános útvonal viszont még nem készült el. Az első szerkesztés
+     * ilyenkor migráció is: a privát teljes nyomból, a felhasználó AKTUÁLIS
+     * privátzóna-beállításával állítjuk elő ugyanazt a levágott útvonalat,
+     * amelyből a kliens a Mapbox statikus előnézetét rajzolja.
+     *
+     * A szándékosan üres, `routeHidden: true` útvonalhoz nem nyúlunk: az nem
+     * hiányzó generálás, hanem adatvédelmi eredmény.
+     */
+    if (typeof stored.route !== 'string') {
+      const [trackSnapshot, userSnapshot] = await Promise.all([
+        ref.collection('private').doc('track').get(),
+        db.collection(COLLECTIONS.users).doc(uid).get(),
+      ]);
+      const rawPoints = (trackSnapshot.data() as { points?: unknown } | undefined)?.points;
+      if (Array.isArray(rawPoints) && rawPoints.length >= 2) {
+        const points = rawPoints as TracePoint[];
+        const user = userSnapshot.data() as
+          | { privacy?: Partial<PrivacySettings> }
+          | undefined;
+        const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user?.privacy ?? {}) };
+        const publicPoints = trimPrivateEnds(points, privacy).points;
+        const route = encodeRoute(publicPoints);
+        patch.route = route;
+        patch.routeHidden = route.length === 0;
+        patch.bounds = publicPoints.length > 0 ? boundsOf(publicPoints) : null;
+        patch.mapPreviewGeneratedAt = new Date();
+      }
     }
 
     await ref.set(patch, { merge: true });
@@ -1120,6 +1158,15 @@ function boundsOf(points: readonly TracePoint[]) {
     if (p.lng < west) west = p.lng;
   }
   return { north, south, east, west };
+}
+
+function parseFeedDate(raw: unknown, field: string): number | null {
+  if (raw === undefined) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 8_640_000_000_000_000) {
+    throw badRequest('invalid_date', `Hibás ${field} időbélyeg.`);
+  }
+  return value;
 }
 
 /** Régi dokumentum duplikált válasza sem szivárogtathat trust diagnosztikát. */

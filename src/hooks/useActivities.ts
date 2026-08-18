@@ -28,7 +28,8 @@ export function useActivities(query: FeedQuery | null): ActivitiesState {
    * függőségek közé, a hatás végtelen körbe futna: betöltés → renderelés →
    * új objektum → újabb betöltés.
    */
-  const { scope, limit, lat, lng, radiusKm } = query ?? ({} as Partial<FeedQuery>);
+  const { scope, limit, lat, lng, radiusKm, dateFrom, dateTo } =
+    query ?? ({} as Partial<FeedQuery>);
 
   const load = useCallback(async () => {
     if (scope === undefined) return;
@@ -44,6 +45,8 @@ export function useActivities(query: FeedQuery | null): ActivitiesState {
         await api.activities({
           scope,
           ...(limit === undefined ? {} : { limit }),
+          ...(dateFrom === undefined ? {} : { dateFrom }),
+          ...(dateTo === undefined ? {} : { dateTo }),
           ...(scope === 'local' ? { lat, lng, radiusKm } : {}),
         }),
       );
@@ -53,7 +56,7 @@ export function useActivities(query: FeedQuery | null): ActivitiesState {
     } finally {
       setLoading(false);
     }
-  }, [scope, limit, lat, lng, radiusKm]);
+  }, [scope, limit, lat, lng, radiusKm, dateFrom, dateTo]);
 
   useEffect(() => {
     void load();

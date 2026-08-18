@@ -18,7 +18,7 @@
  * hanem el sem viszi: az új fájl a képpontokból készül, semmi másból.
  */
 
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 import type { ActivityPhoto } from '@/lib/api';
 
@@ -115,4 +115,17 @@ export async function uploadActivityPhotos(
   }
 
   return uploaded;
+}
+
+/**
+ * A szerkesztéskor kivett képek takarítása.
+ *
+ * A dokumentum frissítése az elsődleges művelet: ha egy fájl törlése hálózati
+ * hibán elbukik, attól az aktivitás már nem hivatkozik rá. A hívó ezért ezt a
+ * műveletet a sikeres PATCH után futtatja, és a hibát nem fordítja vissza.
+ */
+export async function deleteActivityPhotos(paths: readonly string[]): Promise<void> {
+  if (!storage || paths.length === 0) return;
+  const bucket = storage;
+  await Promise.allSettled(paths.map((path) => deleteObject(ref(bucket, path))));
 }

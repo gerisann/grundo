@@ -48,6 +48,11 @@
   color: var(--text-primary);
 }
 
+.acard__media {
+  position: relative;
+  margin-top: var(--sp-3);
+}
+
 .acard__map {
   display: block;
   width: 100%;
@@ -55,9 +60,25 @@
      nem ugrik meg alatta (layout shift). */
   aspect-ratio: 16 / 7;
   object-fit: cover;
-  margin-top: var(--sp-3);
   border-radius: var(--r-md);
   background: var(--map-bg);
+}
+
+.acard__photo-count {
+  position: absolute;
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: var(--r-pill);
+  background: rgba(20, 16, 28, 0.78);
+  color: #fff;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 
 .acard__map--empty {
@@ -138,29 +159,6 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-}
-
-/* Fotók a térkép alatt — vízszintesen görgethető szalag, nem carousel:
-   öt kép mellett a lapozó vezérlők több helyet vinnének, mint a képek. */
-.acard__photos {
-  display: flex;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.acard__photos::-webkit-scrollbar {
-  display: none;
-}
-
-.acard__photo {
-  flex: none;
-  width: 84px;
-  height: 84px;
-  object-fit: cover;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
 }
 
 /* ═══ Avatar — a kártyán és a részleteknél is ═══ */

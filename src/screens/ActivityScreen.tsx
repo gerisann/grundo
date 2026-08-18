@@ -2,9 +2,11 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui';
 import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
+import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { CommentSheet } from '@/components/CommentSheet';
 import { useActivityDetail } from '@/hooks/useActivityDetail';
+import { useAuth } from '@/hooks/AuthProvider';
 import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
 import {
@@ -37,8 +39,10 @@ const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default
 export function ActivityScreen() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { activity, points, loading, error, reload } = useActivityDetail(id);
   const [fullscreen, setFullscreen] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   /**
    * A hozzászólás-lap ÁLLAPOTA a cÍMBEN van, nem a komponensben.
@@ -168,15 +172,42 @@ export function ActivityScreen() {
                 </span>
               </span>
             </div>
-            <h1 className="act__title">
-              {activity.title ?? activityTitle(activity.type, activity.startedAt)}
-            </h1>
-            {activity.description ? (
+            <div className="act__title-row">
+              <h1 className="act__title">
+                {activity.title ?? activityTitle(activity.type, activity.startedAt)}
+              </h1>
+              {activity.mine && user ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditing((value) => !value)}
+                >
+                  {editing ? 'Mégse' : 'Szerkesztés'}
+                </Button>
+              ) : null}
+            </div>
+            {!editing && activity.description ? (
               <p className="act__description">{activity.description}</p>
             ) : null}
           </div>
 
-          {activity.photos.length > 0 ? (
+          {editing && user ? (
+            <div className="act__editor card">
+              <SaveActivityForm
+                activityId={activity.id}
+                uid={user.uid}
+                initialTitle={activity.title ?? ''}
+                initialDescription={activity.description ?? ''}
+                initialPhotos={activity.photos}
+                onSaved={() => {
+                  setEditing(false);
+                  reload();
+                }}
+              />
+            </div>
+          ) : null}
+
+          {!editing && activity.photos.length > 0 ? (
             <div className="act__gallery">
               {activity.photos.map((photo) => (
                 <a

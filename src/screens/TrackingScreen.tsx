@@ -47,6 +47,11 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
+  const remoteState = state.status === 'idle' ? recorder.remoteState : null;
+  const displayPoints = remoteState?.points ?? state.points;
+  const displayType = remoteState?.type ?? state.type;
+  const displayDistanceM = remoteState?.distanceM ?? state.distanceM;
+  const distanceBucket = Math.floor(displayDistanceM / 25);
   /**
    * A mozgásforma a RÖGZÍTŐBEN él, nem itt.
    *
@@ -73,16 +78,16 @@ export function TrackingScreen() {
   // frissül, márpedig állva percekig nem jön minta. Saját ütem kell hozzá.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (state.status !== 'recording') return;
+    if (state.status !== 'recording' && remoteState?.status !== 'recording') return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [state.status]);
+  }, [state.status, remoteState?.status]);
 
   /**
    * A cellák újraszámolása a nyomvonal hosszával arányos munka, ezért NEM
    * futtatjuk minden mintánál: ötösével frissítünk.
    */
-  const cellBucket = Math.floor(state.points.length / 5);
+  const cellBucket = Math.floor(displayPoints.length / 5);
 
   /**
    * Élő előnézet: mi lenne, ha MOST fejezném be?
@@ -95,15 +100,15 @@ export function TrackingScreen() {
    * mintánként megismételve akadozó felületet adna.
    */
   const preview = useMemo(() => {
-    if (state.points.length < 2) {
+    if (displayPoints.length < 2) {
       return { path: [] as string[], claimable: [] as string[], gp: 0 };
     }
-    const { path } = traceToCellPath(state.points);
+    const { path } = traceToCellPath(displayPoints);
     try {
       const result = processActivity({
-        points: state.points,
-        type: state.type,
-        distanceKm: state.distanceM / 1000,
+        points: displayPoints,
+        type: displayType,
+        distanceKm: displayDistanceM / 1000,
         actorId: 'preview',
         ownership: new Map(),
         streakDays: 0,
@@ -117,7 +122,7 @@ export function TrackingScreen() {
       return { path, claimable: [] as string[], gp: 0 };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cellBucket, state.status]);
+  }, [cellBucket, distanceBucket, state.status, remoteState?.activityId, displayType]);
 
   const cells = preview.path;
 
@@ -132,13 +137,13 @@ export function TrackingScreen() {
     async (view: { south: number; west: number; north: number; east: number }) => {
       if (!apiConfigured) return;
       try {
-        const layer = state.type === 'ride' ? 'bike' : 'foot';
+        const layer = displayType === 'ride' ? 'bike' : 'foot';
         setNearby((await api.tiles(layer, view)).cells);
       } catch {
         setNearby([]);
       }
     },
-    [state.type],
+    [displayType],
   );
 
   const running = state.status === 'recording';
@@ -146,11 +151,23 @@ export function TrackingScreen() {
   const done = state.status === 'finished';
   const idle = state.status === 'idle';
 
-  const pace = paceSecPerKm(state, now);
-  const elapsed = Math.floor(movingMs(state, now) / 1000);
+  const remoteElapsedMs = remoteState === null
+    ? 0
+    : remoteState.movingMs
+      + (remoteState.status === 'recording' && remoteState.updatedAt > 0
+        ? Math.max(0, now - remoteState.updatedAt)
+        : 0);
+  const elapsed = Math.floor(
+    remoteState === null ? movingMs(state, now) / 1000 : remoteElapsedMs / 1000,
+  );
+  const pace = remoteState === null
+    ? paceSecPerKm(state, now)
+    : displayDistanceM > 0
+      ? elapsed / (displayDistanceM / 1000)
+      : null;
 
   /** A 100 méteres küszöb alatt nincs terület — lásd a befejezés utáni jelzést. */
-  const countsAsActivity = state.distanceM >= GAMEPLAY.MIN_DISTANCE_M;
+  const countsAsActivity = displayDistanceM >= GAMEPLAY.MIN_DISTANCE_M;
 
   /** A környék cellái közül a MÁSOKÉ — a sajátjaimat a nyom úgyis mutatja. */
   const nearbyOthers = useMemo(
@@ -158,7 +175,7 @@ export function TrackingScreen() {
     [nearby, profileUid],
   );
 
-  const lastPoint = state.points.length > 0 ? state.points[state.points.length - 1]! : null;
+  const lastPoint = displayPoints.length > 0 ? displayPoints[displayPoints.length - 1]! : null;
 
   /**
    * Indítás előtt is oda kell állítani a térképet, ahol a felhasználó van.
@@ -224,15 +241,15 @@ export function TrackingScreen() {
                 { role: 'interior', cells: preview.claimable },
                 { role: 'trail', cells },
               ]}
-              track={state.points}
+              track={displayPoints}
               position={mapPosition}
-              follow={running}
+              follow={running || remoteState?.status === 'recording'}
               onViewport={loadNearby}
               fill
             />
           </Suspense>
-        ) : state.points.length > 1 ? (
-          <HexMap layers={[{ role: 'trail', cells }]} track={state.points} height={420} />
+        ) : displayPoints.length > 1 ? (
+          <HexMap layers={[{ role: 'trail', cells }]} track={displayPoints} height={420} />
         ) : (
           <p className="track__note">
             A nyomvonalad itt jelenik meg, amint elindulsz. Utcatérkép csak beállított
@@ -251,6 +268,19 @@ export function TrackingScreen() {
       ) : null}
 
       <div className="track__overlay">
+        {remoteState !== null ? (
+          <div className="track__note track__note--sync">
+            <strong>Mobilos aktivitásod legutóbbi állapota</strong>
+            <span>
+              {remoteState.status === 'recording'
+                ? ' folyamatban'
+                : remoteState.status === 'paused'
+                  ? ' szünetel'
+                  : ' befejezve'}
+              {remoteState.updatedAt > 0 ? ` · ${relativeSyncTime(remoteState.updatedAt, now)}` : ''}
+            </span>
+          </div>
+        ) : null}
         {recorder.resumable !== null ? (
           <div className="track__note track__note--warn">
             <strong>Van egy félbehagyott rögzítésed.</strong>{' '}
@@ -294,7 +324,7 @@ export function TrackingScreen() {
           </div>
         ) : null}
 
-        {idle ? (
+        {idle && remoteState === null ? (
           <div className="track__panel">
             <p
               style={{
@@ -322,7 +352,7 @@ export function TrackingScreen() {
         ) : (
           <>
             <StatsPanel
-              distanceM={state.distanceM}
+              distanceM={displayDistanceM}
               elapsed={elapsed}
               pace={pace}
               claimableCells={preview.claimable.length}
@@ -331,12 +361,12 @@ export function TrackingScreen() {
                  megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
                  és a profilon számít. */
               cells={countsAsActivity ? cells.length : null}
-              points={state.points.length}
-              speedMps={currentSpeedMps(state)}
-              hasFix={recorder.hasFix}
+              points={displayPoints.length}
+              speedMps={remoteState?.speedMps ?? currentSpeedMps(state)}
+              hasFix={remoteState !== null ? displayPoints.length > 0 : recorder.hasFix}
             />
 
-            {state.laps.length > 1 ? <LapList state={state} /> : null}
+            {remoteState === null && state.laps.length > 1 ? <LapList state={state} /> : null}
 
             {done && !countsAsActivity ? (
               <div className="track__note track__note--warn">
@@ -352,7 +382,7 @@ export function TrackingScreen() {
         )}
       </div>
 
-      {idle && showStartHint ? (
+      {idle && remoteState === null && showStartHint ? (
         <div className="track__hint" aria-hidden="true">
           <span className="track__hint-text">Indítás</span>
           <svg className="track__hint-arrow" viewBox="0 0 28 40" fill="none">
@@ -389,6 +419,15 @@ function writeFlag(key: string, value = '1'): void {
   } catch {
     /* nem baj */
   }
+}
+
+function relativeSyncTime(updatedAt: number, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - updatedAt) / 1000));
+  if (seconds < 10) return 'éppen most frissült';
+  if (seconds < 60) return `${seconds} mp-e frissült`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} perce frissült`;
+  return `${Math.floor(minutes / 60)} órája frissült`;
 }
 
 /**

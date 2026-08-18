@@ -1,5 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { useRecorder, type RecorderApi } from './useRecorder';
+import { useAuth } from './AuthProvider';
+import { useTrackingCloudSync, type SyncedTrackingState } from '@/tracking/cloudSync';
 
 /**
  * A rögzítés az ALKALMAZÁS szintjén él, nem a rögzítés képernyőjén.
@@ -14,9 +16,11 @@ import { useRecorder, type RecorderApi } from './useRecorder';
  * képernyőn megjeleníthető, hogy épp mérés zajlik.
  */
 
-const RecorderContext = createContext<RecorderApi | null>(null);
+export type RecorderContextApi = RecorderApi & { remoteState: SyncedTrackingState | null };
 
-export function useRecorderContext(): RecorderApi {
+const RecorderContext = createContext<RecorderContextApi | null>(null);
+
+export function useRecorderContext(): RecorderContextApi {
   const value = useContext(RecorderContext);
   if (!value) throw new Error('useRecorderContext csak a RecorderProvider alatt hívható');
   return value;
@@ -24,5 +28,11 @@ export function useRecorderContext(): RecorderApi {
 
 export function RecorderProvider({ children }: { children: ReactNode }) {
   const recorder = useRecorder();
-  return <RecorderContext.Provider value={recorder}>{children}</RecorderContext.Provider>;
+  const { user } = useAuth();
+  const remoteState = useTrackingCloudSync(user?.uid, recorder.state);
+  return (
+    <RecorderContext.Provider value={{ ...recorder, remoteState }}>
+      {children}
+    </RecorderContext.Provider>
+  );
 }

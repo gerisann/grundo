@@ -42,7 +42,8 @@ service firebase.storage {
     // van — és a privát zóna pont ezt hivatott megakadályozni.
     match /activities/{uid}/{activityId}/{fileName} {
       allow read: if signedIn();
-      allow write: if isSelf(uid) && isImage() && underMB(10);
+      allow create, update: if isSelf(uid) && isImage() && underMB(10);
+      allow delete: if isSelf(uid);
     }
 
     // ── Generált térkép-előnézetek ────────────────────────────────────────

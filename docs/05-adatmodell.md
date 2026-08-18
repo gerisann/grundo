@@ -70,6 +70,12 @@
 }
 ```
 - `users/{uid}/private/settings` — csak a tulajdonos olvashatja (értesítés-kapcsolók, e-mail preferenciák).
+- `users/{uid}/private/tracking` — a felhasználó eszközei között megosztott,
+  **utolsó rögzítési pillanatkép**: `{ activityId, deviceId, status, type,
+  route, distanceM, movingMs, speedMps, startedAt, updatedAt }`. A `route`
+  legfeljebb 400 pontra ritkított; írás legfeljebb 15 másodpercenként és
+  állapotváltáskor. Csak a tulajdonos olvashatja és írhatja, játékadatnak nem
+  forrása.
 - `usernames/{lowercase}` → `{ uid, username, createdAt }` — egyediség tranzakcióval. A dokumentum azonosítója a kisbetűs kulcs, a `username` mező a megjelenítési alak.
 
 ### `activities/{activityId}`
@@ -97,8 +103,8 @@
   avgCadence?: number
   avgPowerW?, maxPowerW?, totalWorkKj?: number
 
-  polyline: string            // LEVÁGOTT nyomvonal (privát zóna alkalmazva) — ez a publikus
-  trimmed: { start: boolean, end: boolean, radiusM: number }
+  route: string               // LEVÁGOTT, kódolt nyomvonal — ez a publikus
+  routeHidden: boolean        // üres, mert a privát zóna mindent lefedett
   streamsPath?: string        // gs:// az idősorhoz
   splits: Array<{ km: number, timeS: number, paceSPerKm: number, elevM: number }>
   bounds: { north, south, east, west: number }
@@ -117,8 +123,10 @@
   equipmentId?: string
   weather?: { tempC: number, icon: string }
 
-  photos: Array<{ path: string, width: number, height: number }>
-  mapImagePath: string        // generált előnézet — MINDIG a levágott nyomvonalból
+  photos: Array<{ path: string, url: string }> // legfeljebb 5
+  // A feed térképképét a kliens a `route` mezőből kéri a Static Images API-tól.
+  // Régi, route nélküli aktivitás első szerkesztésekor a szerver visszatölti
+  // ezt a mezőt a privát nyomból, a privát zóna alkalmazása után.
 
   visibility: 'everyone'|'followers'|'only_me'
   likeCount: number
@@ -336,7 +344,9 @@ A csempék Cloud CDN-ben cache-elődnek, és a blokk `version` mezőjének vált
 ## Firestore biztonsági szabályok — elvek
 
 1. **Írás alapból tiltva.** Az aktivitás, terület, GP, ranglista, jelvény, előfizetés **kizárólag Cloud Run / Functions** által írható (admin SDK). A kliens ezeket csak olvassa.
-2. A kliens közvetlenül csak ezt írhatja: saját profil szerkeszthető mezői, saját beállítások, komment, like, üzenet, követés, klub-csatlakozási kérés, jelentés.
+2. A kliens közvetlenül csak ezt írhatja: saját profil szerkeszthető mezői,
+   saját privát beállítások és rögzítési pillanatkép, komment, like, üzenet,
+   követés, klub-csatlakozási kérés, jelentés.
 3. **Olvasás láthatóság szerint:**
    - `visibility == 'everyone'` → bárki (kivéve ha tiltás van),
    - `'followers'` → csak követő,

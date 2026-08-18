@@ -83,6 +83,21 @@
   color: var(--text-primary);
 }
 
+.track__note--sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--territory-rival));
+  background:
+    linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
+    linear-gradient(90deg, var(--accent), var(--territory-rival)) border-box;
+  color: var(--text-primary);
+}
+
+.track__note--sync span {
+  color: var(--text-secondary);
+}
+
 .track__note-close {
   position: absolute;
   top: 6px;

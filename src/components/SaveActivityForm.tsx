@@ -1,7 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, TextField } from '@/components/ui';
-import { MAX_PHOTOS, PhotoError, uploadActivityPhotos } from '@/lib/photos';
+import {
+  deleteActivityPhotos,
+  MAX_PHOTOS,
+  PhotoError,
+  uploadActivityPhotos,
+} from '@/lib/photos';
 import { api, apiConfigured, type ActivityPhoto } from '@/lib/api';
 import './saveActivityForm.css';
 
@@ -17,24 +22,48 @@ import './saveActivityForm.css';
  * feltöltés előtt elveszítik az EXIF-adataikat (lásd src/lib/photos.ts) —
  * különben egy otthon készült fotó GPS-koordinátája megkerülné a privát zónát.
  */
-export function SaveActivityForm({ activityId, uid }: { activityId: string; uid: string }) {
+interface SaveActivityFormProps {
+  activityId: string;
+  uid: string;
+  initialTitle?: string;
+  initialDescription?: string;
+  initialPhotos?: ActivityPhoto[];
+  onSaved?: () => void;
+}
+
+export function SaveActivityForm({
+  activityId,
+  uid,
+  initialTitle = '',
+  initialDescription = '',
+  initialPhotos = [],
+  onSaved,
+}: SaveActivityFormProps) {
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement | null>(null);
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [title, setTitle] = useState(initialTitle);
+  const [description, setDescription] = useState(initialDescription);
+  const [keptPhotos, setKeptPhotos] = useState<ActivityPhoto[]>(initialPhotos);
+  const [removedPaths, setRemovedPaths] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const previewUrls = useRef<string[]>([]);
+  previewUrls.current = previews;
 
   const [status, setStatus] = useState<'idle' | 'saving' | 'done'>('idle');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
 
+  useEffect(() => () => {
+    for (const url of previewUrls.current) URL.revokeObjectURL(url);
+  }, []);
+
   function addFiles(picked: FileList | null) {
     if (!picked || picked.length === 0) return;
     setError('');
 
-    const room = MAX_PHOTOS - files.length;
+    const room = MAX_PHOTOS - keptPhotos.length - files.length;
     if (room <= 0) {
       setError(`Legfeljebb ${MAX_PHOTOS} kép tartozhat egy aktivitáshoz.`);
       return;
@@ -60,6 +89,13 @@ export function SaveActivityForm({ activityId, uid }: { activityId: string; uid:
     setPreviews((current) => current.filter((_, i) => i !== index));
   }
 
+  function removeStoredPhoto(index: number) {
+    const photo = keptPhotos[index];
+    if (!photo) return;
+    setKeptPhotos((current) => current.filter((_, i) => i !== index));
+    setRemovedPaths((current) => [...current, photo.path]);
+  }
+
   async function save() {
     if (!apiConfigured) {
       setError('A háttérszolgáltatás nincs beállítva, a mentés nem megy.');
@@ -69,23 +105,28 @@ export function SaveActivityForm({ activityId, uid }: { activityId: string; uid:
     setStatus('saving');
     setError('');
     try {
-      let photos: ActivityPhoto[] = [];
+      let uploaded: ActivityPhoto[] = [];
       if (files.length > 0) {
         setProgress(`Kép feltöltése… (1/${files.length})`);
-        photos = await uploadActivityPhotos(files, uid, activityId, ({ index, total }) =>
+        uploaded = await uploadActivityPhotos(files, uid, activityId, ({ index, total }) =>
           setProgress(`Kép feltöltése… (${index}/${total})`),
         );
       }
+
+      const photos = [...keptPhotos, ...uploaded];
 
       setProgress('Mentés…');
       await api.updateActivity(activityId, {
         title,
         description,
-        ...(photos.length > 0 ? { photos } : {}),
+        photos,
       });
+
+      await deleteActivityPhotos(removedPaths);
 
       for (const url of previews) URL.revokeObjectURL(url);
       setStatus('done');
+      onSaved?.();
     } catch (err) {
       setStatus('idle');
       setError(
@@ -98,7 +139,7 @@ export function SaveActivityForm({ activityId, uid }: { activityId: string; uid:
     }
   }
 
-  if (status === 'done') {
+  if (status === 'done' && !onSaved) {
     return (
       <div className="save save--done">
         <p className="save__done">Elmentve.</p>
@@ -136,10 +177,26 @@ export function SaveActivityForm({ activityId, uid }: { activityId: string; uid:
 
       <div className="save__field">
         <span className="save__label">
-          Képek <span className="save__count">{files.length}/{MAX_PHOTOS}</span>
+          Képek{' '}
+          <span className="save__count">{keptPhotos.length + files.length}/{MAX_PHOTOS}</span>
         </span>
 
         <div className="save__photos">
+          {keptPhotos.map((photo, index) => (
+            <div key={photo.path} className="save__thumb">
+              <img src={photo.url} alt="" />
+              <button
+                type="button"
+                className="save__thumb-remove"
+                aria-label="Kép eltávolítása"
+                disabled={saving}
+                onClick={() => removeStoredPhoto(index)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
           {previews.map((url, index) => (
             <div key={url} className="save__thumb">
               <img src={url} alt="" />
@@ -155,7 +212,7 @@ export function SaveActivityForm({ activityId, uid }: { activityId: string; uid:
             </div>
           ))}
 
-          {files.length < MAX_PHOTOS ? (
+          {keptPhotos.length + files.length < MAX_PHOTOS ? (
             <button
               type="button"
               className="save__add"

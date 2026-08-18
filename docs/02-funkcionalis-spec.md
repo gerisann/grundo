@@ -125,18 +125,21 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
 
 **Sávok fentről lefelé** (képek #31, #37, #09):
 1. **Hitelesítés-banner** (ha nincs verifikálva) — bezárható, de a Beállításokból visszahozható.
-2. **Köszöntő sor**: „Jó reggelt, {név}" + **terület-chip** (`0 m²`) + **GP-chip** + időjárás-chip (helyszín alapján).
-3. **Összegző kártya**:
-   - Üres állapot: „A területed üres. Zárj be egy kört az első zónádért." + `Kezdd az első aktivitásod →` gomb.
-   - Kitöltött állapot: aktivitások száma · terület (m²) · streak (nap) · heti GP.
-3. **Napi küldetés-kártya** — a [küldetés-ajánló](#útvonalak-fül--küldetés-ajánló) legjobb aktuális ajánlata, egy koppintással indítható.
-4. **Feed-váltó**: `KÖVETETT` / `LOKÁLIS` (lokális = a felhasználó városa/H3-körzete).
-5. **Aktivitás-feed** (végtelen görgetés, oldalanként 15).
+2. **Köszöntő sor**: „Szia, {felhasználónév}" egy sorban.
+3. **Összegző sáv**: terület · összes GP · aktuális sorozat. A feed vezérlőitől
+   külön blokk, világoslila–narancs színátmenettel.
+4. **Napi küldetés-kártya** — a [küldetés-ajánló](#útvonalak-fül--küldetés-ajánló) legjobb aktuális ajánlata, egy koppintással indítható.
+5. **Feed-váltó**: `MINDENKI` / `KÖVETED`. A Mindenki nézeten belül
+   `GLOBÁLIS` / `HELYI` földrajzi szűrő és `MA` / `HÉT` / `HÓNAP` /
+   `MINDIG` / `EGYEDI` dátumszűrő van. Az egyedi időszak kezdő- és végdátumot kér.
+6. **Aktivitás-feed** (végtelen görgetés, oldalanként 15).
 
 ### Feed-kártya (képek #09, #14, #15)
 - Fejléc: avatar (PRO jelvénnyel) · név · aktivitás-típus ikon · relatív idő · `⋯` menü.
 - Cím (pl. „Reggeli futás" — szerkeszthető).
-- **Média-carousel**: első lap mindig az automatikusan generált térképkép az útvonallal (és a bezárt területtel narancs kitöltéssel), utána a feltöltött fotók. Oldalra swipe, lapozó pöttyök, kattintásra teljes képernyős nagyítás (pinch-zoom).
+- **Alapértelmezett média**: mindig az útvonalból generált térképkép. Ha saját
+  fotók is tartoznak hozzá, a térképkép jobb alsó sarkában kamera-jelvény mutatja
+  a számukat (`+1`…`+5`); a képek az aktivitás részletein nyithatók meg.
 - **Metrika-sáv**: TÁV · TEMPÓ · IDŐ · SZINT (bringánál tempó helyett átlagsebesség).
 - **GRUNDO-sáv** (ez az újdonság a referenciához képest): `+840 000 m² elfoglalva` · `+1 456 GP` · védelmi szint jelölés, ha ismételt kör.
 - PR-chipek (400 m, 1 km, 5 km…).
@@ -201,6 +204,11 @@ A GRUNDO szíve (képek #49, #21).
   - „Ez egy verseny/edzés volt" jelölés (opcionális).
 - **Offline mentés**: nyomvonal helyben tárolva, feltöltés amint van net. A területszámítás mindig szerveroldalon fut.
 - **A rögzítés közbeni térkép pillanatkép.** Nem frissítjük valós időben a birtokviszonyokat. A végleges foglalás a mentéskor aktuális térképállapotból számolódik; konkurens foglalásnál az első sikeres adatbázis-commit nyer.
+- **Eszközök közötti utolsó állapot.** Aktív rögzítéskor a kliens 15
+  másodpercenként tömör, privát pillanatképet ír. Egy másik eszköz (például a
+  PC) a saját helyi rögzítés hiányában ezt az utoljára látott mobilos nyomot,
+  távolságot és állapotot mutatja, a frissítés idejével együtt. Ez megjelenítési
+  szinkron, nem távoli vezérlés és nem módosít területet.
 
 ---
 
@@ -211,6 +219,10 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - **Térkép** a nyomvonallal, tempó szerinti színátmenettel; teljes képernyős mód (kép #39).
 - Fejléc: avatar · dátum · időjárás (☀️ 18°C).
 - Cím + leírás.
+- Saját aktivitásnál **Szerkesztés**: cím és leírás módosítása, legfeljebb öt
+  fotó hozzáadása vagy eltávolítása, szaggatott `+` képkártyával. Ha egy régi
+  aktivitásnak még nincs nyilvános térképes útvonala, az első szerkesztéskor a
+  backend a privát nyomból, a privát zóna alkalmazása után létrehozza.
 - **STATS rács**: km · átlagtempó · idő · szintemelkedés · kalória · átlagpulzus.
 - **GRUNDO panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
 - Rögzítő eszköz neve („iPhone 13 Pro", „Garmin Forerunner 265").
