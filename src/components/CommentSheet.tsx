@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Avatar } from '@/components/ActivityCard';
+import { useProfile } from '@/hooks/ProfileProvider';
 import { api, apiConfigured, type ActivityComment } from '@/lib/api';
 import { formatRelativeDay } from '@/lib/format';
 import './commentSheet.css';
@@ -33,6 +34,7 @@ export function CommentSheet({
   onClose: () => void;
   onCountChange?: (count: number) => void;
 }) {
+  const { profile } = useProfile();
   const [comments, setComments] = useState<ActivityComment[] | null>(null);
   const [error, setError] = useState('');
   const [text, setText] = useState('');
@@ -104,7 +106,15 @@ export function CommentSheet({
             text: created.text,
             createdAt: created.createdAt,
             mine: true,
-            author: { username: 'Te', photoURL: null },
+            /**
+             * Az optimista sor is a már betöltött GRUNDO-profilt használja.
+             * Korábban itt egy "Te" nevű ideiglenes szerző szerepelt, ezért
+             * csak a kommentlap újranyitása után jelent meg a valódi név és kép.
+             */
+            author: {
+              username: profile?.username ?? 'ismeretlen',
+              photoURL: profile?.photoURL ?? null,
+            },
           },
         ];
         onCountChange?.(next.length);
@@ -162,25 +172,30 @@ export function CommentSheet({
             </p>
           ) : (
             comments.map((comment) => (
-              <div key={comment.id} className="csheet__row">
+              <div
+                key={comment.id}
+                className={`csheet__row${comment.mine ? ' csheet__row--mine' : ''}`}
+              >
                 <Avatar url={comment.author.photoURL} name={comment.author.username} size={32} />
-                <div className="csheet__bubble">
+                <div
+                  className={`csheet__bubble${comment.mine ? ' csheet__bubble--mine' : ''}`}
+                >
+                  {comment.mine ? (
+                    <button
+                      type="button"
+                      className="csheet__del"
+                      aria-label="Hozzászólás törlése"
+                      onClick={() => void remove(comment.id)}
+                    >
+                      <CloseIcon />
+                    </button>
+                  ) : null}
                   <div className="csheet__meta">
                     <span className="csheet__author">{comment.author.username}</span>
                     <span className="csheet__when">{formatRelativeDay(comment.createdAt)}</span>
                   </div>
                   <p className="csheet__text">{comment.text}</p>
                 </div>
-                {comment.mine ? (
-                  <button
-                    type="button"
-                    className="csheet__del"
-                    aria-label="Hozzászólás törlése"
-                    onClick={() => void remove(comment.id)}
-                  >
-                    <CloseIcon />
-                  </button>
-                ) : null}
               </div>
             ))
           )}

@@ -68,8 +68,7 @@
   color: var(--text-primary);
 }
 
-.csheet__close,
-.csheet__del {
+.csheet__close {
   display: grid;
   place-items: center;
   flex: none;
@@ -79,8 +78,7 @@
   color: var(--text-secondary);
 }
 
-.csheet__close:hover,
-.csheet__del:hover {
+.csheet__close:hover {
   background: var(--surface-2);
   color: var(--text-primary);
 }
@@ -107,12 +105,43 @@
   gap: var(--sp-3);
 }
 
+.csheet__row--mine {
+  /* Messenger-szerű saját sor: a buborék balra, a profilkép jobbra kerül. */
+  flex-direction: row-reverse;
+}
+
 .csheet__bubble {
+  position: relative;
   flex: 1;
   min-width: 0;
+  width: 100%;
   padding: var(--sp-3);
   border-radius: var(--r-md);
   background: var(--surface-2);
+}
+
+.csheet__bubble--mine {
+  /* Ugyanakkora külső szélesség, a belső X-nek külön helyet hagyva. */
+  padding-right: 44px;
+  background: var(--comment-own-bg);
+}
+
+.csheet__del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--text-tertiary);
+}
+
+.csheet__del:hover,
+.csheet__del:focus-visible {
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
 .csheet__meta {

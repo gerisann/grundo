@@ -85,6 +85,8 @@
   --surface-1: #ffffff;
   --surface-2: #f5f4f8;
   --surface-3: #eceaf1;
+  /* Saját üzenet: mindkét témában egy árnyalattal világosabb a normál buboréknál. */
+  --comment-own-bg: #ffffff;
 
   --text-primary:   #17151c;
   --text-secondary: #666270;
@@ -181,6 +183,7 @@
   --surface-1: #111018;
   --surface-2: #18151f;
   --surface-3: #201b2a;
+  --comment-own-bg: #201b2a;
 
   --text-primary:   #f7f5fa;
   --text-secondary: #aaa5b2;

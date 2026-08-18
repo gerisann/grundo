@@ -234,6 +234,10 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - **GRUNDO panel** (új): elfoglalt terület · elvett terület kitől · védelmi szint · szerzett GP bontásban.
 - Rögzítő eszköz neve („iPhone 13 Pro", „Garmin Forerunner 265").
 - Like / komment sáv.
+- A hozzászólások beszélgetésszerű alsó panelen jelennek meg. A saját komment
+  profilképe jobb oldalon, a buborék tőle balra van; a törlés `X` gombja a
+  buborékon belül marad. Az elküldött komment optimista sora rögtön a valódi
+  profilnevet és profilképet mutatja, újranyitás nélkül.
 - **Grafikonok** (mind koppintásra scrub-olható):
   - TEMPÓ + átlagtempó, időtartam, leggyorsabb kör, átlag lépésfrekvencia,
   - TELJESÍTMÉNY (becsült vagy mért): átlag W, max W, összmunka kJ,
