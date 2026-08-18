@@ -34,4 +34,5 @@ export const COLLECTIONS = {
   territoryEvents: 'territoryEvents',
   activityTrust: 'activityTrust',
   activityAudits: 'activityAudits',
+  adminAudit: 'adminAudit',
 } as const;

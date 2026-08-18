@@ -163,6 +163,24 @@ A `/healthz` pont ezért adja vissza a nevet.
 tudja `emailVerified`-re állítani a felhasználót. A hiba a naplóban látszik, a
 felhasználó pedig csak annyit lát, hogy „Váratlan hiba".
 
+### Adminszerepkör beállítása
+
+A Firebase Auth custom claim módosítása előtt mindig futtass dry-runt:
+
+```bash
+cd ~/grundo/server
+npm run role:set -- --email valaki@example.com --role owner
+```
+
+Ha a célfiók és a jelenlegi szerepkör helyes, az éles módosítás:
+
+```bash
+npm run role:set -- --email valaki@example.com --role owner --apply --allow-production
+```
+
+A parancs megőrzi a fiók többi custom claimjét, és `adminAudit` rekordot ír.
+Utána ki-, majd újra be kell jelentkezni, hogy a kliens új ID tokent kapjon.
+
 ## Miért `/api/health` és nem `/healthz`
 
 A Google Cloud Run frontendje a `/healthz` pontos útvonalat elfogja, és saját

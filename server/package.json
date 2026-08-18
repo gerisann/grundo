@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate:activity-privacy": "tsx src/scripts/migrateActivityPrivacy.ts"
+    "migrate:activity-privacy": "tsx src/scripts/migrateActivityPrivacy.ts",
+    "role:set": "tsx src/scripts/setUserRole.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",
