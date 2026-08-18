@@ -446,7 +446,13 @@ export async function commitActivity(
         activities: FieldValue.increment(1),
         distanceKm: { [type]: FieldValue.increment(serverDistanceM / 1000) },
       },
-      streak: advanceStreak(user.streak, today),
+      /**
+       * A sorozathoz az aktivitás SAJÁT napja kell, nem a mentésé — lásd
+       * `advanceStreak`. A `today` (a mentés napja) marad a napi GP-plafonhoz
+       * és a cellák elévüléséhez: azok könyvelési dátumok, nem a felhasználó
+       * mozgásának a napja.
+       */
+      streak: advanceStreak(user.streak, gameDay(new Date(startedAt))),
       trust: {
         cleanActivities: FieldValue.increment(trust.verdict === 'trusted' ? 1 : 0),
       },
@@ -515,25 +521,47 @@ interface StoredStreak {
 /**
  * A sorozat léptetése.
  *
- * Három eset van, és a különbség lényegi:
- *   - ma már volt aktivitás  → a sorozat NEM nő. Aki naponta ötször fut, az
- *     nem ötnapos sorozatot épít.
- *   - tegnap volt az utolsó  → +1, ez a folytatás.
- *   - régebben (vagy soha)   → újrakezdés 1-gyel.
+ * ⚠️ A BEMENET AZ AKTIVITÁS NAPJA, NEM A MENTÉSÉ. Korábban a feltöltés
+ * pillanatából számoltunk, és ez élesben elrontotta a sorozatot: egy hétfői
+ * futás, amit a telefon kedden töltött fel, keddi napnak számított — két nap
+ * aktivitása pedig egyetlen napnak, ha ugyanakkor kerültek fel. A felhasználó
+ * azt látta, hogy a sorozata makacsul egyen áll.
+ *
+ * Négy eset van, és a különbség lényegi:
+ *   - aznap már volt aktivitás → a sorozat NEM nő. Aki naponta ötször fut,
+ *     az nem ötnapos sorozatot épít.
+ *   - az előző nap volt az utolsó → +1, ez a folytatás.
+ *   - régebben (vagy soha) → újrakezdés 1-gyel.
+ *   - az aktivitás RÉGEBBI, mint a legutóbbi aktív nap → a sorozat
+ *     VÁLTOZATLAN. Egy utólag feltöltött régi futás nem írhatja át a
+ *     történelmet, és főleg nem törheti meg a meglévő sorozatot. Enélkül egy
+ *     offline sorból későn felszivárgó aktivitás nullázná azt, amit a
+ *     felhasználó napok alatt épített.
  *
  * A `longest` sosem csökken: az elért csúcs megmarad akkor is, ha a sorozat
  * megszakad — ez a felhasználó teljesítménye, nem az aktuális állapota.
  */
-function advanceStreak(streak: StoredStreak | undefined, today: number) {
+export function advanceStreak(streak: StoredStreak | undefined, activityDay: number) {
   const current = streak?.current ?? 0;
   const last = streak?.lastActiveDay;
+  const longest = streak?.longest ?? 0;
 
-  const next = last === today ? Math.max(1, current) : last === today - 1 ? current + 1 : 1;
+  // Visszamenőleges feltöltés: nem nyúlunk a sorozathoz.
+  if (last !== undefined && activityDay < last) {
+    return { current, longest, lastActiveDay: last };
+  }
+
+  const next =
+    last === activityDay
+      ? Math.max(1, current)
+      : last === activityDay - 1
+        ? current + 1
+        : 1;
 
   return {
     current: next,
-    longest: Math.max(next, streak?.longest ?? 0),
-    lastActiveDay: today,
+    longest: Math.max(next, longest),
+    lastActiveDay: activityDay,
   };
 }
 
