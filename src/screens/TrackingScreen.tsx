@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { cellToChildren } from 'h3-js';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
@@ -9,7 +10,7 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { layerOf, traceToCellPath } from '@/game/cells';
 import { processActivity } from '@/game';
-import { api, apiConfigured, type TileCell } from '@/lib/api';
+import { api, apiConfigured, type TilesResult } from '@/lib/api';
 import {
   currentSpeedMps,
   lapDistances,
@@ -136,7 +137,7 @@ export function TrackingScreen() {
    * Futás közben az az érdekes kérdés, hogy „hova érdemes mennem" — arra pedig
    * csak akkor lehet válaszolni, ha látod, mi van már elfoglalva körülötted.
    */
-  const [nearby, setNearby] = useState<TileCell[]>([]);
+  const [nearby, setNearby] = useState<TilesResult | null>(null);
   const [nearbyView, setNearbyView] = useState<{
     south: number;
     west: number;
@@ -144,21 +145,36 @@ export function TrackingScreen() {
     east: number;
     zoom: number;
   } | null>(null);
+  const nearbyCache = useRef(new Map<string, TilesResult>());
+  const nearbyLayer = useRef(layerOf(displayType));
 
   useEffect(() => {
     if (!apiConfigured || nearbyView === null) return;
 
     let alive = true;
-    // A régi réteg ne maradjon látható az új lekérés alatt sem.
-    setNearby([]);
+    const layer = layerOf(displayType);
+    const key = `${layer}:${nearbyView.south.toFixed(4)}:${nearbyView.west.toFixed(4)}:` +
+      `${nearbyView.north.toFixed(4)}:${nearbyView.east.toFixed(4)}`;
+    const cached = nearbyCache.current.get(key);
+
+    // Mozgás közben a régi, azonos rétegű adat marad a térképen a válaszig:
+    // ettől szűnik meg a piros mezők eltűnés-visszajövés villogása. Valódi
+    // rétegváltáskor viszont nem mutathatunk foot adatot bike-ként.
+    if (nearbyLayer.current !== layer) {
+      nearbyLayer.current = layer;
+      setNearby(cached ?? null);
+    } else if (cached) {
+      setNearby(cached);
+    }
     void api
-      .tiles(layerOf(displayType), nearbyView)
+      .tiles(layer, nearbyView)
       .then((result) => {
-        if (alive) setNearby(result.cells);
+        if (!alive) return;
+        nearbyCache.current.set(key, result);
+        setNearby(result);
       })
-      .catch(() => {
-        if (alive) setNearby([]);
-      });
+      // Hálózati hiba alatt a legutolsó ismert pillanatkép marad látható.
+      .catch(() => undefined);
 
     // Gyors oda-vissza váltásnál a lassabban visszaérő régi kérés nem írhatja
     // felül az új mozgásformához tartozó cellákat.
@@ -190,11 +206,30 @@ export function TrackingScreen() {
   /** A 100 méteres küszöb alatt nincs terület — lásd a befejezés utáni jelzést. */
   const countsAsActivity = displayDistanceM >= GAMEPLAY.MIN_DISTANCE_M;
 
-  /** A környék cellái közül a MÁSOKÉ — a sajátjaimat a nyom úgyis mutatja. */
+  /** A környék teljes birtokképe ugyanazzal a szintadattal, mint a Grundon. */
   const nearbyOthers = useMemo(
-    () => nearby.filter((c) => c.owner !== profileUid).map((c) => c.cell),
+    () => (nearby?.cells ?? [])
+      .filter((c) => c.owner !== profileUid)
+      .map((c) => ({ cell: c.cell, defense: c.defense })),
     [nearby, profileUid],
   );
+  const nearbyMine = useMemo(
+    () => (nearby?.cells ?? [])
+      .filter((c) => c.owner === profileUid)
+      .map((c) => ({ cell: c.cell, defense: c.defense })),
+    [nearby, profileUid],
+  );
+  const nearbyFree = useMemo(() => {
+    if ((nearbyView?.zoom ?? 0) < 15) return [];
+    const taken = new Set((nearby?.cells ?? []).map((cell) => cell.cell));
+    const free: string[] = [];
+    for (const block of nearby?.blocks ?? []) {
+      for (const cell of cellToChildren(block, GAMEPLAY.H3_RESOLUTION)) {
+        if (!taken.has(cell)) free.push(cell);
+      }
+    }
+    return free;
+  }, [nearby, nearbyView?.zoom]);
 
   const lastPoint = displayPoints.length > 0 ? displayPoints[displayPoints.length - 1]! : null;
 
@@ -250,7 +285,7 @@ export function TrackingScreen() {
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
 
   return (
-    <div className="track">
+    <div className={`track${done ? ' track--finished' : ''}`}>
       <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
         {mapboxConfigured ? (
           <Suspense fallback={null}>
@@ -258,8 +293,13 @@ export function TrackingScreen() {
               layers={[
                 // Sorrend = rajzolási sorrend: alul az idegen, fölötte a
                 // bezárt terület, legfelül a friss nyom.
+                { role: 'free', cells: nearbyFree },
                 { role: 'rival', cells: nearbyOthers },
-                { role: 'interior', cells: preview.claimable },
+                { role: 'interior', cells: nearbyMine },
+                {
+                  role: 'interior',
+                  cells: preview.claimable.map((cell) => ({ cell, preview: true })),
+                },
                 { role: 'trail', cells },
               ]}
               track={displayPoints}
@@ -741,6 +781,11 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
         {!duplicate && uid && recorder.state.id ? (
           <SaveActivityForm activityId={recorder.state.id} uid={uid} />
         ) : null}
+        <div className="track__new-recording">
+          <Button block variant="secondary" onClick={() => void recorder.discard()}>
+            Új rögzítés
+          </Button>
+        </div>
       </div>
     );
   }

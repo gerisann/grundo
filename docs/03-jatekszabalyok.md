@@ -144,6 +144,22 @@ Nincs külön „kiharapás" és „bekebelezés" szabály — mindkettő ugyane
 
 **Zónák (megjelenítés):** a cellák birtoklása után a rendszer összefüggő komponenseket számol tulajdonosonként — ebből lesz a „36 terület" a ranglistán és a térképen a körberajzolt határvonal. A zóna tehát **származtatott** adat, nem tárolt entitás.
 
+### Egycellás, izolált maradványok
+
+GPS-ingadozás miatt egy nagyobb foglalás szélén maradhat egyetlen rivális cella
+úgy, hogy a saját tulajdonosának semmilyen más cellájához nem kapcsolódik. A
+foglalás végén ezt a maradványt a rendszer automatikusan a támadóhoz rendeli,
+ha mindhárom feltétel teljesül:
+
+- pontosan egyetlen, saját tulajdonosú szomszéd nélküli celláról van szó;
+- közvetlenül érinti az aktivitásban frissen megszerzett területet;
+- a védelme **1-es**.
+
+A 2–5-ös védelem nem kerülhető meg: az ilyen izolált cella is csak a normál
+gyengítési és gazdacsere-szabállyal támadható. Az ellenőrzés a claim
+kétgyűrűs környezetének aktuális állapotából, ugyanabban a Firestore-
+tranzakcióban történik, ezért konkurens mentéskor is determinisztikus.
+
 ### Tranzakcionalitás
 
 Az igény feldolgozása egyetlen Firestore-tranzakcióban, cellablokkonként történik (lásd [05](05-adatmodell.md)). Két egyszerre érkező, ugyanazt a területet érintő aktivitás közül az nyer, amelyiknek a tranzakciója **először sikeresen commitol**. A `startedAt` és `endedAt` nem foglal le területet előre.

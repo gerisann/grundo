@@ -241,24 +241,27 @@ export function ActivityAuditScreen() {
                   <Stat label="Sikeres hurkok" value={String(replay?.loops.length ?? 0)} />
                   <Stat label="Sikertelen hurkok" value={String(replay?.diagnostics.loops.rejected.length ?? 0)} />
                   <Stat
-                    label="Érintett mező"
+                    label="Egyedi érintett mező"
                     value={String(progress >= 0.999 ? shownClaim?.affectedCells ?? 0 : replay?.claimedCells.size ?? 0)}
                   />
                   <Stat label="Új, szabad mező" value={shownClaim ? String(shownClaim.capturedFree) : '—'} />
                   <Stat label="Gazdát cserélt" value={shownClaim ? String(shownClaim.ownershipChanges) : '—'} />
-                  <Stat label="Szint nőtt" value={shownClaim ? String(shownClaim.reinforced) : '—'} />
-                  <Stat label="Szint csökkent" value={shownClaim ? String(shownClaim.weakened) : '—'} />
+                  <Stat label="Erősítési esemény" value={shownClaim ? String(shownClaim.reinforced) : '—'} />
+                  <Stat label="Gyengítési esemény" value={shownClaim ? String(shownClaim.weakened) : '—'} />
                   <Stat label="Területnyereség" value={shownClaim ? formatArea(shownClaim.areaGainedM2) : '—'} />
                 </div>
               </section>
 
               <section className="audit-grid">
                 <AuditPanel title="Védelmi szint változások">
+                  <p className="audit-help">
+                    Ezek események: ugyanaz a mező több egymást követő hurokban is szerepelhet.
+                  </p>
                   {shownClaim?.transitions.length ? shownClaim.transitions.map((transition) => (
                     <DataRow
                       key={`${transition.kind}-${transition.fromLevel}-${transition.toLevel}`}
                       label={`${transitionLabel(transition.kind)} · ${transition.fromLevel} → ${transition.toLevel}`}
-                      value={`${transition.count} mező`}
+                      value={`${transition.count} esemény`}
                     />
                   )) : <EmptyRow text={detail.audit ? 'Eddig nem történt szintváltozás.' : 'Nincs korabeli birtokadat.'} />}
                 </AuditPanel>
@@ -300,6 +303,7 @@ export function ActivityAuditScreen() {
                     />
                   ))}
                   <DataRow label="Zsákutca/folyosó miatt levágva" value={`${detail.audit?.loops.prunedCells ?? replay?.diagnostics.loops.rejected.reduce((sum, loop) => sum + loop.prunedCells, 0) ?? 0} mező`} />
+                  <DataRow label="Felszívott egycellás maradvány" value={`${detail.audit?.loops.orphanAbsorbedCells ?? replay?.diagnostics.orphanAbsorbedCells ?? 0} mező`} />
                   <DataRow label="Túl rövid visszaérkezés" value={String(detail.audit?.loops.shortRevisits ?? replay?.diagnostics.loops.shortRevisits ?? 0)} />
                 </AuditPanel>
               </section>
@@ -344,7 +348,7 @@ function EmptyRow({ text }: { text: string }) {
 function transitionLabel(kind: DevClaimAudit['transitions'][number]['kind']): string {
   return {
     captured_free: 'Szabad foglalás', reinforced: 'Megerősítés', stolen: 'Gazdaváltás',
-    weakened: 'Gyengítés', unchanged_max: 'Maximumon maradt',
+    weakened: 'Gyengítés', unchanged_max: '5-ös mezőérintés, változás nélkül',
   }[kind];
 }
 
@@ -356,13 +360,27 @@ function claimAtProgress(audit: DevActivityAudit | null, visiblePoints: number, 
 
   // Az egyedi mező- és területösszeg a végső claimből jön, a szintátmenetek
   // viszont események: ugyanaz a mező egy többkörös futásban 1→2→3 is lehet.
+  const finalTransitions = audit.claim.transitions.filter(
+    (transition) => transition.kind === 'captured_free' || transition.kind === 'stolen',
+  );
+  const eventTransitions = events.transitions.filter(
+    (transition) =>
+      transition.kind === 'reinforced' ||
+      transition.kind === 'weakened' ||
+      transition.kind === 'unchanged_max',
+  );
   return {
     ...audit.claim,
     reinforced: events.reinforced,
     weakened: events.weakened,
     unchangedAtMax: events.unchangedAtMax,
-    transitions: events.transitions,
-    victims: events.victims,
+    transitions: [...finalTransitions, ...eventTransitions],
+    victims: audit.claim.victims.map((finalVictim) => ({
+      ...finalVictim,
+      weakenedCells:
+        events.victims.find((victim) => victim.userId === finalVictim.userId)?.weakenedCells ??
+        finalVictim.weakenedCells,
+    })),
   };
 }
 

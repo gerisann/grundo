@@ -11,7 +11,7 @@ import {
 } from '@/lib/api';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea } from '@/lib/format';
-import { ROLE_COLOR } from '@/lib/hexColors';
+import { RIVAL_MAX_COLOR, ROLE_COLOR } from '@/lib/hexColors';
 import type { Layer } from '@/types';
 import './territory.css';
 
@@ -120,15 +120,15 @@ export function TerritoryScreen() {
    * érdekli: mi az enyém, mi máséé, és mi szabad.
    */
   const groups = useMemo(() => {
-    const mineDefended: string[] = [];
-    const mineExposed: string[] = [];
-    const others: string[] = [];
+    const mine: Array<{ cell: string; defense: number }> = [];
+    const others: Array<{ cell: string; defense: number }> = [];
     const taken = new Set<string>();
 
     for (const c of tiles?.cells ?? []) {
       taken.add(c.cell);
-      if (c.owner === uid) (c.defense > 1 ? mineDefended : mineExposed).push(c.cell);
-      else others.push(c.cell);
+      const rendered = { cell: c.cell, defense: c.defense };
+      if (c.owner === uid) mine.push(rendered);
+      else others.push(rendered);
     }
 
     /**
@@ -146,7 +146,7 @@ export function TerritoryScreen() {
       }
     }
 
-    return { mineDefended, mineExposed, others, free };
+    return { mine, others, free };
   }, [tiles, uid, zoom]);
 
   const showingFree = groups.free.length > 0;
@@ -165,8 +165,7 @@ export function TerritoryScreen() {
               layers={[
                 { role: 'free', cells: groups.free },
                 { role: 'rival', cells: groups.others },
-                { role: 'stolen', cells: groups.mineExposed },
-                { role: 'interior', cells: groups.mineDefended },
+                { role: 'interior', cells: groups.mine },
               ]}
               position={position}
               follow={false}
@@ -292,9 +291,12 @@ export function TerritoryScreen() {
 
           {legendOpen ? (
             <div className="terr__legend-grid">
-              <Swatch role="interior" label="A tiéd, védve" />
-              <Swatch role="stolen" label="A tiéd, 1-es szinten" />
-              <Swatch role="rival" label="Másé" />
+              <Swatch role="interior" label="A te területed" />
+              <Swatch role="rival" defense={1} label="Másé · 1-es" />
+              <Swatch role="rival" defense={2} label="Másé · 2-es" />
+              <Swatch role="rival" defense={3} label="Másé · 3-as" />
+              <Swatch role="rival" defense={4} label="Másé · 4-es" />
+              <Swatch role="rival" defense={5} label="Másé · 5-ös" />
               <Swatch role="free" label="Szabad" />
             </div>
           ) : null}
@@ -312,17 +314,25 @@ export function TerritoryScreen() {
  * Korábban a kettő külön volt definiálva, és el is tért: a térkép borostyánnal
  * rajzolta a saját, 1-es szintű területet, a magyarázat halványlilát mutatott.
  */
-function Swatch({ role, label }: { role: HexRole; label: string }) {
-  const color = ROLE_COLOR[role];
+function Swatch({ role, label, defense = 3 }: { role: HexRole; label: string; defense?: number }) {
+  const color = role === 'rival' && defense === 5 ? RIVAL_MAX_COLOR : ROLE_COLOR[role];
+  const opacity = defense === 1 ? 0 : defense === 2 ? 15 : defense === 3 ? 50 : defense === 4 ? 90 : 100;
   return (
     <span className="terr__legend-item">
       <span
         className="terr__swatch"
         aria-hidden="true"
         style={
-          role === 'free'
-            ? { borderColor: color, borderStyle: 'dashed', background: 'transparent' }
-            : { borderColor: color, background: color }
+          role === 'free' || defense === 1
+            ? {
+                borderColor: color,
+                borderStyle: role === 'free' ? 'dashed' : 'solid',
+                background: 'transparent',
+              }
+            : {
+                borderColor: color,
+                background: `color-mix(in srgb, ${color} ${opacity}%, transparent)`,
+              }
         }
       />
       {label}

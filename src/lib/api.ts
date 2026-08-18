@@ -388,6 +388,7 @@ export interface DevActivityAudit {
     }>;
     shortRevisits: number;
     prunedCells: number;
+    orphanAbsorbedCells?: number;
   };
   gps: { sourcePoints: number; cellPath: number; droppedPoints: number; largeGaps: number };
 }

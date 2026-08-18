@@ -11,18 +11,22 @@
 
 import type { HexRole } from '@/components/HexMap';
 
+/** CSS-tokenek, hogy a Mapbox és a DOM-jelmagyarázat ugyanazt a két témás
+ * palettát használja. A MapView a tényleges értéket kirajzoláskor oldja fel. */
 export const ROLE_COLOR: Record<HexRole, string> = {
   /** Rögzítés közbeni nyom. */
-  trail: '#8b5cf6',
+  trail: 'var(--trail-pending)',
   /** A tiéd, védve (2-es szint vagy fölötte). */
-  interior: '#4c1d95',
+  interior: 'var(--territory-own)',
   /** A tiéd, 1-es szinten — ma egyetlen bezárással elvehető. */
-  stolen: '#c4b5fd',
+  stolen: 'var(--territory-own)',
   /** Másé. */
-  rival: '#ef4444',
+  rival: 'var(--territory-rival)',
   /** Szabad. */
-  free: '#94a3b8',
+  free: 'var(--territory-neutral)',
 };
+
+export const RIVAL_MAX_COLOR = 'var(--territory-rival-max)';
 
 /**
  * Szerepenkénti kitöltés-átlátszóság.
@@ -39,7 +43,7 @@ export const ROLE_FILL_OPACITY: Record<HexRole, number> = {
   interior: 0.42,
   stolen: 0.14,
   rival: 0.24,
-  free: 0.012,
+  free: 0.006,
 };
 
 /**

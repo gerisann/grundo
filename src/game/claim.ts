@@ -8,6 +8,7 @@
  */
 
 import { GAMEPLAY } from '@/config/gameplay';
+import { gridDisk } from 'h3-js';
 import type { CellFate, CellId, CellOwnership, ClaimResult, OwnershipMap } from '@/types';
 export type { ClaimResult };
 
@@ -87,6 +88,85 @@ export function resolveClaim(
 export function multiplierFor(defense: number): number {
   const index = Math.min(Math.max(defense, 1), GAMEPLAY.MAX_DEFENSE) - 1;
   return GAMEPLAY.DEFENSE_MULTIPLIER[index] ?? 1;
+}
+
+/**
+ * Az aktivitás után magára maradt, egyetlen 1-es rivális mező felszívása.
+ *
+ * A GPS-hiba miatt előfordulhat, hogy egy nagyobb, frissen megszerzett folt
+ * szélén egyetlen rivális hex marad úgy, hogy a saját tulajdonosának egyetlen
+ * másik mezőjéhez sem kapcsolódik. Csak ezt az egycellás maradványt vesszük
+ * át; a 2–5-ös védelem továbbra is a normál áttörési szabályt követi.
+ *
+ * `scope`-nak a geometriai claim KÉTGYŰRŰS környezetét kell tartalmaznia.
+ * Így minden vizsgált szomszéd teljes egygyűrűs környezete ismert, és egy
+ * hiányzó adatot nem tévesztünk össze szabad mezővel.
+ */
+export function absorbIsolatedRivalCells(
+  claim: ClaimResult | null,
+  before: OwnershipMap,
+  actorId: string,
+  scope: ReadonlySet<CellId>,
+): { claim: ClaimResult | null; absorbed: Set<CellId> } {
+  const absorbed = new Set<CellId>();
+  if (!claim) return { claim, absorbed };
+
+  const state: OwnershipMap = new Map(before);
+  for (const [cell, ownership] of claim.updates) state.set(cell, ownership);
+
+  const newlyAcquired = [...claim.fates]
+    .filter(([, fate]) => fate === 'free' || fate === 'stolen')
+    .map(([cell]) => cell);
+  if (newlyAcquired.length === 0) return { claim, absorbed };
+  const newlyAcquiredSet = new Set(newlyAcquired);
+
+  const candidates = new Set<CellId>();
+  for (const acquired of newlyAcquired) {
+    for (const near of gridDisk(acquired, 1)) {
+      if (near !== acquired) candidates.add(near);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (!scope.has(candidate) || claim.updates.has(candidate)) continue;
+    const held = state.get(candidate);
+    if (!held || held.owner === actorId || held.defense !== 1) continue;
+
+    const neighbours = gridDisk(candidate, 1).filter((cell) => cell !== candidate);
+    if (!neighbours.every((cell) => scope.has(cell))) continue;
+    if (neighbours.some((cell) => state.get(cell)?.owner === held.owner)) continue;
+    if (!neighbours.some((cell) => newlyAcquiredSet.has(cell))) continue;
+
+    absorbed.add(candidate);
+  }
+
+  if (absorbed.size === 0) return { claim, absorbed };
+
+  const updates = new Map(claim.updates);
+  const fates = new Map(claim.fates);
+  const counts = { ...claim.counts };
+  const stolenFrom = { ...claim.stolenFrom };
+
+  for (const cell of absorbed) {
+    const previous = state.get(cell)!;
+    updates.set(cell, { owner: actorId, defense: 1 });
+    fates.set(cell, 'stolen');
+    counts.stolen += 1;
+    stolenFrom[previous.owner] = (stolenFrom[previous.owner] ?? 0) + 1;
+  }
+
+  return {
+    absorbed,
+    claim: {
+      updates,
+      fates,
+      counts,
+      stolenFrom,
+      weightedClaimM2:
+        claim.weightedClaimM2 + absorbed.size * multiplierFor(1) * GAMEPLAY.CELL_AREA_M2,
+      gainedM2: claim.gainedM2 + absorbed.size * GAMEPLAY.CELL_AREA_M2,
+    },
+  };
 }
 
 /**
@@ -184,4 +264,3 @@ export function mergeClaims(
 
   return { updates, fates, counts, stolenFrom, weightedClaimM2, gainedM2 };
 }
-

@@ -38,6 +38,7 @@ describe('buildActivityAudit', () => {
       diagnostics: {
         droppedPoints: 2,
         largeGaps: 1,
+        orphanAbsorbedCells: 0,
         loops: {
           successful: [{ fromIndex: 0, toIndex: 5, wallCells: 1, interiorCells: 0, prunedCells: 3 }],
           rejected: [],

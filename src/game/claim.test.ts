@@ -5,8 +5,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { gridDisk, latLngToCell } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
-import { multiplierFor, resolveClaim } from './claim';
+import { absorbIsolatedRivalCells, multiplierFor, resolveClaim } from './claim';
 import { processActivity } from './index';
 import { traceToCellPath } from './cells';
 import { detectLoops, loopCells } from './loops';
@@ -93,6 +94,45 @@ describe('resolveClaim — cellánkénti szabályok', () => {
 describe('multiplierFor', () => {
   it('a doksi táblája szerint', () => {
     expect([1, 2, 3, 4, 5].map(multiplierFor)).toEqual([1.0, 1.5, 2.0, 3.0, 5.0]);
+  });
+});
+
+describe('absorbIsolatedRivalCells', () => {
+  const center = latLngToCell(47.4979, 19.0402, GAMEPLAY.H3_RESOLUTION);
+  const scope = new Set(gridDisk(center, 2));
+  const orphan = gridDisk(center, 1).find((cell) => cell !== center)!;
+
+  it('átveszi a frissen szerzett terület mellett egyedül maradt 1-es mezőt', () => {
+    const before: OwnershipMap = new Map([[orphan, { owner: RIVAL, defense: 1 }]]);
+    const initial = resolveClaim(new Set([center]), before, ME);
+    const result = absorbIsolatedRivalCells(initial, before, ME, scope);
+
+    expect(result.absorbed).toEqual(new Set([orphan]));
+    expect(result.claim?.updates.get(orphan)).toEqual({ owner: ME, defense: 1 });
+    expect(result.claim?.stolenFrom[RIVAL]).toBe(1);
+  });
+
+  it('nem kerüli meg a 2-es vagy erősebb védelmet', () => {
+    const before: OwnershipMap = new Map([[orphan, { owner: RIVAL, defense: 2 }]]);
+    const initial = resolveClaim(new Set([center]), before, ME);
+    const result = absorbIsolatedRivalCells(initial, before, ME, scope);
+
+    expect(result.absorbed.size).toBe(0);
+    expect(result.claim?.updates.has(orphan)).toBe(false);
+  });
+
+  it('nem vesz át több mezőből álló rivális maradványt', () => {
+    const connected = gridDisk(orphan, 1).find(
+      (cell) => cell !== orphan && cell !== center && scope.has(cell),
+    )!;
+    const before: OwnershipMap = new Map([
+      [orphan, { owner: RIVAL, defense: 1 }],
+      [connected, { owner: RIVAL, defense: 1 }],
+    ]);
+    const initial = resolveClaim(new Set([center]), before, ME);
+    const result = absorbIsolatedRivalCells(initial, before, ME, scope);
+
+    expect(result.absorbed.size).toBe(0);
   });
 });
 

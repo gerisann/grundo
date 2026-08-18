@@ -314,7 +314,7 @@ export function ActivityScreen() {
                 label="emelkedés"
                 value={elevation.hasData ? `${elevation.gainM} m` : '--'}
               />
-              <Stat label="érintett mező" value={String(activity.cellCount)} />
+              <Stat label="útvonalmező" value={String(activity.cellCount)} />
             </dl>
           </section>
 

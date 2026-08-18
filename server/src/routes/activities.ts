@@ -22,6 +22,7 @@ import {
   PUBLIC_ROUTE_VERSION,
 } from '../lib/publicRoute';
 import { buildActivityAudit } from '../lib/activityAudit';
+import { gridDisk } from 'h3-js';
 
 export const activitiesRouter = Router();
 
@@ -43,6 +44,14 @@ const MAX_CANDIDATE_CELLS = 12_000;
 const MAX_GRID_BLOCKS = 80;
 const MAX_AFFECTED_OWNERS = 50;
 const MAX_TRANSACTION_WRITES = 450;
+
+function expandCellScope(cells: Iterable<string>, rings: number): Set<string> {
+  const expanded = new Set<string>();
+  for (const cell of cells) {
+    for (const near of gridDisk(cell, rings)) expanded.add(near);
+  }
+  return expanded;
+}
 
 interface UploadBody {
   activityId?: unknown;
@@ -147,7 +156,12 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         'A bezárt terület túl nagy az azonnali feldolgozáshoz. Próbálj kisebb köröket menteni.',
       );
     }
-    const blockIds = [...blocksFor(layer, candidateCells).keys()];
+    // Egy potenciális egycellás maradvány teljes szomszédságának ismeretéhez
+    // két H3-gyűrű kell a geometriai claim körül. Ugyanezek a blokkok kerülnek
+    // a tranzakcióba, ezért konkurens mentésnél a Firestore friss állapottal
+    // próbálja újra az árva mező szabályát is.
+    const orphanScope = expandCellScope(candidateCells, 2);
+    const blockIds = [...blocksFor(layer, orphanScope).keys()];
     if (blockIds.length > MAX_GRID_BLOCKS) {
       throw badRequest(
         'activity_too_large',
@@ -203,7 +217,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         privacy?: Partial<PrivacySettings>;
       };
       const earnedToday = Number((dailyGpNow.data() as { total?: number } | undefined)?.total ?? 0);
-      const ownership = ownershipFromBlocks(layer, candidateCells, blocks, today);
+      const ownership = ownershipFromBlocks(layer, orphanScope, blocks, today);
       const result = processActivity({
         points,
         type,
@@ -212,6 +226,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         ownership,
         streakDays: user.streak?.current ?? 0,
         gpEarnedToday: earnedToday,
+        orphanScope,
       });
 
       const trust = computeTrustScore({
@@ -228,7 +243,15 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       });
       const appliedToGameplay = GAMEPLAY.TRUST_OBSERVE_ONLY || trust.verdict === 'trusted';
       const publicTrustVerdict = appliedToGameplay ? 'trusted' : trust.verdict;
-      const claimUpdates = result.claim?.updates ?? new Map();
+      // A maximális, 5→5 állapot audit- és pontozási esemény marad, de nem
+      // írjuk vissza változatlanul a gridbe. Ez jelentősen csökkenti az
+      // ismételt körök Firestore-írásait anélkül, hogy a GP megváltozna.
+      const claimUpdates = new Map(
+        [...(result.claim?.updates ?? new Map())].filter(([cell, next]) => {
+          const previous = ownership.get(cell);
+          return previous?.owner !== next.owner || previous?.defense !== next.defense;
+        }),
+      );
       const victims = Object.entries(result.claim?.stolenFrom ?? {}).filter(([, count]) => count > 0);
 
       if (victims.length > MAX_AFFECTED_OWNERS) {

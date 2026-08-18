@@ -182,6 +182,10 @@ vissza. A felület listázza az aktivitásokat, és a lejátszás mellett mutatj
 - a sikeres hurkok méretét, valamint a sikertelen jelölteket;
 - a zsákutca/összekötő-folyosó metszésekor levágott mezőket és a GPS-diagnosztikát.
 
+Az audit külön kezeli az **egyedi mezőket** és a **mezőeseményeket**. Egy
+többkörös aktivitásban ugyanaz a cella több 1→2→3 vagy 5→5 eseményt adhat;
+ezeket nem szabad úgy feliratozni, mintha különálló mezők lennének.
+
 A teljes nyomvonal miatt mindkét API-végpont (`GET /api/dev/activities` és
 `GET /api/dev/activities/:id`) szerepkör-védett. A hozzáférés `owner`, `admin`
 és `moderator` szerepkörre korlátozott. A mentéskori tulajdonviszonyt az

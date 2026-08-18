@@ -54,6 +54,13 @@
   pointer-events: auto;
 }
 
+/* Befejezés után a Dock eltűnik, ezért az űrlap megkapja a teljes képernyőt.
+   A safe-area megmarad, a panel pedig a saját overlayében görgethető. */
+.track--finished .track__overlay {
+  padding-bottom: calc(var(--safe-bottom) + var(--sp-4));
+  overscroll-behavior: contain;
+}
+
 /* ── Kártyák ─────────────────────────────────────────────────────── */
 
 .track__note {
@@ -453,4 +460,8 @@
   font-weight: 800;
   color: var(--success);
   margin-bottom: var(--sp-2);
+}
+
+.track__new-recording {
+  margin-top: var(--sp-4);
 }

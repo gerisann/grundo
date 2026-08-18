@@ -2,7 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
-import { RecorderProvider } from './hooks/RecorderProvider';
+import { RecorderProvider, useRecorderContext } from './hooks/RecorderProvider';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
@@ -56,6 +56,7 @@ export function App() {
 function Router() {
   const { status } = useAuth();
   const { status: profileStatus } = useProfile();
+  const recorderStatus = useRecorderContext().state.status;
   const { pathname } = useLocation();
 
   if (status === 'loading') return <Splash />;
@@ -127,7 +128,9 @@ function Router() {
       {/* Az aktivitás adatlapja saját, teljes képernyős navigációt kap. A
           rögzítő ettől továbbra is app-szinten él; csak a Dock nem takarja el
           az adatlap alsó tartalmát. */}
-      {pathname.startsWith('/aktivitas/') || pathname.startsWith('/dev/') ? null : <Dock />}
+      {pathname.startsWith('/aktivitas/') ||
+      pathname.startsWith('/dev/') ||
+      (pathname === '/rogzites' && recorderStatus === 'finished') ? null : <Dock />}
     </>
   );
 }

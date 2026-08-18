@@ -2,7 +2,9 @@
   position: fixed;
   left: var(--sp-4);
   right: var(--sp-4);
-  bottom: calc(var(--safe-bottom) + var(--sp-3));
+  /* A safe-area már maga a szükséges alsó távolság. Ha még egy teljes
+     margót hozzáadunk, iOS PWA-ban a Dock látványosan felúszik. */
+  bottom: max(var(--safe-bottom), var(--sp-1));
   height: var(--dock-height);
 
   display: grid;

@@ -137,7 +137,9 @@ export const GAMEPLAY = {
    *
    * A GPS-remegésből eredő ál-hurkokat emellett a `MIN_LOOP_STEPS` szűri.
    */
-  MIN_INTERIOR_CELLS: 1,
+  /** A specifikáció szerinti legkisebb valódi foglalás: 4 belső mező.
+   *  Az 1–3 mezős önmetszések tipikusan GPS-remegésből születő mikrohurkok. */
+  MIN_INTERIOR_CELLS: 4,
   /**
    * Ennyi cellát kell bejárni két látogatás között, hogy bezárásnak számítson.
    *

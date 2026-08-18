@@ -54,6 +54,7 @@ export interface ActivityAuditData {
     rejected: ProcessResult['diagnostics']['loops']['rejected'];
     shortRevisits: number;
     prunedCells: number;
+    orphanAbsorbedCells: number;
   };
   gps: {
     sourcePoints: number;
@@ -109,6 +110,7 @@ export function buildActivityAudit(
         (sum, loop) => sum + loop.prunedCells,
         result.diagnostics.loops.rejected.reduce((sum, loop) => sum + loop.prunedCells, 0),
       ),
+      orphanAbsorbedCells: result.diagnostics.orphanAbsorbedCells,
     },
     gps: {
       sourcePoints,

@@ -192,6 +192,11 @@ A res 9 a jó kompromisszum: **240×-es írásmegtakarítás** a cellánkénti t
 
 **Írás:** kizárólag a `geo-service`, tranzakcióban, blokkonként. A tranzakció a teljes candidate cellahalmaz blokkjait olvassa, majd az aktuális ownership alapján újrafuttatja a játékmotort. Konkurens módosításkor a Firestore retry új ownershipből számol; az első sikeres commit nyer. Az aktivitásazonosító, a GP-ledger és a területesemények determinisztikus azonosítói biztosítják az idempotenciát.
 
+Az egycellás izolált maradványok felismeréséhez a tranzakció a candidate
+halmaz **kétgyűrűs H3-környezetét** is beolvassa. A változatlan 5→5
+mezőérintések az auditban és a pontozásban események maradnak, de nem írják
+vissza feleslegesen ugyanazt az állapotot a grid dokumentumaiba.
+
 ### `zones/{zoneId}` — származtatott, megjelenítéshez
 
 A „zóna" (összefüggő birtokfolt) nem tárolt igazság, hanem a rácsból számolt **összefüggő komponens**. A `daily-rollover` és minden foglalás után frissül; ebből jön a ranglista „36 terület" száma és a térkép határvonala.

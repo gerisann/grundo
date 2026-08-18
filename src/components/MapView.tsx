@@ -6,7 +6,12 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import type { HexRole } from './HexMap';
-import { ROLE_COLOR, ROLE_FILL_OPACITY, ROLE_LINE_OPACITY } from '@/lib/hexColors';
+import {
+  RIVAL_MAX_COLOR,
+  ROLE_COLOR,
+  ROLE_FILL_OPACITY,
+  ROLE_LINE_OPACITY,
+} from '@/lib/hexColors';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './mapview.css';
 
@@ -28,7 +33,7 @@ import './mapview.css';
 
 export interface MapViewProps {
   track?: readonly { lat: number; lng: number }[];
-  layers?: { role: HexRole; cells: Iterable<CellId> }[];
+  layers?: { role: HexRole; cells: Iterable<CellId | MapHexCell> }[];
   /** A jelenlegi pozíció. Külön a nyomvonaltól: szünet alatt is mutatjuk. */
   position?: { lat: number; lng: number } | null;
   /** Kövesse-e a térkép a pozíciót. */
@@ -252,6 +257,14 @@ export function MapView({
   );
 }
 
+export interface MapHexCell {
+  cell: CellId;
+  /** A foglalt mező védettsége. Ha nincs megadva, 1-esnek tekintjük. */
+  defense?: number;
+  /** Élő, még nem hiteles foglalási előnézet: kitöltött, de szintszám nélkül. */
+  preview?: boolean;
+}
+
 function fitTrackOnce(
   instance: mapboxgl.Map,
   track: MapViewProps['track'],
@@ -295,6 +308,24 @@ function addLayers(instance: mapboxgl.Map): void {
         'line-opacity': ['coalesce', ['get', 'lineOpacity'], 0.85],
       },
     });
+    instance.addLayer({
+      id: `${CELL_SOURCE}-defense-label`,
+      type: 'symbol',
+      source: CELL_SOURCE,
+      minzoom: 17.5,
+      layout: {
+        'text-field': ['get', 'defenseLabel'],
+        'text-size': 12,
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-allow-overlap': false,
+        'text-ignore-placement': false,
+      },
+      paint: {
+        'text-color': ['get', 'labelColor'],
+        'text-halo-color': ['get', 'labelHaloColor'],
+        'text-halo-width': 1.2,
+      },
+    });
   }
 
   if (!instance.getSource(TRACK_SOURCE)) {
@@ -304,7 +335,7 @@ function addLayers(instance: mapboxgl.Map): void {
       type: 'line',
       source: TRACK_SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#7c3aed', 'line-width': 4 },
+      paint: { 'line-color': cssColor(ROLE_COLOR.trail), 'line-width': 4 },
     });
   }
 }
@@ -318,13 +349,30 @@ function syncData(
   if (cellSource) {
     const features = [];
     for (const layer of layers ?? []) {
-      for (const cell of layer.cells) {
+      for (const entry of layer.cells) {
+        const cell = typeof entry === 'string' ? entry : entry.cell;
+        const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
+        const preview = typeof entry !== 'string' && entry.preview === true;
+        const territory = layer.role === 'rival' || layer.role === 'interior' || layer.role === 'stolen';
+        const color = layer.role === 'rival' && defense === 5
+          ? cssColor(RIVAL_MAX_COLOR)
+          : cssColor(ROLE_COLOR[layer.role]);
+        const opacity = preview
+          ? ROLE_FILL_OPACITY.interior
+          : territory
+            ? cssNumber(`--defense-alpha-${defense}`, defense === 1 ? 0 : 0.2)
+            : ROLE_FILL_OPACITY[layer.role];
         features.push({
           type: 'Feature' as const,
           properties: {
-            color: ROLE_COLOR[layer.role],
-            opacity: ROLE_FILL_OPACITY[layer.role],
+            color,
+            opacity,
             lineOpacity: ROLE_LINE_OPACITY[layer.role],
+            defenseLabel: territory && !preview && defense >= 2 ? String(defense) : '',
+            labelColor: defense >= 4
+              ? cssColor('var(--territory-label-strong)')
+              : cssColor('var(--text-primary)'),
+            labelHaloColor: defense >= 4 ? 'rgba(0, 0, 0, 0.45)' : cssColor('var(--bg-elevated)'),
           },
           geometry: {
             type: 'Polygon' as const,
@@ -356,6 +404,23 @@ function syncData(
           : [],
     });
   }
+}
+
+function clampDefense(value: number): 1 | 2 | 3 | 4 | 5 {
+  return Math.min(5, Math.max(1, Math.round(value))) as 1 | 2 | 3 | 4 | 5;
+}
+
+/** Egy `var(--token)` hivatkozás tényleges, aktuális témabeli értéke. */
+function cssColor(reference: string): string {
+  const match = /^var\((--[^)]+)\)$/.exec(reference);
+  if (!match || typeof document === 'undefined') return reference;
+  return getComputedStyle(document.documentElement).getPropertyValue(match[1]!).trim();
+}
+
+function cssNumber(name: string, fallback: number): number {
+  if (typeof document === 'undefined') return fallback;
+  const value = Number(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(value) ? value : fallback;
 }
 
 /**

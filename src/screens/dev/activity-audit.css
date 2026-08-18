@@ -112,6 +112,14 @@
 .audit-data-row strong { color: var(--text-primary); text-align: right; }
 .audit-data-row.is-muted { opacity: 0.4; }
 .audit-empty { padding: var(--sp-3); color: var(--text-tertiary); font-size: var(--fs-small); }
+.audit-help {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}
 
 @media (max-width: 760px) {
   .audit-page { grid-template-columns: 1fr; }

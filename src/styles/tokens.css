@@ -32,6 +32,7 @@
   --warning: #f59e0b;
   --danger:  #ef4444;
   --info:    #3b82f6;
+  --territory-label-strong: #ffffff;
 
   /* ═══ Térköz ══════════════════════════════════════════════════════ */
   --sp-1: 4px;
@@ -129,8 +130,9 @@
   /* ── Terület: a riválisoké ───────────────────────────────────────
      A saját területtől EGYÉRTELMŰEN el kell térnie. A márka lila,
      ezért a riválisok meleg tartományban kapnak színt. */
-  --territory-rival:      #e05a2b;
-  --territory-rival-fill: rgba(224, 90, 43, 0.2);
+  --territory-rival:      #ef4444;
+  --territory-rival-max:  #5f1020;
+  --territory-rival-fill: rgba(239, 68, 68, 0.2);
   --territory-neutral:      #8e8a97;
   --territory-neutral-fill: rgba(142, 138, 151, 0.14);
 
@@ -223,8 +225,9 @@
   --territory-own-fill:  rgba(139, 92, 246, 0.25);
   --territory-own-hover: #a376ff;
 
-  --territory-rival:      #ff7a45;
-  --territory-rival-fill: rgba(255, 122, 69, 0.22);
+  --territory-rival:      #ff5f6d;
+  --territory-rival-max:  #6f1023;
+  --territory-rival-fill: rgba(255, 95, 109, 0.22);
   --territory-neutral:      #6a6577;
   --territory-neutral-fill: rgba(106, 101, 119, 0.18);
 
@@ -268,11 +271,11 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
-  --defense-alpha-1: 0.18;
-  --defense-alpha-2: 0.32;
-  --defense-alpha-3: 0.46;
-  --defense-alpha-4: 0.62;
-  --defense-alpha-5: 0.8;
+  --defense-alpha-1: 0;
+  --defense-alpha-2: 0.15;
+  --defense-alpha-3: 0.5;
+  --defense-alpha-4: 0.9;
+  --defense-alpha-5: 1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

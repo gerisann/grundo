@@ -14,7 +14,7 @@ export * from './scoring';
 
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
 import { detectLoopsDetailed, loopCells } from './loops';
-import { mergeClaims, resolveClaim } from './claim';
+import { absorbIsolatedRivalCells, mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import type {
   ActivityType, CellId, ClaimResult, DetectedLoop, GpBreakdown, LoopDiagnostics,
@@ -30,6 +30,8 @@ export interface ProcessInput {
   ownership: OwnershipMap;
   streakDays: number;
   gpEarnedToday: number;
+  /** A claim kétgyűrűs, teljesen beolvasott környezete az árva mezőkhöz. */
+  orphanScope?: ReadonlySet<CellId>;
 }
 
 export interface ProcessResult {
@@ -42,7 +44,12 @@ export interface ProcessResult {
   loopClaims: ClaimResult[];
   gp: GpBreakdown;
   areaGainedM2: number;
-  diagnostics: { droppedPoints: number; largeGaps: number; loops: LoopDiagnostics };
+  diagnostics: {
+    droppedPoints: number;
+    largeGaps: number;
+    orphanAbsorbedCells: number;
+    loops: LoopDiagnostics;
+  };
 }
 
 /**
@@ -76,8 +83,13 @@ export function processActivity(input: ProcessInput): ProcessResult {
   }
 
   // Az EREDETI birtokviszony kell a károsultak azonosításához.
-  const claim =
+  const mergedClaim =
     perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId) : null;
+  const orphanResult = input.orphanScope
+    ? absorbIsolatedRivalCells(mergedClaim, input.ownership, input.actorId, input.orphanScope)
+    : { claim: mergedClaim, absorbed: new Set<CellId>() };
+  const claim = orphanResult.claim;
+  for (const cell of orphanResult.absorbed) claimedCells.add(cell);
 
   const gp = computeActivityGp({
     type: input.type,
@@ -96,7 +108,12 @@ export function processActivity(input: ProcessInput): ProcessResult {
     loopClaims: perLoop,
     gp,
     areaGainedM2: claim ? Math.round(claim.gainedM2) : 0,
-    diagnostics: { droppedPoints, largeGaps, loops: loopDetection.diagnostics },
+    diagnostics: {
+      droppedPoints,
+      largeGaps,
+      orphanAbsorbedCells: orphanResult.absorbed.size,
+      loops: loopDetection.diagnostics,
+    },
   };
 }
 

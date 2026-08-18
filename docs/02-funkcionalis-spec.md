@@ -160,7 +160,7 @@ A GRUNDO szíve (képek #49, #21).
 - Bal felül **`0 m² — A TE TERÜLETED`** chip.
 - Középen fent **réteg-váltó**: 🏃 Gyalogos ⇄ 🚴 Kerékpáros. A két réteg teljesen külön világ (külön poligonok, külön ranglista).
 - Jobb felül: **ranglista** gomb, alatta **helyzet-központosítás** és **info**.
-- **Hexagon-rács** ([lásd 03](03-jatekszabalyok.md)): saját cellák = narancs kitöltés; másé = a tulajdonos színe 25 % átlátszósággal; a zóna külső kontúrja kiemelve. A szabad cellák hálója csak nagyon halvány tájékozódási réteg, nem fedheti el az utcatérképet. A **védelmi szint** a kitöltés telítettségével látszik (1× halvány → 5× tömör), és a zóna sarkában 1–5 pötty.
+- **Hexagon-rács** ([lásd 03](03-jatekszabalyok.md)): saját cellák = lila, másé = piros. A szabad cellák hálója csak nagyon halvány tájékozódási réteg, nem fedheti el az utcatérképet. A **védelmi szint** kitöltése: 1× csak körvonal, 2× 15 %, 3× 50 %, 4× 90 %, 5× tömör sötét árnyalat. A 2–5 közötti szám a cella közepén csak olyan közeli zoomszinten jelenik meg, ahol olvasható és nem ér össze a szomszédaival.
 - Zoom-függő megjelenítés: utcaszinten egyedi hexagonok, kerületszinten aggregált foltok, városszinten zóna-kontúrok és hőtérkép.
 - Zónára koppintva **terület-lap**: tulajdonos · méret (m²) · védelem · leggyengébb pontja · mikor szerezte · hányszor cserélt gazdát · **„Foglald vissza"** gomb → közvetlenül a [küldetés-ajánlóba](#útvonalak-fül--küldetés-ajánló), ami útvonalat javasol erre a zónára.
 - Üres állapot: „Még nincs területed — zárj be egy kört" + Indítás gomb.
@@ -188,6 +188,7 @@ A GRUNDO szíve (képek #49, #21).
 ### Aktív rögzítés (kép #48)
 - Élő: távolság, idő, aktuális és átlag tempó/sebesség, szintemelkedés, lépésfrekvencia/pedálfordulat, pulzus (ha van szenzor), teljesítmény (becsült vagy mért).
 - **Élő területjelzés**: a nyom hexagonjai világítanak a térképen; amint bezárul egy hurok, a belső cellák azonnal kitöltődnek és megjelenik a szerzett m² + GP. Bezárás előtt: „Zárd be: még 120 m".
+- A rögzítés térképe ugyanazt a saját/rivális/szabad mezőképet és ugyanazokat a védettségi szinteket mutatja, mint a Grund oldal. A nézet frissítése alatt a legutóbbi pillanatkép marad látható; a mezők nem villoghatnak ki.
 - Gombok: szünet · **stop** · kamera.
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
