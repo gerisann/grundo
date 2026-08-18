@@ -141,6 +141,13 @@ export interface Profile {
     distanceKm: { run: number; walk: number; ride: number };
   };
   pro: { active: boolean };
+  privacy: {
+    hideStart: boolean;
+    startRadiusM: 50 | 100 | 200;
+    hideEnd: boolean;
+    endRadiusM: 50 | 100 | 200;
+    routeRevision: number;
+  };
 }
 
 /** Amit a szerver visszaad egy feldolgozott aktivitásról. */
@@ -389,6 +396,26 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify(patch),
   }),
+
+  /** Az aktivitás azonnal eltűnik, a szerver 30 napig visszaállíthatóan őrzi. */
+  deleteActivity: (id: string) =>
+    request<{ ok: true; purgeAt: number }>(`/api/activities/${id}`, { method: 'DELETE' }),
+
+  updateActivityPrivacy: (privacy: {
+    hideStart: boolean;
+    startRadiusM: 50 | 100 | 200;
+    hideEnd: boolean;
+    endRadiusM: 50 | 100 | 200;
+  }) => request<{ privacy: Profile['privacy']; rebuiltActivities: number }>('/api/auth/privacy', {
+    method: 'PATCH',
+    body: JSON.stringify(privacy),
+  }),
+
+  updateProfilePhoto: (photoURL: string | null) =>
+    request<{ photoURL: string | null }>('/api/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ photoURL }),
+    }),
 
   /** Kedvelés be- vagy kikapcsolása. A válasz a friss számláló. */
   setLike: (id: string, liked: boolean) =>

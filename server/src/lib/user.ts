@@ -121,6 +121,7 @@ export function newUserDoc(input: NewUserInput, now: Date) {
       startRadiusM: 200,
       hideEnd: true,
       endRadiusM: 200,
+      routeRevision: 0,
       privacyZoneSetAt: null,
     },
 

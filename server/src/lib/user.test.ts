@@ -71,6 +71,7 @@ describe('newUserDoc', () => {
     expect(doc.privacy.hideEnd).toBe(true);
     expect(doc.privacy.startRadiusM).toBe(200);
     expect(doc.privacy.endRadiusM).toBe(200);
+    expect(doc.privacy.routeRevision).toBe(0);
   });
 
   it('a bizalmi szint `new` — az első 10 aktivitásra szigorúbb küszöbök', () => {

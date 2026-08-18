@@ -60,6 +60,7 @@
              allowComments: boolean,
              hideStart: boolean, startRadiusM: 50|100|200,   // alap: true / 200
              hideEnd: boolean,   endRadiusM: 50|100|200,     // alap: true / 200
+             routeRevision: number,                          // retroaktív újravágás verziója
              privacyZoneSetAt: Timestamp }                   // az onboarding kötelező lépése
 
   units: { distance: 'km'|'mi', weight: 'kg'|'lbs', height: 'cm'|'ftin' }
@@ -106,6 +107,8 @@
   route: string               // LEVÁGOTT, kódolt nyomvonal — ez a publikus
   routeHidden: boolean        // üres, mert a privát zóna mindent lefedett
   routeVersion: number        // a privátzóna-vágó algoritmus verziója
+  routePrivacyRevision: number // melyik users.privacy.routeRevision alapján készült
+  routePending: boolean       // félbeszakadt újravágásnál true; addig biztonságosan rejtett
   streamsPath?: string        // gs:// az idősorhoz
   splits: Array<{ km: number, timeS: number, paceSPerKm: number, elevM: number }>
   bounds: { north, south, east, west: number }
@@ -126,8 +129,8 @@
 
   photos: Array<{ path: string, url: string }> // legfeljebb 5
   // A feed térképképét a kliens a `route` mezőből kéri a Static Images API-tól.
-  // Régi, route nélküli aktivitás első szerkesztésekor a szerver visszatölti
-  // ezt a mezőt a privát nyomból, a privát zóna alkalmazása után.
+  // Régi, route nélküli aktivitás feed- vagy adatlaplekérésekor a szerver
+  // visszatölti ezt a privát nyomból, a privát zóna alkalmazása után.
 
   visibility: 'everyone'|'followers'|'only_me'
   likeCount: number
@@ -137,11 +140,21 @@
   // trust diagnosztika nincs ezen a publikus dokumentumon
 
   createdAt, updatedAt: Timestamp
+
+  // Tulajdonosi törléskor 30 napos soft-delete:
+  deletedAt?: Timestamp
+  purgeAt?: Timestamp
+  deletedBy?: 'owner'|'admin'
 }
 ```
 - `activities/{id}/private/track` → `{ points, bounds }` — **a teljes, levágatlan nyomvonal és befoglaló téglalapja**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni. A publikus `route` és `bounds` kizárólag a privát zónával levágott pontokból készül. Olvasás: **csak a tulajdonos és az admin.**
 - `activities/{id}/likes/{uid}` → `{ createdAt }`
 - `activities/{id}/comments/{cid}` → `{ userId, text, createdAt, editedAt?, deleted? }`
+
+Tulajdonosi törléskor az aktivitás azonnal kikerül minden feedből és adatlapról,
+de 30 napig visszaállíthatóan megmarad. Ez a tartalom törlése: a már kiosztott GP
+és a konkurens területállapot nem tekerhető vissza. A moderátori törlés külön,
+auditált művelet, amely a GP/terület korrekcióját is elvégezheti.
 
 ### `grid/{h3res9}` — a cellatulajdonlás (a rendszer szíve)
 
@@ -345,9 +358,11 @@ A csempék Cloud CDN-ben cache-elődnek, és a blokk `version` mezőjének vált
 ## Firestore biztonsági szabályok — elvek
 
 1. **Írás alapból tiltva.** Az aktivitás, terület, GP, ranglista, jelvény, előfizetés **kizárólag Cloud Run / Functions** által írható (admin SDK). A kliens ezeket csak olvassa.
-2. A kliens közvetlenül csak ezt írhatja: saját profil szerkeszthető mezői,
+2. A kliens közvetlenül csak ezt írhatja: saját profil egyszerű szerkeszthető mezői,
    saját privát beállítások és rögzítési pillanatkép, komment, like, üzenet,
    követés, klub-csatlakozási kérés, jelentés.
+   Az aktivitás-privacy szerveren át módosul, mert ugyanabban a folyamatban az
+   összes korábbi publikus útvonalat is újra kell vágni.
 3. **Olvasás láthatóság szerint:**
    - `visibility == 'everyone'` → bárki (kivéve ha tiltás van),
    - `'followers'` → csak követő,

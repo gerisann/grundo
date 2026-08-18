@@ -13,6 +13,7 @@ import { ProfileScreen } from './screens/ProfileScreen';
 import { ActivityScreen } from './screens/ActivityScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
+import { PrivacyScreen } from './screens/settings/PrivacyScreen';
 import { ReplayScreen } from './screens/dev/ReplayScreen';
 import { WelcomeScreen } from './screens/auth/WelcomeScreen';
 import { LoginScreen } from './screens/auth/LoginScreen';
@@ -116,6 +117,7 @@ function Router() {
           <Route path="/aktivitas/:id" element={<ActivityScreen />} />
           <Route path="/beallitasok" element={<SettingsScreen />} />
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
+          <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
           <Route path="/dev/replay" element={<ReplayScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

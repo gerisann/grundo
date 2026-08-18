@@ -7,12 +7,19 @@ import { computeTrustScore } from '../trust/score';
 import { processActivity } from '../../../src/game';
 import { layerOf } from '../../../src/game/cells';
 import { levelFor } from '../../../src/game/levels';
-import { encodePolyline, simplifyTrace } from '../../../src/game/polyline';
-import { DEFAULT_PRIVACY, trimPrivateEnds, type PrivacySettings } from '../../../src/game/privacy';
+import { trimPrivateEnds, type PrivacySettings } from '../../../src/game/privacy';
 import { GAMEPLAY } from '../../../src/config/gameplay';
 import { distanceM } from '../../../src/game/geo';
 import type { ActivityType, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
+import {
+  buildPublicRoutePatch,
+  encodePublicRoute,
+  normalizePrivacy,
+  publicBounds,
+  publicRouteNeedsRebuild,
+  PUBLIC_ROUTE_VERSION,
+} from '../lib/publicRoute';
 
 export const activitiesRouter = Router();
 
@@ -25,9 +32,6 @@ export const activitiesRouter = Router();
  * szolgáltatást.
  */
 const MAX_POINTS = 20_000;
-
-/** A publikus útvonal-vágó algoritmus verziója; a 2-es javítja a zárt köröket. */
-const PUBLIC_ROUTE_VERSION = 2;
 
 /** Ennél régebbi aktivitást nem fogadunk el — az óra elállítása gyanús. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -241,9 +245,9 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       const victimRefs = victims.map(([victimId]) => db.collection(COLLECTIONS.users).doc(victimId));
       const victimSnaps = victimRefs.length > 0 ? await tx.getAll(...victimRefs) : [];
 
-      const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user.privacy ?? {}) };
+      const privacy = normalizePrivacy(user.privacy);
       const publicPoints = trimPrivateEnds(points, privacy).points;
-      const publicRoute = encodeRoute(publicPoints);
+      const publicRoute = encodePublicRoute(publicPoints);
       const summary: CommitSummary = {
         distanceM: Math.round(serverDistanceM),
         durationS: Math.round((endedAt - startedAt) / 1000),
@@ -274,10 +278,12 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         cellCount: result.cellPath.length,
         pointCount: points.length,
         summary,
-        bounds: publicPoints.length > 0 ? boundsOf(publicPoints) : null,
+        bounds: publicBounds(publicPoints),
         route: publicRoute,
         routeHidden: publicRoute.length === 0,
         routeVersion: PUBLIC_ROUTE_VERSION,
+        routePrivacyRevision: privacy.routeRevision,
+        routePending: false,
         visibility: 'everyone',
         title: null,
         description: null,
@@ -288,6 +294,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
         // A publikus dokumentumba kizárólag a verdikt kerülhet.
         trustVerdict: publicTrustVerdict,
         createdAt: now,
+        updatedAt: now,
       });
 
       tx.set(activityRef.collection('private').doc('track'), {
@@ -449,10 +456,24 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
     if (dateTo !== null) query = query.where('startedAt', '<=', new Date(dateTo));
     query = query
       .orderBy('startedAt', 'desc')
-      .limit(scope === 'local' ? LOCAL_SCAN_LIMIT : limit);
+      // A saját listában a 30 napig tárolt soft-delete dokumentumokat csak a
+      // lekérés után tudjuk kiszűrni, ezért kis ráhagyással olvasunk.
+      .limit(scope === 'local' ? LOCAL_SCAN_LIMIT : scope === 'mine' ? Math.min(150, limit * 3) : limit);
 
     const snapshot = await query.get();
-    let rows = snapshot.docs.map((doc) => toFeedRow(doc.id, doc.data() as Record<string, unknown>));
+    const repairLimit = scope === 'local' ? Math.min(50, snapshot.docs.length) : snapshot.docs.length;
+    const documents = await Promise.all(
+      snapshot.docs.map(async (doc, index) => {
+        const data = doc.data() as Record<string, unknown>;
+        if (index >= repairLimit || data.deletedAt != null) return data;
+        return repairActivityRoute(doc.ref, data);
+      }),
+    );
+    let rows = documents
+      .map((data, index) => ({ data, doc: snapshot.docs[index]! }))
+      .filter(({ data }) => data.deletedAt == null)
+      .map(({ data, doc }) => toFeedRow(doc.id, data));
+    if (scope === 'mine') rows = rows.slice(0, limit);
 
     let truncated = false;
     if (scope === 'local') {
@@ -629,6 +650,7 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
     if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
 
     let data = snapshot.data() as Record<string, unknown>;
+    if (data.deletedAt != null) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
     const owner = String(data.userId ?? '');
     const mine = owner === req.uid;
 
@@ -642,16 +664,9 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
       throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
     }
 
-    // A hibás régi privátzóna-vágó a zárt hurkok teljes útvonalát elrejthette.
-    // Saját részletek megnyitásakor egyszer, verzió alapján javítjuk a tárolt
-    // publikus route-ot; így a feed-kártya is helyreáll külön migráció nélkül.
-    if (mine && Number(data.routeVersion ?? 0) < PUBLIC_ROUTE_VERSION) {
-      const routePatch = await rebuildPublicRoute(snapshot.ref, owner);
-      if (routePatch) {
-        await snapshot.ref.set(routePatch, { merge: true });
-        data = { ...data, ...routePatch };
-      }
-    }
+    // A publikus útvonalat a szerver a privát teljes nyomból javítja. Ez
+    // minden nézőnél biztonságos: a teljes nyom soha nem kerül a válaszba.
+    data = await repairActivityRoute(snapshot.ref, data);
 
     const summary = (data.summary ?? {}) as Record<string, unknown>;
     const author = await loadAuthor(owner);
@@ -702,7 +717,8 @@ activitiesRouter.get('/:id/track', async (req: AuthedRequest, res, next) => {
     const ref = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
     const snapshot = await ref.get();
     if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-    if ((snapshot.data() as { userId?: string }).userId !== req.uid) {
+    const activity = snapshot.data() as { userId?: string; deletedAt?: unknown };
+    if (activity.deletedAt != null || activity.userId !== req.uid) {
       throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
     }
     const track = await ref.collection('private').doc('track').get();
@@ -739,7 +755,7 @@ activitiesRouter.patch('/:id', async (req: AuthedRequest, res, next) => {
     const snapshot = await ref.get();
     if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
     const stored = snapshot.data() as Record<string, unknown>;
-    if (stored.userId !== uid) {
+    if (stored.deletedAt != null || stored.userId !== uid) {
       throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
     }
 
@@ -781,13 +797,72 @@ activitiesRouter.patch('/:id', async (req: AuthedRequest, res, next) => {
      * A verziójel megakadályozza, hogy egy valóban, helyesen rejtett rövid
      * aktivitást minden későbbi szerkesztés újra meg újra feldolgozzunk.
      */
-    if (Number(stored.routeVersion ?? 0) < PUBLIC_ROUTE_VERSION) {
-      const routePatch = await rebuildPublicRoute(ref, uid);
-      if (routePatch) Object.assign(patch, routePatch);
-    }
+    const routePatch = await buildRoutePatchIfNeeded(ref, stored);
+    if (routePatch) Object.assign(patch, routePatch);
 
     await ref.set(patch, { merge: true });
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/activities/:id — tulajdonosi, 30 napos soft-delete.
+ *
+ * A publikus tartalom azonnal eltűnik, de a dokumentum és a privát nyomvonal
+ * 30 napig megmarad egy későbbi visszaállítás/GDPR-folyamat számára. A már
+ * kiosztott GP-t és a globális területállapotot nem tekerjük vissza: azokat
+ * csak moderátori, auditált helyreállítás módosíthatja biztonságosan.
+ */
+activitiesRouter.delete('/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    const uid = req.uid!;
+    const ref = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
+    const userRef = db.collection(COLLECTIONS.users).doc(uid);
+    const now = new Date();
+    const purgeAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    await db.runTransaction(async (tx) => {
+      const activity = await tx.get(ref);
+      if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+      const data = activity.data() as Record<string, unknown>;
+      if (data.userId !== uid) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+      if (data.deletedAt != null) return;
+
+      const user = await tx.get(userRef);
+      const profile = user.data() as {
+        counters?: {
+          activities?: number;
+          distanceKm?: Partial<Record<ActivityType, number>>;
+        };
+      } | undefined;
+      const counted = data.trustVerdict === 'trusted';
+      const type = data.type as ActivityType;
+      const distanceKm = Number(data.distanceM ?? 0) / 1000;
+
+      tx.set(ref, {
+        previousVisibility: data.visibility ?? 'everyone',
+        visibility: 'only_me',
+        deletedAt: now,
+        purgeAt,
+        deletedBy: 'owner',
+        updatedAt: now,
+      }, { merge: true });
+
+      if (counted && user.exists && (type === 'run' || type === 'walk' || type === 'ride')) {
+        tx.update(userRef, {
+          'counters.activities': Math.max(0, Number(profile?.counters?.activities ?? 0) - 1),
+          [`counters.distanceKm.${type}`]: Math.max(
+            0,
+            Number(profile?.counters?.distanceKm?.[type] ?? 0) - distanceKm,
+          ),
+          updatedAt: now,
+        });
+      }
+    });
+
+    res.json({ ok: true, purgeAt: purgeAt.getTime() });
   } catch (error) {
     next(error);
   }
@@ -1030,52 +1105,32 @@ activitiesRouter.post('/:id/report', async (_req: AuthedRequest, res) => {
    Segédek
    ═══════════════════════════════════════════════════════════════════ */
 
-/**
- * Ennyi pontnál többet nem tárolunk a nyilvános nyomvonalban.
- *
- * Egy négyórás bringázás ritkítás után is ezres nagyságrendű pontot adhat, és
- * ez a mező MINDEN feed-lekérdezésben átmegy a hálózaton — húsz kártyánál
- * húszszor. A hatszáz pont egy telefonképernyőn már bőven a pixelfelbontás
- * alatt van: több pontnak nincs látható haszna, csak forgalma.
- */
-const MAX_ROUTE_POINTS = 600;
-
-async function rebuildPublicRoute(
+async function buildRoutePatchIfNeeded(
   ref: DocumentReference,
-  uid: string,
+  data: Record<string, unknown>,
 ): Promise<Record<string, unknown> | null> {
-  const [trackSnapshot, userSnapshot] = await Promise.all([
-    ref.collection('private').doc('track').get(),
-    db.collection(COLLECTIONS.users).doc(uid).get(),
-  ]);
-  const rawPoints = (trackSnapshot.data() as { points?: unknown } | undefined)?.points;
-  if (!Array.isArray(rawPoints) || rawPoints.length < 2) return null;
-
-  const points = rawPoints as TracePoint[];
-  const user = userSnapshot.data() as { privacy?: Partial<PrivacySettings> } | undefined;
-  const privacy: PrivacySettings = { ...DEFAULT_PRIVACY, ...(user?.privacy ?? {}) };
-  const publicPoints = trimPrivateEnds(points, privacy).points;
-  const route = encodeRoute(publicPoints);
-  return {
-    route,
-    routeHidden: route.length === 0,
-    routeVersion: PUBLIC_ROUTE_VERSION,
-    bounds: publicPoints.length > 0 ? boundsOf(publicPoints) : null,
-    mapPreviewGeneratedAt: new Date(),
-  };
+  const uid = String(data.userId ?? '');
+  if (!uid || data.deletedAt != null) return null;
+  // A privacy-módosító végpont `routePending` állapotot hagy maga után, ha a
+  // tömeges újravágás félbeszakad. Minden más naprakész route-nál megspóroljuk
+  // a profil plusz Firestore-olvasását a feed minden kártyáján.
+  if (Number(data.routeVersion ?? 0) >= PUBLIC_ROUTE_VERSION && data.routePending !== true) {
+    return null;
+  }
+  const user = await db.collection(COLLECTIONS.users).doc(uid).get();
+  const privacy = normalizePrivacy((user.data() as { privacy?: unknown } | undefined)?.privacy);
+  if (!publicRouteNeedsRebuild(data, privacy)) return null;
+  return buildPublicRoutePatch(ref, uid, privacy);
 }
 
-function encodeRoute(points: readonly TracePoint[]): string {
-  if (points.length < 2) return '';
-
-  // A küszöböt addig lazítjuk, amíg a nyomvonal be nem fér. Egy városi
-  // futásnál az első kör elég; a plafon a nagyon hosszú túrákra szól.
-  let simplified = simplifyTrace(points, 6);
-  for (let epsilon = 12; simplified.length > MAX_ROUTE_POINTS && epsilon <= 200; epsilon *= 2) {
-    simplified = simplifyTrace(points, epsilon);
-  }
-
-  return encodePolyline(simplified);
+async function repairActivityRoute(
+  ref: DocumentReference,
+  data: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const patch = await buildRoutePatchIfNeeded(ref, data);
+  if (!patch) return data;
+  await ref.set(patch, { merge: true });
+  return { ...data, ...patch };
 }
 
 async function loadAuthor(uid: string) {

@@ -13,6 +13,12 @@ import { createMailer, otpEmail } from '../lib/mailer';
 import { canResend, createOtp, verifyOtp, type OtpRecord } from '../lib/otp';
 import { displayUsername, newUserDoc, normalizeUsername, validateUsername } from '../lib/user';
 import type { AuthedRequest } from '../../server';
+import {
+  buildPublicRoutePatch,
+  normalizePrivacy,
+  validRadius,
+  type StoredPrivacy,
+} from '../lib/publicRoute';
 
 export const authRouter = Router();
 const mailer = createMailer();
@@ -41,7 +47,14 @@ export const meHandler: RequestHandler = async (req: AuthedRequest, res: Respons
       // ilyenkor a felhasználónév-választó képernyőre visz.
       throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
     }
-    res.json({ profile: { uid: req.uid, ...snapshot.data() } });
+    const data = snapshot.data() as Record<string, unknown>;
+    res.json({
+      profile: {
+        uid: req.uid,
+        ...data,
+        privacy: { ...((data.privacy ?? {}) as object), ...normalizePrivacy(data.privacy) },
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -49,6 +62,98 @@ export const meHandler: RequestHandler = async (req: AuthedRequest, res: Respons
 
 // Másodlagos cím, hogy a kliens régebbi verziói se törjenek el: /api/auth/me
 authRouter.get('/me', meHandler);
+
+/** PATCH /api/auth/privacy — az aktivitás két végének elrejtése. */
+authRouter.patch('/privacy', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const body = req.body as Record<string, unknown>;
+    if (typeof body.hideStart !== 'boolean' || typeof body.hideEnd !== 'boolean') {
+      throw badRequest('invalid_privacy', 'Mindkét privátzóna állapotát meg kell adni.');
+    }
+    if (!validRadius(body.startRadiusM) || !validRadius(body.endRadiusM)) {
+      throw badRequest('invalid_privacy_radius', 'A védőkör 50, 100 vagy 200 méter lehet.');
+    }
+
+    const userRef = db.collection(COLLECTIONS.users).doc(uid);
+    const user = await userRef.get();
+    if (!user.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
+    const stored = user.data() as { privacy?: Record<string, unknown> };
+    const current = normalizePrivacy(stored.privacy);
+    const nextPrivacy: StoredPrivacy = {
+      hideStart: body.hideStart,
+      startRadiusM: body.startRadiusM,
+      hideEnd: body.hideEnd,
+      endRadiusM: body.endRadiusM,
+      routeRevision: current.routeRevision + 1,
+    };
+
+    const activities = await db.collection(COLLECTIONS.activities).where('userId', '==', uid).get();
+    const active = activities.docs.filter((doc) => doc.data().deletedAt == null);
+
+    // Előbb eltakarjuk a régi publikus route-okat. Szigorításkor így egy
+    // részleges hiba sem hagyhatja kint a korábbi, kevésbé védett változatot.
+    for (let start = 0; start < active.length; start += 400) {
+      const batch = db.batch();
+      for (const doc of active.slice(start, start + 400)) {
+        batch.set(doc.ref, {
+          route: '',
+          routeHidden: true,
+          bounds: null,
+          routePending: true,
+          routePrivacyRevision: nextPrivacy.routeRevision,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    const privacyZoneSetAt = stored.privacy?.privacyZoneSetAt ?? FieldValue.serverTimestamp();
+    await userRef.set({
+      privacy: {
+        ...(stored.privacy ?? {}),
+        ...nextPrivacy,
+        privacyZoneSetAt,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Visszamenőleg minden aktivitást az új beállítással vágunk. A kis
+    // csoportok korlátozzák a memória- és Firestore-terhelést.
+    for (let start = 0; start < active.length; start += 12) {
+      const group = active.slice(start, start + 12);
+      const patches = await Promise.all(
+        group.map((doc) => buildPublicRoutePatch(doc.ref, uid, nextPrivacy)),
+      );
+      const batch = db.batch();
+      group.forEach((doc, index) => batch.set(doc.ref, patches[index]!, { merge: true }));
+      await batch.commit();
+    }
+
+    res.json({ privacy: nextPrivacy, rebuiltActivities: active.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** PATCH /api/auth/profile — jelenleg a profilkép biztonságos hivatkozása. */
+authRouter.patch('/profile', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const raw = (req.body as { photoURL?: unknown }).photoURL;
+    const photoURL = raw == null || raw === '' ? null : String(raw);
+    if (photoURL && !isOwnAvatarUrl(photoURL, uid)) {
+      throw badRequest('invalid_avatar_url', 'A profilkép nem a saját feltöltésedre mutat.');
+    }
+    const ref = db.collection(COLLECTIONS.users).doc(uid);
+    const user = await ref.get();
+    if (!user.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
+    await ref.set({ photoURL, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    res.json({ photoURL });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /* ═══════════════════════════════════════════════════════════════════
    POST /api/auth/login — belépés FELHASZNÁLÓNÉVVEL
@@ -151,6 +256,16 @@ async function emailForUsername(raw: string): Promise<string | null> {
   if (!uid) return null;
   const record = await adminAuth.getUser(uid).catch(() => null);
   return record?.email ?? null;
+}
+
+function isOwnAvatarUrl(raw: string, uid: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.hostname !== 'firebasestorage.googleapis.com') return false;
+    return decodeURIComponent(url.pathname).includes(`/o/avatars/${uid}/`);
+  } catch {
+    return false;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════

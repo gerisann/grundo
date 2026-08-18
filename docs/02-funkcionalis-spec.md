@@ -241,6 +241,9 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   - **TEMPÓZÓNÁK**: Könnyű / Maraton / Küszöb / Intervall / Ismétlés, idővel és sávdiagrammal.
 - **RÉSZIDŐK (km-enként)**: sorszám · idő · tempó · szintkülönbség; a leggyorsabb kör kiemelve.
 - `⋯`: Megosztás · Jelentés (idegen) / Szerkesztés · Törlés (saját).
+- A saját törlés 30 napos soft-delete: a tartalom azonnal eltűnik, de a már
+  kiosztott GP és a globális területállapot nem fordul vissza. Játékadat-
+  korrekciót csak az auditált admin/moderációs folyamat végezhet.
 
 > A tempó, teljesítmény, pedálfordulat, pulzus **csak akkor valós**, ha csatlakoztatott eszköz szolgáltatja. Telefonból: távolság, idő, tempó, szint (barométer), lépésfrekvencia (gyorsulásmérő), becsült teljesítmény (súly + tempó + emelkedés modellből), becsült kalória.
 

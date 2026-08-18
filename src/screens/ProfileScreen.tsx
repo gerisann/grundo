@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chip } from '@/components/ui';
 import { ActivityList } from '@/components/Feed';
 import { Avatar } from '@/components/ActivityCard';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
+import { useAuth } from '@/hooks/AuthProvider';
+import { api } from '@/lib/api';
+import { uploadProfilePhoto } from '@/lib/photos';
 import { levelProgress } from '@/game/levels';
 import { weekSummary } from '@/lib/week';
 import { formatArea, formatDistance, formatDuration, formatGp, formatPace } from '@/lib/format';
@@ -30,7 +33,11 @@ const HISTORY_LIMIT = 50;
 
 export function ProfileScreen() {
   const navigate = useNavigate();
-  const { profile } = useProfile();
+  const { profile, reload: reloadProfile } = useProfile();
+  const { user } = useAuth();
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
   const { result, loading, error, reload } = useActivities({ scope: 'mine', limit: HISTORY_LIMIT });
 
   const territoryM2 = (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0);
@@ -61,12 +68,45 @@ export function ProfileScreen() {
 
       <div className="screen-body stack">
         <div className="prof__identity">
-          <Avatar url={profile?.photoURL ?? null} name={profile?.username ?? '?'} size={64} />
+          <button
+            type="button"
+            className="prof__avatar-edit"
+            aria-label="Profilkép feltöltése vagy módosítása"
+            disabled={avatarBusy || !user}
+            onClick={() => avatarInput.current?.click()}
+          >
+            <Avatar url={profile?.photoURL ?? null} name={profile?.username ?? '?'} size={64} />
+            <span className="prof__avatar-badge" aria-hidden="true">+</span>
+          </button>
+          <input
+            ref={avatarInput}
+            className="prof__avatar-input"
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (!file || !user) return;
+              setAvatarBusy(true);
+              setAvatarError('');
+              void uploadProfilePhoto(file, user.uid)
+                .then((url) => api.updateProfilePhoto(url))
+                .then(() => reloadProfile())
+                .catch((err: unknown) => {
+                  setAvatarError(err instanceof Error ? err.message : 'Nem sikerült feltölteni a képet.');
+                })
+                .finally(() => setAvatarBusy(false));
+            }}
+          />
           <div className="prof__names">
             <span className="prof__display">{profile?.username ?? 'Profil'}</span>
             <span className="prof__handle">@{profile?.usernameLower ?? ''}</span>
+            <span className="prof__avatar-help">
+              {avatarBusy ? 'Profilkép feltöltése…' : 'Koppints a képre a módosításhoz'}
+            </span>
           </div>
         </div>
+        {avatarError ? <p className="field__error" role="alert">{avatarError}</p> : null}
 
         <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
           <Chip variant="accent">{level.name}</Chip>

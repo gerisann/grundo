@@ -6,6 +6,48 @@
   gap: var(--sp-4);
 }
 
+.prof__avatar-edit {
+  position: relative;
+  flex: none;
+  border-radius: 50%;
+}
+
+.prof__avatar-edit:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 3px;
+}
+
+.prof__avatar-edit:disabled {
+  opacity: 0.6;
+}
+
+.prof__avatar-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-primary);
+  background: linear-gradient(135deg, var(--accent), var(--territory-rival));
+  color: var(--accent-on);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.prof__avatar-input {
+  display: none;
+}
+
+.prof__avatar-help {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-label);
+}
+
 .prof__names {
   display: grid;
   min-width: 0;

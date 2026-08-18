@@ -45,7 +45,7 @@ export class PhotoError extends Error {}
  * fordulnak el — ez az egyetlen EXIF-adat, amit MEG AKARUNK tartani, és
  * pontosan azért, mert a képpontokba égetjük bele.
  */
-async function toJpegBlob(file: File): Promise<Blob> {
+async function toJpegBlob(file: File, maxEdge = MAX_EDGE): Promise<Blob> {
   if (!file.type.startsWith('image/')) {
     throw new PhotoError('Csak képet lehet feltölteni.');
   }
@@ -54,7 +54,7 @@ async function toJpegBlob(file: File): Promise<Blob> {
     throw new PhotoError('Ezt a képet nem sikerült megnyitni.');
   });
 
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
   const height = Math.max(1, Math.round(bitmap.height * scale));
 
@@ -128,4 +128,15 @@ export async function deleteActivityPhotos(paths: readonly string[]): Promise<vo
   if (!storage || paths.length === 0) return;
   const bucket = storage;
   await Promise.allSettled(paths.map((path) => deleteObject(ref(bucket, path))));
+}
+
+/** Profilkép: fix objektumútvonal, EXIF nélkül, legfeljebb 512 px-en. */
+export async function uploadProfilePhoto(file: File, uid: string): Promise<string> {
+  if (!storage) throw new PhotoError('A képfeltöltés nincs beállítva.');
+  const blob = await toJpegBlob(file, 512);
+  const handle = ref(storage, `avatars/${uid}/profile.jpg`);
+  await uploadBytes(handle, blob, { contentType: 'image/jpeg' });
+  const url = await getDownloadURL(handle);
+  // A fájl neve állandó, ezért a verzióparaméter töri meg a böngésző cache-ét.
+  return `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
 }

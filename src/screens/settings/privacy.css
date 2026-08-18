@@ -1,0 +1,37 @@
+.privacy-settings__intro {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.privacy-zone {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.privacy-zone__radius {
+  display: grid;
+  gap: var(--sp-2);
+  transition: opacity 140ms ease;
+}
+
+.privacy-zone__radius--off {
+  opacity: 0.45;
+}
+
+.privacy-settings__note {
+  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.privacy-settings__success {
+  margin: 0;
+  color: var(--success);
+  font-size: var(--fs-small);
+}

@@ -41,7 +41,11 @@ export function SettingsScreen() {
               value={<span className="row__value--muted">Hamarosan</span>}
               chevron
             />
-            <ListRow label="Adatvédelem" description="Fiók és aktivitás láthatósága" chevron />
+            <ListRow
+              label="Aktivitás-adatvédelem"
+              description="A megosztott útvonal elejének és végének elrejtése"
+              onClick={() => navigate('/beallitasok/adatvedelem')}
+            />
           </List>
         </section>
 

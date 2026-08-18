@@ -59,7 +59,7 @@ service cloud.firestore {
       // cellCount, zoneCount, counters, pro, status, username) szerveroldali.
       allow update: if isSelf(uid) && onlyChanges([
         'displayName', 'photoURL', 'bio', 'city', 'countryCode',
-        'privacy', 'units', 'body', 'timezone', 'updatedAt'
+        'units', 'body', 'timezone', 'updatedAt'
       ]);
 
       allow create, delete: if false;  // regisztráció és törlés szerveroldalról

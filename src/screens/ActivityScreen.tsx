@@ -15,9 +15,10 @@ import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { CommentSheet } from '@/components/CommentSheet';
 import { useActivityDetail } from '@/hooks/useActivityDetail';
 import { useAuth } from '@/hooks/AuthProvider';
+import { useProfile } from '@/hooks/ProfileProvider';
 import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
-import type { ActivityPhoto } from '@/lib/api';
+import { api, type ActivityPhoto } from '@/lib/api';
 import {
   activityTitle,
   formatArea,
@@ -49,10 +50,14 @@ export function ActivityScreen() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { reload: reloadProfile } = useProfile();
   const { activity, points, loading, error, reload } = useActivityDetail(id);
   const [fullscreen, setFullscreen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   /**
    * A hozzászólás-lap ÁLLAPOTA a cÍMBEN van, nem a komponensben.
@@ -187,13 +192,18 @@ export function ActivityScreen() {
                 {activity.title ?? activityTitle(activity.type, activity.startedAt)}
               </h1>
               {activity.mine && user ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setEditing((value) => !value)}
-                >
-                  {editing ? 'Mégse' : 'Szerkesztés'}
-                </Button>
+                <span className="act__owner-actions">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditing((value) => !value)}
+                  >
+                    {editing ? 'Mégse' : 'Szerkesztés'}
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)}>
+                    Törlés
+                  </Button>
+                </span>
               ) : null}
             </div>
             {!editing && activity.description ? (
@@ -215,6 +225,39 @@ export function ActivityScreen() {
                 }}
               />
             </div>
+          ) : null}
+
+          {deleteOpen ? (
+            <section className="act__delete card" role="alertdialog" aria-label="Aktivitás törlése">
+              <strong>Biztosan törlöd ezt az aktivitást?</strong>
+              <p>
+                Az aktivitás azonnal eltűnik, az adatait 30 napig visszaállíthatóan
+                megőrizzük. A már kiosztott GP és a területek történeti állapota nem változik.
+              </p>
+              {deleteError ? <p className="field__error">{deleteError}</p> : null}
+              <div className="act__delete-actions">
+                <Button variant="secondary" disabled={deleting} onClick={() => setDeleteOpen(false)}>
+                  Mégse
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={deleting}
+                  onClick={() => {
+                    setDeleting(true);
+                    setDeleteError('');
+                    void api.deleteActivity(activity.id)
+                      .then(() => reloadProfile())
+                      .then(() => navigate('/profil', { replace: true }))
+                      .catch((err: unknown) => {
+                        setDeleteError(err instanceof Error ? err.message : 'Nem sikerült törölni az aktivitást.');
+                        setDeleting(false);
+                      });
+                  }}
+                >
+                  Aktivitás törlése
+                </Button>
+              </div>
+            </section>
           ) : null}
 
           {!editing && activity.photos.length > 0 ? (

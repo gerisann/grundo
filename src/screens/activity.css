@@ -110,6 +110,32 @@
   flex: 0 0 auto;
 }
 
+.act__owner-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--sp-1);
+}
+
+.act__delete {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.act__delete p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+}
+
+.act__delete-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+
 .act__editor {
   padding: var(--sp-4);
 }
