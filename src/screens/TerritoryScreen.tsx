@@ -12,6 +12,7 @@ import {
 } from '@/lib/api';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea } from '@/lib/format';
+import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { RIVAL_MAX_COLOR, ROLE_COLOR } from '@/lib/hexColors';
 import type { Layer } from '@/types';
 import './territory.css';
@@ -44,7 +45,18 @@ type View = { south: number; west: number; north: number; east: number; zoom: nu
  */
 export function TerritoryScreen() {
   const { profile } = useProfile();
-  const [layer, setLayer] = useState<Layer>('foot');
+  /**
+   * A megnyitott réteg MEGMARAD a következő látogatásra.
+   *
+   * Aki bringás, annak minden egyes belépésnél átkapcsolni bosszantó — a
+   * felület ne felejtse el, min dolgozik. A `localStorage` a helyes tár erre:
+   * eszközfüggő beállítás, nem játékadat, tehát nem a profilba való.
+   */
+  const [layer, setLayer] = useState<Layer>(() => (read(LAYER_KEY) === 'bike' ? 'bike' : 'foot'));
+
+  useEffect(() => {
+    write(LAYER_KEY, layer);
+  }, [layer]);
   const [tiles, setTiles] = useState<TilesResult | null>(null);
   const [board, setBoard] = useState<LeaderboardEntry[] | null>(null);
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -83,14 +95,17 @@ export function TerritoryScreen() {
   const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) === 'open');
   const [helpOpen, setHelpOpen] = useState(() => read(HELP_KEY) !== 'closed');
 
+  /**
+   * A pozíció a MEGOSZTOTT fixből jön, nem közvetlenül a böngészőtől.
+   *
+   * Asztali gépen a böngésző WiFi- és IP-becslést ad, ami több kilométert
+   * téved — a felhasználó a saját grundja helyett egy másik kerületet látna.
+   * A `useSharedPosition` a telefon pontosabb fixét is figyelembe veszi.
+   */
+  const sharedPosition = useSharedPosition(profile?.uid);
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (p) => setPosition({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => undefined,
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
-    );
-  }, []);
+    if (sharedPosition) setPosition({ lat: sharedPosition.lat, lng: sharedPosition.lng });
+  }, [sharedPosition]);
 
   useEffect(() => {
     if (!apiConfigured) return;
@@ -506,6 +521,9 @@ function TrophyIcon() {
     </svg>
   );
 }
+
+/** A legutóbb választott réteg kulcsa. */
+const LAYER_KEY = 'grundo.territory.layer';
 
 function read(key: string): string | null {
   try {

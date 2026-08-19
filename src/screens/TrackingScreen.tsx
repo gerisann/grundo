@@ -5,6 +5,7 @@ import { HexMap } from '@/components/HexMap';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
+import { useSharedPosition } from '@/hooks/useSharedPosition';
 import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
@@ -241,16 +242,18 @@ export function TrackingScreen() {
    * Ezért egyszer, olcsón elkérjük a helyet: kis pontossággal, akár
    * gyorsítótárból. Nem mérünk vele, csak a nézetet igazítjuk.
    */
-  const [homeFix, setHomeFix] = useState<{ lat: number; lng: number } | null>(null);
-  useEffect(() => {
-    if (lastPoint !== null || homeFix !== null) return;
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (p) => setHomeFix({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => undefined,
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
-    );
-  }, [lastPoint, homeFix]);
+  /**
+   * A kiindulási fix a MEGOSZTOTT pozícióból jön.
+   *
+   * Asztali gépen a böngésző csak WiFi- és IP-becslést tud, ami több
+   * kilométert téved — a tű a fél városban máshova került. A telefon pontos
+   * GPS-fixe viszont a közös dokumentumban van, és a `useSharedPosition` azt
+   * választja, amelyik pontosabb.
+   */
+  const sharedPosition = useSharedPosition(profileUid);
+  const homeFix = sharedPosition
+    ? { lat: sharedPosition.lat, lng: sharedPosition.lng }
+    : null;
 
   const mapPosition = lastPoint ?? homeFix;
 

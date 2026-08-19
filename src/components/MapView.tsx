@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import mapboxgl from 'mapbox-gl';
-import { cellToBoundary } from 'h3-js';
+import { cellToBoundary, cellToLatLng } from 'h3-js';
 import type { CellId } from '@/types';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
@@ -58,6 +59,14 @@ export interface MapViewProps {
   onViewport?: (view: { south: number; west: number; north: number; east: number; zoom: number }) => void;
   /** Koppintás egy FOGLALT mezőre. A szabad mezőkre nem sül el. */
   onCellPress?: (info: { cell: CellId; owner: string }) => void;
+  /**
+   * A megkoppintott mezőhöz KIHORGONYZOTT tartalom.
+   *
+   * Mapbox-popupba kerül, nem a képernyőre pozicionálva: így magától a
+   * térképhez tapad (pásztázáskor a mezővel együtt mozog), és a Mapbox
+   * kezeli a képernyőszéleket is — a kártya befordul, ha kilógna.
+   */
+  cellPopup?: ReactNode;
 }
 
 /** A hexagonok színe szerepenként — ugyanaz a jelentés, mint a HexMap-ben. */
@@ -93,6 +102,7 @@ export function MapView({
   fill = false,
   onViewport,
   onCellPress,
+  cellPopup,
 }: MapViewProps) {
   const { theme } = useThemeContext();
   const container = useRef<HTMLDivElement | null>(null);
@@ -115,6 +125,9 @@ export function MapView({
   viewportRef.current = onViewport;
   const pressRef = useRef(onCellPress);
   pressRef.current = onCellPress;
+  /** A popup DOM-gazdája — ide portálozzuk a React-tartalmat. */
+  const [popupHost, setPopupHost] = useState<HTMLElement | null>(null);
+  const popup = useRef<mapboxgl.Popup | null>(null);
 
   /* ── A térkép létrehozása, egyszer ─────────────────────────────── */
 
@@ -165,6 +178,30 @@ export function MapView({
       const owner = String(feature?.properties?.owner ?? '');
       const cell = String(feature?.properties?.cell ?? '');
       if (!owner || !cell) return;
+
+      /**
+       * A popup a MEZŐ KÖZEPÉHEZ kerül, nem a koppintás pixelére.
+       *
+       * Így a kártya pontosan azt a hatszöget jelöli meg, amiről szól, és
+       * pásztázáskor vele együtt mozog — a felhasználó nem veszíti szem elől,
+       * melyik mezőre kérdezett rá.
+       */
+      const [lat, lng] = cellToLatLng(cell);
+      const host = document.createElement('div');
+      popup.current?.remove();
+      popup.current = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        maxWidth: 'none',
+        offset: 14,
+        className: 'mapview__popup',
+      })
+        .setLngLat([lng, lat])
+        .setDOMContent(host)
+        .addTo(instance);
+      popup.current.on('close', () => setPopupHost(null));
+      setPopupHost(host);
+
       pressRef.current?.({ cell, owner });
     });
 
@@ -284,6 +321,8 @@ export function MapView({
     />
   );
 }
+
+/* A popup eltakarítása, ha a hívó már nem ad tartalmat. */
 
 export interface MapHexCell {
   cell: CellId;
