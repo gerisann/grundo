@@ -126,13 +126,29 @@ Eredetileg két lehetőséget vázoltam fel (PostGIS vs. Firestore+turf.js) — 
 
 A job **idempotens**, és futásonként pontosan **egy naphatárt** lép át. Ha az ütemező kiesett néhány napra, az óránkénti futás napi 24 nap lemaradást hoz be, külön „pótlás" ág nélkül — az ilyen ág csak kiesés után futna, tehát sosem lenne rendesen tesztelve.
 
-**Bejegyzés (egyszeri, Cloud Shellből):**
+**Beüzemelés (egyszeri, Cloud Shellből).** Sorrendben, mert a `--set-secrets` létező titkot vár:
+
+1. A titok létrehozása:
 
 ```
-gcloud scheduler jobs create http grundo-daily-rollover   --schedule="0 * * * *" --time-zone="Etc/UTC"   --uri="https://<cloud-run-url>/api/jobs/daily-rollover"   --http-method=POST   --headers="X-Job-Token=<a titok>"   --attempt-deadline=540s
+printf %s "$(openssl rand -base64 32)" | gcloud secrets create JOBS_TOKEN --data-file=-
 ```
 
-A titkot ugyanaz az érték adja, amit a Cloud Run `JOBS_TOKEN` környezeti változója kap.
+2. Olvasási jog a Cloud Run szolgáltatásfióknak:
+
+```
+gcloud secrets add-iam-policy-binding JOBS_TOKEN --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
+```
+
+3. Backend telepítése (ekkor kerül a titok a szolgáltatásra).
+
+4. Az ütemező bejegyzése. A titkot nem kell kimásolni — a parancs maga olvassa ki:
+
+```
+gcloud scheduler jobs create http grundo-daily-rollover --location=europe-west1 --schedule="0 * * * *" --time-zone="Etc/UTC" --uri="https://grundo-api-irb5rjve6a-ew.a.run.app/api/jobs/daily-rollover" --http-method=POST --headers="X-Job-Token=$(gcloud secrets versions access latest --secret=JOBS_TOKEN)" --attempt-deadline=540s
+```
+
+A parancsok EGY SORBAN vannak, sorvégi backslash nélkül. Ez szándékos: a többsoros, escape-elt alak egyszer már szétvágta a `cloudbuild.yaml`-t (2026-08-19), és a build a megjegyzés miatt hasalt el, nem a konfiguráció miatt.
 
 ⚠️ **A meglévő felhasználókat egyszer be kell jegyezni.** A job a `users.rollover.nextDueAt` mezőre keres; akinél ez nincs meg, azt a lekérdezés sosem hozná vissza, és Firestore-ban hiányzó mezőre nem lehet keresni. Az új fiókoknál a `newUserDoc` kitölti; a régiekhez a `server/`-ből: `npm.cmd run rollover:seed -- --apply`.
 
