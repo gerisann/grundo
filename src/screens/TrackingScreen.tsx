@@ -30,6 +30,7 @@ import './tracking.css';
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
+const START_HINT_KEY = 'grundo.hint.start';
 const LAST_TYPE_KEY = 'grundo.lastActivityType';
 
 const ACTIVITY_TYPES: ActivityType[] = ['run', 'walk', 'ride'];
@@ -258,14 +259,20 @@ export function TrackingScreen() {
   const mapPosition = lastPoint ?? homeFix;
 
   /**
-   * TODO(F1, tesztelés után): a jelzés csak az ELSŐ indításig látszódjon.
+   * Az „Indítás" nyíl CSAK AZ ELSŐ alkalommal.
    *
-   * Amíg a felületet teszteljük, minden indításnál megjelenik, mert így
-   * ítélhető meg, elég feltűnő-e. Élesben elég lesz az elsőnél: a jelzést a
-   * `localStorage`-ba írt jelölővel lehet kioltani, ahogy a képernyő-
-   * figyelmeztetésnél is tesszük.
+   * A tesztelés idejére minden megnyitásnál megjelent, hogy meg lehessen
+   * ítélni, elég feltűnő-e. Ez így maradt bent, és a századik rögzítésnél már
+   * csak zaj — az első indítás után a felhasználó tudja, hol a gomb.
    */
-  const showStartHint = true;
+  const [showStartHint, setShowStartHint] = useState(() => readFlag(START_HINT_KEY) === null);
+
+  // Az első indítás kioltja a nyilat — utána a felhasználó tudja, hol a gomb.
+  useEffect(() => {
+    if (state.status === 'idle' || !showStartHint) return;
+    setShowStartHint(false);
+    writeFlag(START_HINT_KEY);
+  }, [state.status, showStartHint]);
 
   /**
    * A befejezés után magától indul a feltöltés.
@@ -388,7 +395,15 @@ export function TrackingScreen() {
           </div>
         ) : null}
 
-        {idle && remoteState === null ? (
+        {/*
+          A MOZGÁSFORMA-VÁLASZTÓ minden tétlen állapotban látszik.
+          Korábban a `remoteState === null` is feltétel volt, vagyis ha a
+          telefonról érkezett egy állapot-pillanatkép, a választó ELTŰNT — a
+          felhasználó nem tudott elindulni anélkül, hogy előbb kitalálja,
+          miért nincs ott. Egy TÁJÉKOZTATÁS nem veheti el az alapvető
+          kezelőelemet.
+        */}
+        {idle ? (
           <div className="track__panel">
             <p
               style={{
@@ -413,7 +428,9 @@ export function TrackingScreen() {
               ]}
             />
           </div>
-        ) : (
+        ) : null}
+
+        {!idle || remoteState !== null ? (
           <>
             <StatsPanel
               distanceM={displayDistanceM}
@@ -436,6 +453,16 @@ export function TrackingScreen() {
               <div className="track__note track__note--warn">
                 <strong>Ez a rögzítés túl rövid.</strong> Legalább {GAMEPLAY.MIN_DISTANCE_M} méter
                 kell ahhoz, hogy az aktivitás számítson — terület és pont nem jár érte.
+                {/*
+                  KIÚT. Enélkül a képernyő zsákutca volt: az üzenet közölte,
+                  hogy nem jár érte semmi, de nem volt mivel továbbmenni.
+                  Minden végállapotnak vezetnie kell valahova.
+                */}
+                <div style={{ marginTop: 'var(--sp-3)' }}>
+                  <Button size="sm" onClick={() => void recorder.discard()}>
+                    Rendben, eldobom
+                  </Button>
+                </div>
               </div>
             ) : null}
 
@@ -443,7 +470,7 @@ export function TrackingScreen() {
               <UploadPanel recorder={recorder} uid={profileUid} />
             ) : null}
           </>
-        )}
+        ) : null}
       </div>
 
       {idle && remoteState === null && showStartHint ? (

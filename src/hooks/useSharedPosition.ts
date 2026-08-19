@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export interface SharedPosition {
@@ -42,6 +42,9 @@ export interface SharedPosition {
  * gyengébb, de valódi mobilfixet elvetne.
  */
 const GOOD_ENOUGH_M = 150;
+
+/** Ennél pontatlanabb fixet meg sem osztunk — az már csak zaj. */
+const USELESS_ABOVE_M = 3_000;
 
 /** Ennél régebbi megosztott fixre már nem hagyatkozunk. */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -65,7 +68,19 @@ export function useSharedPosition(uid: string | undefined) {
           at: p.timestamp || Date.now(),
         }),
       () => undefined,
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+      /**
+       * ⚠️ `enableHighAccuracy: true` — EZ AZ EGÉSZ MECHANIZMUS FELTÉTELE.
+       *
+       * Mobilon a `false` KIFEJEZETTEN a hálózati (cella/WiFi) szolgáltatót
+       * kéri, nem a GPS-t. Vele a telefon is csak durva becslést adott —
+       * vagyis nem volt mit megosztani, hiszen a mechanizmus arra épül, hogy
+       * a telefon pontosabb, mint az asztali gép.
+       *
+       * Az ára egyszeri: egy fix lekérése, nem folyamatos követés. A hosszabb
+       * időkorlát azért kell, mert a GPS-nek hidegindításból több idő kell,
+       * a `maximumAge` pedig egy percen belüli korábbi fixet még elfogad.
+       */
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
     );
   }, []);
 
@@ -86,13 +101,15 @@ export function useSharedPosition(uid: string | undefined) {
           setShared(null);
           return;
         }
-        const stamp = value.at as { toMillis?: () => number } | undefined;
-        setShared({
-          lat,
-          lng,
-          accuracyM: Number(value.accuracyM ?? 99_999),
-          at: typeof stamp?.toMillis === 'function' ? stamp.toMillis() : 0,
-        });
+        // Régi dokumentumokban `Timestamp` is lehet — mindkettőt elfogadjuk.
+        const raw = value.at as number | { toMillis?: () => number } | undefined;
+        const at =
+          typeof raw === 'number'
+            ? raw
+            : typeof raw?.toMillis === 'function'
+              ? raw.toMillis()
+              : 0;
+        setShared({ lat, lng, accuracyM: Number(value.accuracyM ?? 99_999), at });
       },
       () => setShared(null),
     );
@@ -105,15 +122,38 @@ export function useSharedPosition(uid: string | undefined) {
     // Csak akkor írunk, ha a miénk JOBB, mint ami fent van — vagy ha a fenti
     // már elavult. Enélkül az asztali gép folyamatosan felülírná a telefon
     // pontos fixét a saját, kilométeres becslésével.
+    /**
+     * A városnyi pontosságú becslést meg sem osztjuk.
+     *
+     * Az asztali böngésző IP-alapú fixe több kilométert téved; ha ezt
+     * kiírnánk, csak elfoglalná a helyet a telefon jó fixe elől, és a másik
+     * eszköz ezt kapná vissza „megosztott" pozícióként.
+     */
+    if (own.accuracyM > USELESS_ABOVE_M) return;
+
     const better = shared === null || own.accuracyM < shared.accuracyM;
     const staleAbove = shared !== null && Date.now() - shared.at > MAX_AGE_MS;
     if (!better && !staleAbove) return;
     if (published.current === own.at) return;
     published.current = own.at;
 
+    /**
+     * Az időbélyeg SIMA SZÁM, nem `serverTimestamp()`.
+     *
+     * A szervertől kért időbélyeg az író eszköz saját visszhangjában még
+     * `null`, amiből a frissesség-ellenőrzés nullát olvasna — és azonnal
+     * elavultnak minősítené a saját, épp most írt fixét. Egy 24 órás ablakhoz
+     * a kliens órája bőven elég pontos.
+     */
     void setDoc(
       doc(db, 'users', uid, 'private', 'position'),
-      { lat: own.lat, lng: own.lng, accuracyM: Math.round(own.accuracyM), at: serverTimestamp() },
+      {
+        lat: own.lat,
+        lng: own.lng,
+        accuracyM: Math.round(own.accuracyM),
+        at: own.at,
+        updatedAt: Date.now(),
+      },
       { merge: true },
     ).catch(() => undefined);
   }, [uid, own, shared]);

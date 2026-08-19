@@ -56,7 +56,23 @@ export function App() {
 function Router() {
   const { status } = useAuth();
   const { status: profileStatus } = useProfile();
-  const recorderStatus = useRecorderContext().state.status;
+  const recorder = useRecorderContext();
+  /**
+   * A Dock CSAK a mentőlap alatt tűnik el.
+   *
+   * A mentőlap az, ahol az aktivitás neve, leírása és képei megadhatók — az
+   * a feltöltés SIKERE után jelenik meg (`upload.status === 'done'`). Ott a
+   * Dock tényleg fölösleges, mert az űrlapé a képernyő.
+   *
+   * Korábban MINDEN `finished` állapotban eltűnt, és ez két zsákutcát
+   * csinált: egy túl rövid rögzítés után az üzenet közölte, hogy nem számít
+   * az aktivitás, de nem volt mivel továbbmenni; feltöltési hiba esetén
+   * ugyanígy. Egy figyelmeztetésnek nem jár a teljes képernyő.
+   *
+   * A mentés után az „Új rögzítés" gomb visszaviszi tétlen állapotba, és
+   * ezzel a Dock is visszajön.
+   */
+  const savePanelOpen = recorder.upload.status === 'done';
   const { pathname } = useLocation();
 
   if (status === 'loading') return <Splash />;
@@ -130,7 +146,7 @@ function Router() {
           az adatlap alsó tartalmát. */}
       {pathname.startsWith('/aktivitas/') ||
       pathname.startsWith('/dev/') ||
-      (pathname === '/rogzites' && recorderStatus === 'finished') ? null : <Dock />}
+      (pathname === '/rogzites' && savePanelOpen) ? null : <Dock />}
     </>
   );
 }
