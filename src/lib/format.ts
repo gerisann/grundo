@@ -32,6 +32,31 @@ export function formatAreaDelta(m2: number): string {
   return `${sign}${formatArea(Math.abs(m2))}`;
 }
 
+/**
+ * Mezőszám tömören: `847`, `1K`, `2,2K`, `14K`.
+ *
+ * MIÉRT KELL? A statisztikapanel három egymás melletti dobozból áll, és a
+ * mezőszám a terület MELLÉ kerül. Egy `12 480` ott kiszorítaná a km²-t —
+ * márpedig a kettő együtt mond valamit: mekkora és hány darabból.
+ *
+ * Ezer alatt pontos szám, mert ott a pontosság még olvasható és érdekes.
+ * Fölötte egy tizedes: a `2,2K` ugyanolyan gyorsan megfogható, mint a `847`,
+ * és nem tolja szét a dobozt. A tízezres tartományban a tizedes már zaj,
+ * ezért ott elmarad.
+ *
+ * Milliós fokozat is van: egy Balaton-méretű grund ~1,95 millió mező, és az
+ * `1950K` alakban olvashatatlan. `1,9M` — ennyi.
+ */
+export function formatCellCount(cells: number): string {
+  const value = Math.max(0, Math.round(cells));
+  if (value < 1000) return hu({ maximumFractionDigits: 0 }).format(value);
+  if (value < 10_000) {
+    return `${hu({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 1000)}K`;
+  }
+  if (value < 1_000_000) return `${hu({ maximumFractionDigits: 0 }).format(value / 1000)}K`;
+  return `${hu({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 1_000_000)}M`;
+}
+
 export function formatGp(gp: number): string {
   return `${hu({ maximumFractionDigits: 0 }).format(gp)} GP`;
 }

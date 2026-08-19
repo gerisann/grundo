@@ -18,7 +18,10 @@
 
 .home__summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 40-30-30: a GRUND doboz két adatot hordoz (terület ÉS mezőszám), a másik
+     kettőnek egy szám elég. Az egyenlő harmadolás ott szorította a szöveget,
+     ahol a legtöbb mondanivaló van. */
+  grid-template-columns: 40fr 30fr 30fr;
   margin: 0;
   padding: 2px;
   border-radius: var(--r-md);
@@ -56,4 +59,78 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Fejléc: jel, név, műveletek ──────────────────────────────────── */
+
+/* A `.screen-header` már flex és középre igazít — itt csak azt tesszük hozzá,
+   ami új: a cím és a műveletek a két szélre kerüljön. */
+.home__header {
+  justify-content: space-between;
+}
+
+.home__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/**
+ * A GRUNDO jele: szabályos hatszög, a betűkkel EGYMAGAS.
+ *
+ * A magasságot `1em` adja, tehát a jel együtt nő a címmel — nem kell külön
+ * hangolni, ha a betűméret változik. A `clip-path` hatszöge csúcsával felfelé
+ * áll, ahogy a térkép mezői is.
+ *
+ * A színátmenet SZÁNDÉKOSAN ugyanaz, mint a statisztikapanelé: a kettő így
+ * egy rendszer két darabja, nem két külön díszítés.
+ */
+.home__mark {
+  width: 0.88em;
+  height: 1em;
+  flex: none;
+  background: linear-gradient(105deg, var(--accent), var(--territory-rival));
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+.home__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.home__action {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-secondary);
+}
+
+.home__action:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+/**
+ * Az inaktív ikon HALVÁNY, de nem láthatatlan.
+ *
+ * A helyük innentől foglalt: amikor megjön mögéjük a működés, a fejléc nem
+ * fog átrendeződni a szemünk előtt.
+ */
+.home__action:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+/* ── A mezőszám a terület mellett ─────────────────────────────────── */
+
+.home__metric-extra {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.78;
+  letter-spacing: 0.01em;
 }

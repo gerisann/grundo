@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { OtpDialog } from '@/components/OtpDialog';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
-import { formatArea, formatGp } from '@/lib/format';
+import { formatArea, formatCellCount, formatGp } from '@/lib/format';
 import { Feed } from '@/components/Feed';
 import './home.css';
 
@@ -27,8 +27,33 @@ export function HomeScreen() {
 
   return (
     <>
-      <header className="screen-header">
-        <h1 className="screen-header__title">GRUNDO</h1>
+      <header className="screen-header home__header">
+        <h1 className="screen-header__title home__brand">
+          {/*
+            A jel a NÉV ELŐTT áll, és pontosan olyan magas, mint a betűk.
+            A színátmenete ugyanaz, mint a statisztikapanelé — a kettő így egy
+            rendszer része, nem két külön díszítés.
+          */}
+          <span className="home__mark" aria-hidden="true" />
+          GRUNDO
+        </h1>
+
+        {/*
+          Három művelet, EGYELŐRE INAKTÍVAN.
+          Szándékosan `disabled`, nem elrejtve: a helyük innentől foglalt, és
+          a fejléc nem fog átrendeződni, amikor megjön mögéjük a működés.
+        */}
+        <div className="home__actions">
+          <button type="button" className="home__action" aria-label="Keresés" disabled>
+            <SearchIcon />
+          </button>
+          <button type="button" className="home__action" aria-label="Üzenetek" disabled>
+            <MessageIcon />
+          </button>
+          <button type="button" className="home__action" aria-label="Értesítések" disabled>
+            <BellIcon />
+          </button>
+        </div>
       </header>
 
       <div className="screen-body stack">
@@ -52,13 +77,22 @@ export function HomeScreen() {
             Szia, <strong>{name}</strong>
           </h2>
           <dl className="home__summary">
+            {/*
+              A GRUND doboz SZÉLESEBB (40%), mert két adatot hordoz: mekkora és
+              hány mezőből. A másik kettő 30-30% — azoknak egy szám elég.
+            */}
             <HomeMetric
-              label="Terület"
+              label="Grund"
               value={formatArea(
                 (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0),
               )}
+              extra={`${formatCellCount(
+                (profile?.cellCount.foot ?? 0) + (profile?.cellCount.bike ?? 0),
+              )} mező`}
             />
-            <HomeMetric label="GP" value={formatGp(profile?.gpTotal ?? 0)} />
+            {/* A címke „Aktivitás", de az ÉRTÉK továbbra is GP — a mértékegység
+                nem változik attól, hogy a doboz felirata beszédesebb lett. */}
+            <HomeMetric label="Aktivitás" value={formatGp(profile?.gpTotal ?? 0)} />
             <HomeMetric label="Sorozat" value={`${profile?.streak.current ?? 0} nap`} />
           </dl>
         </div>
@@ -80,11 +114,53 @@ export function HomeScreen() {
   );
 }
 
-function HomeMetric({ label, value }: { label: string; value: string }) {
+function HomeMetric({
+  label,
+  value,
+  extra,
+}: {
+  label: string;
+  value: string;
+  /** Másodlagos adat a fő érték mellé — ma csak a grund mezőszáma. */
+  extra?: string;
+}) {
   return (
     <div className="home__metric">
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd>
+        {value}
+        {extra ? <span className="home__metric-extra">{extra}</span> : null}
+      </dd>
     </div>
+  );
+}
+
+/* ── Fejléc-ikonok ─────────────────────────────────────────────────
+   Egységes 20×20, 1,8-as vonalvastagság — ugyanaz a rajzolási nyelv, mint a
+   Grund oldal szem- és hexagon-ikonjánál. */
+
+function SearchIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M15.8 15.8 20.5 20.5" />
+    </svg>
+  );
+}
+
+function MessageIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20.5 12.4c0 3.9-3.8 7-8.5 7-1 0-2-.14-2.9-.4L4 20.5l1.6-3.7C4.2 15.6 3.5 14.1 3.5 12.4c0-3.9 3.8-7 8.5-7s8.5 3.1 8.5 7z" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 15.5V10.5a6 6 0 1 0-12 0v5L4.2 18h15.6L18 15.5z" />
+      <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" />
+    </svg>
   );
 }
