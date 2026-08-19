@@ -204,6 +204,8 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
       trustVerdict: publicTrustVerdict,
       claimStatus: 'pending',
       claimGroups: groups.length,
+      // Kezdőállapot, hogy a felület ne „ismeretlen"-t mutasson egy pillanatra.
+      claimProgress: { done: 0, total: groups.length },
       createdAt: now,
       updatedAt: now,
     });
@@ -300,6 +302,22 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
       );
 
       if (updates.size > 0) writeOwnership(tx, layer, updates, blocks, now, uid);
+
+      /**
+       * A HALADÁS az aktivitás dokumentumára kerül.
+       *
+       * A kliens ezt a dokumentumot már látja (a sajátja), tehát egyetlen
+       * feliratkozásból megtudja, hol tart a mentés — nem kell a belső
+       * `claimParts` alkollekciót megnyitni előtte.
+       *
+       * A csoportokat sorban dolgozzuk fel, ezért az `index + 1` a valóban
+       * elkészült csoportok száma.
+       */
+      tx.set(
+        activityRef,
+        { claimProgress: { done: index + 1, total: groups.length }, updatedAt: now },
+        { merge: true },
+      );
 
       tx.set(partRef, {
         group: index,
@@ -409,6 +427,7 @@ async function closeBooks(
         summary,
         claimStatus: 'done',
         claimGroups: groupCount,
+        claimProgress: { done: groupCount, total: groupCount },
         updatedAt: now,
       },
       { merge: true },

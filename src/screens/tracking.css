@@ -511,3 +511,84 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Mentés folyamatban ──────────────────────────────────────────────
+   A hatszögek nem díszítés: egy Balaton-méretű mentés ~25 másodperc, és
+   enélkül a felhasználó egy néma feliratot néz. Ha a szerver mérhető haladást
+   ad (darabolt mentés), a hatszögek BALRÓL JOBBRA telnek meg a valódi
+   állapot szerint; ha nincs mit mérni, csak lélegzenek. */
+
+.track__saving {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+
+.track__saving-hexes {
+  display: flex;
+  gap: 4px;
+}
+
+.track__saving-hex {
+  width: 16px;
+  height: 18px;
+  background: var(--bg-tertiary);
+  /* Hatszög — ugyanaz az alak, mint a játék mezője. */
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  transition: background-color 260ms ease;
+}
+
+.track__saving-hex--on {
+  background: var(--accent);
+}
+
+.track__saving-hex--pulse {
+  animation: track-hex-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes track-hex-breathe {
+  0%, 100% { background-color: var(--bg-tertiary); }
+  50%      { background-color: var(--accent); }
+}
+
+.track__saving-title {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.track__saving-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.track__saving-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 320ms ease;
+}
+
+.track__saving-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* A folyamatos animáció mozgásérzékenységre kikapcsolható — a haladást a
+   számok és a sáv akkor is mutatják. */
+@media (prefers-reduced-motion: reduce) {
+  .track__saving-hex--pulse {
+    animation: none;
+    background: var(--accent);
+    opacity: 0.5;
+  }
+  .track__saving-fill,
+  .track__saving-hex {
+    transition: none;
+  }
+}

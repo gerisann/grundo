@@ -6,6 +6,7 @@ import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
+import { useClaimProgress } from '@/hooks/useClaimProgress';
 import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
@@ -525,6 +526,71 @@ export function TrackingScreen() {
    vesszük, hogy a jelzést már látta: jobb egyszer kihagyni, mint minden
    megnyitásnál újra az arcába tolni. */
 
+/**
+ * A mentés folyamata — VALÓDI haladással.
+ *
+ * Egy hétköznapi futás mentése egy pillanat: ott csak a „Mentés folyamatban"
+ * felirat és a lélegző hatszögek látszanak. Egy nagyon nagy körnél viszont a
+ * foglalás blokkcsoportokra bomlik, és a szerver csoportonként megírja, hol
+ * tart — ilyenkor a felhasználó a TÉNYLEGES állapotot látja, nem egy előre
+ * felvett folyamatjelzőt.
+ *
+ * Miért fontos ez? Egy Balaton-méretű mentés ~25 másodperc. Enélkül a
+ * felhasználó egy néma feliratot néz, és azt hiszi, lefagyott az app.
+ */
+function SavingPanel({ activityId }: { activityId: string | null }) {
+  const progress = useClaimProgress(activityId, true);
+  const chunked = progress !== null && progress.total > 1;
+  const ratio = chunked ? progress.done / progress.total : 0;
+
+  /** Tizenkét hatszög — ennyi elég a látványhoz, és bármennyi szakaszra igaz. */
+  const HEXES = 12;
+  const filled = chunked ? Math.round(ratio * HEXES) : 0;
+
+  return (
+    <div className="track__panel track__saving" role="status" aria-live="polite">
+      <div className="track__saving-hexes" aria-hidden="true">
+        {Array.from({ length: HEXES }, (_, index) => (
+          <span
+            key={index}
+            className={
+              'track__saving-hex' +
+              (chunked
+                ? index < filled
+                  ? ' track__saving-hex--on'
+                  : ''
+                : ' track__saving-hex--pulse')
+            }
+            /* Lépcsőzetes késleltetés: a hatszögek egymás után lélegzenek,
+               ettől lesz mozgás akkor is, ha nincs mérhető haladás. */
+            style={chunked ? undefined : { animationDelay: `${index * 90}ms` }}
+          />
+        ))}
+      </div>
+
+      <strong className="track__saving-title">
+        {chunked ? 'Területek mentése' : 'Mentés folyamatban'}
+      </strong>
+
+      {chunked ? (
+        <>
+          <div className="track__saving-bar">
+            <div
+              className="track__saving-fill"
+              style={{ width: `${Math.round(ratio * 100)}%` }}
+            />
+          </div>
+          <span className="track__saving-note">
+            {progress.done} / {progress.total} szakasz · nagy kör, ez eltarthat egy kicsit
+          </span>
+        </>
+      ) : (
+        <span className="track__saving-note">Az útvonal feltöltése és a terület elszámolása…</span>
+      )}
+    </div>
+  );
+}
+
 function readFlag(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -818,7 +884,7 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
   const { upload } = recorder;
 
   if (upload.status === 'sending') {
-    return <p className="track__note">Mentés folyamatban…</p>;
+    return <SavingPanel activityId={recorder.state.id} />;
   }
 
   if (upload.status === 'error') {

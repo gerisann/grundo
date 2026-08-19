@@ -597,4 +597,40 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     }
     expect(mixedFound).toBeGreaterThan(0);
   });
+
+  /**
+   * A MENTÉS HALADÁSA — ebből él a felület folyamatjelzője.
+   *
+   * Egy Balaton-méretű mentés ~25 másodperc. A felhasználó ezalatt a valódi
+   * állapotot látja, nem egy előre felvett animációt — de csak akkor, ha a
+   * szerver tényleg kiírja, hol tart. Ha ez elromlik, a felület csendben
+   * végig „ismeretlen"-t mutatna, és ezt élesben senki nem venné észre.
+   */
+  it('a darabolt mentés kiírja a haladást az aktivitásra', async () => {
+    const points = freshLoop(300);
+    const { planActivity } = await import('../lib/activityCommit');
+    const { commitChunkedActivity } = await import('../lib/activityChunked');
+
+    const plan = planActivity({
+      activityId: 'activity-progress',
+      uid: 'alice',
+      type: 'run',
+      points,
+      startedAt: points[0]!.t,
+      endedAt: points[points.length - 1]!.t,
+      movingMs: points[points.length - 1]!.t - points[0]!.t,
+    });
+    await commitChunkedActivity(plan);
+
+    const activity = (
+      await db.collection(collections.activities!).doc('activity-progress').get()
+    ).data()!;
+
+    // A könyvelés lezárult, és a haladás teljes.
+    expect(activity.claimStatus).toBe('done');
+    expect(activity.claimProgress.total).toBeGreaterThan(0);
+    expect(activity.claimProgress.done).toBe(activity.claimProgress.total);
+    // A csoportszám és a haladás összege ugyanazt mondja.
+    expect(activity.claimProgress.total).toBe(activity.claimGroups);
+  });
 });
