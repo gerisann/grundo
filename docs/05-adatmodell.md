@@ -241,21 +241,50 @@ dokumentumonként 40 000-es plafonnal. Lekérdezni sosem kell rá, mindig a telj
 listát olvassuk. A dokumentum 1 MB-os korlátja így ~40 000 blokknál (≈4 200 km²)
 jelentene határt.
 
-Efölött a mentés stabil `activity_too_large` hibakóddal áll meg, magyar
-üzenettel. **Részleges mentés nem keletkezhet:** a hiba a tranzakción belül
-dobódik, tehát a Firestore minden addigi írást eldob.
+Efölött a mentés **nem áll meg**: átvált a darabolt útra.
+
+##### Darabolt mentés
+
+Ami nem fér egyetlen tranzakcióba, az három fázisban megy:
+
+1. **Foglalás** — az aktivitás, a nyomvonal, a trust és az audit. Fix méretű,
+   mindig belefér. Az aktivitás `claimStatus: 'pending'` állapotban jön létre,
+   tehát a felhasználó azonnal látja a mozgását.
+2. **Csoportok** — blokkcsoportonként (400 blokk) egy tranzakció. Minden
+   csoport a saját eredményét `activities/{id}/claimParts/{groupId}` alá írja,
+   determinisztikus azonosítóval — ezért újrafuttatható, és kétszer nem
+   könyvelhet.
+3. **Könyvzárás** — a részek összegzéséből GP, profil, károsultak, események.
+   `claimStatus: done`.
+
+**Miért helyes a darabolás?** Mert a birtoklási döntés cellánkénti és blokkok
+között független: a `resolveClaim` minden mezőt kizárólag a saját aktuális
+tulajdonviszonyából ítél meg. Egy csoport tranzakciója tehát önmagában is
+helyes, ha a saját blokkjait frissen beolvassa. Ami nem független — a GP
+összesítése és az árva mező kétgyűrűs környezete —, azt külön kezeljük: az
+előbbit a záró fázis, az utóbbit az olvasásban túlnyúló csoport.
+
+**Az ára** az atomicitás egy része: a nagy foglalás néhány másodperc alatt
+terül szét, és eközben egy konkurens játékos félig alkalmazott állapotot
+láthat. A cellánként első sikeres commit szabálya viszont nem sérül.
+
+**Nincs sor (Cloud Tasks).** Egy 200 km-es kör ~15 tranzakció, néhány
+másodperc — a Cloud Run időkorlátja alatt nagyságrenddel. A sort akkor
+vezetjük be, ha a kérések tényleg időtúllépésbe futnak.
+
+Egy kérésben legfeljebb 40 csoport indul, azaz **16 000 blokk (≈1 680 km²)**.
+Efölött stabil `activity_too_large` hibakód jön — ott lesz a helye a valódi
+sorbaállításnak.
+
+Az egyenértékűséget emulátoros teszt őrzi: ugyanaz a bemenet a két úton
+**bitre azonos rácsot** kell adjon.
 
 **FONTOS: az írásszám a TERÜLETTŐL függ, nem a cellafelbontástól.** Egy blokk
 egy res 9 hatszög (~0,105 km²) — hogy 343 db res 12 vagy 49 db res 11 cella van
 benne, az a dokumentum méretét változtatja, az érintett blokkok SZÁMÁT nem.
 
-**Ez nem végállapot.** A 200 km-es körök (a Balaton-kör ~5 700 blokk, ~11 400
-írás) kiszolgálásához a foglalást több tranzakcióra kell bontani vagy
-sorbaállítani. A darabolás ára az atomicitás: blokkonként külön commitolva egy
-konkurens foglalás félig kész állapotot láthat. A várható megoldás egy
-Cloud Tasks sor, aktivitásonként egy feldolgozóval és blokkcsoportonként egy
-tranzakcióval, az aktivitáson `claimPending` jelöléssel — ez még tervezés alatt
-áll.
+**A foglalás oldaláról ez megoldva.** Ami a 200 km-es körből még hiányzik, az
+a motor befoglaló-doboz plafonja (`MAX_LOOP_BBOX_CELLS`, ~143 km²).
 
 ### `zones/{zoneId}` — származtatott, megjelenítéshez
 

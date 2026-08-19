@@ -183,7 +183,7 @@ Két valódi plafon maradt, és mindkettő technikai, nem játékszabály:
 | Plafon | Hol | Érték | Mi történik |
 |---|---|---|---|
 | Hurok befoglaló doboza | `GAMEPLAY.MAX_LOOP_BBOX_CELLS` | 500 000 cella ≈ **143 km²** | a hurok **kimarad** a foglalásból |
-| Tranzakció írásszáma | Firestore, `FIRESTORE_MAX_TRANSACTION_WRITES` | 500 írás ≈ 492 blokk ≈ **26 km-es kör** | az elszámolás hibaüzenetet ad |
+| ~~Tranzakció írásszáma~~ | ~~Firestore~~ | — | **Megszűnt** 2026-08-19-én: a darabolt mentés blokkcsoportonként külön tranzakcióban számol el. |
 
 Mért értékek négyzet alakú körökre: 10 km → 20 445 cella / 80 blokk; 20 km →
 81 114 cella / 270 blokk; 48 km → 464 996 cella / 1 444 blokk; 50 km fölött a
@@ -195,9 +195,11 @@ hurok már a befoglaló doboz plafonjába ütközik.
 nem lát: nulla területet kap magyarázat nélkül. Ez ismert hiányosság.
 
 A cél a **200 km-es kör** kiszolgálása (a Balaton-kör ~600 km², ~1,95 millió
-cella, ~5 700 blokk). Ehhez mindkét plafon feloldása kell: a flood fillnek
-darabolva kell futnia, a foglalásnak pedig több tranzakcióra bontva vagy
-sorbaállítva — lásd [05](05-adatmodell.md) → „Nagy foglalások".
+cella, ~5 700 blokk). A foglalás oldaláról ez **megoldva**: a darabolt mentés
+16 000 blokkig (≈1 680 km²) elszámol. Ami maradt, az a **befoglaló doboz
+plafonja**: a flood fill 500 000 cella fölött feladja, és ez ~143 km²-nél,
+vagyis ~49 km kerületű körnél fog. A Balaton-kör ennek a négyszerese, tehát
+ehhez a flood fillnek darabolva vagy durvább felbontáson kell futnia — lásd [05](05-adatmodell.md) → „Nagy foglalások".
 
 ---
 

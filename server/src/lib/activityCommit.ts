@@ -44,7 +44,13 @@ import { levelFor } from '../../../src/game/levels';
 import { distanceM } from '../../../src/game/geo';
 import { trimPrivateEnds, type PrivacySettings } from '../../../src/game/privacy';
 import { GAMEPLAY } from '../../../src/config/gameplay';
-import type { ActivityType, CellId, Layer, TracePoint } from '../../../src/types';
+import type {
+  ActivityType,
+  CellId,
+  DetectedLoop,
+  Layer,
+  TracePoint,
+} from '../../../src/types';
 
 /**
  * A Firestore KEMÉNY korlátja: egy tranzakció legfeljebb 500 írást tartalmazhat.
@@ -65,7 +71,7 @@ import type { ActivityType, CellId, Layer, TracePoint } from '../../../src/types
  * → „Nagy foglalások". Addig a nagyon nagy kör hibaüzenetet kap, de nem
  * mentődik el félig: a tranzakció mindent eldob.
  */
-const FIRESTORE_MAX_TRANSACTION_WRITES = 500;
+export const FIRESTORE_MAX_TRANSACTION_WRITES = 500;
 
 /**
  * Az aktivitásonként MINDIG megírt dokumentumok száma.
@@ -84,7 +90,7 @@ const FIXED_ACTIVITY_WRITES = 8;
  * Firestore 500-as korlátjába. A mutató mostantól rétegenként EGYETLEN,
  * `arrayUnion`-nel bővített dokumentum — lásd `writeOwnership`.
  */
-function transactionWrites(blockCount: number, victimCount: number): number {
+export function transactionWrites(blockCount: number, victimCount: number): number {
   return FIXED_ACTIVITY_WRITES + blockCount + victimCount * 2;
 }
 
@@ -146,6 +152,25 @@ export interface ActivityPlan extends ActivityInput {
   blockIds: string[];
   now: Date;
   today: number;
+  /**
+   * A felismert bezárások — a darabolt úthoz.
+   *
+   * A geometria a nyomvonalból következik, tehát EGYSZER kell kiszámolni. A
+   * darabolt mentés csoportonként csak a birtoklási döntést ismétli meg, a
+   * hurokfelismerést és a flood fillt nem — különben egy 200 km-es körnél
+   * tizenötször futna le a legdrágább számítás.
+   */
+  loops: DetectedLoop[];
+}
+
+/**
+ * Elfér-e a foglalás EGYETLEN tranzakcióba?
+ *
+ * A károsultak száma itt még nem ismert, ezért nélkülük számolunk. Ha már így
+ * sem fér bele, biztosan a darabolt út kell.
+ */
+export function fitsOneTransaction(plan: ActivityPlan): boolean {
+  return transactionWrites(plan.blockIds.length, 0) <= FIRESTORE_MAX_TRANSACTION_WRITES;
 }
 
 export interface CommitOutcome {
@@ -194,17 +219,13 @@ export function planActivity(input: ActivityInput): ActivityPlan {
   const orphanScope = expandCellScope(candidateCells, 2);
   const blockIds = [...blocksFor(layer, orphanScope).keys()];
   /**
-   * A blokkszám a tranzakció méretének DÖNTŐ tényezője, és már itt ismert —
-   * a károsultak még nem. Ezért itt károsultak nélkül számolunk: ha már így
-   * sem fér bele, felesleges elindítani a tranzakciót. A pontos, károsultakat
-   * is tartalmazó ellenőrzés a tranzakción belül van.
+   * ITT MÁR NINCS MÉRETKORLÁT.
+   *
+   * Ami nem fér egyetlen tranzakcióba, azt a darabolt út veszi át
+   * (`commitChunkedActivity`). A méret önmagában nem lehet ok arra, hogy
+   * valakinek elvesszen a köre. A gyors és a darabolt út közül a hívó a
+   * `fitsOneTransaction()` alapján választ.
    */
-  if (transactionWrites(blockIds.length, 0) > FIRESTORE_MAX_TRANSACTION_WRITES) {
-    throw badRequest(
-      'activity_too_large',
-      'Ez a kör akkora területet zár be, amit egyetlen mentésben még nem tudunk elszámolni. Az aktivitás adatai megvannak — szólj nekünk, és feldolgozzuk.',
-    );
-  }
 
   const now = new Date();
   const today = gameDay(now);
@@ -212,6 +233,7 @@ export function planActivity(input: ActivityInput): ActivityPlan {
   return {
     ...input,
     layer,
+    loops: probe.loops,
     distanceM: serverDistanceM,
     candidateCells,
     orphanScope,
@@ -503,7 +525,7 @@ export async function commitActivity(
 
 /* ══ Segédek ══════════════════════════════════════════════ */
 
-function totalDistance(points: readonly TracePoint[]): number {
+export function totalDistance(points: readonly TracePoint[]): number {
   let sum = 0;
   for (let i = 1; i < points.length; i += 1) {
     sum += distanceM(points[i - 1]!, points[i]!);
@@ -511,7 +533,7 @@ function totalDistance(points: readonly TracePoint[]): number {
   return sum;
 }
 
-interface StoredStreak {
+export interface StoredStreak {
   current?: number;
   longest?: number;
   /** A legutóbbi aktív nap, játéknap-számként. */
@@ -565,7 +587,7 @@ export function advanceStreak(streak: StoredStreak | undefined, activityDay: num
   };
 }
 
-function boundsOf(points: readonly TracePoint[]) {
+export function boundsOf(points: readonly TracePoint[]) {
   let north = -90;
   let south = 90;
   let east = -180;

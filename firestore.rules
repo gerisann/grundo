@@ -139,6 +139,17 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      /**
+       * A darabolt foglalás részeredményei — BELSŐ KÖNYVELÉS.
+       *
+       * Csoportonként egy dokumentum, determinisztikus azonosítóval; ebből
+       * áll össze a végén a GP és az összesítő. A kliensnek semmi dolga vele,
+       * és nem is szabad írnia: abból hamis területelszámolás lenne.
+       */
+      match /claimParts/{groupId} {
+        allow read, write: if false;
+      }
+
       // A kedvelés a SZERVEREN keresztul megy (POST/DELETE /api/activities/:id/like).
       //
       // MIÉRT nem írhatja a kliens közvetlenül, ha csak a saját dokumentumáról

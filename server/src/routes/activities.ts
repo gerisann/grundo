@@ -19,7 +19,13 @@ import {
  * területfoglalás, a pontszámítás és a tranzakció az `activityCommit`-ban van
  * — lásd az ottani fejlécet arról, miért pont ott húzódik a határ.
  */
-import { commitActivity, planActivity, sanitizePublicSummary } from '../lib/activityCommit';
+import {
+  commitActivity,
+  fitsOneTransaction,
+  planActivity,
+  sanitizePublicSummary,
+} from '../lib/activityCommit';
+import { commitChunkedActivity } from '../lib/activityChunked';
 
 export const activitiesRouter = Router();
 
@@ -112,9 +118,19 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     // Geometria és méretellenőrzés — determinisztikus, tranzakción kívül.
     const plan = planActivity({ activityId, uid, type, points, startedAt, endedAt, movingMs });
 
-    // A birtokviszonytól függő rész. Ütközéskor a Firestore ezt a callbacket
-    // futtatja újra, friss állapotból — lásd `commitActivity`.
-    const committed = await db.runTransaction((tx) => commitActivity(tx, plan));
+    /**
+     * A birtokviszonytól függő rész — KÉT ÚT KÖZÜL AZ EGYIKEN.
+     *
+     * A hétköznapi aktivitás elfér egyetlen tranzakcióban, és azon a gyors
+     * úton megy: ütközéskor a Firestore újrafuttatja a callbacket, friss
+     * állapotból. Ami nem fér bele — nagyjából 26 km kerületű kör fölött —,
+     * az a darabolt úton, blokkcsoportonként egy tranzakcióval.
+     *
+     * A méret önmagában tehát SOHA nem ok arra, hogy elvesszen a kör.
+     */
+    const committed = fitsOneTransaction(plan)
+      ? await db.runTransaction((tx) => commitActivity(tx, plan))
+      : await commitChunkedActivity(plan);
 
     if (committed.duplicate) {
       return res.json({ activityId, summary: committed.summary, duplicate: true });

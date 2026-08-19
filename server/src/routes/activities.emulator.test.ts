@@ -414,4 +414,101 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     expect(body.cellCount).toBeGreaterThan(0);
     expect(body.blockCount).toBe(blocks.length);
   });
+
+  /** A teljes rács pillanatképe: cella → „tulajdonos:védelem". */
+  async function gridSnapshot(): Promise<Record<string, string>> {
+    const blocks = await db.collection(collections.grid!).get();
+    const out: Record<string, string> = {};
+    for (const block of blocks.docs) {
+      const cells = (block.data().cells ?? {}) as Record<string, { o: string; d: number }>;
+      for (const [key, cell] of Object.entries(cells)) {
+        out[`${block.id}:${key}`] = `${cell.o}:${cell.d}`;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * A KÉT ÚT EGYENÉRTÉKŰSÉGE.
+   *
+   * A darabolt mentés csak akkor jó, ha ugyanazt az eredményt adja, mint az
+   * egytranzakciós. Ezt nem 26 km-es nyomvonallal bizonyítjuk — az percekig
+   * futna —, hanem úgy, hogy UGYANAZT a kis kört engedjük át mindkét úton,
+   * tiszta adatbázison, és összevetjük, mi lett a rácsban és a profilon.
+   *
+   * Ha valaha elcsúsznak, ez a teszt fog megbukni, nem egy felhasználó
+   * területe.
+   */
+  it('a darabolt út ugyanazt adja, mint az egytranzakciós', async () => {
+    const points = freshLoop(300);
+    const { planActivity } = await import('../lib/activityCommit');
+    const { commitChunkedActivity } = await import('../lib/activityChunked');
+
+    // (a) gyors út
+    const fast = await upload('alice', 'activity-fastpath', points);
+    const fastGrid = await gridSnapshot();
+    const fastUser = (await db.collection(collections.users!).doc('alice').get()).data()!;
+
+    // (b) darabolt út, tiszta lappal, ugyanazzal a bemenettel
+    await wipe();
+    await seedUser('alice');
+    const plan = planActivity({
+      activityId: 'activity-chunked1',
+      uid: 'alice',
+      type: 'run',
+      points,
+      startedAt: points[0]!.t,
+      endedAt: points[points.length - 1]!.t,
+      movingMs: points[points.length - 1]!.t - points[0]!.t,
+    });
+    const chunked = await commitChunkedActivity(plan);
+    const chunkedGrid = await gridSnapshot();
+    const chunkedUser = (await db.collection(collections.users!).doc('alice').get()).data()!;
+
+    const fastSummary = fast.body.summary as unknown as Record<string, number>;
+    const chunkedSummary = chunked.summary as Record<string, number>;
+
+    // Ugyanaz a terület, ugyanannyi mező, ugyanannyi pont.
+    expect(chunkedSummary.claimedCells).toBe(fastSummary.claimedCells);
+    expect(chunkedSummary.areaGainedM2).toBe(fastSummary.areaGainedM2);
+    expect(chunkedSummary.gp).toBe(fastSummary.gp);
+
+    // És bitre ugyanaz a rács: minden cella ugyanazzal a tulajdonossal és
+    // védelmi szinttel.
+    expect(chunkedGrid).toEqual(fastGrid);
+
+    expect(chunkedUser.gpTotal).toBe(fastUser.gpTotal);
+    expect(chunkedUser.cellCount.foot).toBe(fastUser.cellCount.foot);
+    expect(chunkedUser.territoryM2.foot).toBe(fastUser.territoryM2.foot);
+  });
+
+  it('a darabolt mentés is idempotens', async () => {
+    const points = freshLoop();
+    const { planActivity } = await import('../lib/activityCommit');
+    const { commitChunkedActivity } = await import('../lib/activityChunked');
+
+    const makePlan = () =>
+      planActivity({
+        activityId: 'activity-chunkdup',
+        uid: 'alice',
+        type: 'run',
+        points,
+        startedAt: points[0]!.t,
+        endedAt: points[points.length - 1]!.t,
+        movingMs: points[points.length - 1]!.t - points[0]!.t,
+      });
+
+    const first = await commitChunkedActivity(makePlan());
+    const second = await commitChunkedActivity(makePlan());
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(true);
+
+    const user = (await db.collection(collections.users!).doc('alice').get()).data()!;
+    expect(user.gpTotal).toBe((first.summary as Record<string, number>).gp);
+    expect(user.counters.activities).toBe(1);
+
+    const ledger = await db.collection(collections.gpLedger!).get();
+    expect(ledger.size).toBe(1);
+  });
 });
