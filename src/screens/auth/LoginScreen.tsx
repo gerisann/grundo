@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, TextField } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
-import { authErrorMessage, isAccountLinkError } from '@/lib/authErrors';
+import { authErrorMessage, isAccountLinkError, isGoogleAccountError } from '@/lib/authErrors';
 import { validateEmail } from '@/lib/validation';
 import { FirebaseNotice } from './FirebaseNotice';
 import './auth.css';
@@ -16,6 +16,8 @@ export function LoginScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState('');
   const [linkHint, setLinkHint] = useState(false);
+  /** Google-fiókkal regisztrált, de jelszóval próbálkozik. */
+  const [googleHint, setGoogleHint] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -46,7 +48,19 @@ export function LoginScreen() {
       await signInWithIdentifier(value, password);
       navigate('/');
     } catch (error) {
-      setFormError(authErrorMessage(error));
+      /**
+       * A Google-fiókos eset NEM sima hibaüzenet.
+       *
+       * Ehhez a fiókhoz nincs jelszó, tehát az újrapróbálkozás sosem sikerül.
+       * A felhasználónak nem azt kell mondani, hogy „hibás adat", hanem hogy
+       * merre menjen — ezért kap egy gombot is, nem csak szöveget.
+       */
+      if (isGoogleAccountError(error)) {
+        setGoogleHint(true);
+        setFormError('');
+      } else {
+        setFormError(authErrorMessage(error));
+      }
     } finally {
       setBusy(false);
     }
@@ -55,6 +69,7 @@ export function LoginScreen() {
   async function google() {
     setFormError('');
     setLinkHint(false);
+    setGoogleHint(false);
     setBusy(true);
     try {
       await signInWithGoogle();
@@ -83,6 +98,19 @@ export function LoginScreen() {
             {formError}
           </div>
         ) : null}
+        {googleHint ? (
+          <div className="auth__notice">
+            <strong>Szia! Ezt a fiókot Google-fiókkal hoztad létre.</strong>{' '}
+            Jelszó nem tartozik hozzá, ezért a lenti <strong>Belépés Google-fiókkal</strong>{' '}
+            gombbal tudsz bejelentkezni.
+            <div style={{ marginTop: 'var(--sp-3)' }}>
+              <Button size="sm" onClick={() => void google()} disabled={busy}>
+                Belépés Google-fiókkal
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         {linkHint ? (
           <div className="auth__notice">
             Lépj be a jelszavaddal, majd a <strong>Beállítások → Bejelentkezési módok</strong>{' '}

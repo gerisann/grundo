@@ -427,6 +427,23 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
+  /**
+   * Google-fiókos ez az azonosító?
+   *
+   * CSAK SIKERTELEN BELÉPÉS UTÁN hívjuk. Egy Google-lel regisztrált fiókhoz
+   * nem tartozik jelszó, tehát a felhasználó hiába próbálkozik újra — meg kell
+   * mondani neki, hogy a Google-gombot keresse.
+   *
+   * Hibát SOSEM dob: ha a kérdés nem megválaszolható (hálózat, végpont), az
+   * eredeti belépési hibaüzenet marad. Egy segítő üzenet hiánya nem indok
+   * arra, hogy a valódi hibát elrejtsük.
+   */
+  signInMethod: (identifier: string) =>
+    request<{ googleOnly: boolean }>('/api/auth/method', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    }).catch(() => ({ googleOnly: false })),
+
   register: (username: string) =>
     request<{ profile: Profile }>('/api/auth/register', {
       method: 'POST',

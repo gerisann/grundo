@@ -39,6 +39,21 @@ export interface RegisterInput {
   password: string;
 }
 
+/**
+ * „Ezt a fiókot Google-lel hoztad létre."
+ *
+ * Saját hibatípus, hogy a belépőképernyő fel tudja ismerni, és ne csak egy
+ * szöveget mutasson, hanem a Google-gombra is irányíthasson.
+ */
+export class GoogleAccountError extends Error {
+  readonly code = 'use_google';
+
+  constructor() {
+    super('Ezt a fiókot Google-fiókkal hoztad létre. Lépj be a Google-gombbal.');
+    this.name = 'GoogleAccountError';
+  }
+}
+
 const AuthContext = createContext<AuthApi | null>(null);
 
 export function useAuth(): AuthApi {
@@ -99,7 +114,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const value = identifier.trim();
 
         if (value.includes('@')) {
-          await signInWithEmailAndPassword(instance, value, password);
+          try {
+            await signInWithEmailAndPassword(instance, value, password);
+          } catch (error) {
+            /**
+             * A GOOGLE-FIÓKOS FELHASZNÁLÓ ITT RAGADT MEG.
+             *
+             * E-mail-lel a Firebase-hez fordulunk közvetlenül, és onnan csak
+             * annyi jön vissza, hogy „hibás adat" — pedig a fiókhoz egyáltalán
+             * nem tartozik jelszó, tehát a felhasználó a világ végezetéig
+             * próbálkozhatna. Azt, hogy ez a helyzet, csak a szerver tudja
+             * megmondani, ezért kérdezzük meg — de CSAK a hiba után, hogy a
+             * sikeres belépés ne kapjon fölösleges körbefordulót.
+             */
+            if (apiConfigured) {
+              const { googleOnly } = await backend.signInMethod(value);
+              if (googleOnly) throw new GoogleAccountError();
+            }
+            throw error;
+          }
           return;
         }
 

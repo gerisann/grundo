@@ -206,7 +206,18 @@ export const loginHandler: RequestHandler = async (req, res, next) => {
       );
     }
 
-    const email = await emailForUsername(username);
+    const record = await recordForUsername(username);
+    /**
+     * A GOOGLE-FIÓKOS FELHASZNÁLÓNAK MEGMONDJUK, MI A TEENDŐ.
+     *
+     * Enélkül csak annyit kapott, hogy „hibás felhasználónév vagy jelszó" —
+     * és mivel jelszava sosem volt, ezt a falat nem tudta megkerülni. Az
+     * egységes hibaüzenet a NEM LÉTEZŐ fiókot védi; egy létező fiók belépési
+     * módját elárulni ennél kisebb ár, mint hogy a felhasználó kizárja magát.
+     */
+    if (isGoogleOnly(record)) throw useGoogleError();
+
+    const email = record?.email ?? null;
     if (!email) throw invalidCredentials();
 
     const response = await fetch(`${SIGN_IN_URL}?key=${apiKey}`, {
@@ -255,13 +266,69 @@ export const loginHandler: RequestHandler = async (req, res, next) => {
  */
 const invalidCredentials = () => unauthorized('Hibás felhasználónév vagy jelszó.');
 
-async function emailForUsername(raw: string): Promise<string | null> {
+/**
+ * POST /api/auth/method — Google-fiókos ez az azonosító?
+ *
+ * MIÉRT KELL KÜLÖN VÉGPONT? Mert e-mail-lel a kliens KÖZVETLENÜL a Firebase-hez
+ * fordul, és onnan csak annyit kap, hogy „hibás adat". Azt, hogy a fiókhoz
+ * egyáltalán nem tartozik jelszó, csak az Admin SDK tudja megmondani.
+ *
+ * ⚠️ A KLIENS EZT CSAK SIKERTELEN BELÉPÉS UTÁN HÍVJA. Így nem lesz belőle
+ * szabadon pörgethető névellenőrző: aki idáig eljut, az már megadott egy
+ * azonosítót és egy jelszót.
+ *
+ * A válasz SZÁNDÉKOSAN egyetlen logikai érték. Nem mondjuk meg, hogy létezik-e
+ * a fiók, csak azt, hogy „ezzel Google-lel kell belépni" — a nem létező és a
+ * jelszavas fiók egyformán `false`-t kap.
+ *
+ * ⚠️ NYILVÁNOS VÉGPONT, hitelesítés nélkül — ahogy a `loginHandler` is. Aki
+ * még nem tud belépni, annak épp ezért nincs tokenje. A `server.ts`-ben az
+ * `/api/auth` hitelesített mountja ELŐTT kell felfűzni, különben elérhetetlen.
+ */
+export const signInMethodHandler: RequestHandler = async (req, res, next) => {
+  try {
+    const identifier = String((req.body as { identifier?: unknown }).identifier ?? '').trim();
+    if (!identifier || identifier.length > 320) {
+      return res.json({ googleOnly: false });
+    }
+
+    const record = identifier.includes('@')
+      ? await adminAuth.getUserByEmail(identifier).catch(() => null)
+      : await recordForUsername(identifier);
+
+    res.json({ googleOnly: isGoogleOnly(record) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+async function recordForUsername(raw: string) {
   const snapshot = await db.collection(COLLECTIONS.usernames).doc(normalizeUsername(raw)).get();
   const uid = snapshot.exists ? (snapshot.data() as { uid?: string }).uid : null;
   if (!uid) return null;
-  const record = await adminAuth.getUser(uid).catch(() => null);
-  return record?.email ?? null;
+  return adminAuth.getUser(uid).catch(() => null);
 }
+
+/**
+ * Csak Google-lel lehet belépni ebbe a fiókba?
+ *
+ * Akkor igaz, ha van Google-szolgáltatója, de jelszava NINCS. Az ilyen
+ * felhasználó hiába írja be az e-mail-címét és bármilyen jelszót — a Firebase
+ * „hibás adat"-ot mond, mert jelszó egyszerűen nem tartozik a fiókhoz.
+ */
+function isGoogleOnly(record: { providerData: { providerId: string }[] } | null): boolean {
+  if (!record) return false;
+  const providers = record.providerData.map((p) => p.providerId);
+  return providers.includes('google.com') && !providers.includes('password');
+}
+
+/** A Google-fiókosnak szóló üzenet — egy helyen, hogy a két út ugyanazt mondja. */
+const useGoogleError = () =>
+  new HttpError(
+    409,
+    'use_google',
+    'Ezt a fiókot Google-fiókkal hoztad létre. Lépj be a „Belépés Google-fiókkal" gombbal.',
+  );
 
 function isOwnAvatarUrl(raw: string, uid: string): boolean {
   try {

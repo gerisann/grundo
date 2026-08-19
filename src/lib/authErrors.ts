@@ -56,6 +56,22 @@ export function authErrorMessage(error: unknown): string {
 }
 
 /** Igaz, ha a hiba fiókösszevonást igényel — a felület ilyenkor mást ajánl. */
+/**
+ * Google-fiókos felhasználó próbált jelszóval belépni?
+ *
+ * Két helyről jöhet ugyanaz a helyzet, ezért mindkettőt ismerjük:
+ *   - `use_google` — a szervertől, ha felhasználónévvel próbálkozott;
+ *   - `GoogleAccountError` — a klienstől, ha e-maillel (ott a Firebase csak
+ *     annyit mond, hogy „hibás adat", és utólag kérdezzük meg a szervert).
+ */
+export function isGoogleAccountError(error: unknown): boolean {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : '';
+  return code === 'use_google';
+}
+
 export function isAccountLinkError(error: unknown): boolean {
   const code =
     typeof error === 'object' && error !== null && 'code' in error

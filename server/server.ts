@@ -13,7 +13,12 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { auth as adminAuth, db, FIRESTORE_DATABASE_ID } from './src/lib/firebase';
 import { HttpError, unauthorized } from './src/lib/errors';
 
-import { authRouter, loginHandler, meHandler } from './src/routes/auth';
+import {
+  authRouter,
+  loginHandler,
+  meHandler,
+  signInMethodHandler,
+} from './src/routes/auth';
 import { activitiesRouter } from './src/routes/activities';
 import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
@@ -100,6 +105,15 @@ app.get('/api/me', authenticate, meHandler);
  * nem tudna belépni a felhasználónevével.
  */
 app.post('/api/auth/login', loginHandler);
+
+/**
+ * Szintén NYILVÁNOS: aki még nem tud belépni, annak nincs tokenje.
+ *
+ * Ez mondja meg, hogy egy fiókba csak Google-lel lehet-e belépni. A kliens
+ * kizárólag SIKERTELEN belépés után hívja, tehát nem lesz belőle szabadon
+ * pörgethető névellenőrző.
+ */
+app.post('/api/auth/method', signInMethodHandler);
 
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);
