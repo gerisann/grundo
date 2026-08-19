@@ -9,7 +9,12 @@ import {
   tooManyRequests,
   unauthorized,
 } from '../lib/errors';
-import { createMailer, otpEmail } from '../lib/mailer';
+import {
+  adminNotifyAddress,
+  createMailer,
+  newAccountEmail,
+  otpEmail,
+} from '../lib/mailer';
 import { canResend, createOtp, verifyOtp, type OtpRecord } from '../lib/otp';
 import { displayUsername, newUserDoc, normalizeUsername, validateUsername } from '../lib/user';
 import type { AuthedRequest } from '../../server';
@@ -331,6 +336,39 @@ authRouter.post('/register', async (req: AuthedRequest, res: Response, next) => 
     });
 
     res.status(201).json({ profile: { uid, ...profile } });
+
+    /**
+     * Belső értesítő az új fiókról — A VÁLASZ UTÁN, tűzz-és-felejtsd módon.
+     *
+     * ⚠️ EGY LEVELEZÉSI HIBA SOHA NEM BUKTATHATJA EL A REGISZTRÁCIÓT. A
+     * felhasználó szempontjából a fiók már létrejött; ha az SMTP-szolgáltató
+     * éppen nem elérhető, az a mi üzemeltetési gondunk, nem az övé. Ezért van
+     * a `res.json` UTÁN, és ezért nyeli el a hibát a naplóba.
+     *
+     * A `next(error)` sem hívható már itt: a válasz elment, a fejlécek
+     * kimentek — egy második `res` hívás futásidejű hibát dobna.
+     */
+    void (async () => {
+      try {
+        const record = await adminAuth.getUser(uid);
+        await mailer.send({
+          to: adminNotifyAddress(),
+          ...newAccountEmail({
+            uid,
+            username,
+            email: record.email ?? '',
+            providers: record.providerData.map((p) => p.providerId),
+            emailVerified: record.emailVerified,
+            hasPhoto: Boolean(record.photoURL),
+            timezone: (profile as { timezone?: string }).timezone ?? 'Europe/Budapest',
+            createdAt: new Date(),
+          }),
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[GRUNDO] Az új fiókról szóló értesítő nem ment ki:', error);
+      }
+    })();
   } catch (error) {
     next(error);
   }

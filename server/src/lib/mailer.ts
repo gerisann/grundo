@@ -155,3 +155,82 @@ export function otpEmail(code: string): Pick<Mail, 'subject' | 'text' | 'html'> 
       `<p>A kód 15 percig érvényes. Ha nem te kérted, hagyd figyelmen kívül ezt a levelet.</p>`,
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Értesítés új regisztrációról
+   ═══════════════════════════════════════════════════════════════════ */
+
+export interface NewAccountInfo {
+  uid: string;
+  username: string;
+  email: string;
+  /** Melyik belépési móddal jött létre a fiók (jelszó, Google…). */
+  providers: string[];
+  emailVerified: boolean;
+  hasPhoto: boolean;
+  timezone: string;
+  createdAt: Date;
+}
+
+/**
+ * Kinek megy az új regisztrációkról szóló értesítő?
+ *
+ * Környezeti változóból, hogy ne kelljen kódot módosítani, ha változik a
+ * címzett — de van alapértelmezés, hogy a beállítás elmaradása se némítsa el
+ * csendben az értesítést.
+ */
+export function adminNotifyAddress(): string {
+  return process.env.ADMIN_NOTIFY_EMAIL ?? 'gergely.marthon@gmail.com';
+}
+
+/**
+ * Az új fiókról szóló belső értesítő.
+ *
+ * ⚠️ EZ BELSŐ LEVÉL, nem a felhasználónak megy. Ezért szerepelhet benne a uid
+ * és a belépési mód — a felhasználónak küldött levelekben ilyen sosem lenne.
+ */
+export function newAccountEmail(
+  info: NewAccountInfo,
+): Pick<Mail, 'subject' | 'text' | 'html'> {
+  const when = new Intl.DateTimeFormat('hu-HU', {
+    timeZone: 'Europe/Budapest',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(info.createdAt);
+
+  const rows: [string, string][] = [
+    ['Felhasználónév', info.username],
+    ['E-mail', info.email || '—'],
+    ['E-mail megerősítve', info.emailVerified ? 'igen' : 'még nem'],
+    ['Belépési mód', info.providers.length > 0 ? info.providers.join(', ') : 'ismeretlen'],
+    ['Profilkép', info.hasPhoto ? 'van' : 'nincs'],
+    ['Időzóna', info.timezone],
+    ['Regisztrált', when],
+    ['Azonosító', info.uid],
+  ];
+
+  return {
+    subject: `Új GRUNDO-fiók: ${info.username}`,
+    text: rows.map(([label, value]) => `${label}: ${value}`).join('\n'),
+    html:
+      `<p><strong>Új GRUNDO-fiók jött létre.</strong></p>` +
+      `<table cellpadding="6" style="border-collapse:collapse;font-family:system-ui,sans-serif">` +
+      rows
+        .map(
+          ([label, value]) =>
+            `<tr><td style="color:#666">${label}</td>` +
+            `<td><strong>${escapeHtml(value)}</strong></td></tr>`,
+        )
+        .join('') +
+      `</table>`,
+  };
+}
+
+/** A felhasználónév és az e-mail a felhasználótól jön — nem mehet nyersen HTML-be. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
