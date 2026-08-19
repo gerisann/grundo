@@ -149,13 +149,25 @@ describe('6. self-touch — GPS-remegés nem ér területet', () => {
 });
 
 describe('7. huge-bbox — védőkorlát', () => {
-  it('a 30 km-es hurkot elutasítja, és nem fut ki a memóriából', () => {
+  /**
+   * A KORLÁT HELYE 2026-08-19-én ÁTKERÜLT.
+   *
+   * Korábban a befoglaló doboz cellaszáma döntött, és ez egy 30 km oldalú
+   * (120 km kerületű) kört is elutasított. Az adaptív kitöltés óta a doboz
+   * mérete már nem akadály — a munka a kerülettel nő, nem a területtel.
+   *
+   * Ami maradt, az az EREDMÉNY mérete: a megtalált belső cellákat tárolni
+   * kell, mérve ~420 bájt darabonként. Ezért a korlát most a belső cellák
+   * számára szól (`MAX_CLAIM_CELLS`), és a 900 km²-es hurok ebbe ütközik —
+   * de már számolás után, nem vakon.
+   */
+  it('a 30 km oldalú hurkot elutasítja, és nem fut ki a memóriából', () => {
     const { path } = traceToCellPath(hugeBBox());
     const started = Date.now();
     const loops = detectLoops(path);
     expect(loops).toHaveLength(0);
-    // Ha a védőkorlát a polyfill UTÁN futna, ez percekig tartana.
-    expect(Date.now() - started).toBeLessThan(5000);
+    // A védőkorlát a cellák ELŐÁLLÍTÁSA előtt dönt, ezért ez gyors marad.
+    expect(Date.now() - started).toBeLessThan(20_000);
   });
 });
 

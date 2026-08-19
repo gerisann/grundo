@@ -10,7 +10,14 @@
  * visszaérni a rajthoz, és egy aktivitás alatt több bezárás is lehet.
  */
 
-import { cellToLatLng, polygonToCells, gridDisk, getResolution } from 'h3-js';
+import {
+  cellToLatLng,
+  cellToChildren,
+  cellToParent,
+  polygonToCells,
+  gridDisk,
+  getResolution,
+} from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
 import type {
   CellId,
@@ -259,6 +266,18 @@ export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
   if (first === undefined) return new Set();
   const res = getResolution(first);
 
+  /**
+   * NAGY huroknál átadjuk az adaptív kitöltésnek.
+   *
+   * A küszöb alatt a pontos menet marad — az a hétköznapi eset, és ott ez a
+   * kód gyorsabb is (nincs kétmenetes felkészülés). Efölött viszont a
+   * területtel nőne a memória, és pont ez volt az a plafon, ami minden
+   * nagyobb kört kidobott.
+   */
+  if (estimateRegionCells(wall) > ADAPTIVE_ABOVE_CELLS) {
+    return floodFillInteriorAdaptive(wall);
+  }
+
   // A méretkorlát a polyfill ELŐTT dől el — lásd candidateRegion().
   const candidates = candidateRegion(wall, res);
 
@@ -293,6 +312,229 @@ export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
   return interior;
 }
 
+/**
+ * Ekkora jelöltrégió fölött váltunk ADAPTÍV kitöltésre.
+ *
+ * A finom menet memóriája és futásideje a TERÜLETTEL nő; az adaptívé a
+ * KERÜLETTEL. Kis köröknél a finom menet gyorsabb (nincs kétmenetes
+ * felkészülés), nagyoknál nagyságrendekkel lassabb — ezért van küszöb, és
+ * nem cseréljük le mindenütt.
+ *
+ * A 40 000 cella ≈ 12 km²: efölött a durva menet már bőven megéri.
+ */
+const ADAPTIVE_ABOVE_CELLS = 40_000;
+
+/**
+ * Hány felbontással durvább a durva menet?
+ *
+ * Kettő lépés = 49-szer kevesebb cella. Egy res 10 hatszög ~150 m átmérőjű,
+ * ami a valódi hurkok falához képest elég finom ahhoz, hogy a határsáv
+ * keskeny maradjon.
+ */
+const COARSE_STEPS = 2;
+
+/**
+ * Ennél több belső cellát nem állítunk elő.
+ *
+ * ⚠️ EZ A VALÓDI KORLÁT, és nem a kitöltésé — hanem az EREDMÉNYÉ. Az adaptív
+ * menet a befoglaló doboz plafonját feloldotta, de a megtalált cellákat akkor
+ * is tárolni kell: mérve ~420 bájt cellánként (a halmaz és a hurokkönyvelés
+ * együtt). 1,2 millió cella így ~500 MB — ennyi az, ami egy Cloud Run
+ * példányban még biztonságosan elfér.
+ *
+ * Területben ez ~370 km², vagyis egy nagyjából 77 km kerületű kör.
+ *
+ * A Balaton-kör (~600 km², ~1,95 millió cella) EZT MÉG NEM ÉRI EL. Ahhoz a
+ * cellafelbontáson kell változtatni: res 11-en ugyanaz a terület már csak
+ * ~280 ezer cella. Lásd a `MIN_INTERIOR_CELLS` melletti mérést arról, mit
+ * kóstálna a váltás játékmenetben.
+ */
+const MAX_CLAIM_CELLS = 1_200_000;
+
+/**
+ * Kitöltés két menetben — a munka a KERÜLETTEL nő, nem a területtel.
+ *
+ * A sima `floodFillInterior` a teljes befoglaló dobozt cellákra bontja, és
+ * azon fut végig. Egy 143 km²-es hurok így félmillió cellát jelent — ez a
+ * `MAX_LOOP_BBOX_CELLS` plafonja, és emiatt esett ki eddig minden nagyobb kör.
+ *
+ * AZ ELJÁRÁS:
+ *   1. DURVA MENET — a falat felvisszük két felbontással feljebb, és ott
+ *      futtatjuk a kitöltést. 49-szer kevesebb cella.
+ *   2. FINOM MENET — csak a HATÁRSÁVBAN (azokban a durva cellákban, amikben
+ *      fal van) bontunk vissza az eredeti felbontásra, és ott döntjük el
+ *      cellánként, mi kívül és mi belül van.
+ *   3. VISSZATERJESZTÉS — ha a finom menet olyan cellát talál kívülnek, ami
+ *      belsőnek jelölt durva cellával szomszédos, azt a durva cellát is
+ *      kinyitjuk, és a durva kitöltést onnan folytatjuk.
+ *
+ * ⚠️ A HARMADIK LÉPÉS NEM ELHAGYHATÓ. Nélküle egy szűk folyosó — ami kívülről
+ * bevezet egy öbölbe, de végig olyan durva cellákban fut, amikben fal is van —
+ * észrevétlen maradna, és az öböl tévesen a felhasználóé lenne. Ritka alakzat,
+ * de csendben rossz területet adna.
+ */
+export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId> {
+  const first = wall.values().next().value as CellId | undefined;
+  if (first === undefined) return new Set();
+  const res = getResolution(first);
+  const coarseRes = Math.max(0, res - COARSE_STEPS);
+
+  /* ── 1. Durva menet ─────────────────────────────────────────────── */
+
+  const coarseWall = new Set<CellId>();
+  for (const cell of wall) coarseWall.add(cellToParent(cell, coarseRes));
+
+  const coarseRegion = candidateRegion(coarseWall, coarseRes);
+  const coarseOutside = new Set<CellId>();
+  const queue: CellId[] = [];
+
+  for (const cell of coarseRegion) {
+    if (coarseWall.has(cell)) continue;
+    for (const near of gridDisk(cell, 1)) {
+      if (!coarseRegion.has(near)) {
+        coarseOutside.add(cell);
+        queue.push(cell);
+        break;
+      }
+    }
+  }
+  spreadCoarse(queue);
+
+  /* ── 2. Finom menet a határsávban ───────────────────────────────── */
+
+  /** A határsáv finom cellái: a falat tartalmazó durva cellák gyerekei. */
+  const band = new Set<CellId>();
+  for (const coarse of coarseWall) {
+    for (const child of cellToChildren(coarse, res)) band.add(child);
+  }
+
+  const fineOutside = new Set<CellId>();
+  const fineQueue: CellId[] = [];
+  for (const cell of band) {
+    if (wall.has(cell)) continue;
+    // Kívülről indulunk: a sáv azon cellái, amiknek van szomszédjuk egy
+    // KÍVÜLNEK ismert durva cellában (vagy a régión kívül).
+    for (const near of gridDisk(cell, 1)) {
+      if (band.has(near)) continue;
+      const parent = cellToParent(near, coarseRes);
+      if (coarseOutside.has(parent) || !coarseRegion.has(parent)) {
+        fineOutside.add(cell);
+        fineQueue.push(cell);
+        break;
+      }
+    }
+  }
+  spreadFine(fineQueue);
+
+  /* ── 3. Visszaterjesztés a durva szintre ────────────────────────── */
+
+  for (;;) {
+    const opened: CellId[] = [];
+    for (const cell of fineOutside) {
+      for (const near of gridDisk(cell, 1)) {
+        if (band.has(near) || wall.has(near)) continue;
+        const parent = cellToParent(near, coarseRes);
+        if (coarseRegion.has(parent) && !coarseOutside.has(parent) && !coarseWall.has(parent)) {
+          coarseOutside.add(parent);
+          opened.push(parent);
+        }
+      }
+    }
+    if (opened.length === 0) break;
+    spreadCoarse(opened);
+
+    // Az újonnan kinyílt durva cellák új belépőket adhatnak a sávba.
+    const again: CellId[] = [];
+    for (const cell of band) {
+      if (wall.has(cell) || fineOutside.has(cell)) continue;
+      for (const near of gridDisk(cell, 1)) {
+        if (band.has(near)) continue;
+        if (coarseOutside.has(cellToParent(near, coarseRes))) {
+          fineOutside.add(cell);
+          again.push(cell);
+          break;
+        }
+      }
+    }
+    if (again.length === 0) break;
+    spreadFine(again);
+  }
+
+  /* ── Az eredmény összeállítása ──────────────────────────────────── */
+
+  /**
+   * A méretellenőrzés az ÖSSZEÁLLÍTÁS ELŐTT.
+   *
+   * Ha utána tennénk, már lefoglaltuk volna azt a memóriát, ami miatt a
+   * korlát egyáltalán létezik. A durva cellák gyerekszáma pontosan ismert,
+   * tehát a becslés itt nem közelítés, hanem számolás.
+   */
+  const childrenPerCoarse = 7 ** COARSE_STEPS;
+  let expected = band.size;
+  for (const coarse of coarseRegion) {
+    if (!coarseOutside.has(coarse) && !coarseWall.has(coarse)) expected += childrenPerCoarse;
+  }
+  if (expected > MAX_CLAIM_CELLS) throw new LoopTooLargeError(expected);
+
+  const interior = new Set<CellId>();
+  for (const coarse of coarseRegion) {
+    if (coarseOutside.has(coarse)) continue;
+    if (coarseWall.has(coarse)) continue;
+    // Teljesen belső durva cella: MINDEN gyereke belső, egyenként vizsgálat
+    // nélkül. Innen jön a nyereség.
+    for (const child of cellToChildren(coarse, res)) interior.add(child);
+  }
+  for (const cell of band) {
+    if (!wall.has(cell) && !fineOutside.has(cell)) interior.add(cell);
+  }
+  return interior;
+
+  function spreadCoarse(start: CellId[]): void {
+    const stack = [...start];
+    while (stack.length > 0) {
+      const cell = stack.pop()!;
+      for (const near of gridDisk(cell, 1)) {
+        if (!coarseRegion.has(near) || coarseWall.has(near) || coarseOutside.has(near)) continue;
+        coarseOutside.add(near);
+        stack.push(near);
+      }
+    }
+  }
+
+  function spreadFine(start: CellId[]): void {
+    const stack = [...start];
+    while (stack.length > 0) {
+      const cell = stack.pop()!;
+      for (const near of gridDisk(cell, 1)) {
+        if (!band.has(near) || wall.has(near) || fineOutside.has(near)) continue;
+        fineOutside.add(near);
+        stack.push(near);
+      }
+    }
+  }
+}
+
+/**
+ * Hány cellát adna a fal befoglaló doboza az ADOTT felbontáson?
+ *
+ * Olcsó közelítés — a polyfill lefuttatása nélkül. Ez dönti el, melyik
+ * kitöltés fut, és a méretkorlát is ebből ítél.
+ */
+function estimateRegionCells(wall: ReadonlySet<CellId>): number {
+  const first = wall.values().next().value as CellId | undefined;
+  const res = first === undefined ? GAMEPLAY.H3_RESOLUTION : getResolution(first);
+  let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+  for (const cell of wall) {
+    const [lat, lng] = cellToLatLng(cell);
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+  const pad = 0.0006;
+  return estimateCellCount(minLat - pad, maxLat + pad, minLng - pad, maxLng + pad, res);
+}
+
 /** A fal befoglaló doboza + margó, cellákra bontva. */
 function candidateRegion(wall: ReadonlySet<CellId>, res: number): Set<CellId> {
   let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
@@ -317,7 +559,7 @@ function candidateRegion(wall: ReadonlySet<CellId>, res: number): Set<CellId> {
   // nagyságrendű cellahalmazt generálna, mielőtt egyáltalán megnéznénk, hogy
   // túl nagy-e — ami memóriát fal és percekre megállítja a feldolgozást.
   // A doboz területéből becsülni olcsó és elég pontos.
-  const estimated = estimateCellCount(south, north, west, east);
+  const estimated = estimateCellCount(south, north, west, east, res);
   if (estimated > GAMEPLAY.MAX_LOOP_BBOX_CELLS) {
     throw new LoopTooLargeError(estimated);
   }
@@ -333,12 +575,32 @@ function candidateRegion(wall: ReadonlySet<CellId>, res: number): Set<CellId> {
 }
 
 /** Hány cella férne a befoglaló dobozba? Közelítés, a polyfill elkerülésére. */
-function estimateCellCount(south: number, north: number, west: number, east: number): number {
+function estimateCellCount(
+  south: number,
+  north: number,
+  west: number,
+  east: number,
+  res: number = GAMEPLAY.H3_RESOLUTION,
+): number {
   const M_PER_DEG = 111_320;
   const midLat = ((south + north) / 2) * (Math.PI / 180);
   const heightM = (north - south) * M_PER_DEG;
   const widthM = (east - west) * M_PER_DEG * Math.cos(midLat);
-  return Math.abs(heightM * widthM) / GAMEPLAY.CELL_AREA_M2;
+  return Math.abs(heightM * widthM) / cellAreaAt(res);
+}
+
+/**
+ * Egy cella területe az adott felbontáson.
+ *
+ * ⚠️ EZ NEM ELHANYAGOLHATÓ RÉSZLET. A becslő korábban FIXEN a res 12 méretével
+ * számolt, és emiatt az adaptív kitöltés durva régióját is annak alapján
+ * ítélte túl nagynak — a 48 km fölötti köröket a motor csendben eldobta, pedig
+ * a durva menetben bőven elfértek volna.
+ *
+ * A H3-nál minden felbontáslépés hetedére osztja a cellát.
+ */
+function cellAreaAt(res: number): number {
+  return GAMEPLAY.CELL_AREA_M2 * 7 ** (GAMEPLAY.H3_RESOLUTION - res);
 }
 
 /** Egy bezárás összes megszerzett cellája: a fal és a belső együtt. */

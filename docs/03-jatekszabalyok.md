@@ -182,24 +182,33 @@ Két valódi plafon maradt, és mindkettő technikai, nem játékszabály:
 
 | Plafon | Hol | Érték | Mi történik |
 |---|---|---|---|
-| Hurok befoglaló doboza | `GAMEPLAY.MAX_LOOP_BBOX_CELLS` | 500 000 cella ≈ **143 km²** | a hurok **kimarad** a foglalásból |
+| Foglalás mérete | `MAX_CLAIM_CELLS` (`loops.ts`) | 1,2 millió cella ≈ **370 km²** ≈ 76 km kerület | a hurok **kimarad** a foglalásból |
 | ~~Tranzakció írásszáma~~ | ~~Firestore~~ | — | **Megszűnt** 2026-08-19-én: a darabolt mentés blokkcsoportonként külön tranzakcióban számol el. |
 
 Mért értékek négyzet alakú körökre: 10 km → 20 445 cella / 80 blokk; 20 km →
-81 114 cella / 270 blokk; 48 km → 464 996 cella / 1 444 blokk; 50 km fölött a
-hurok már a befoglaló doboz plafonjába ütközik.
+81 114 cella / 270 blokk; 48 km → 464 996 cella / 1 444 blokk (4,2 s);
+64 km → 825 955 cella / 2 524 blokk (7,3 s); 76 km → 1 164 235 cella /
+3 541 blokk (10,3 s). 88 km fölött a foglalás mérete a korlátba ütközik.
 
-⚠️ **A befoglaló doboz plafonja ma NÉMÁN vág.** A `detectLoopsDetailed`
+⚠️ **A korlát ma NÉMÁN vág.** A `detectLoopsDetailed`
 `too_large` okkal rögzíti a kihagyott hurkot a diagnosztikában, és az aktivitás
 összegzőjébe is bekerül `oversizedLoops` néven — de a felhasználó ebből semmit
 nem lát: nulla területet kap magyarázat nélkül. Ez ismert hiányosság.
 
 A cél a **200 km-es kör** kiszolgálása (a Balaton-kör ~600 km², ~1,95 millió
-cella, ~5 700 blokk). A foglalás oldaláról ez **megoldva**: a darabolt mentés
-16 000 blokkig (≈1 680 km²) elszámol. Ami maradt, az a **befoglaló doboz
-plafonja**: a flood fill 500 000 cella fölött feladja, és ez ~143 km²-nél,
-vagyis ~49 km kerületű körnél fog. A Balaton-kör ennek a négyszerese, tehát
-ehhez a flood fillnek darabolva vagy durvább felbontáson kell futnia — lásd [05](05-adatmodell.md) → „Nagy foglalások".
+cella, ~5 700 blokk). A két algoritmikus akadály elhárult:
+
+- **A tranzakciós írásplafon** — megoldva a darabolt mentéssel (16 000 blokkig,
+  ≈1 680 km²), lásd [05](05-adatmodell.md).
+- **A kitöltés befoglaló doboza** — megoldva az adaptív kitöltéssel: a munka
+  mostantól a KERÜLETTEL nő, nem a területtel.
+
+Ami maradt, az nem algoritmus, hanem **memória**: a megtalált cellákat tárolni
+kell, mérve ~420 bájt darabonként. A Balaton-kör 1,95 millió cellája így
+~800 MB lenne. A megoldás nem a kitöltés további finomítása, hanem a
+**cellafelbontás**: res 11-en ugyanaz a terület már csak ~280 ezer cella. Ennek
+játékmenetbeli ára mérve van (lásd a `MIN_INTERIOR_CELLS` melletti
+feljegyzést), és külön döntést igényel.
 
 ---
 
