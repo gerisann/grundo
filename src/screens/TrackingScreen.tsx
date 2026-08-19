@@ -30,7 +30,6 @@ import './tracking.css';
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
-const START_HINT_KEY = 'grundo.hint.start';
 const LAST_TYPE_KEY = 'grundo.lastActivityType';
 
 const ACTIVITY_TYPES: ActivityType[] = ['run', 'walk', 'ride'];
@@ -252,27 +251,41 @@ export function TrackingScreen() {
    * választja, amelyik pontosabb.
    */
   const sharedPosition = useSharedPosition(profileUid);
-  const homeFix = sharedPosition
-    ? { lat: sharedPosition.lat, lng: sharedPosition.lng }
-    : null;
-
-  const mapPosition = lastPoint ?? homeFix;
 
   /**
-   * Az „Indítás" nyíl CSAK AZ ELSŐ alkalommal.
+   * MEMOIZÁLVA — és ez nem apróság.
    *
-   * A tesztelés idejére minden megnyitásnál megjelent, hogy meg lehessen
-   * ítélni, elég feltűnő-e. Ez így maradt bent, és a századik rögzítésnél már
-   * csak zaj — az első indítás után a felhasználó tudja, hol a gomb.
+   * A térkép a `position` prop AZONOSSÁGÁRA figyel. Ha itt minden
+   * újrarajzoláskor új objektum születne, a térkép rögzítés közben
+   * másodpercenként újraközépre animálna — és a húzás meg a zoom
+   * használhatatlanná válna, mert az animáció küzd az egérrel.
    */
-  const [showStartHint, setShowStartHint] = useState(() => readFlag(START_HINT_KEY) === null);
+  const homeFix = useMemo(
+    () => (sharedPosition ? { lat: sharedPosition.lat, lng: sharedPosition.lng } : null),
+    [sharedPosition],
+  );
 
-  // Az első indítás kioltja a nyilat — utána a felhasználó tudja, hol a gomb.
-  useEffect(() => {
-    if (state.status === 'idle' || !showStartHint) return;
-    setShowStartHint(false);
-    writeFlag(START_HINT_KEY);
-  }, [state.status, showStartHint]);
+  /**
+   * A megosztott fix CSAK TÉTLEN ÁLLAPOTBAN számít.
+   *
+   * Ha elindítottad a rögzítést, a saját GPS-pontjaid az igazság — a telefon
+   * legutóbbi ismert helye onnantól nem érdekes, sőt káros: visszarángatná a
+   * térképet oda, ahonnan éppen elindultál.
+   *
+   * Amíg az első pont meg nem érkezik, a térkép ott marad, ahol volt. Ez
+   * jobb, mint egy ugrás egy másik városrészbe.
+   */
+  const mapPosition = lastPoint ?? (state.status === 'idle' ? homeFix : null);
+
+  /**
+   * Az „Indítás" nyíl — MINDEN tétlen állapotban.
+   *
+   * Egy körre kikapcsoltuk (csak az első indításig látszott), de a felület
+   * enélkül szegényebb lett: a Play gomb a Dockban ül, és önmagában nem
+   * mondja meg, hogy azzal indul a rögzítés. Amíg nincs jobb bevezető,
+   * maradjon ott — a tétlen képernyő úgyis üres, nem takar semmit.
+   */
+  const showStartHint = true;
 
   /**
    * A befejezés után magától indul a feltöltés.
@@ -293,6 +306,14 @@ export function TrackingScreen() {
 
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
+  /**
+   * A másik eszköz állapotát jelző üzenet bezárható.
+   *
+   * SZÁNDÉKOSAN nem jegyezzük meg a döntést: ez nem tipp, hanem élő állapot.
+   * Ha holnap megint elindítasz valamit a telefonon, arról megint szólni kell
+   * — különben pont akkor hallgatna, amikor számít.
+   */
+  const [showSyncNote, setShowSyncNote] = useState(true);
 
   return (
     <div className={`track${done ? ' track--finished' : ''}`}>
@@ -339,8 +360,16 @@ export function TrackingScreen() {
       ) : null}
 
       <div className="track__overlay">
-        {remoteState !== null ? (
-          <div className="track__note track__note--sync">
+        {remoteState !== null && showSyncNote ? (
+          <div className="track__note track__note--sync track__note--closable">
+            <button
+              type="button"
+              className="track__note-close"
+              aria-label="Üzenet bezárása"
+              onClick={() => setShowSyncNote(false)}
+            >
+              ✕
+            </button>
             <strong>Mobilos aktivitásod legutóbbi állapota</strong>
             <span>
               {remoteState.status === 'recording'
@@ -532,6 +561,17 @@ function relativeSyncTime(updatedAt: number, now: number): string {
  */
 function LapList({ state }: { state: RecorderState }) {
   const [expanded, setExpanded] = useState(false);
+  /**
+   * A kör-lista TELJESEN elrejthető.
+   *
+   * Futás közben a térkép a fontos: a körök panelje sok helyet vesz el
+   * belőle, és a felhasználó nem mindig kíváncsi rá. Összecsukva csak egy
+   * stopper ikon marad a bal szélen — arra koppintva visszajön.
+   *
+   * A döntést SZÁNDÉKOSAN nem jegyezzük meg: egy kör alatt hozott döntés a
+   * következő futásra ne kösse meg a kezét.
+   */
+  const [collapsed, setCollapsed] = useState(false);
   const distances = lapDistances(state);
 
   // Fordított sorrend: a legfrissebb kör legyen elöl.
@@ -541,8 +581,33 @@ function LapList({ state }: { state: RecorderState }) {
   const shown = expanded ? rows : rows.slice(0, 2);
   const hidden = rows.length - shown.length;
 
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="track__laps-open"
+        aria-label={`Körök megjelenítése (${distances.length})`}
+        onClick={() => setCollapsed(false)}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+          <circle cx="12" cy="13.5" r="7.5" />
+          <path d="M12 9.5v4l2.5 1.8M9.5 2.5h5M12 2.5v3" />
+        </svg>
+        <span className="track__laps-count">{distances.length}</span>
+      </button>
+    );
+  }
+
   return (
     <div className="track__laps">
+      <button
+        type="button"
+        className="track__laps-close"
+        aria-label="Körök elrejtése"
+        onClick={() => setCollapsed(true)}
+      >
+        ✕
+      </button>
       {/*
         A sorok KÜLÖN, görgethető dobozban élnek, nem a kártyában közvetlenül.
         Enélkül egy húszkörös futásnál a lista lelógott a képernyőről, és vele

@@ -465,3 +465,49 @@
 .track__new-recording {
   margin-top: var(--sp-4);
 }
+
+/* ── A kör-lista összecsukása ────────────────────────────────────────
+   Futás közben a térkép a fontos. Összecsukva csak egy stopper ikon marad a
+   bal szélen, a körök számával — arra koppintva jön vissza a panel. */
+
+.track__laps {
+  position: relative;
+}
+
+.track__laps-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  z-index: 1;
+}
+
+.track__laps-close:hover {
+  color: var(--text-primary);
+}
+
+.track__laps-open {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.28);
+  color: var(--text-primary);
+}
+
+.track__laps-count {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

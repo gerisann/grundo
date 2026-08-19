@@ -63,3 +63,24 @@
   border-left-color: var(--bg-elevated);
   border-right-color: var(--bg-elevated);
 }
+
+/* ── Vissza a pozíciómra ─────────────────────────────────────────────
+   Csak akkor jelenik meg, ha a felhasználó félretette a követést a saját
+   mozdulatával. A jobb alsó sarok azért jó, mert ott a hüvelykujj eléri, és
+   nem takarja a nyomvonalat. */
+
+.mapview__recenter {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  color: var(--text-primary);
+  z-index: 2;
+}

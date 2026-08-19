@@ -128,6 +128,19 @@ export function MapView({
   /** A popup DOM-gazdája — ide portálozzuk a React-tartalmat. */
   const [popupHost, setPopupHost] = useState<HTMLElement | null>(null);
   const popup = useRef<mapboxgl.Popup | null>(null);
+  /**
+   * Félretette-e a felhasználó a követést?
+   *
+   * Rögzítés közben másodpercenként érkezik pozíció, és mindegyikre lefutna
+   * egy 600 ms-es `easeTo`. Amíg ez megy, a térkép folyamatosan visszaanimál
+   * a saját pozícióra — a húzás és a zoom gyakorlatilag használhatatlan, a
+   * kép pedig „lassan tolódik egy irányba", mert az animáció küzd az egérrel.
+   *
+   * Ezért: ha a felhasználó HOZZÁNYÚL a térképhez, a követés leáll, és egy
+   * gombbal állhat vissza rá. Ez a szokásos működés a térképes appokban.
+   */
+  const followPaused = useRef(false);
+  const [showRecenter, setShowRecenter] = useState(false);
 
   /* ── A térkép létrehozása, egyszer ─────────────────────────────── */
 
@@ -165,6 +178,24 @@ export function MapView({
     });
 
     instance.on('moveend', () => report(instance));
+
+    /**
+     * A felhasználó saját mozdulata leállítja a követést.
+     *
+     * Az `originalEvent` megléte különbözteti meg a VALÓDI gesztust a saját
+     * `easeTo` hívásunktól — enélkül a követés a saját animációjától állna le
+     * azonnal.
+     */
+    const pauseFollow = (event: unknown) => {
+      // A `zoomstart` típusa nem hordozza az `originalEvent`-et, de futásidőben
+      // ott van, ha a mozdulat a felhasználótól jött — ezért olvassuk így.
+      if ((event as { originalEvent?: unknown }).originalEvent === undefined) return;
+      followPaused.current = true;
+      setShowRecenter(true);
+    };
+    instance.on('dragstart', pauseFollow);
+    instance.on('zoomstart', pauseFollow);
+    instance.on('rotatestart', pauseFollow);
 
     /**
      * Koppintás egy mezőre → a tulajdonos kártyája.
@@ -306,10 +337,18 @@ export function MapView({
       return;
     }
 
-    if (follow) {
+    if (follow && !followPaused.current) {
       instance.easeTo({ center: [position.lng, position.lat], duration: 600 });
     }
   }, [position, follow]);
+
+  // Ha a hívó abbahagyja a követést, a gombnak sincs értelme.
+  useEffect(() => {
+    if (!follow) {
+      followPaused.current = false;
+      setShowRecenter(false);
+    }
+  }, [follow]);
 
   /**
    * A popup bezárása, ha a hívó már nem ad tartalmat.
@@ -345,6 +384,27 @@ export function MapView({
         style={fill ? { height: '100%' } : { height }}
       />
       {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
+      {showRecenter ? (
+        <button
+          type="button"
+          className="mapview__recenter"
+          aria-label="Vissza a pozíciómra"
+          onClick={() => {
+            followPaused.current = false;
+            setShowRecenter(false);
+            const target = map.current;
+            if (target && position) {
+              target.easeTo({ center: [position.lng, position.lat], duration: 400 });
+            }
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" />
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 1.6v3M12 19.4v3M1.6 12h3M19.4 12h3" strokeLinecap="round" />
+          </svg>
+        </button>
+      ) : null}
     </>
   );
 }
