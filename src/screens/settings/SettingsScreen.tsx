@@ -20,7 +20,7 @@ const MODE_LABEL: Record<string, string> = {
 export function SettingsScreen() {
   const navigate = useNavigate();
   const { settings } = useThemeContext();
-  const { user, signOut, status } = useAuth();
+  const { user, role, signOut, status } = useAuth();
 
   return (
     <>
@@ -57,6 +57,28 @@ export function SettingsScreen() {
             <ListRow label="Előfizetés" chevron />
           </List>
         </section>
+
+        {/**
+          * Az admin belépő CSAK szerepkörrel jelenik meg.
+          *
+          * Ez kényelem, nem védelem: a claim a kliensen olvasható, tehát
+          * elrejteni semmit nem tud. A tiltást a szerver kényszeríti ki
+          * minden `/api/admin` végponton — aki ide beírja a címet
+          * szerepkör nélkül, egy udvarias „nincs jogosultságod" képernyőt kap.
+          */}
+        {role ? (
+          <section>
+            <div className="label list__group-label">Üzemeltetés</div>
+            <List>
+              <ListRow
+                label="Admin felület"
+                description="Játékszabályok, akciók, aktivitás-audit"
+                value={role}
+                onClick={() => navigate('/admin')}
+              />
+            </List>
+          </section>
+        ) : null}
 
         {status === 'signed-in' ? (
           <section className="stack stack--tight">

@@ -9,7 +9,18 @@
  *
  * FUTTATÁS (a repo gyökeréből, egyetlen parancs):
  *
- *   firebase.cmd emulators:exec --only firestore --project demo-grundo "npx vitest run server/src/routes/activities.emulator.test.ts"
+ *   npm.cmd run test:emulator
+ *
+ * Ez MIND a három emulátoros fájlt lefuttatja, sorosan. A sorosság nem
+ * kényelmi kérdés: a három suite ugyanazt az emulált adatbázist használja, és
+ * mindegyik takarít a saját `beforeEach`-ében. Párhuzamosan futva egymás alól
+ * törlik az adatot, és olyan hibák jönnek, amik külön-külön nem reprodukálhatók
+ * (2026-08-19-én így is történt: külön mind a három zöld volt, együtt kilenc
+ * teszt bukott).
+ *
+ * Egyetlen fájl futtatása:
+ *
+ *   firebase.cmd emulators:exec --only firestore --project demo-grundo "npx vitest run <fájl>"
  *
  * Emulátor nélkül a fájl MAGÁTÓL KIMARAD, tehát a sima `npm test` nem törik el.
  */

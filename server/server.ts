@@ -24,6 +24,7 @@ import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
 import { devRouter } from './src/routes/dev';
 import { jobsRouter } from './src/routes/jobs';
+import { adminRouter } from './src/routes/admin';
 
 export { db, FIRESTORE_DATABASE_ID };
 
@@ -121,6 +122,7 @@ app.use('/api/activities', authenticate, activitiesRouter);
 app.use('/api/tiles', authenticate, tilesRouter);
 app.use('/api/missions', authenticate, missionsRouter);
 app.use('/api/dev', authenticate, devRouter);
+app.use('/api/admin', authenticate, adminRouter);
 
 /**
  * SZÁNDÉKOSAN `authenticate` NÉLKÜL — a router maga engedélyez.

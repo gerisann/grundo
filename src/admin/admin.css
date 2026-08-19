@@ -1,0 +1,452 @@
+/**
+ * Az admin terület stílusa.
+ *
+ * Ugyanazokból a `tokens.css` változókból épül, mint a játékos-felület, tehát
+ * a világos és a sötét téma automatikusan működik — beégetett szín itt sincs.
+ * A hangsúly viszont más: itt sűrű, táblázatos, asztali gépre szánt felület
+ * kell, nem mobilra tervezett kártyafolyam.
+ */
+
+.admin {
+  min-height: 100dvh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.admin__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.admin__home {
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.admin__home:hover {
+  background: var(--bg-tertiary, var(--bg-primary));
+  color: var(--text-primary);
+}
+
+.admin__title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.admin__role {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.admin__nav {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.admin__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin__tab:hover {
+  color: var(--text-primary);
+}
+
+.admin__tab--on {
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+
+.admin__body {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* ── Kapu és üzenetek ─────────────────────────────────────────────────── */
+
+.admin-gate {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.admin-gate__icon {
+  font-size: 40px;
+}
+
+.admin-gate p {
+  max-width: 440px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.admin-muted {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.admin-error {
+  color: var(--danger, #d33);
+  font-size: 14px;
+}
+
+.admin-ok {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.admin-note {
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--bg-secondary);
+  border-radius: 0 8px 8px 0;
+}
+
+/* ── Oldalszerkezet ───────────────────────────────────────────────────── */
+
+.admin-page {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-page__head h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+
+.admin-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  display: grid;
+  gap: 12px;
+}
+
+.admin-card h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+/* ── Áttekintő csempék ────────────────────────────────────────────────── */
+
+.admin-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.admin-tile {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-tile--static {
+  cursor: default;
+}
+
+.admin-tile__value {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.admin-tile__label {
+  font-weight: 600;
+}
+
+/* ── Hangolható értékek ───────────────────────────────────────────────── */
+
+.admin-tunables {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-tunable {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  grid-template-areas:
+    'label input'
+    'help  input'
+    'meta  meta';
+  gap: 4px 12px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.admin-tunable--changed {
+  border-color: var(--accent);
+  background: var(--bg-primary);
+}
+
+.admin-tunable__label {
+  grid-area: label;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.admin-tunable__help {
+  grid-area: help;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.admin-tunable__input {
+  grid-area: input;
+  align-self: start;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+}
+
+.admin-tunable__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.admin-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+}
+
+.admin-badge--active {
+  background: var(--accent);
+}
+
+.admin-badge--scheduled,
+.admin-badge--expired,
+.admin-badge--cancelled {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.admin-linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── Mentősáv ─────────────────────────────────────────────────────────── */
+
+.admin-savebar {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+
+.admin-savebar__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── Verziótörténet ───────────────────────────────────────────────────── */
+
+.admin-versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-versions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.admin-versions strong {
+  margin-right: 8px;
+}
+
+.admin-versions p {
+  margin: 4px 0 0;
+}
+
+/* ── Akciók ───────────────────────────────────────────────────────────── */
+
+.admin-form {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-field {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.admin-field select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+
+.admin-field p {
+  margin: 0;
+  font-weight: 400;
+}
+
+.admin-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.admin-modifiers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-modifier {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+
+.admin-modifier--expired,
+.admin-modifier--cancelled {
+  opacity: 0.6;
+}
+
+.admin-modifier__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-modifier__value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+  min-width: 56px;
+}
+
+.admin-modifier__head > span:last-child {
+  margin-left: auto;
+}
+
+.admin-modifier__reason {
+  margin: 0;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .admin-tunable {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'label'
+      'input'
+      'help'
+      'meta';
+  }
+
+  .admin-tunable__input {
+    text-align: left;
+  }
+}

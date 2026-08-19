@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
@@ -14,13 +15,21 @@ import { ActivityScreen } from './screens/ActivityScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
 import { PrivacyScreen } from './screens/settings/PrivacyScreen';
-import { ReplayScreen } from './screens/dev/ReplayScreen';
-import { ActivityAuditScreen } from './screens/dev/ActivityAuditScreen';
 import { WelcomeScreen } from './screens/auth/WelcomeScreen';
 import { LoginScreen } from './screens/auth/LoginScreen';
 import { RegisterScreen } from './screens/auth/RegisterScreen';
 import { ForgotPasswordScreen } from './screens/auth/ForgotPasswordScreen';
 import { CompleteProfileScreen } from './screens/auth/CompleteProfileScreen';
+
+/**
+ * Az admin terület LUSTÁN töltődik.
+ *
+ * Ez a `docs/06` forma-döntésének a lényege: az admin ugyanabban az
+ * alkalmazásban él, de saját JS-darabban — a játékos böngészője egyetlen
+ * bájtot sem kér le belőle. Ha valaki ezt statikus importra cseréli, a
+ * belépő csomag azonnal megnő, és a döntés indoka elvész.
+ */
+const AdminArea = lazy(() => import('./admin'));
 
 export function App() {
   return (
@@ -136,8 +145,19 @@ function Router() {
           <Route path="/beallitasok" element={<SettingsScreen />} />
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
           <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
-          <Route path="/dev/replay" element={<ReplayScreen />} />
-          <Route path="/dev/activities" element={<ActivityAuditScreen />} />
+          <Route
+            path="/admin/*"
+            element={
+              <Suspense fallback={<Splash />}>
+                <AdminArea />
+              </Suspense>
+            }
+          />
+          {/* A régi fejlesztői címek megmaradnak átirányításként: a
+              könyvjelzők és a dokumentációban szereplő hivatkozások ne
+              törjenek el a beköltöztetés miatt. */}
+          <Route path="/dev/replay" element={<Navigate to="/admin/visszajatszas" replace />} />
+          <Route path="/dev/activities" element={<Navigate to="/admin/aktivitasok" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -145,7 +165,7 @@ function Router() {
           rögzítő ettől továbbra is app-szinten él; csak a Dock nem takarja el
           az adatlap alsó tartalmát. */}
       {pathname.startsWith('/aktivitas/') ||
-      pathname.startsWith('/dev/') ||
+      pathname.startsWith('/admin') ||
       (pathname === '/rogzites' && savePanelOpen) ? null : <Dock />}
     </>
   );

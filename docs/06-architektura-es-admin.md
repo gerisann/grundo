@@ -242,6 +242,8 @@ eredmény rekonstruálható, amit a felület egyértelműen jelez.
 >
 > **A döntés visszafordítható marad, ha a mappafegyelem megvan:** az admin kód a `src/admin/` alatt él, és **egyirányú a függés** — az admin importálhat a közös `src/lib/`-ből és `src/game/`-ből, de a játékos-képernyőkből soha, és a játékos-képernyők az adminból soha. Ezzel a későbbi szétválasztás költöztetés, nem átírás. Ha valódi moderátorok vagy külsősök kapnak hozzáférést, akkor jön el a külön app ideje.
 
+**Hol tart** *(2026-08-19)*: a váz, a szerepkör-kapu, a **7. Játékkonfiguráció**, a **Modifierek** szerkesztője, valamint az aktivitás-audit és a visszajátszó él (`/admin`, `src/admin/` alatt). Az áttekintő egyelőre a rendszer állapotát mutatja, nem a használati számokat — azok a `metricsDaily` aggregátumra várnak. A 2., 4., 5., 6., 8–12. pont még nincs megírva.
+
 ### 1. Áttekintő
 DAU / WAU / MAU · új regisztrációk · aktivitások és összes táv naponta · elfoglalt km² · aktív streakek · Pro-konverzió és lemorzsolódás · konnektor-hibaarány · hibás job-futások.
 

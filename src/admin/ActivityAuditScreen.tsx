@@ -137,7 +137,7 @@ export function ActivityAuditScreen() {
 
   return (
     <>
-      <ScreenHeader title="Aktivitás-audit" backTo="/profil" />
+      <ScreenHeader title="Aktivitás-audit" backTo="/admin" />
       <div className="screen-body audit-page">
         <section className="audit-list" aria-label="Valós aktivitások">
           <div className="audit-list__heading">

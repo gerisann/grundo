@@ -23,6 +23,15 @@ export interface AuthApi {
   user: User | null;
   /** Igaz, ha a felhasználó megerősítette az e-mail-címét. */
   emailVerified: boolean;
+  /**
+   * Az admin szerepkör a Firebase custom claimből (`owner` / `admin` /
+   * `moderator` / `support` / `readonly`), vagy `null`.
+   *
+   * ⚠️ EZ NEM VÉDELEM, csak a felület udvariassága: ebből tudjuk, mutassuk-e
+   * az admin belépőt. A tiltást a szerver kényszeríti ki minden végponton —
+   * a claim a kliensen olvasható, tehát önmagában semmit nem őriz.
+   */
+  role: string | null;
   registerWithEmail: (input: RegisterInput) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   /** Belépés e-mail-címmel VAGY felhasználónévvel — a mező tartalma dönti el. */
@@ -64,6 +73,7 @@ export function useAuth(): AuthApi {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>(
     firebaseConfigured ? 'loading' : 'unconfigured',
   );
@@ -73,6 +83,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return onAuthStateChanged(auth, (next) => {
       setUser(next);
       setStatus(next ? 'signed-in' : 'signed-out');
+
+      /**
+       * A szerepkör külön, aszinkron lépésben jön.
+       *
+       * A `getIdTokenResult()` a MÁR MEGLÉVŐ tokenből olvas, nem kér újat —
+       * ezért ha valakinek most adtunk szerepkört, az csak a token
+       * megújulása után (max egy óra) vagy újbóli belépés után látszik. Ez
+       * elfogadható: a szerepkör-adás ritka, adminisztratív esemény, és a
+       * szerver amúgy is a friss tokent ellenőrzi.
+       */
+      if (!next) {
+        setRole(null);
+        return;
+      }
+      void next
+        .getIdTokenResult()
+        .then((result) => {
+          const claim = result.claims.role;
+          setRole(typeof claim === 'string' ? claim : null);
+        })
+        .catch(() => setRole(null));
     });
   }, []);
 
@@ -80,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       status,
       user,
+      role,
       emailVerified: user?.emailVerified ?? false,
 
       async registerWithEmail({ username, email, password }) {
@@ -167,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fbSignOut(requireAuth());
       },
     };
-  }, [status, user]);
+  }, [status, user, role]);
 
   return <AuthContext.Provider value={api}>{children}</AuthContext.Provider>;
 }

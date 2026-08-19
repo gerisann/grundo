@@ -93,7 +93,7 @@ export function ReplayScreen() {
 
   return (
     <>
-      <ScreenHeader title="Visszajátszó" backTo="/profil" />
+      <ScreenHeader title="Visszajátszó" backTo="/admin" />
 
       <div className="screen-body stack">
         <SegmentedControl

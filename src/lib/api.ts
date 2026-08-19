@@ -412,6 +412,92 @@ export interface DevActivityDetail extends DevActivityListItem {
   movingS: number;
 }
 
+/* ── Admin ──────────────────────────────────────────────────────────────── */
+
+export interface AdminStatus {
+  role: string | null;
+  /**
+   * Írhat-e a bejelentkezett admin. NEM védelem, csak a felület udvariassága:
+   * a tiltást minden végpont maga is kikényszeríti.
+   */
+  canWrite: boolean;
+  configVersion: number;
+  tunableCount: number;
+  lastRollover: {
+    at: string | null;
+    usersProcessed: number;
+    holdGpAwarded: number;
+    errors: number;
+  } | null;
+}
+
+export interface TunableItem {
+  path: string;
+  kind: 'number' | 'integer' | 'boolean';
+  min?: number;
+  max?: number;
+  group: string;
+  label: string;
+  help: string;
+  unit?: string;
+  /** A kódban rögzített alapérték. */
+  defaultValue: number | boolean;
+  /** A jelenleg érvényes érték (alapérték vagy felülírás). */
+  value: number | boolean;
+  overridden: boolean;
+}
+
+export interface GameplayState {
+  version: number;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  note: string | null;
+  overrides: Record<string, number | boolean>;
+  rejected: Array<{ path: string; value: unknown; reason: string }>;
+  groups: Array<{ group: string; items: TunableItem[] }>;
+}
+
+export interface GameplayVersion {
+  version: number;
+  overrides: Record<string, number | boolean>;
+  note: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export type ModifierKindName = 'gp_multiplier' | 'claim_multiplier' | 'hold_multiplier';
+export type ModifierScopeName = 'global' | 'area' | 'segment';
+export type ModifierState = 'active' | 'scheduled' | 'expired' | 'cancelled';
+
+export interface AdminModifier {
+  id: string;
+  kind: ModifierKindName;
+  scope: ModifierScopeName;
+  value: number;
+  reason: string;
+  source: 'manual' | 'auto';
+  from: string | null;
+  to: string | null;
+  areaCellCount: number;
+  area: { lat: number; lng: number; radiusKm: number } | null;
+  segment: { inactiveDays?: number } | null;
+  createdBy: string | null;
+  cancelled: boolean;
+  state: ModifierState;
+}
+
+export interface CreateModifierInput {
+  kind: ModifierKindName;
+  scope: ModifierScopeName;
+  value: number;
+  reason: string;
+  /** ISO időpontok. */
+  from: string;
+  to: string;
+  area?: { lat: number; lng: number; radiusKm: number };
+  segment?: { inactiveDays: number };
+}
+
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
 
@@ -588,4 +674,46 @@ export const api = {
       points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
       audit: DevActivityAudit | null;
     }>(`/api/dev/activities/${encodeURIComponent(id)}`),
+
+  // ── Admin ───────────────────────────────────────────────────────────────
+  adminStatus: () => request<AdminStatus>('/api/admin/status'),
+
+  adminGameplay: () => request<GameplayState>('/api/admin/gameplay'),
+
+  /**
+   * A TELJES felülírás-halmazt küldjük, nem különbséget.
+   *
+   * Amit kihagyunk, az visszaáll alapértékre — így a felület állapota és a
+   * tárolt állapot nem tud szétcsúszni.
+   */
+  adminSaveGameplay: (overrides: Record<string, number | boolean>, note: string) =>
+    request<GameplayState>('/api/admin/gameplay', {
+      method: 'PUT',
+      body: JSON.stringify({ overrides, note }),
+    }),
+
+  adminGameplayVersions: () =>
+    request<{ versions: GameplayVersion[] }>('/api/admin/gameplay/versions'),
+
+  adminRollbackGameplay: (version: number) =>
+    request<GameplayState>('/api/admin/gameplay/rollback', {
+      method: 'POST',
+      body: JSON.stringify({ version }),
+    }),
+
+  adminModifiers: (includeExpired = false) =>
+    request<{ modifiers: AdminModifier[] }>(
+      `/api/admin/modifiers${includeExpired ? '?expired=1' : ''}`,
+    ),
+
+  adminCreateModifier: (input: CreateModifierInput) =>
+    request<{ id: string }>('/api/admin/modifiers', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  adminCancelModifier: (id: string) =>
+    request<{ ok: true }>(`/api/admin/modifiers/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+    }),
 };

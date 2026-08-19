@@ -133,6 +133,23 @@ export const GAMEPLAY = {
    * eredmény maradandó. A plafon ezt tövében vágja el.
    */
   MODIFIER_MAX_FACTOR: 5,
+  /**
+   * Egy modifier leghosszabb élettartama napokban.
+   *
+   * A véges élettartam a modifier egész biztonsági alapja. Egy százéves
+   * lejárat formailag véges, gyakorlatilag viszont örök — ezért a felső
+   * korlát. Hosszabb akciót meg lehet hosszabbítani, de nem lehet elfelejteni.
+   */
+  MODIFIER_MAX_DAYS: 90,
+  /**
+   * Egy területi modifier legfeljebb ennyi cellát fedhet le
+   * (`MODIFIER_AREA_RES` felbontáson, cellánként ~5,1 km²).
+   *
+   * 500 cella ~2 570 km²: egy nagyváros és a környéke bőven belefér, egy fél
+   * ország nem. Ez nem játékszabály, hanem védelem az elgépelt sugár ellen —
+   * a „2 km" helyett beírt „200 km" különben csendben országos akciót csinálna.
+   */
+  MODIFIER_MAX_AREA_CELLS: 500,
 
   // ── Rögzítés ────────────────────────────────────────────────────────────
   /** Ez alatt az aktivitás nem is menthető. */
@@ -166,7 +183,7 @@ export const GAMEPLAY = {
    *     kisebb háztömb.
    *
    * Ezért állítottuk vissza 1-re. Ha valaki megint emelni akarja, előbb a
-   * /dev/activities auditban nézze meg VALÓDI aktivitásokon, hány hurok esik
+   * /admin/aktivitasok auditban nézze meg VALÓDI aktivitásokon, hány hurok esik
    * ki `interior_too_small` okkal — a szintetikus zajmodell nem mutatja a
    * városi kanyonban sodródó GPS-hibát.
    *
