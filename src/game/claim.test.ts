@@ -93,7 +93,9 @@ describe('resolveClaim — cellánkénti szabályok', () => {
 
 describe('multiplierFor', () => {
   it('a doksi táblája szerint', () => {
-    expect([1, 2, 3, 4, 5].map(multiplierFor)).toEqual([1.0, 1.5, 2.0, 3.0, 5.0]);
+    // A nyíl kell: a `multiplierFor` második paramétere a konfiguráció, a
+    // `map` viszont az INDEXET adná át neki.
+    expect([1, 2, 3, 4, 5].map((d) => multiplierFor(d))).toEqual([1.0, 1.5, 2.0, 3.0, 5.0]);
   });
 });
 

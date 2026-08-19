@@ -7,7 +7,7 @@
  * docs/03-jatekszabalyok.md → Birtoklási szabályok
  */
 
-import { GAMEPLAY } from '@/config/gameplay';
+import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import { gridDisk } from 'h3-js';
 import type { CellFate, CellId, CellOwnership, ClaimResult, OwnershipMap } from '@/types';
 export type { ClaimResult };
@@ -17,11 +17,16 @@ export type { ClaimResult };
  * @param current   a claim által érintett cellák JELENLEGI tulajdonviszonya
  *                  (a hívó tölti fel — a szerveren a `grid` blokkokból)
  * @param actorId   aki a foglalást végzi
+ * @param cfg       a futásidejű játékkonfiguráció pillanatképe. Alapértelmezésben
+ *                  a statikus alapérték — a szerver az `appConfig/gameplay`-ből
+ *                  feloldott változatot adja át, és EGY aktivitáson belül végig
+ *                  ugyanazt.
  */
 export function resolveClaim(
   claimed: ReadonlySet<CellId>,
   current: OwnershipMap,
   actorId: string,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
 ): ClaimResult {
   const updates = new Map<CellId, CellOwnership>();
   const fates = new Map<CellId, CellFate>();
@@ -40,19 +45,19 @@ export function resolveClaim(
       updates.set(cell, { owner: actorId, defense: 1 });
       fates.set(cell, 'free');
       counts.free++;
-      weightedCells += multiplierFor(1);
+      weightedCells += multiplierFor(1, cfg);
       gainedCells++;
       continue;
     }
 
     // ── Saját cella: a védelem nő ─────────────────────────────────────────
     if (held.owner === actorId) {
-      const defense = Math.min(held.defense + 1, GAMEPLAY.MAX_DEFENSE);
+      const defense = Math.min(held.defense + 1, cfg.MAX_DEFENSE);
       updates.set(cell, { owner: actorId, defense });
       fates.set(cell, 'reclaimed');
       counts.reclaimed++;
       // A szorzó az ÚJ védelmi szint szerint jár — ez a körbe-körbe futás jutalma.
-      weightedCells += multiplierFor(defense);
+      weightedCells += multiplierFor(defense, cfg);
       continue;
     }
 
@@ -62,7 +67,7 @@ export function resolveClaim(
       fates.set(cell, 'stolen');
       counts.stolen++;
       stolenFrom[held.owner] = (stolenFrom[held.owner] ?? 0) + 1;
-      weightedCells += multiplierFor(1);
+      weightedCells += multiplierFor(1, cfg);
       gainedCells++;
       continue;
     }
@@ -79,15 +84,15 @@ export function resolveClaim(
     fates,
     counts,
     stolenFrom,
-    weightedClaimM2: weightedCells * GAMEPLAY.CELL_AREA_M2,
-    gainedM2: gainedCells * GAMEPLAY.CELL_AREA_M2,
+    weightedClaimM2: weightedCells * cfg.CELL_AREA_M2,
+    gainedM2: gainedCells * cfg.CELL_AREA_M2,
   };
 }
 
 /** Védelmi szorzó az adott (új) védelmi szinthez. */
-export function multiplierFor(defense: number): number {
-  const index = Math.min(Math.max(defense, 1), GAMEPLAY.MAX_DEFENSE) - 1;
-  return GAMEPLAY.DEFENSE_MULTIPLIER[index] ?? 1;
+export function multiplierFor(defense: number, cfg: GameplayConfig = DEFAULT_GAMEPLAY): number {
+  const index = Math.min(Math.max(defense, 1), cfg.MAX_DEFENSE) - 1;
+  return cfg.DEFENSE_MULTIPLIER[index] ?? 1;
 }
 
 /**
@@ -107,6 +112,7 @@ export function absorbIsolatedRivalCells(
   before: OwnershipMap,
   actorId: string,
   scope: ReadonlySet<CellId>,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
 ): { claim: ClaimResult | null; absorbed: Set<CellId> } {
   const absorbed = new Set<CellId>();
   if (!claim) return { claim, absorbed };
@@ -163,8 +169,8 @@ export function absorbIsolatedRivalCells(
       counts,
       stolenFrom,
       weightedClaimM2:
-        claim.weightedClaimM2 + absorbed.size * multiplierFor(1) * GAMEPLAY.CELL_AREA_M2,
-      gainedM2: claim.gainedM2 + absorbed.size * GAMEPLAY.CELL_AREA_M2,
+        claim.weightedClaimM2 + absorbed.size * multiplierFor(1, cfg) * cfg.CELL_AREA_M2,
+      gainedM2: claim.gainedM2 + absorbed.size * cfg.CELL_AREA_M2,
     },
   };
 }
@@ -204,6 +210,7 @@ export function mergeClaims(
   /** Az aktivitás ELŐTTI birtokviszony. */
   before: OwnershipMap,
   actorId: string,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
 ): ClaimResult {
   const updates = new Map<CellId, CellOwnership>();
   const fates = new Map<CellId, CellFate>();
@@ -254,9 +261,9 @@ export function mergeClaims(
     // összegeztünk, és egy valódi útvonalon az erősen átfedő hurkok miatt
     // ugyanaz a cella tízszer is fizetett — élesben 149 666 GP jött ki egy
     // 11 km-es bringaútra.
-    weightedClaimM2 += multiplierFor(after.defense) * GAMEPLAY.CELL_AREA_M2;
+    weightedClaimM2 += multiplierFor(after.defense, cfg) * cfg.CELL_AREA_M2;
 
-    if (fate === 'free' || fate === 'stolen') gainedM2 += GAMEPLAY.CELL_AREA_M2;
+    if (fate === 'free' || fate === 'stolen') gainedM2 += cfg.CELL_AREA_M2;
     if (fate === 'stolen' && previousOwner !== undefined) {
       stolenFrom[previousOwner] = (stolenFrom[previousOwner] ?? 0) + 1;
     }

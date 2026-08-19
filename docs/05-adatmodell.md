@@ -49,8 +49,16 @@
   trust: { level: 'new'|'established'|'trusted'|'watched',
            cleanActivities: number, upheldReports: number, watchedUntil?: Timestamp }
 
-  streak: { current: number, longest: number, lastActiveDate: string,
-            freezesLeftThisWeek: number, weeks: number }
+  streak: { current: number, longest: number,
+            lastActiveDay: number | null,   // NAPSZÁM a felhasználó helyi ideje szerint
+            freezesLeftThisWeek: number,
+            weeks: number,                  // heti sorozat
+            weekActiveDays: number,         // a folyó hét aktív napjai
+            milestonesAwarded: number[] }   // már kiosztott heti mérföldkövek
+
+  rollover: { lastDay: number,              // meddig jutott a napi forduló
+              nextDueAt: Timestamp,         // a következő helyi éjfél — erre megy a job lekérdezése
+              lastRunAt?: Timestamp }
 
   counters: { activities: number, followers: number, following: number,
               distanceKm: { run: number, walk: number, ride: number } }
@@ -360,10 +368,17 @@ A „zóna" (összefüggő birtokfolt) nem tárolt igazság, hanem a rácsból s
   source: 'activity'|'hold'|'streak_milestone'|
           'challenge'|'badge'|'admin_adjust',
   activityId?, challengeId?, badgeId?: string,
-  gp?: { base, claim, steal, breakthrough, streakMult, softCapReduction, total },
-  multiplier?: number, note?: string, at: Timestamp, day: number }
+  gp?: { base, claim, steal, breakthrough, streakMult, modifierMult,
+         softCapReduction, total },
+  multiplier?: number,            // az időszakos szorzók eredője
+  modifiers?: AppliedModifier[],  // melyik akció, mekkora részesedéssel
+  configVersion?: number,         // melyik appConfig-verzióval számoltunk
+  localDay?: number,              // a felhasználó helyi napja (napi jóváírásnál)
+  note?: string, at: Timestamp, day: number }
 ```
 Az egyetlen igazságforrás a pontokra; a `users.gpTotal` ennek az aggregátuma.
+
+**Determinisztikus azonosítók.** A napi jóváírás `hold_{uid}_{localDay}`, a heti mérföldkő `milestone_{uid}_{hetek}` néven íródik. Így egy megismételt job-futás ugyanazt a dokumentumot írja felül, nem keletkezik második jóváírás — az idempotencia az azonosítóból jön, nem egy külön ellenőrzésből, amit el lehet felejteni.
 
 ### `dailyGp/{uid}_{gameDay}`
 ```ts
@@ -438,11 +453,56 @@ Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`
 | `devices/{uid}/tokens/{token}` | `platform, updatedAt` |
 | `connectors/{uid}/{provider}` | `status, connectedAt, lastSyncAt, scopes, secretRef` |
 | `leaderboards/{scope}_{period}_{layer}/entries/{rank}` | előre számolt top 100 |
-| `appConfig/{doc}` | gameplay-konstansok, feature flag-ek |
+| `appConfig/{doc}` | gameplay-konstansok, feature flag-ek — lásd lent |
+| `appConfig/gameplay/versions/{n}` | a konfiguráció verziótörténete, visszavonáshoz |
+| `modifiers/{id}` | időszakos szorzók — lásd lent |
+| `metricsDaily/{day}` | napi használati aggregátum az admin áttekintőhöz |
 | `adminAudit/{id}` | `adminUid, action, targetType, targetId, before, after, at` |
 | `activityAudits/{activityId}` | szerveroldali foglalás-, szint-, tulajdonos- és hurokdiagnosztika |
 
 ---
+
+### `appConfig/gameplay` — a futásidejű játékkonfiguráció
+```ts
+{ version: number,                     // monoton nő, minden mentésnél +1
+  overrides: Record<string, unknown>,  // CSAK az alapértéktől eltérő kulcsok,
+                                       // pontozott útvonallal: 'BASE_GP_PER_KM.run'
+  updatedAt: Timestamp, updatedBy: string, note?: string }
+```
+Az alapértékek forrása a `src/config/gameplay.ts` marad — ez a dokumentum **csak a különbséget** tárolja. Így egy alapérték-változás a kódban automatikusan érvényre jut mindenhol, ahol az admin nem tért el tőle, és a dokumentumból ránézésre látszik, mihez nyúltunk hozzá.
+
+Csak a **hangolható** kulcsok írhatók felül (lásd `docs/06` → Játékkonfiguráció). Ismeretlen kulcs, rossz típus vagy tartományon kívüli érték: **eldobva és naplózva** — a játékmotor sosem áll meg egy elrontott konfiguráció miatt, hanem az alapértékkel megy tovább.
+
+Minden mentés egy változatlan másolatot ír az `appConfig/gameplay/versions/{version}` alá, `adminAudit` bejegyzéssel. Visszavonás = egy korábbi verzió `overrides` mezejének visszaírása új verzióként; a történet nem íródik felül.
+
+### `modifiers/{id}` — időszakos szorzók
+```ts
+{ kind: 'gp_multiplier' | 'claim_multiplier' | 'hold_multiplier',
+  scope: 'global' | 'area' | 'segment',
+  areaCells?: string[],          // H3 cellák MODIFIER_AREA_RES felbontáson
+  segment?: { inactiveDays?: number },
+  value: number,                 // szorzó, pl. 2.0
+  from: Timestamp, to: Timestamp,   // KÖTELEZŐ mindkettő — véges élettartam
+  reason: string,                // a felhasználónak is megmutatható indok
+  source: 'manual' | 'auto',
+  createdBy: string, createdAt: Timestamp,
+  cancelledAt?: Timestamp, cancelledBy?: string }
+```
+Klienről **olvasható** (a felhasználónak látnia kell, hol és meddig érvényes a bónusz), írni kizárólag szerverről lehet. A `to` mező nem hiányozhat és nem lehet a `from` előtt: az élettartam végessége nem konvenció, hanem kikényszerített szabály — erre épül az automatikus generálás biztonsága.
+
+Területi modifier **arányosan** hat: az érintett cellák aránya szerint (lásd `docs/06` → Modifierek).
+
+### `metricsDaily/{day}` — napi használati aggregátum
+```ts
+{ day: number,                   // gameDay, Europe/Budapest
+  dau: number, wau: number, mau: number,
+  signups: number,
+  activities: number, distanceKm: number,
+  claimedCellsNet: number,
+  activeStreaks: number,
+  computedAt: Timestamp }
+```
+Az admin áttekintő ebből olvas, hogy azonnali választ adjon — a Firebase Analytics / BigQuery a hosszabb távú terméki elemzés helye marad. A napi forduló job írja, `Europe/Budapest` szerinti 00:05-kor.
 
 ### `activityTrust/{activityId}` — a bizalmi pontszám naplója
 

@@ -229,11 +229,14 @@ feljegyzést), és külön döntést igényel.
 
 A védelem a cellához tartozik, nem a felhasználóhoz. Gazdacsere után az új tulajdonosnál 1-es szinten indul.
 
-### Napi forduló — **helyi idő szerint** *(döntés: 2026-08-15)*
+### Napi forduló — **helyi idő szerint** *(döntés: 2026-08-15, pontosítva: 2026-08-19)*
 
-- A forduló a **cella tulajdonosának helyi ideje** szerinti éjfélkor történik.
+- A forduló a **felhasználó helyi ideje** szerinti éjfélkor történik.
 - A `daily-rollover` job **óránként** fut, és mindig azokat a felhasználókat dolgozza fel, akiknél az elmúlt órában fordult éjfél. Így a terhelés egyenletesen oszlik el a nap 24 órájára — ez üzemeltetési szempontból még kényelmesebb is, mint egyetlen UTC-csúcs.
-- Sorrend: **hold-bónusz kiosztása → védelem visszaállítása → streak-értékelés**.
+- Sorrend: **hold-bónusz kiosztása → sorozat-értékelés → heti/havi ablakzárás**.
+- **A védelem NEM itt áll vissza.** Az elévülés *olvasáskor* számolódik (lásd fent, **Védelem → Napi elévülés**), és ott a nap `Europe/Budapest` szerint telik, mert a cellának nincs időzónája. A fordulóban ezért nincs védelem-lépés: egy „mindent visszaír" job több tízezer dokumentumot érintene, és félbeszakadva a rács fele elévülne, a másik fele nem.
+  > *A szakasz korábbi szövege egy „védelem visszaállítása" lépést is felsorolt. Ez a 2026-08-19-i tisztázással kikerült, mert ellentmondott az olvasáskori elévülésnek — a kódban mindig is az utóbbi futott (`effectiveDefense()`).*
+- **A heti és havi GP-ablak is itt zárul**, ugyanabban a helyi éjfélben: amikor a felhasználónál hétfő (illetve a hónap első napja) kezdődik, a `gpWeek` / `gpMonth` nullázódik, és megtörténik a heti sorozat értékelése a mérföldkövekkel. Külön, fix idejű heti job **nincs** — két időforrás ugyanarra a felhasználóra kiszámíthatatlan: a külföldön lévőnél a heti nullázás a napja közepén ütne be.
 - Az időzóna forrása: `users.timezone`, amit az app az eszközből állít be. **Visszaélés-védelem:** az időzóna-váltás naplózva van, és 30 naponta legfeljebb egyszer vehető figyelembe a forduló szempontjából. Így nem lehet oda-vissza utazgatással kétszer beszedni a napi bónuszt.
 
 ---

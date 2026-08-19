@@ -23,6 +23,7 @@ import { activitiesRouter } from './src/routes/activities';
 import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
 import { devRouter } from './src/routes/dev';
+import { jobsRouter } from './src/routes/jobs';
 
 export { db, FIRESTORE_DATABASE_ID };
 
@@ -120,6 +121,15 @@ app.use('/api/activities', authenticate, activitiesRouter);
 app.use('/api/tiles', authenticate, tilesRouter);
 app.use('/api/missions', authenticate, missionsRouter);
 app.use('/api/dev', authenticate, devRouter);
+
+/**
+ * SZÁNDÉKOSAN `authenticate` NÉLKÜL — a router maga engedélyez.
+ *
+ * A Cloud Scheduler nem Firebase felhasználó, tehát nincs ID-tokenje. A
+ * `jobsRouter` megosztott titkot vagy admin szerepkört vár; ha egyik sincs,
+ * 401/403 a válasz.
+ */
+app.use('/api/jobs', jobsRouter);
 
 /* ── Ismeretlen API-útvonal ──────────────────────────────────────────
    Enélkül az Express beépített 404-ese válaszol, ami HTML-t ad. A kliens

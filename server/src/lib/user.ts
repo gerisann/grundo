@@ -4,6 +4,9 @@
  * Tiszta függvények, Firestore nélkül. A séma forrása: docs/05-adatmodell.md
  */
 
+import { GAMEPLAY } from '../../../src/config/gameplay';
+import { localDay, nextLocalMidnight } from './gridMath';
+
 const USERNAME_PATTERN = /^[a-z0-9._]{3,20}$/;
 
 const RESERVED = new Set([
@@ -101,9 +104,31 @@ export function newUserDoc(input: NewUserInput, now: Date) {
     streak: {
       current: 0,
       longest: 0,
-      lastActiveDate: null,
-      freezesLeftThisWeek: 1,
+      /**
+       * A legutóbbi aktív nap NAPSZÁMKÉNT, a felhasználó helyi ideje szerint.
+       *
+       * Nem dátumszöveg: abból nem lehet napokat kivonni (20260901 − 20260831
+       * = 70 volna, nem 1), a sorozat-értékelés pedig pontosan ezt a kivonást
+       * végzi. A mező korábban `lastActiveDate` néven, szövegként szerepelt a
+       * sémában, de a kód sosem írta — a napszámos alak nyert.
+       */
+      lastActiveDay: null,
+      freezesLeftThisWeek: GAMEPLAY.STREAK_FREEZES_PER_WEEK,
       weeks: 0,
+      /** Az ebben a folyó héten eddig aktív napok száma — a heti sorozathoz. */
+      weekActiveDays: 0,
+      /** Már kiosztott heti mérföldkövek (4/12/26/52), hogy ne járjanak kétszer. */
+      milestonesAwarded: [] as number[],
+    },
+
+    /**
+     * A napi forduló könyvelése. A `nextDueAt` a felhasználó KÖVETKEZŐ helyi
+     * éjfele — a job egyetlen indexelt lekérdezéssel megtalálja, kire jár le az
+     * óra, ahelyett hogy óránként végigolvasná a teljes felhasználói kört.
+     */
+    rollover: {
+      lastDay: localDay(now, input.timezone ?? 'Europe/Budapest'),
+      nextDueAt: nextLocalMidnight(now, input.timezone ?? 'Europe/Budapest'),
     },
 
     counters: {

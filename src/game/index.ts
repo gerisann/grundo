@@ -11,11 +11,13 @@ export * from './cells';
 export * from './loops';
 export * from './claim';
 export * from './scoring';
+export * from './modifiers';
 
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
 import { detectLoopsDetailed, loopCells } from './loops';
 import { absorbIsolatedRivalCells, mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
+import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import type {
   ActivityType, CellId, ClaimResult, DetectedLoop, GpBreakdown, LoopDiagnostics,
   OwnershipMap, TracePoint,
@@ -32,6 +34,17 @@ export interface ProcessInput {
   gpEarnedToday: number;
   /** A claim kétgyűrűs, teljesen beolvasott környezete az árva mezőkhöz. */
   orphanScope?: ReadonlySet<CellId>;
+  /**
+   * A játékkonfiguráció pillanatképe. Ha hiányzik, a statikus alapértékkel
+   * számolunk — a kliensoldali élő előnézet így változatlanul működik.
+   */
+  cfg?: GameplayConfig;
+  /**
+   * Időszakos szorzók, a területi arányokkal már súlyozva. Kizárólag a szerver
+   * tölti ki: a kliens nem tudhatja, mely cellák esnek egy bónuszterületre,
+   * mert ahhoz a teljes nyomvonalat kellene kiértékelnie.
+   */
+  modifierFactors?: { gp?: number; claim?: number };
 }
 
 export interface ProcessResult {
@@ -61,6 +74,7 @@ export interface ProcessResult {
  * válna (bekapcsolom 200 m-re, és ott nem érvényesülnek a szabályok).
  */
 export function processActivity(input: ProcessInput): ProcessResult {
+  const cfg = input.cfg ?? DEFAULT_GAMEPLAY;
   const { path, droppedPoints, largeGaps } = traceToCellPath(input.points);
   const loopDetection = detectLoopsDetailed(path);
   const loops = loopDetection.loops;
@@ -77,27 +91,31 @@ export function processActivity(input: ProcessInput): ProcessResult {
     const cells = loopCells(loop);
     for (const cell of cells) claimedCells.add(cell);
 
-    const result = resolveClaim(cells, running, input.actorId);
+    const result = resolveClaim(cells, running, input.actorId, cfg);
     for (const [cell, ownership] of result.updates) running.set(cell, ownership);
     perLoop.push(result);
   }
 
   // Az EREDETI birtokviszony kell a károsultak azonosításához.
   const mergedClaim =
-    perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId) : null;
+    perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId, cfg) : null;
   const orphanResult = input.orphanScope
-    ? absorbIsolatedRivalCells(mergedClaim, input.ownership, input.actorId, input.orphanScope)
+    ? absorbIsolatedRivalCells(mergedClaim, input.ownership, input.actorId, input.orphanScope, cfg)
     : { claim: mergedClaim, absorbed: new Set<CellId>() };
   const claim = orphanResult.claim;
   for (const cell of orphanResult.absorbed) claimedCells.add(cell);
 
-  const gp = computeActivityGp({
-    type: input.type,
-    distanceKm: input.distanceKm,
-    claim,
-    streakDays: input.streakDays,
-    gpEarnedToday: input.gpEarnedToday,
-  });
+  const gp = computeActivityGp(
+    {
+      type: input.type,
+      distanceKm: input.distanceKm,
+      claim,
+      streakDays: input.streakDays,
+      gpEarnedToday: input.gpEarnedToday,
+      modifierFactors: input.modifierFactors,
+    },
+    cfg,
+  );
 
   return {
     layer: layerOf(input.type),

@@ -113,15 +113,28 @@ Eredetileg két lehetőséget vázoltam fel (PostGIS vs. Firestore+turf.js) — 
 
 | Job | Ütem | Feladat |
 |---|---|---|
-| `daily-rollover` | **óránként** | azok a felhasználók, akiknél az elmúlt órában fordult **helyi** éjfél: hold-bónusz → védelem 1-re → streak-értékelés |
+| `daily-rollover` | **óránként** | azok a felhasználók, akiknél az elmúlt órában fordult **helyi** éjfél: hold-bónusz → sorozat-értékelés → heti/havi ablakzárás. Emellett `Europe/Budapest` 00:05-kor a napi használati aggregátum (`metricsDaily`) |
 | `trust-sweep` | 5 percenként | lejárt türelmi idejű `pending_review` aktivitások automatikus érvényesítése |
-| `weekly-reset` | hétfő 00:00 | heti GP nullázás, heti sorozat értékelés, mérföldkövek |
 | `leaderboards` | 10 percenként | globális + lokális ranglisták újraszámolása |
 | `streak-reminder` | óránként | 18:00 helyi idő szerinti emlékeztetők |
 | `challenge-lifecycle` | óránként | kihívások indítása/zárása, jutalmak |
 | `connector-sync` | 15 percenként | pollozó konnektorok |
 | `integrity-sweep` | naponta | anti-cheat mintázatok utólagos keresése |
 | `retention` | naponta | soft-delete lejáratok, adatmegőrzés |
+
+**A `daily-rollover` hívási pontja:** `POST /api/jobs/daily-rollover`. A router szándékosan a `authenticate` middleware-en KÍVÜL van (az ütemezőnek nincs Firebase felhasználója); két út enged be: az `X-Job-Token` megosztott titok, vagy `owner`/`admin` szerepkörű ID-token a kézi indításhoz. Ha a `JOBS_TOKEN` környezeti változó nincs beállítva, a titok-út teljesen zárva marad — nem generálunk alapértelmezett jelszót.
+
+A job **idempotens**, és futásonként pontosan **egy naphatárt** lép át. Ha az ütemező kiesett néhány napra, az óránkénti futás napi 24 nap lemaradást hoz be, külön „pótlás" ág nélkül — az ilyen ág csak kiesés után futna, tehát sosem lenne rendesen tesztelve.
+
+**Bejegyzés (egyszeri, Cloud Shellből):**
+
+```
+gcloud scheduler jobs create http grundo-daily-rollover   --schedule="0 * * * *" --time-zone="Etc/UTC"   --uri="https://<cloud-run-url>/api/jobs/daily-rollover"   --http-method=POST   --headers="X-Job-Token=<a titok>"   --attempt-deadline=540s
+```
+
+A titkot ugyanaz az érték adja, amit a Cloud Run `JOBS_TOKEN` környezeti változója kap.
+
+⚠️ **A meglévő felhasználókat egyszer be kell jegyezni.** A job a `users.rollover.nextDueAt` mezőre keres; akinél ez nincs meg, azt a lekérdezés sosem hozná vissza, és Firestore-ban hiányzó mezőre nem lehet keresni. Az új fiókoknál a `newUserDoc` kitölti; a régiekhez a `server/`-ből: `npm.cmd run rollover:seed -- --apply`.
 
 ---
 
@@ -207,7 +220,11 @@ eredmény rekonstruálható, amit a felület egyértelműen jelez.
 
 ## Admin felület
 
-Külön webalkalmazás (Firebase Hosting + `admin-api` Cloud Run), Google-belépéssel, szerepkör-alapú jogosultsággal (`owner` / `admin` / `moderator` / `support` / `readonly`). **Minden művelet naplózva** (`adminAudit`).
+**Forma** *(döntés: 2026-08-19)*: **lusta betöltésű `/admin` terület a játékos alkalmazásban**, nem külön webapp. Az admin kód saját JS-darabban van, amit a játékos böngészője soha nem tölt le; a backend `/api/admin` a meglévő Cloud Run szolgáltatásban. Szerepkör-alapú jogosultság (`owner` / `admin` / `moderator` / `support` / `readonly`) custom claimből, **minden művelet naplózva** (`adminAudit`).
+
+> **Miért nem külön alkalmazás?** A védelmet mindkét formában ugyanaz adja: a szerveroldali szerepkör-ellenőrzés. A felület csak képernyő — admin JS birtokában is minden hívás `403`. A külön appnak egyetlen valódi biztonsági többlete van, a hálózati szintű zárás (IP-korlátozás vagy IAP egy külön URL előtt); cserébe két deploy-lánc, két hitelesítés, és a közös kódot (játékmotor, formázók, típusok) csomaggá kell szervezni. Egy pár tesztelős fázisban ez rossz csere. A `/api/dev` és az első két admin képernyő már ma is így működik.
+>
+> **A döntés visszafordítható marad, ha a mappafegyelem megvan:** az admin kód a `src/admin/` alatt él, és **egyirányú a függés** — az admin importálhat a közös `src/lib/`-ből és `src/game/`-ből, de a játékos-képernyőkből soha, és a játékos-képernyők az adminból soha. Ezzel a későbbi szétválasztás költöztetés, nem átírás. Ha valódi moderátorok vagy külsősök kapnak hozzáférést, akkor jön el a külön app ideje.
 
 ### 1. Áttekintő
 DAU / WAU / MAU · új regisztrációk · aktivitások és összes táv naponta · elfoglalt km² · aktív streakek · Pro-konverzió és lemorzsolódás · konnektor-hibaarány · hibás job-futások.
@@ -251,6 +268,33 @@ Klub-lista, tagság, tulajdonos-váltás, publikálás visszavonása.
 ### 7. Játékkonfiguráció
 Az `appConfig/gameplay` szerkesztése **verziózva**, előnézettel és visszavonással. Változás után a hatás azonnal él, de a korábbi tranzakciók változatlanok.
 Feature flag-ek: fokozatos bevezetés (%-os kitettség), kill switch.
+
+**Hangolható és szerkezeti konstansok** *(döntés: 2026-08-19)*. A `src/config/gameplay.ts` marad az alapértékek forrása; az `appConfig/gameplay` **csak az eltéréseket** tárolja. De nem minden konstans állítható élesben:
+
+| | Példa | Élesben? |
+|---|---|---|
+| **Hangolható** | GP/km, igény-együttható, védelmi szorzók, lopás- és áttörés-bónusz, sorozat-lépcső és plafon, hold-bónusz, lágy plafon, Trust-küszöbök | ✅ balansz-számok |
+| **Szerkezeti** | H3 felbontás, cella névleges területe, hurokküszöbök (`MIN_INTERIOR_CELLS`, `MIN_LOOP_STEPS`), `MAX_DEFENSE`, szintlépcső | ❌ **soha** — adatformátumot vagy mért, indoklással rögzített játékszabályt határoznak meg |
+
+A hangolható kulcsokhoz **séma** tartozik (típus, engedélyezett tartomány, magyar leírás). Ez a séma két helyet szolgál ki: az admin szerkesztőt **és** a felhasználói szabálymagyarázó felületet — így egy átállított szorzó után a játékosnak mutatott magyarázat sem hazudik.
+
+**Pillanatkép-elv:** egy aktivitás feldolgozása a legelején rögzíti az érvényes konfigurációt, és végig azzal számol. Egy futás soha nem számolhat félig a régi, félig az új szabályokkal. A használt verziószám az `activityAudits` és a `gpLedger` rekordba kerül — így utólag megválaszolható, miért annyi pont lett.
+
+### Modifierek — időszakos szorzók
+
+*(döntés: 2026-08-19)* Az időszakos akciók **nem** az `appConfig` átírásával készülnek, hanem külön `modifiers` kollekcióban:
+
+- **Fajta:** `gp_multiplier` · `claim_multiplier` · `hold_multiplier`
+- **Hatókör:** `global` · `area` (H3 cellák durvább felbontáson) · `segment` (pl. „7 napja inaktív")
+- **Élettartam: kötelezően véges** — minden modifiernek van `from` és `to` időpontja
+- **Területi modifier arányosan hat:** az érintett cellák aránya szerint. Ha a bezárt terület negyede esik a bónuszterületre, a szorzó az igénypont negyedére vonatkozik. Egy szabály, minden fajtára ugyanaz, és a játékosnak elmondható.
+- **Forrás:** `manual` (admin) vagy `auto` (automatika), `reason` mezővel — ez utóbbi a felhasználónak is megjeleníthető
+
+**A biztonsági elv, amiért külön kollekció:** *az automatika kizárólag modifiert írhat, `appConfig`-ot soha.* A modifier élettartama kötelezően véges, tehát egy elszálló automatika legrosszabb esetben is **magától lejár**. Ha a bázis-szabályokhoz nyúlhatna, egy hibás döntés maradandó lenne, és kézzel kellene visszabontani.
+
+### Automatikus esemény-generálás („központi agy") — későbbi fázis
+
+Egy ütemezett szolgáltatás, ami emberi beavatkozás nélkül tesz ki bónuszokat és eseményeket. Bemenete a `metricsDaily` és a rács aktivitás-eloszlása; kimenete kizárólag **modifier-dokumentum** (lásd fent). Tervezett viselkedés: részben véletlenszerű akciók, részben **lokáció-alapú kiegyenlítés** — ahol kevés az aktivitás, oda ideiglenes GP-szorzó kerül. Korlátok, amiket az implementációnál be kell tartani: egyszerre aktív modifierek száma és maximális szorzó plafonozva, minden automatikus döntés `adminAudit` bejegyzést kap, és az egész egyetlen kapcsolóval kikapcsolható. **Nem V1 scope** — az adatmodell és a modifier-motor viszont már most úgy készül, hogy ez később csak ráül, a játékmotorhoz nyúlás nélkül.
 
 ### 8. Jelvény- és szintkatalógus
 Jelvények CRUD (ikon, feltétel, ritkaság, jutalom), szintküszöbök szerkesztése, visszamenőleges kiosztás futtatása.

@@ -46,6 +46,11 @@ export {
   effectiveDefense,
   expandBlock,
   gameDay,
+  localDay,
+  localHour,
+  monthOf,
+  nextLocalMidnight,
+  weekOf,
 } from './gridMath';
 
 /**

@@ -29,7 +29,7 @@ import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { gridDisk } from 'h3-js';
 import { COLLECTIONS, db } from './firebase';
 import { badRequest, notFound } from './errors';
-import { blocksFor, gameDay, ownershipFromBlocks, readBlocks, writeOwnership } from './grid';
+import { blocksFor, gameDay, localDay, ownershipFromBlocks, readBlocks, writeOwnership } from './grid';
 import { buildActivityAudit } from './activityAudit';
 import {
   encodePublicRoute,
@@ -286,6 +286,7 @@ export async function commitActivity(
 
   const user = userNow.data() as {
     gpTotal?: number;
+    timezone?: string;
     streak?: StoredStreak;
     trust?: { cleanActivities?: number; upheldReports?: number };
     privacy?: Partial<PrivacySettings>;
@@ -473,8 +474,16 @@ export async function commitActivity(
        * `advanceStreak`. A `today` (a mentés napja) marad a napi GP-plafonhoz
        * és a cellák elévüléséhez: azok könyvelési dátumok, nem a felhasználó
        * mozgásának a napja.
+       *
+       * És a felhasználó HELYI napja, nem a rögzített játékidőzónáé. A cellák
+       * elévülésénél a fix időzóna a helyes (egy cellának nincs időzónája), a
+       * sorozat viszont tényleg a felhasználó napjához tartozik — és a napi
+       * forduló is ebben a napszámban dolgozik, tehát a kettőnek egyeznie kell.
        */
-      streak: advanceStreak(user.streak, gameDay(new Date(startedAt))),
+      streak: advanceStreak(
+        user.streak,
+        localDay(new Date(startedAt), user.timezone ?? 'Europe/Budapest'),
+      ),
       trust: {
         cleanActivities: FieldValue.increment(trust.verdict === 'trusted' ? 1 : 0),
       },

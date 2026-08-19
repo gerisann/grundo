@@ -1,6 +1,6 @@
 # GRUNDO — projekt gerinc
 
-**Státusz:** V0.2 specifikáció · 2026-08-15 (10 alapdöntés rögzítve)
+**Státusz:** V0.3 specifikáció · 2026-08-19 (15 alapdöntés rögzítve)
 **Cél:** production ready közösségi mozgás- és területfoglaló app (iOS/Android + web admin)
 **Stack:** Google AI Studio (fejlesztés) · Firebase (Auth, Firestore, Storage, FCM, Hosting) · Cloud Run (geo/konnektor/job szolgáltatások) · Mapbox
 
@@ -44,7 +44,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | Bezárás | **bármely önmetszés** — nem kell visszaérni a rajthoz |
 | Rétegek | `foot` (futás+gyaloglás), `bike` (kerékpár) |
 | Max védelmi szint | 5× |
-| Védelem visszaállása | naponta 1×-esre, **helyi idő** szerint |
+| Védelem elévülése | naponta **−1 szint**, 1 alá sosem · **olvasáskor** számolva, `Europe/Budapest` nap szerint |
 | GP terület után | **120 GP × √(terület km²-ben)**, védelmi szorzóval |
 | Trust Score küszöbök | ≥80 érvényes · 50–79 ellenőrzés alatt · <50 elutasítva |
 | Privát zóna | kezdet/vég külön, 50/100/200 m, alap: BE 200 m |
@@ -56,7 +56,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 |---|---|---|---|
 | 1 | Geometria-modell | **Firestore + H3 hexrács.** Nincs PostGIS, nincs poligon-algebra | [06](06-architektura-es-admin.md#gt-geometria-modell-döntés) |
 | 2 | Szintlépés alapja | **GP** — a távolság-létra a jelvényekben marad | [04](04-pontrendszer.md#szintek) |
-| 3 | Napi forduló | **helyi idő** szerinti éjfél, óránként futó job | [03](03-jatekszabalyok.md#napi-forduló--helyi-idő-szerint-döntés-2026-08-15) |
+| 3 | Napi forduló | **helyi idő** szerinti éjfél, óránként futó job — a heti/havi GP-ablak is itt zárul | [03](03-jatekszabalyok.md#napi-forduló--helyi-idő-szerint-döntés-2026-08-15-pontosítva-2026-08-19) |
 | 4 | E-mail-hitelesítés türelmi ideje | **7 nap**, utána csak a közösségi írás zárol | [02](02-funkcionalis-spec.md#regisztráció-és-hitelesítés) |
 | 5 | Területvesztés push | **minden támadásról**, plafon nélkül (1 támadás = 1 értesítés) | [02](02-funkcionalis-spec.md#értesítések) |
 | 6 | Lokális feed | **ingyenes**, nem Pro-funkció | [02](02-funkcionalis-spec.md#előfizetés-kép-25) |
@@ -65,3 +65,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | 9 | Anti-cheat | **Trust Score** (7 jelforrás); gyanús aktivitás látszik, de nem módosít birtokviszonyt | [03](03-jatekszabalyok.md#trust-score--aktivitás-hitelesség) |
 | 10 | Jelentés-kategóriák | GPS-manipuláció · jármű · hibás mérés · sértő · adatvédelem · egyéb | [02](02-funkcionalis-spec.md#jelentés) |
 | 11 | **Privát zóna** | az onboarding **kötelező lépése**; kezdet és vég külön, 50/100/200 m, alapból BE 200 m-en, kikapcsolható | [02](02-funkcionalis-spec.md#privát-zóna) |
+| 12 | Védelem elévülése | **olvasáskor** számolva, nincs mögötte ütemezett job; a napi fordulóban nincs védelem-lépés *(2026-08-19)* | [03](03-jatekszabalyok.md#védelem) |
+| 13 | Játékkonfiguráció futásidőben | az `appConfig/gameplay` felülírja a **hangolható** konstansokat; a **szerkezeti** konstansok (H3 felbontás, cellaterület, hurokküszöbök, szintlépcső) élesben nem állíthatók *(2026-08-19)* | [06](06-architektura-es-admin.md#7-játékkonfiguráció) |
+| 14 | Időszakos szorzók (modifierek) | külön `modifiers` kollekció, **kötelezően véges** élettartammal; globális, területi vagy szegmens hatókörrel. **Az automatika kizárólag modifiert írhat, `appConfig`-ot soha** *(2026-08-19)* | [06](06-architektura-es-admin.md#modifierek--időszakos-szorzók) |
+| 15 | Admin felület formája | **lusta betöltésű `/admin` terület** a játékos appban, `src/admin/` mappafegyelemmel — nem külön alkalmazás *(2026-08-19)* | [06](06-architektura-es-admin.md#admin-felület) |

@@ -77,8 +77,24 @@ const MS_PER_DAY = 86_400_000;
  * egyszerű egész, és az elévülés pontosan egy kivonás.
  */
 export function gameDay(date: Date): number {
+  return localDay(date, GAME_TIMEZONE);
+}
+
+/**
+ * Ugyanaz a napszám, de TETSZŐLEGES időzónában.
+ *
+ * A cellák elévülése a rögzített `GAME_TIMEZONE` szerint megy (lásd fent), a
+ * SOROZAT és a napi forduló viszont a felhasználó helyi ideje szerint — az
+ * tényleg az ő napja. A `gameDay` ennek a rögzített időzónás esete, hogy a két
+ * számítás soha ne csússzon szét egymástól: egy dátumkezelés, két hívó.
+ *
+ * Érvénytelen időzónánál a rögzített játékidőzónára esünk vissza. Egy elgépelt
+ * `users.timezone` mező nem állíthatja meg a napi fordulót — a felhasználó
+ * legrosszabb esetben egy másik órában fordul, de fordul.
+ */
+export function localDay(date: Date, timeZone: string): number {
   const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
-    timeZone: GAME_TIMEZONE,
+    timeZone: safeTimeZone(timeZone),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -87,6 +103,89 @@ export function gameDay(date: Date): number {
     .split('-')
     .map(Number) as [number, number, number];
   return Math.floor(Date.UTC(year, month - 1, day) / MS_PER_DAY);
+}
+
+/** A helyi óra (0–23) az adott időzónában — a forduló ebből tudja, mikor van éjfél. */
+export function localHour(date: Date, timeZone: string): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: safeTimeZone(timeZone),
+      hour: '2-digit',
+      hour12: false,
+    }).format(date),
+  );
+}
+
+const validatedZones = new Map<string, string>();
+
+function safeTimeZone(timeZone: string): string {
+  if (!timeZone) return GAME_TIMEZONE;
+  const cached = validatedZones.get(timeZone);
+  if (cached) return cached;
+  let resolved = GAME_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+    resolved = timeZone;
+  } catch {
+    resolved = GAME_TIMEZONE;
+  }
+  validatedZones.set(timeZone, resolved);
+  return resolved;
+}
+
+/**
+ * A KÖVETKEZŐ helyi éjfél időpontja.
+ *
+ * Ebből lesz a `users.rollover.nextDueAt`, amire a napi forduló lekérdezése
+ * megy — így nem kell óránként végigolvasni az összes felhasználót.
+ *
+ * Miért felezés, és miért nem „a mai nap plusz 24 óra"? Mert a nyári időszámítás
+ * váltásakor a helyi nap 23 vagy 25 órás. A felezés az egyetlen olyan megoldás,
+ * ami a `localDay` DEFINÍCIÓJÁBÓL dolgozik, nem egy párhuzamos időzóna-modellből
+ * — így a két számítás nem tud szétcsúszni egymástól. Az éjfél mindig egész
+ * percre esik, tehát a perces pontosság itt egzakt.
+ */
+export function nextLocalMidnight(date: Date, timeZone: string): Date {
+  const MINUTE = 60_000;
+
+  /**
+   * PERCRE IGAZÍTVA keresünk. Az éjfél mindig egész percre esik, tehát ha a
+   * keresés minden lépése percalapú, a végén `high` PONTOSAN az éjfél — nem
+   * „valahol az utolsó percen belül". Az igazítás lefelé történik, így ha a
+   * hívás épp az éjfél percében, de már utána érkezik, a percnyitás az új
+   * naphoz tartozik, és helyesen a KÖVETKEZŐ éjfelet adjuk vissza.
+   */
+  let low = Math.floor(date.getTime() / MINUTE) * MINUTE;
+  const today = localDay(new Date(low), timeZone);
+
+  let high = low + 26 * 60 * MINUTE;
+  while (localDay(new Date(high), timeZone) <= today) high += 60 * MINUTE;
+
+  while (high - low > MINUTE) {
+    const steps = Math.floor((high - low) / (2 * MINUTE));
+    const mid = low + steps * MINUTE;
+    if (mid === low) break;
+    if (localDay(new Date(mid), timeZone) > today) high = mid;
+    else low = mid;
+  }
+  return new Date(high);
+}
+
+/**
+ * A napszámból hétfő-kezdetű hét sorszáma.
+ *
+ * A napszám nullapontja (1970-01-01) csütörtök volt, innen a +3 eltolás. Ebből
+ * a heti ablak zárása egyetlen összehasonlítás: ha a hét sorszáma nagyobb, mint
+ * a legutóbbi fordulóé, új hét kezdődött.
+ */
+export function weekOf(day: number): number {
+  return Math.floor((day + 3) / 7);
+}
+
+/** A napszámhoz tartozó naptári hónap kulcsa, `év * 12 + hónap` alakban. */
+export function monthOf(day: number): number {
+  const date = new Date(day * MS_PER_DAY);
+  return date.getUTCFullYear() * 12 + date.getUTCMonth();
 }
 
 /** Az érvényes védelem: naponta egy szint, de sosem kevesebb 1-nél. */

@@ -112,6 +112,28 @@ export const GAMEPLAY = {
    *  oslói cella ugyanannyit érjen (a valós H3-terület ±néhány %-ot ingadozik). */
   CELL_AREA_M2: 307.09,
 
+  // ── Modifierek (időszakos szorzók) ──────────────────────────────────────
+  /**
+   * A területi modifierek felbontása. ~5,16 km²/cella — nagyjából egy
+   * városrész, ami az „ezen a héten a XI. kerületben 2× GP" akcióhoz a
+   * megfelelő szemcsézettség.
+   *
+   * SZÁNDÉKOSAN DURVÁBB A BLOKKOKNÁL (res 9). Így egy blokk pontosan egy
+   * modifier-cellába esik, és a birtokolt terület aránya blokkszinten
+   * kiszámolható — cellánként végigmenni egy kétmillió cellás birodalmon
+   * naponta nem lenne járható.
+   */
+  MODIFIER_AREA_RES: 7,
+  /**
+   * Az egyszerre ható modifierek eredőjének plafonja.
+   *
+   * Több akció szorzói összeszorzódnak. Ez önmagában rendben van, de amikor a
+   * modifiereket később automatika is generálja, egy hibás sorozat
+   * korlátlanul felszorozhatná a pontokat — és a GP nem évül, tehát az
+   * eredmény maradandó. A plafon ezt tövében vágja el.
+   */
+  MODIFIER_MAX_FACTOR: 5,
+
   // ── Rögzítés ────────────────────────────────────────────────────────────
   /** Ez alatt az aktivitás nem is menthető. */
   MIN_DISTANCE_M: 100,
@@ -201,6 +223,8 @@ export const GAMEPLAY = {
   DAILY_STREAK_MAX: 1.5,
   /** Egy kihagyott nap hetente nem töri meg a sorozatot. */
   STREAK_FREEZES_PER_WEEK: 1,
+  /** A heti sorozat feltétele: ennyi aktív nap kell egy héten, hogy a hét számítson. */
+  WEEK_STREAK_MIN_ACTIVE_DAYS: 3,
   WEEK_STREAK_MILESTONES: { 4: 500, 12: 2000, 26: 5000, 52: 12000 } as Record<number, number>,
 
   // ── Napi jóváírás ───────────────────────────────────────────────────────
@@ -261,3 +285,37 @@ export const GAMEPLAY = {
 } as const;
 
 export type ActivityType = keyof typeof GAMEPLAY.BASE_GP_PER_KM;
+
+/**
+ * A `GAMEPLAY` típusa KITÁGÍTVA — ez a futásidejű konfiguráció típusa.
+ *
+ * A `GAMEPLAY` `as const`, tehát minden mezője literál típus: a
+ * `CLAIM_GP_PER_SQRT_KM2` típusa nem `number`, hanem `120`. Ez az
+ * alapértékekhez helyes, a felülírt konfigurációhoz viszont hazugság lenne — és
+ * nem is ártalmatlan: a `TRUST_OBSERVE_ONLY` típusa `true` volna, amitől a
+ * TypeScript a kikapcsolt ághoz tartozó kódot elérhetetlennek hinné.
+ *
+ * A `Widen` ezért literálból alaptípust csinál és leveszi a `readonly`-t. Így a
+ * típus továbbra is a `GAMEPLAY`-ből származik — egy új konstans automatikusan
+ * megjelenik benne, nincs kézzel karbantartott párhuzamos interfész.
+ */
+type Widen<T> = T extends readonly (infer U)[]
+  ? Widen<U>[]
+  : T extends number
+    ? number
+    : T extends string
+      ? string
+      : T extends boolean
+        ? boolean
+        : { -readonly [K in keyof T]: Widen<T[K]> };
+
+export type GameplayConfig = Widen<typeof GAMEPLAY>;
+
+/**
+ * Az alapértékek, a futásidejű konfiguráció alakjában.
+ *
+ * Ezt használják a `src/game/` tiszta függvényei alapértelmezett paraméterként,
+ * hogy a meglévő hívási helyek változatlanul működjenek. A szerver ehelyett az
+ * `appConfig/gameplay`-ből feloldott pillanatképet adja át.
+ */
+export const DEFAULT_GAMEPLAY: GameplayConfig = GAMEPLAY as unknown as GameplayConfig;

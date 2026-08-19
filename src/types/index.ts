@@ -91,6 +91,14 @@ export interface GpBreakdown {
   steal: number;
   breakthrough: number;
   streakMult: number;
+  /**
+   * Az időszakos szorzók eredője az EGÉSZ aktivitásra (1 = nem volt akció).
+   *
+   * Az igénypontra ható `claim_multiplier` nem itt jelenik meg, hanem már a
+   * `claim` mezőben — az igénypont a lopás- és áttörésbónusz alapja is, tehát
+   * ott kell hatnia, hogy a részek összege kijöjjön.
+   */
+  modifierMult: number;
   /** a lágy plafon miatt levont mennyiség */
   softCapReduction: number;
   total: number;

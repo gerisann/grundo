@@ -35,4 +35,13 @@ export const COLLECTIONS = {
   activityTrust: 'activityTrust',
   activityAudits: 'activityAudits',
   adminAudit: 'adminAudit',
+  appConfig: 'appConfig',
+  modifiers: 'modifiers',
+  metricsDaily: 'metricsDaily',
+  rolloverRuns: 'rolloverRuns',
+} as const;
+
+/** Az `appConfig` dokumentumainak azonosítói. */
+export const APP_CONFIG_DOCS = {
+  gameplay: 'gameplay',
 } as const;

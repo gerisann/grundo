@@ -46,6 +46,7 @@ import { badRequest, notFound } from './errors';
 import {
   blocksFor,
   gameDay,
+  localDay,
   ownershipFromBlocks,
   readBlocks,
   writeOwnership,
@@ -386,7 +387,7 @@ async function closeBooks(
     const dailyGpNow = await tx.get(dailyGpRef);
     const victimSnaps = victimRefs.length > 0 ? await tx.getAll(...victimRefs) : [];
 
-    const user = userNow.data() as { gpTotal?: number; streak?: StoredStreak };
+    const user = userNow.data() as { gpTotal?: number; timezone?: string; streak?: StoredStreak };
     const earnedToday = Number((dailyGpNow.data() as { total?: number } | undefined)?.total ?? 0);
 
     /**
@@ -461,7 +462,10 @@ async function closeBooks(
           activities: FieldValue.increment(1),
           distanceKm: { [type]: FieldValue.increment(plan.distanceM / 1000) },
         },
-        streak: advanceStreak(user.streak, gameDay(new Date(startedAt))),
+        streak: advanceStreak(
+          user.streak,
+          localDay(new Date(startedAt), user.timezone ?? 'Europe/Budapest'),
+        ),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },

@@ -1,12 +1,18 @@
 /**
  * GRUNDO pont (GP) számítás.
  *
- *   GP = kerekít( (ALAP + IGÉNY + LOPÁS + ÁTTÖRÉS) × STREAK_SZORZÓ )
+ *   GP = kerekít( (ALAP + IGÉNY + LOPÁS + ÁTTÖRÉS) × STREAK_SZORZÓ × MODIFIER )
  *
  * docs/04-pontrendszer.md — ott számpéldák is vannak, amikre a tesztek épülnek.
+ *
+ * A konfiguráció PARAMÉTER, nem import. Élesben az `appConfig/gameplay`
+ * felülírhatja a hangolható konstansokat, és egy aktivitás feldolgozása a
+ * legelején rögzített pillanatképpel számol végig — így egy futás soha nem
+ * számol félig a régi, félig az új szabályokkal. Az alapértelmezett paraméter a
+ * statikus alapérték, ezért a meglévő hívási helyek változatlanul működnek.
  */
 
-import { GAMEPLAY } from '@/config/gameplay';
+import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import type { ActivityType, ClaimResult, GpBreakdown } from '@/types';
 
 export interface ScoreInput {
@@ -18,13 +24,28 @@ export interface ScoreInput {
   streakDays: number;
   /** amennyi GP-t a felhasználó ma már megszerzett (a lágy plafonhoz) */
   gpEarnedToday: number;
+  /**
+   * Időszakos szorzók, a területi arányokkal MÁR súlyozva (lásd
+   * `src/game/modifiers.ts`). 1 = nincs hatás.
+   *
+   * A `claim` csak az igénypontra hat — és rajta keresztül a lopás- és
+   * áttörés-bónuszra, mert azok az igénypont arányos részei —, a `gp` az egész
+   * aktivitásra. Mindkettő a lágy plafon ELŐTT érvényesül: a plafon a
+   * ténylegesen jóváírandó pontot korlátozza, nem a nyerset.
+   */
+  modifierFactors?: { gp?: number; claim?: number };
 }
 
-export function computeActivityGp(input: ScoreInput): GpBreakdown {
+export function computeActivityGp(
+  input: ScoreInput,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+): GpBreakdown {
   const { type, distanceKm, claim, streakDays, gpEarnedToday } = input;
+  const claimFactor = positiveFactor(input.modifierFactors?.claim);
+  const gpFactor = positiveFactor(input.modifierFactors?.gp);
 
   // 1. ALAP — minden méter számít, kör nélkül is
-  const base = distanceKm * GAMEPLAY.BASE_GP_PER_KM[type];
+  const base = distanceKm * cfg.BASE_GP_PER_KM[type];
 
   /**
    * 2. IGÉNY — a terület GYÖKE, a védelmi szorzóval megszorozva.
@@ -40,9 +61,9 @@ export function computeActivityGp(input: ScoreInput): GpBreakdown {
    */
   const ownCells =
     (claim?.counts.free ?? 0) + (claim?.counts.reclaimed ?? 0) + (claim?.counts.stolen ?? 0);
-  const rawM2 = ownCells * GAMEPLAY.CELL_AREA_M2;
+  const rawM2 = ownCells * cfg.CELL_AREA_M2;
   const defenseMultiplier = rawM2 > 0 ? (claim?.weightedClaimM2 ?? 0) / rawM2 : 1;
-  const claimPoints = claim ? areaToGp(rawM2) * defenseMultiplier : 0;
+  const claimPoints = claim ? areaToGp(rawM2, cfg) * defenseMultiplier * claimFactor : 0;
 
   /**
    * A lopás és az áttörés az igénypont ARÁNYOS része.
@@ -57,17 +78,17 @@ export function computeActivityGp(input: ScoreInput): GpBreakdown {
   const broken = claim?.counts.breakthrough ?? 0;
 
   const stolenShare = own > 0 ? (claim?.counts.stolen ?? 0) / own : 0;
-  const steal = claimPoints * stolenShare * GAMEPLAY.STEAL_BONUS;
+  const steal = claimPoints * stolenShare * cfg.STEAL_BONUS;
 
   // 4. ÁTTÖRÉS — a védett cella nem cserélt gazdát, de a támadás nem hiábavaló
   const brokenShare = own + broken > 0 ? broken / (own + broken) : 0;
-  const breakthrough = claimPoints * brokenShare * GAMEPLAY.BREAKTHROUGH_BONUS;
+  const breakthrough = claimPoints * brokenShare * cfg.BREAKTHROUGH_BONUS;
 
   // 5. SOROZAT
-  const streakMult = streakMultiplier(streakDays);
+  const streakMult = streakMultiplier(streakDays, cfg);
 
-  const raw = (base + claimPoints + steal + breakthrough) * streakMult;
-  const { granted, reduction } = applySoftCap(raw, gpEarnedToday);
+  const raw = (base + claimPoints + steal + breakthrough) * streakMult * gpFactor;
+  const { granted, reduction } = applySoftCap(raw, gpEarnedToday, cfg);
 
   return {
     base: round1(base),
@@ -75,6 +96,7 @@ export function computeActivityGp(input: ScoreInput): GpBreakdown {
     steal: round1(steal),
     breakthrough: round1(breakthrough),
     streakMult,
+    modifierMult: round2(gpFactor),
     softCapReduction: round1(reduction),
     total: Math.round(granted),
   };
@@ -86,15 +108,18 @@ export function computeActivityGp(input: ScoreInput): GpBreakdown {
  * A gyök a hurok lineáris méretével arányos, tehát a pont a megtett úttal nő,
  * nem a négyzetével. Lásd a `CLAIM_GP_PER_SQRT_KM2` melletti indoklást.
  */
-export function areaToGp(m2: number): number {
+export function areaToGp(m2: number, cfg: GameplayConfig = DEFAULT_GAMEPLAY): number {
   if (m2 <= 0) return 0;
-  return Math.sqrt(m2 / 1_000_000) * GAMEPLAY.CLAIM_GP_PER_SQRT_KM2;
+  return Math.sqrt(m2 / 1_000_000) * cfg.CLAIM_GP_PER_SQRT_KM2;
 }
 
-export function streakMultiplier(streakDays: number): number {
+export function streakMultiplier(
+  streakDays: number,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+): number {
   if (streakDays <= 1) return 1;
-  const mult = 1 + GAMEPLAY.DAILY_STREAK_STEP * (streakDays - 1);
-  return Math.min(round2(mult), GAMEPLAY.DAILY_STREAK_MAX);
+  const mult = 1 + cfg.DAILY_STREAK_STEP * (streakDays - 1);
+  return Math.min(round2(mult), cfg.DAILY_STREAK_MAX);
 }
 
 /**
@@ -104,25 +129,50 @@ export function streakMultiplier(streakDays: number): number {
 export function applySoftCap(
   raw: number,
   earnedToday: number,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
 ): { granted: number; reduction: number } {
-  const cap = GAMEPLAY.SOFT_CAP_GP_PER_DAY;
+  const cap = cfg.SOFT_CAP_GP_PER_DAY;
   if (earnedToday >= cap) {
-    const granted = raw * GAMEPLAY.SOFT_CAP_RATE;
+    const granted = raw * cfg.SOFT_CAP_RATE;
     return { granted, reduction: raw - granted };
   }
   const headroom = cap - earnedToday;
   if (raw <= headroom) return { granted: raw, reduction: 0 };
 
   const over = raw - headroom;
-  const granted = headroom + over * GAMEPLAY.SOFT_CAP_RATE;
+  const granted = headroom + over * cfg.SOFT_CAP_RATE;
   return { granted, reduction: raw - granted };
 }
 
-/** Napi tartás-bónusz: 100 GP / km² / nap, napi 1 000 GP plafonnal. */
-export function computeHoldBonus(heldM2: number, activeInLastDays: number): number {
-  if (activeInLastDays > GAMEPLAY.HOLD_REQUIRES_ACTIVE_DAYS) return 0;
-  const gp = (heldM2 / 1_000_000) * GAMEPLAY.HOLD_GP_PER_KM2;
-  return Math.round(Math.min(gp, GAMEPLAY.HOLD_GP_DAILY_CAP));
+/**
+ * Napi tartás-bónusz: 100 GP / km² / nap, napi 1 000 GP plafonnal.
+ *
+ * A `modifierFactor` a területi vagy globális `hold_multiplier` modifierekből
+ * jön, és a PLAFON ELŐTT hat: a plafon a ténylegesen jóváírandó pontot
+ * korlátozza, nem a nyerset. Ha utána hatna, egy nagybirtokos, aki már a
+ * plafonon ül, semmit nem érezne egy hold-bónusz akcióból.
+ */
+export function computeHoldBonus(
+  heldM2: number,
+  activeInLastDays: number,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+  modifierFactor = 1,
+): number {
+  if (activeInLastDays > cfg.HOLD_REQUIRES_ACTIVE_DAYS) return 0;
+  const gp = (heldM2 / 1_000_000) * cfg.HOLD_GP_PER_KM2 * positiveFactor(modifierFactor);
+  return Math.round(Math.min(gp, cfg.HOLD_GP_DAILY_CAP));
+}
+
+/**
+ * Egy szorzó akkor érvényes, ha véges és nem negatív. Minden más esetben 1.
+ *
+ * A modifierek adatbázisból jönnek, tehát lehetnek hiányosak vagy elrontottak.
+ * Egy hiányzó vagy `NaN` szorzó itt csendben `NaN`-t vinne a végösszegbe, és az
+ * a felhasználónál „nulla pontot kaptam" alakban jelentkezne, minden nyom
+ * nélkül.
+ */
+function positiveFactor(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 1;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
