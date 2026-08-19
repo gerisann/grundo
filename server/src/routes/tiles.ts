@@ -3,8 +3,8 @@ import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, notFound } from '../lib/errors';
 import {
   BLOCK_RESOLUTION,
-  cellKey,
   effectiveDefense,
+  expandBlock,
   gameDay,
   loadUserBlockIds,
   type GridBlock,
@@ -69,14 +69,11 @@ tilesRouter.get('/mine', async (req, res, next) => {
        * nincs eltárolva. Visszafejteni a szülő gyerekeiből lehet: a res 9
        * blokk 343 db res 12 gyereke közül az, amelyiknek a vége egyezik.
        */
-      const children = cellToChildren(block.parent, 12);
-      const byKey = new Map<string, CellId>();
-      for (const child of children) byKey.set(cellKey(child), child);
-
-      for (const [key, stored] of Object.entries(block.cells ?? {})) {
+      // Az `expandBlock` mindkét tárolási alakot kezeli — a tömörített
+      // (uniform) blokkot is. Enélkül az üresen jelenne meg a térképen.
+      for (const [cell, stored] of expandBlock(block, GAMEPLAY.H3_RESOLUTION)) {
         if (stored.o !== uid) continue;
-        const cell = byKey.get(key);
-        if (cell) cells.push({ cell, defense: effectiveDefense(stored, today) });
+        cells.push({ cell, defense: effectiveDefense(stored, today) });
       }
     }
 
@@ -199,12 +196,7 @@ tilesRouter.get('/', async (req, res, next) => {
     for (const snapshot of snapshots) {
       if (!snapshot.exists) continue;
       const block = snapshot.data() as GridBlock;
-      const byKey = new Map<string, CellId>();
-      for (const child of cellToChildren(block.parent, 12)) byKey.set(cellKey(child), child);
-
-      for (const [key, stored] of Object.entries(block.cells ?? {})) {
-        const cell = byKey.get(key);
-        if (!cell) continue;
+      for (const [cell, stored] of expandBlock(block, GAMEPLAY.H3_RESOLUTION)) {
         cells.push({ cell, owner: stored.o, defense: effectiveDefense(stored, today) });
         ownerIds.add(stored.o);
       }

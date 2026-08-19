@@ -37,7 +37,14 @@
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminApp, COLLECTIONS, db, FIRESTORE_DATABASE_ID } from '../lib/firebase';
-import { blockIdFor, cellKey, gameDay, type StoredCell } from '../lib/gridMath';
+import {
+  blockCellCount,
+  blockIdFor,
+  cellKey,
+  gameDay,
+  uniformStateOf,
+  type StoredCell,
+} from '../lib/gridMath';
 import { processActivity } from '../../../src/game';
 import { layerOf } from '../../../src/game/cells';
 import { levelFor } from '../../../src/game/levels';
@@ -216,15 +223,26 @@ for (const layer of ['foot', 'bike'] as Layer[]) {
     const batch = db.batch();
     for (const blockId of ids.slice(i, i + 400)) {
       const block = blocks.get(blockId)!;
-      batch.set(db.collection(COLLECTIONS.grid).doc(blockId), {
+      const parent = blockId.slice(layer.length + 1);
+      /**
+       * A visszajátszás is TÖMÖRÍT.
+       *
+       * Enélkül egy helyreállítás visszabontaná az összes uniform blokkot
+       * kifejtett alakra — és pont a legnagyobb foglalásoknál, ahol a
+       * tömörítés a legtöbbet ér.
+       */
+      const uniform = uniformStateOf(block.cells, blockCellCount(parent, GAMEPLAY.H3_RESOLUTION));
+      const payload: Record<string, unknown> = {
         layer,
-        parent: blockId.slice(layer.length + 1),
-        cells: block.cells,
+        parent,
+        cells: uniform ? {} : block.cells,
         ownerCounts: block.owners,
         version: 1,
         updatedAt: new Date(),
         replayedAt: new Date(),
-      });
+      };
+      if (uniform) payload.uniform = uniform;
+      batch.set(db.collection(COLLECTIONS.grid).doc(blockId), payload);
       written.add(blockId);
     }
     await batch.commit();

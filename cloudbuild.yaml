@@ -67,7 +67,11 @@ steps:
       - --port=8080
       - --min-instances=0
       - --max-instances=4
-      - --memory=512Mi
+      # 2 GiB, mert egy nagyon nagy foglalás (Balaton-kör, ~600 km²,
+      # ~1,95 millió cella) a számítás alatt ~900 MB-ot vesz igénybe. Mérve
+      # ~420 bájt cellánként. A Cloud Run nullára skálázódik, tehát ez csak a
+      # tényleges kérések alatt kerül pénzbe.
+      - --memory=2Gi
       # A `--set-env-vars` FELÜLÍRJA a szolgáltatás összes környezeti
       # változóját, nem egészíti ki. Ami itt nincs felsorolva, az a telepítés
       # után eltűnik — ezért kell a teljes CORS-lista is itt szerepelnie, nem

@@ -218,6 +218,42 @@ területet ténylegesen bezáró körnek felel meg. Mért értékek: 10 km → 8
 > egyetlen, `arrayUnion`-nel bővített dokumentum (`users/{uid}/blockIndex/{layer}`),
 > ezért a menthető kör ~18 km-ről ~26 km-re nőtt.
 
+#### Egységes (uniform) blokk
+
+Egy 343 cellás blokk JSON-ben **~23 kB**, amiből **~9 kB puszta uid-ismétlés**
+(343-szor ugyanaz a 28 karakteres azonosító). Ha a blokk MINDEN cellája
+ugyanabban az állapotban van — ugyanaz a tulajdonos, ugyanaz a védelmi szint,
+ugyanaz a szerzési nap —, akkor egyetlen rekord elég:
+
+```jsonc
+{ "layer": "foot", "parent": "…", "uniform": { "o": "…", "d": 1, "u": 20684 } }
+```
+
+Ez **~0,15 kB**, azaz **152-szer kisebb**. A két alak sosem él együtt: ha
+`uniform` van, a `cells` üres.
+
+**Miért éri meg?** Egy nagy foglalás belseje jellemzően pontosan ilyen: egyben
+szerzett, homogén terület. Mért példa a Balaton-körre (~600 km², ~5 700 blokk):
+
+| | Kifejtve | Uniform blokkal |
+|---|---|---|
+| Firestore-tárhely | ~133 MB | **~15 MB** |
+| Tömörített blokkok | 0 | ~5 100 |
+| Kifejtve maradó (határ menti) | 5 700 | ~600 |
+
+**Mikor tömörít és mikor bont vissza?** Mindkettő az ÍRÁS TRANZAKCIÓJÁBAN,
+nem külön jobban. Így nincs második írófél a rácson, nincs ütemezés, ami
+elhasalhat, és nincs félig tömörített állapot. A vizsgálat ingyen van: a
+cellatérkép már a kezünkben van, amikor a blokkot írjuk.
+
+⚠️ **Az olvasók sosem nyúlnak közvetlenül a `cells`-hez.** Az `expandBlock` és
+a `cellFromBlock` kezeli mindkét alakot — enélkül egy tömörített blokk üres
+térképszakaszként jelenne meg, és a felhasználó azt hinné, eltűnt a területe.
+
+**Migráció nem kell.** A `uniform` mező elhagyható, tehát a régi, kifejtett
+blokkok változatlanul olvashatók. Amelyik blokkot legközelebb írjuk, az magától
+felveszi a tömörebb alakot, ha egységes.
+
 #### `users/{uid}/blockIndex/{layer}` — mely blokkokban van cellám
 
 A Firestore nem tud térkép-KULCSOKRA keresni, tehát a „mely blokkokban van

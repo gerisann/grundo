@@ -19,20 +19,34 @@
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
+import { cellToChildren } from 'h3-js';
+import { GAMEPLAY } from '../../../src/config/gameplay';
 import type { CellId, CellOwnership, Layer, OwnershipMap } from '../../../src/types';
 import { db, COLLECTIONS } from './firebase';
 import {
+  blockCellCount,
   blocksFor,
+  cellFromBlock,
   cellKey,
   effectiveDefense,
   gameDay,
+  uniformStateOf,
   type GridBlock,
   type StoredCell,
 } from './gridMath';
 
 // A tiszta logika a `gridMath`-ban él (tesztelhetőség miatt); innen is
 // elérhető, hogy a hívóknak ne kelljen két helyről importálniuk.
-export { BLOCK_RESOLUTION, blockIdFor, blocksFor, cellKey, effectiveDefense, gameDay } from './gridMath';
+export {
+  BLOCK_RESOLUTION,
+  blockIdFor,
+  blocksFor,
+  cellFromBlock,
+  cellKey,
+  effectiveDefense,
+  expandBlock,
+  gameDay,
+} from './gridMath';
 
 /**
  * A blokk-mutató alkollekciója.
@@ -88,7 +102,8 @@ export function ownershipFromBlocks(
     const block = storedBlocks.get(blockId);
     if (!block) continue;
     for (const cell of blockCells) {
-      const stored = block.cells?.[cellKey(cell)];
+      // `cellFromBlock` mindkét alakot kezeli — az uniformot és az explicitet.
+      const stored = cellFromBlock(block, cell);
       if (stored) {
         ownership.set(cell, { owner: stored.o, defense: effectiveDefense(stored, today) });
       }
@@ -120,7 +135,21 @@ export function writeOwnership(
     const current = existing.get(blockId) ?? null;
     const parent = blockId.slice(layer.length + 1);
 
-    const cellMap: Record<string, StoredCell> = { ...(current?.cells ?? {}) };
+    /**
+     * A TÁROLT alak kibontása, hogy a részleges frissítés alkalmazható legyen.
+     *
+     * Ha a blokk uniform volt, most 343 bejegyzéssé bomlik — de csak a
+     * memóriában, és csak addig, amíg el nem dől, hogy a frissítés után
+     * megint egységes-e. A visszatömörítés lentebb, ugyanebben a lépésben.
+     */
+    const cellMap: Record<string, StoredCell> = current?.uniform
+      ? Object.fromEntries(
+          cellToChildren(parent, GAMEPLAY.H3_RESOLUTION).map((child) => [
+            cellKey(child),
+            { ...current.uniform! },
+          ]),
+        )
+      : { ...(current?.cells ?? {}) };
     const ownerCounts: Record<string, number> = { ...(current?.ownerCounts ?? {}) };
 
     for (const cell of cells) {
@@ -140,18 +169,39 @@ export function writeOwnership(
       cellMap[key] = { o: next.owner, d: next.defense, u: today };
     }
 
-    tx.set(
-      db.collection(COLLECTIONS.grid).doc(blockId),
-      {
-        layer,
-        parent,
-        cells: cellMap,
-        ownerCounts,
-        version: (current?.version ?? 0) + 1,
-        updatedAt: now,
-      },
-      { merge: false },
-    );
+    /**
+     * VISSZATÖMÖRÍTÉS — az írás pillanatában, nem külön jobban.
+     *
+     * Így nincs második írófél a rácson, nincs ütemezés, ami elhasalhat, és
+     * nincs olyan állapot, amiben a blokk félig tömörített. A vizsgálat
+     * ingyen van: a cellatérkép már a kezünkben van.
+     *
+     * A `blockCellCount` a pentagonokat is helyesen kezeli — azoknak
+     * kevesebb gyerekük van, és uniformnak minősülnének, ha 343-mal
+     * hasonlítanánk össze.
+     */
+    const uniform = uniformStateOf(cellMap, blockCellCount(parent, GAMEPLAY.H3_RESOLUTION));
+
+    /**
+     * TELJES FELÜLÍRÁS (`merge: false`), ezért a mező ELHAGYÁSA maga a törlés.
+     *
+     * `FieldValue.delete()` itt nem használható — a Firestore csak `update()`
+     * vagy `merge: true` mellett fogadja el. Ha egy blokk uniformból vegyessé
+     * válik, a régi `uniform` mező attól tűnik el, hogy nem írjuk bele az új
+     * dokumentumba.
+     */
+    const payload: Record<string, unknown> = {
+      layer,
+      parent,
+      // A két alak SOSEM él együtt: amelyik érvényes, a másik üres.
+      cells: uniform ? {} : cellMap,
+      ownerCounts,
+      version: (current?.version ?? 0) + 1,
+      updatedAt: now,
+    };
+    if (uniform) payload.uniform = uniform;
+
+    tx.set(db.collection(COLLECTIONS.grid).doc(blockId), payload, { merge: false });
   }
 
   /**

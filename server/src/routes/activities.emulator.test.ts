@@ -511,4 +511,90 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     const ledger = await db.collection(collections.gpLedger!).get();
     expect(ledger.size).toBe(1);
   });
+
+  /**
+   * UNIFORM BLOKK — a tárolás tömörítése.
+   *
+   * Egy 343 cellás blokk JSON-ben ~23 kB, amiből ~9 kB puszta uid-ismétlés.
+   * Ha az egész blokk ugyanazé, egyetlen rekord elég. A Balaton-kör
+   * ~5 700 blokkjából ~5 100 ilyen lenne — 133 MB helyett ~15 MB.
+   */
+  it('a teljesen elfoglalt blokk tömörítve tárolódik', async () => {
+    // Nagy kör, hogy legyen olyan blokk, amit teljesen lefed.
+    await upload('alice', 'activity-uniform1', freshLoop(900));
+
+    const blocks = await db.collection(collections.grid!).get();
+    const uniform = blocks.docs.filter((doc) => doc.data().uniform != null);
+    const explicit = blocks.docs.filter((doc) => doc.data().uniform == null);
+
+    expect(uniform.length).toBeGreaterThan(0);
+
+    for (const doc of uniform) {
+      const data = doc.data();
+      // A két alak SOSEM él együtt.
+      expect(Object.keys(data.cells ?? {}).length).toBe(0);
+      expect(typeof data.uniform.o).toBe('string');
+      expect(typeof data.uniform.d).toBe('number');
+      // A tömörített blokk töredéke a kifejtettnek.
+      expect(JSON.stringify(data).length).toBeLessThan(1000);
+    }
+
+    // A határon lévő blokkok viszont vegyesek maradnak.
+    expect(explicit.length).toBeGreaterThan(0);
+  });
+
+  it('a tömörített blokk mezői ugyanúgy látszanak a térképen', async () => {
+    const result = await upload('alice', 'activity-uniform2', freshLoop(900));
+    currentUid = 'alice';
+
+    const response = await fetch(`${base}/api/tiles/mine?layer=foot`);
+    const body = (await response.json()) as { cellCount: number };
+    const summary = result.body.summary as unknown as Record<string, number>;
+
+    /**
+     * EZ A LÉNYEG. Ha az olvasó nem kezelné az uniform alakot, a tömörített
+     * blokkok ÜRESEN jönnének vissza — a felhasználó azt látná, hogy eltűnt a
+     * területe, pedig csak tömörítve van.
+     */
+    expect(body.cellCount).toBeGreaterThan(0);
+    expect(body.cellCount).toBeLessThanOrEqual(summary.claimedCells);
+
+    // A blokkok többsége tömörített ennél a méretnél — ha nem így lenne, a
+    // teszt nem is mérné, amit mérni akar.
+    const blocks = await db.collection(collections.grid!).get();
+    const uniform = blocks.docs.filter((doc) => doc.data().uniform != null).length;
+    expect(uniform).toBeGreaterThan(0);
+  });
+
+  it('a vegyessé váló blokk visszabomlik kifejtett alakra', async () => {
+    const points = freshLoop(900);
+    await upload('alice', 'activity-uniform3', points);
+
+    const before = await db.collection(collections.grid!).get();
+    const uniformBefore = before.docs.filter((doc) => doc.data().uniform != null).length;
+    expect(uniformBefore).toBeGreaterThan(0);
+
+    /**
+     * Bob egy KISEBB kört fut Alice területén belül. Amelyik blokkot csak
+     * részben érinti, annak vegyessé kell válnia — és a tömörített alak nem
+     * maradhat ott mellette, mert akkor a blokk két igazságot hordozna.
+     */
+    await upload('bob', 'activity-uniform4', freshLoop(300));
+
+    const after = await db.collection(collections.grid!).get();
+    let mixedFound = 0;
+    for (const doc of after.docs) {
+      const data = doc.data();
+      if (data.uniform != null) {
+        // Ahol maradt tömörítés, ott tényleg egységes az állapot.
+        expect(Object.keys(data.cells ?? {}).length).toBe(0);
+        continue;
+      }
+      const owners = new Set(
+        Object.values((data.cells ?? {}) as Record<string, { o: string }>).map((c) => c.o),
+      );
+      if (owners.size > 1) mixedFound += 1;
+    }
+    expect(mixedFound).toBeGreaterThan(0);
+  });
 });

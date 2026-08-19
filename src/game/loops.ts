@@ -339,17 +339,17 @@ const COARSE_STEPS = 2;
  * ⚠️ EZ A VALÓDI KORLÁT, és nem a kitöltésé — hanem az EREDMÉNYÉ. Az adaptív
  * menet a befoglaló doboz plafonját feloldotta, de a megtalált cellákat akkor
  * is tárolni kell: mérve ~420 bájt cellánként (a halmaz és a hurokkönyvelés
- * együtt). 1,2 millió cella így ~500 MB — ennyi az, ami egy Cloud Run
- * példányban még biztonságosan elfér.
+ * együtt). 1,2 millió cella így ~500 MB — 2,2 millió cella így ~920 MB.
  *
- * Területben ez ~370 km², vagyis egy nagyjából 77 km kerületű kör.
+ * Ehhez a Cloud Run 2 GiB-re van állítva (`cloudbuild.yaml`) — a kettő
+ * EGYÜTT érvényes, külön-külön egyik sem elég. Ha a memória visszamegy
+ * 512 MiB-re, ez a szám is le kell hogy jöjjön, különben a kérés nem
+ * hibaüzenetet ad, hanem elfogy alatta a memória.
  *
- * A Balaton-kör (~600 km², ~1,95 millió cella) EZT MÉG NEM ÉRI EL. Ahhoz a
- * cellafelbontáson kell változtatni: res 11-en ugyanaz a terület már csak
- * ~280 ezer cella. Lásd a `MIN_INTERIOR_CELLS` melletti mérést arról, mit
- * kóstálna a váltás játékmenetben.
+ * Területben ez ~675 km², vagyis egy nagyjából 104 km kerületű kör — a
+ * Balaton-kör (~600 km²) tehát BELEFÉR. Felbontásváltás nem kell hozzá.
  */
-const MAX_CLAIM_CELLS = 1_200_000;
+const MAX_CLAIM_CELLS = 2_200_000;
 
 /**
  * Kitöltés két menetben — a munka a KERÜLETTEL nő, nem a területtel.

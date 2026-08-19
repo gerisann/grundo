@@ -9,7 +9,7 @@
  * Semmilyen I/O nincs benne, csak számítás.
  */
 
-import { cellToParent } from 'h3-js';
+import { cellToChildren, cellToChildrenSize, cellToParent } from 'h3-js';
 import type { CellId, Layer } from '../../../src/types';
 
 /** A blokk felbontása. NEM a cellák felbontása (az res 12). */
@@ -102,6 +102,92 @@ export interface GridBlock {
   cells: Record<string, StoredCell>;
   ownerCounts: Record<string, number>;
   version: number;
+  /**
+   * EGYSÉGES BLOKK — ha minden cellája ugyanabban az állapotban van.
+   *
+   * Egy 343 cellás blokk JSON-ben ~23 kB, amiből ~9 kB puszta uid-ismétlés.
+   * Ha az egész blokk ugyanazé, ugyanazon a védelmi szinten, ugyanazon a
+   * napon szerezve, akkor egyetlen rekord elég: **152-szer kisebb**.
+   *
+   * Miért számít? Egy nagy foglalás belseje jellemzően pontosan ilyen: egyben
+   * szerzett, homogén terület. A Balaton-kör ~5 700 blokkjából ~5 100 ilyen
+   * lenne — 133 MB helyett ~15 MB.
+   *
+   * Ha `uniform` van, a `cells` ÜRES. A kettő sosem él együtt: az olvasók az
+   * `expandBlock`-ot használják, és nem kell tudniuk, melyik alakban érkezett.
+   */
+  uniform?: StoredCell;
+}
+
+/** Hány res 12 cella van ebben a res 9 blokkban? (Pentagonnál kevesebb.) */
+export function blockCellCount(parent: string, resolution: number): number {
+  return cellToChildrenSize(parent, resolution);
+}
+
+/**
+ * Egy blokk cellája — akármelyik alakban is érkezett.
+ *
+ * Ez az EGYETLEN hely, ahol az uniform és az explicit alak különbsége
+ * megjelenik. Minden olvasó ezen keresztül kérdez, ezért a tömörítés a
+ * hívóknak láthatatlan.
+ */
+export function cellFromBlock(
+  block: GridBlock | null | undefined,
+  cell: CellId,
+): StoredCell | undefined {
+  if (!block) return undefined;
+  if (block.uniform) return block.uniform;
+  return block.cells?.[cellKey(cell)];
+}
+
+/**
+ * Egy blokk ÖSSZES cellája, akármelyik alakban is érkezett.
+ *
+ * A megjelenítő végpontok ezt használják. Enélkül egy uniform blokk üres
+ * térképszakaszként jelenne meg — a felhasználó azt látná, hogy eltűnt a
+ * területe, pedig csak tömörítve van.
+ */
+export function expandBlock(
+  block: GridBlock,
+  resolution: number,
+): [CellId, StoredCell][] {
+  if (block.uniform) {
+    const state = block.uniform;
+    return cellToChildren(block.parent, resolution).map(
+      (child) => [child, state] as [CellId, StoredCell],
+    );
+  }
+
+  const byKey = new Map<string, CellId>();
+  for (const child of cellToChildren(block.parent, resolution)) byKey.set(cellKey(child), child);
+
+  const out: [CellId, StoredCell][] = [];
+  for (const [key, stored] of Object.entries(block.cells ?? {})) {
+    const cell = byKey.get(key);
+    if (cell) out.push([cell, stored]);
+  }
+  return out;
+}
+
+/**
+ * Egységes-e a blokk a frissítés után?
+ *
+ * Három feltétel: minden cella jelen van, mind ugyanazé, és mind ugyanazon a
+ * védelmi szinten és napon áll. A nap is számít — enélkül két különböző napon
+ * szerzett cella egyformának látszana, pedig az elévülésük eltér.
+ */
+export function uniformStateOf(
+  cells: Record<string, StoredCell>,
+  expectedCount: number,
+): StoredCell | null {
+  const keys = Object.keys(cells);
+  if (keys.length !== expectedCount || expectedCount === 0) return null;
+  const first = cells[keys[0]!]!;
+  for (const key of keys) {
+    const cell = cells[key]!;
+    if (cell.o !== first.o || cell.d !== first.d || cell.u !== first.u) return null;
+  }
+  return { ...first };
 }
 
 /** Mely blokkokat érinti ez a cellahalmaz? */
