@@ -102,7 +102,21 @@ steps:
       #   gcloud secrets add-iam-policy-binding SMTP_PASSWORD \
       #     --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" \
       #     --role="roles/secretmanager.secretAccessor"
-      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest
+      #
+      # A JOBS_TOKEN az ütemezett feladatok megosztott titka. Ezzel a
+      # `POST /api/jobs/daily-rollover` pontokat oszt — vagyis valódi titok,
+      # nem konfiguráció, ezért ez is Secret Managerbe való.
+      #
+      # A szerver token NÉLKÜL is elindul: a titok-út egyszerűen zárva marad,
+      # és csak admin szerepkörrel lehet jobot indítani. Nem generálunk
+      # alapértelmezett jelszót, mert egy hiányzó változó ne nyisson kaput.
+      #
+      # FIGYELEM: mindkét titoknak LÉTEZNIE kell a telepítés előtt, különben a
+      # `gcloud run deploy` elhasal. Létrehozás:
+      #   openssl rand -base64 32 | tr -d '
+' |       #     gcloud secrets create JOBS_TOKEN --data-file=-
+      #   gcloud secrets add-iam-policy-binding JOBS_TOKEN       #     --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com"       #     --role="roles/secretmanager.secretAccessor"
+      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest,JOBS_TOKEN=JOBS_TOKEN:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
