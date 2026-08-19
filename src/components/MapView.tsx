@@ -311,18 +311,43 @@ export function MapView({
     }
   }, [position, follow]);
 
+  /**
+   * A popup bezárása, ha a hívó már nem ad tartalmat.
+   *
+   * A kártya bezárása a HÍVÓ dolga (ő tudja, mikor tűnt el az adat), a
+   * Mapbox-objektum eltakarítása viszont a miénk — különben üres buborék
+   * maradna a térképen.
+   */
+  useEffect(() => {
+    if (cellPopup === null || cellPopup === undefined || cellPopup === false) {
+      popup.current?.remove();
+      popup.current = null;
+      setPopupHost(null);
+    }
+  }, [cellPopup]);
+
+  // A térkép elbontásakor a popup is menjen vele.
+  useEffect(
+    () => () => {
+      popup.current?.remove();
+      popup.current = null;
+    },
+    [],
+  );
+
   if (!mapboxConfigured) return null;
 
   return (
-    <div
-      ref={container}
-      className="mapview"
-      style={fill ? { height: '100%' } : { height }}
-    />
+    <>
+      <div
+        ref={container}
+        className="mapview"
+        style={fill ? { height: '100%' } : { height }}
+      />
+      {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
+    </>
   );
 }
-
-/* A popup eltakarítása, ha a hívó már nem ad tartalmat. */
 
 export interface MapHexCell {
   cell: CellId;

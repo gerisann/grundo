@@ -349,21 +349,17 @@
    amire a felhasználó éppen koppintott. A `pointer-events: auto` azért kell,
    mert az overlay konténer át van engedve a térképnek. */
 
+/* A kártya a térkép popupjában ül, ezért NEM pozicionálja magát: a helyét a
+   Mapbox adja a megkoppintott mező fölött. A doboz külsejét (háttér, keret,
+   árnyék, nyíl) a `.mapview__popup` szabályok adják a mapview.css-ben. */
 .terr__owner {
-  position: absolute;
-  left: 50%;
-  bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  width: min(320px, calc(100% - var(--sp-6)));
+  position: relative;
+  width: 250px;
+  max-width: 70vw;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-5) var(--sp-3) var(--sp-3);
-  border-radius: var(--r-lg);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
-  pointer-events: auto;
+  padding-right: var(--sp-4);
 }
 
 .terr__owner-avatar {
@@ -422,8 +418,8 @@
 
 .terr__owner-close {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: -4px;
+  right: -6px;
   width: 24px;
   height: 24px;
   display: grid;

@@ -42,3 +42,24 @@
 .mapview .mapboxgl-ctrl-attrib {
   font-size: 10px;
 }
+
+/* ── A mező-popup ────────────────────────────────────────────────────
+   A Mapbox alapból fehér buborékot rajzol fekete szöveggel — sötét témában
+   ez vakít. A tartalom a hívóé; itt csak a doboz külsejét vesszük át. */
+
+.mapview__popup .mapboxgl-popup-content {
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  color: var(--text-primary);
+}
+
+/* A nyíl ugyanabban a színben, mint a doboz — különben fehér csücsök marad. */
+.mapview__popup .mapboxgl-popup-tip {
+  border-top-color: var(--bg-elevated);
+  border-bottom-color: var(--bg-elevated);
+  border-left-color: var(--bg-elevated);
+  border-right-color: var(--bg-elevated);
+}

@@ -205,6 +205,51 @@ export function TerritoryScreen() {
 
   const showingFree = groups.free.length > 0;
 
+  /**
+   * A tulajdonos kártyája — a MEGKOPPINTOTT MEZŐHÖZ horgonyozva.
+   *
+   * A térkép popupjába megy, nem a felületi rétegbe: így pontosan ott jelenik
+   * meg, ahova koppintottál, pásztázáskor a mezővel együtt mozog, és a Mapbox
+   * gondoskodik arról, hogy a képernyő szélén befelé forduljon. Korábban a
+   * képernyő aljára volt kötve, ahol a Dock takarta.
+   */
+  const ownerPopup =
+    ownerLoading || ownerCard ? (
+      <div className="terr__owner" role="dialog" aria-label="A mező tulajdonosa">
+        {ownerCard ? (
+          <>
+            <div className="terr__owner-avatar">
+              {ownerCard.photoURL ? (
+                <img src={ownerCard.photoURL} alt="" />
+              ) : (
+                <span>{ownerCard.username.slice(0, 1).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="terr__owner-body">
+              <strong className="terr__owner-name">{ownerCard.username}</strong>
+              <span className="terr__owner-rank">{ownerCard.rankName}</span>
+              <span className="terr__owner-stats">
+                {formatArea(ownerCard.areaM2)} · {ownerCard.gpTotal.toLocaleString('hu-HU')} GP
+              </span>
+            </div>
+          </>
+        ) : (
+          <span className="terr__owner-loading">Betöltés…</span>
+        )}
+        <button
+          type="button"
+          className="terr__owner-close"
+          aria-label="Bezárás"
+          onClick={() => {
+            setOwnerCard(null);
+            setOwnerLoading(false);
+          }}
+        >
+          ×
+        </button>
+      </div>
+    ) : null;
+
   return (
     <div className="terr">
       {/*
@@ -229,6 +274,7 @@ export function TerritoryScreen() {
               follow={false}
               onViewport={onViewport}
               onCellPress={onCellPress}
+              cellPopup={ownerPopup}
               fill
             />
           </Suspense>
@@ -372,46 +418,6 @@ export function TerritoryScreen() {
         </div>
         ) : null}
 
-        {/*
-          A tulajdonos kártyája — a fejléc-kapcsolóktól FÜGGETLENÜL látszik.
-          Aki elrejtette az adatokat, hogy a puszta térképet nézze, az is
-          megkoppinthat egy mezőt, és akkor is választ vár rá.
-        */}
-        {ownerLoading || ownerCard ? (
-          <div className="terr__owner" role="dialog" aria-label="A mező tulajdonosa">
-            {ownerCard ? (
-              <>
-                <div className="terr__owner-avatar">
-                  {ownerCard.photoURL ? (
-                    <img src={ownerCard.photoURL} alt="" />
-                  ) : (
-                    <span>{ownerCard.username.slice(0, 1).toUpperCase()}</span>
-                  )}
-                </div>
-                <div className="terr__owner-body">
-                  <strong className="terr__owner-name">{ownerCard.username}</strong>
-                  <span className="terr__owner-rank">{ownerCard.rankName}</span>
-                  <span className="terr__owner-stats">
-                    {formatArea(ownerCard.areaM2)} · {ownerCard.gpTotal.toLocaleString('hu-HU')} GP
-                  </span>
-                </div>
-              </>
-            ) : (
-              <span className="terr__owner-loading">Betöltés…</span>
-            )}
-            <button
-              type="button"
-              className="terr__owner-close"
-              aria-label="Bezárás"
-              onClick={() => {
-                setOwnerCard(null);
-                setOwnerLoading(false);
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
       </div>
     </div>
   );
