@@ -205,7 +205,8 @@ első.
 - **Szerkezetes fájl (YAML/JSON) módosítása után validálj**, ne csak nézz rá.
   A hibás YAML a diffben ártalmatlannak látszott.
 - Dokumentációba szánt parancsot **egy sorban** adj meg, sorvégi `\` nélkül.
-- **PowerShell**: `npm.cmd`, `firebase.cmd`, és nincs `&&`.
+- **PowerShell**: `npm.cmd`, `firebase.cmd`, `gcloud.cmd`, és nincs `&&`.
+  A `gcloud`/`gcloud.ps1` alak a futtatási házirend miatt elhasal.
 - **Git Bash**: az emulátoros parancsok elé kell a Java PATH exportja.
 
 ## 5. Amikor korlátot vezetsz be, nézd meg a gyakori utat
