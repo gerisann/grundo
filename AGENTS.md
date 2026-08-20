@@ -137,6 +137,9 @@ Ez a szakasz nem a GRUNDO-ról szól, hanem arról, **hogyan dolgozz**. Mért
 tapasztalatokból készült: minden pont mögött egy konkrét eset áll, ami időbe,
 pénzbe vagy éles hibába került. Olvasd el minden munkamenet elején.
 
+Utána, ha van a repo gyökerében `HANDOFF.md`, azt is olvasd el — az adja az
+aktuális állapotot (részletek: [6. Átadási protokoll](#6-átadási-protokoll)).
+
 ## 0. Minden kör elején: modelljavaslat
 
 **A valós munka megkezdése ELŐTT mondd meg, melyik modell és milyen
@@ -189,10 +192,21 @@ A limit tokent mér, és **minden eszközhívásnál a teljes addigi beszélget�
 elmegy**. A századik hívás ugyanazért a munkáért sokszorosába kerül, mint az
 első.
 
-- **Egy menet = egy munkamenet.** A menet végén írj rövid átadót, és a
-  következő menet új beszélgetésben induljon.
+- **Egy menet = egy munkamenet.** A menet végén frissítsd a `HANDOFF.md`-t, és
+  a következő menet új beszélgetésben induljon.
 - **Ne olvass be teljes fájlt**, ha egy tartomány elég (`sed -n`, `offset`).
 - Ne ismételd a kontextusban már meglévő tényeket.
+- **Jelezd, amikor új beszélgetés indítása hatékonyabb lenne — ne várd meg,
+  hogy megkérdezzék.** Egy mondat elég, a folyó munka végén: mi az ok, és mi
+  kerül a `HANDOFF.md`-be. Tipikus jelek:
+  - egy logikai egység (menet, funkció) lezárult, és a következő lépés
+    tervezéssel vagy más témával indulna,
+  - a beszélgetés már sok nagy eszközkimenetet hordoz (teljes fájlok, hosszú
+    teszt- vagy build-log), és a hátralévő munka ezekre már nem hivatkozik,
+  - modellváltás indokolt lenne (0. pont), és az úgyis új menetet jelent.
+  Ha egy apró javítás van hátra ugyanabban a témában, ne szakítsd meg csak
+  azért, mert „elég sok minden történt" — a szál közepén vágni drágább, mint
+  végigvinni.
 
 ## 4. Eszközhasználati csapdák
 
@@ -220,17 +234,32 @@ most`) tette volna használhatatlanná, mert az űrlap a megnyitás idejével ny
 
 ## 6. Átadási protokoll
 
-- **Fájl-összefoglaló táblázat kötelező minden körhöz**: fájlonként ÚJ vagy
-  MÓDOSÍTOTT, a hozzáadott/törölt sorok száma `git diff`-ből (soha ne
-  emlékezetből), és egy mondat arról, mi változott benne.
-- Utána a **teendők sorrendje**: push → adatbázis-lépés → melyik telepítés.
+**Az átadó szöveg mostantól a `HANDOFF.md`-ben él** (repo gyökér), nem a záró
+chat-üzenetben — ez a token-spórolás lényege: a felhasználónak nem kell
+átmásolnia egy hosszú szöveget, az új beszélgetés nyitó üzenete elég, ha erre
+a fájlra hivatkozik, te pedig egyetlen `Read`-del betöltöd.
+
+- **Menet végén írd/frissítsd felül a `HANDOFF.md`-t**, ne toldd — a fájl
+  mindig a JELENLEGI állapotot mutatja, nem a történetet. A történet úgyis ott
+  van a git logban és a commit-üzenetekben.
+- A `HANDOFF.md` tartalma ugyanaz, ami korábban a chat-átadóban volt: ÁLLAPOT
+  (repo, ág, HEAD, tesztek), ÉLESBEN FUT / TELEPÍTETLEN, KÖVETKEZŐ MENET terve,
+  NYITOTT KISEBB ügyek, és a 0. pont szerinti MODELLJAVASLAT a következő
+  menetre.
+- A **záró chat-üzenetben** ezután csak ennyi marad:
+  - **fájl-összefoglaló táblázat** — fájlonként ÚJ vagy MÓDOSÍTOTT, a
+    hozzáadott/törölt sorok száma `git diff`-ből (soha ne emlékezetből), egy
+    mondat arról, mi változott,
+  - **teendők sorrendje**: push → adatbázis-lépés → melyik telepítés,
+  - egy mondat: „a részletek a `HANDOFF.md`-ben”.
 - **A telepítő parancsokat ne írd ki**: elég a szó — **frontend**, **backend**,
   **szabalyok**, **indexek**. ⚠️ Az „indexek" KÜLÖN van, a „szabalyok" nem
   tartalmazza. Cloud Shell-parancsot viszont adj, ha nem rutinszerű.
 - **Git-parancsot ne adj a felhasználónak.**
-- **A commit az enyém** (2026-08-19-től), a **push és a telepítés az övé**.
-  A commit-üzenet első sora tömör Summary (max ~50 karakter), utána üres sor és
-  felsorolásos Description. Magyarul.
+- **A commit az enyém** (2026-08-19-től), a **push és a telepítés az övé**. A
+  `HANDOFF.md` frissítése ugyanabba a commitba kerül, mint a menet többi
+  változása. A commit-üzenet első sora tömör Summary (max ~50 karakter), utána
+  üres sor és felsorolásos Description. Magyarul.
 - Hosszú commit-üzenetet fájlba írj és `git commit -F`-fel adj át — a
   PowerShell here-string alak a Bash eszközben nem működik.
 - **Minden parancshoz mondd meg, HOL adja ki**: melyik alkalmazásban, melyik
