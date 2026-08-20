@@ -38,6 +38,7 @@ import { COLLECTIONS, db } from '../lib/firebase';
 import { gameDay, localDay, monthOf, nextLocalMidnight, weekOf } from '../lib/gridMath';
 import { getGameplaySnapshot } from '../lib/gameplayConfig';
 import { getModifiers } from '../lib/modifiers';
+import { maybeRunMetricsDaily } from './metricsDaily';
 
 export const DEFAULT_TIMEZONE = 'Europe/Budapest';
 
@@ -322,7 +323,21 @@ export async function runDailyRollover(
   }
 
   await recordRun(now, summary);
+  await runMetricsDailyIfDue(now);
   return summary;
+}
+
+/**
+ * Egy hibás aggregálás nem állíthatja meg a fordulót — a felhasználóknak már
+ * kiosztott GP addigra megvan, és a `metricsDaily` csak az admin áttekintőt
+ * táplálja, a játékmenetet nem.
+ */
+async function runMetricsDailyIfDue(now: Date): Promise<void> {
+  try {
+    await maybeRunMetricsDaily(now);
+  } catch (error) {
+    console.error('[dailyRollover] a napi aggregátum számítása elhasalt', error);
+  }
 }
 
 /** `null`, ha nem volt teendő; `'seeded'`, ha csak bejegyeztük. */

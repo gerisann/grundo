@@ -7,7 +7,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { gameDay, localDay, localHour, monthOf, nextLocalMidnight, weekOf } from './gridMath';
+import {
+  gameDay,
+  localDay,
+  localDayWindow,
+  localHour,
+  monthOf,
+  nextLocalMidnight,
+  weekOf,
+} from './gridMath';
 
 const BUDAPEST = 'Europe/Budapest';
 const AUCKLAND = 'Pacific/Auckland';
@@ -82,6 +90,29 @@ describe('nextLocalMidnight', () => {
     const next = nextLocalMidnight(now, BUDAPEST);
     expect(localDay(next, BUDAPEST)).toBe(localDay(now, BUDAPEST) + 1);
     expect(localDay(new Date(next.getTime() - 60_000), BUDAPEST)).toBe(localDay(now, BUDAPEST));
+  });
+});
+
+describe('localDayWindow', () => {
+  it('a napszám elejét és végét adja — pontosan 24 vagy 25/23 órás résre', () => {
+    const { start, end } = localDayWindow(MONDAY, BUDAPEST);
+
+    expect(localDay(start, BUDAPEST)).toBe(MONDAY);
+    expect(localDay(new Date(start.getTime() - 60_000), BUDAPEST)).toBe(MONDAY - 1);
+    expect(localDay(new Date(end.getTime() - 60_000), BUDAPEST)).toBe(MONDAY);
+    expect(localDay(end, BUDAPEST)).toBe(MONDAY + 1);
+  });
+
+  it('egymást követő napok ablakai illeszkednek — nincs rés, nincs átfedés', () => {
+    const today = localDayWindow(MONDAY, BUDAPEST);
+    const tomorrow = localDayWindow(MONDAY + 1, BUDAPEST);
+    expect(today.end.getTime()).toBe(tomorrow.start.getTime());
+  });
+
+  it('átvészeli az óraátállítást (25 órás nap)', () => {
+    const dstDay = Math.floor(Date.UTC(2026, 9, 25) / 86_400_000);
+    const { start, end } = localDayWindow(dstDay, BUDAPEST);
+    expect(end.getTime() - start.getTime()).toBe(25 * 3_600_000);
   });
 });
 

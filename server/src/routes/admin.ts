@@ -649,6 +649,46 @@ adminRouter.delete('/modifiers/:id', async (req: AuthedRequest, res, next) => {
  * A `canWrite` NEM védelem, csak a felület udvariassága — a tiltást minden
  * végpont maga is kikényszeríti.
  */
+/**
+ * GET /api/admin/metrics
+ *
+ * A `metricsDaily` legutóbbi napjai, legfrissebb elöl. A `maybeRunMetricsDaily`
+ * (`server/src/jobs/metricsDaily.ts`) írja, naponta egyszer, a napi forduló
+ * részeként — ez a végpont csak olvas.
+ */
+adminRouter.get('/metrics', async (req, res, next) => {
+  try {
+    const daysRaw = Number(req.query.days ?? 14);
+    const days = Number.isInteger(daysRaw) && daysRaw > 0 && daysRaw <= 90 ? daysRaw : 14;
+
+    const snap = await db
+      .collection(COLLECTIONS.metricsDaily)
+      .orderBy('day', 'desc')
+      .limit(days)
+      .get();
+
+    const series = snap.docs.map((doc) => {
+      const data = doc.data() as Record<string, any>;
+      return {
+        day: data.day ?? Number(doc.id),
+        dau: data.dau ?? 0,
+        wau: data.wau ?? 0,
+        mau: data.mau ?? 0,
+        signups: data.signups ?? 0,
+        activities: data.activities ?? 0,
+        distanceKm: data.distanceKm ?? 0,
+        claimedCellsNet: data.claimedCellsNet ?? 0,
+        activeStreaks: data.activeStreaks ?? 0,
+        computedAt: data.computedAt?.toDate?.().toISOString() ?? null,
+      };
+    });
+
+    res.json({ latest: series[0] ?? null, series });
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRouter.get('/status', async (req: AuthedRequest, res, next) => {
   try {
     const [snapshot, runs] = await Promise.all([

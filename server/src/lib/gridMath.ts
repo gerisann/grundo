@@ -65,7 +65,7 @@ export interface StoredCell {
  * kontinensen, és akkor a védelem attól függne, ki nézi. Ráadásul utazással
  * vagy órát állítva lehetne napot váltani, ami támadási felület.
  */
-const GAME_TIMEZONE = 'Europe/Budapest';
+export const GAME_TIMEZONE = 'Europe/Budapest';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -169,6 +169,44 @@ export function nextLocalMidnight(date: Date, timeZone: string): Date {
     else low = mid;
   }
   return new Date(high);
+}
+
+/**
+ * Az EARLIEST pillanat, amikor a helyi nap már elérte (vagy meghaladta) a
+ * megadott napszámot — ugyanaz a bináris keresés, mint `nextLocalMidnight`,
+ * csak tetszőleges célnapra, nem csak a „következőre".
+ *
+ * A kezdő `low`/`high` becslés UTC éjfélből indul, ami legrosszabb esetben is
+ * csak néhány órával téved — a ciklusok ebből lépnek ki-be a valódi
+ * határig, tehát az időzóna-eltolás iránya és mértéke nem számít.
+ */
+function boundaryAtOrAfter(day: number, timeZone: string): Date {
+  const MINUTE = 60_000;
+  let low = day * MS_PER_DAY;
+  while (localDay(new Date(low), timeZone) >= day) low -= 60 * MINUTE;
+
+  let high = low + 26 * 60 * MINUTE;
+  while (localDay(new Date(high), timeZone) < day) high += 60 * MINUTE;
+
+  while (high - low > MINUTE) {
+    const steps = Math.floor((high - low) / (2 * MINUTE));
+    const mid = low + steps * MINUTE;
+    if (mid === low) break;
+    if (localDay(new Date(mid), timeZone) >= day) high = mid;
+    else low = mid;
+  }
+  return new Date(high);
+}
+
+/**
+ * Egy NAPSZÁM valódi időhatárai adott időzónában — `[start, end)`.
+ *
+ * Erre a napi aggregátumnak (`metricsDaily`) van szüksége: a `users`/
+ * `activities` kollekciók valós `Timestamp` mezővel vannak indexelve, a
+ * napszám önmagában nem használható tartományos lekérdezéshez.
+ */
+export function localDayWindow(day: number, timeZone: string): { start: Date; end: Date } {
+  return { start: boundaryAtOrAfter(day, timeZone), end: boundaryAtOrAfter(day + 1, timeZone) };
 }
 
 /**

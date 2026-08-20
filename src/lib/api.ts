@@ -451,6 +451,27 @@ export interface AdminStatus {
   } | null;
 }
 
+/** Egy nap a `metricsDaily` aggregátumból. */
+export interface MetricsDailyPoint {
+  day: number;
+  dau: number;
+  wau: number;
+  mau: number;
+  signups: number;
+  activities: number;
+  distanceKm: number;
+  claimedCellsNet: number;
+  activeStreaks: number;
+  computedAt: string | null;
+}
+
+export interface AdminMetrics {
+  /** A legutóbbi lezárt nap, vagy `null`, ha még egyszer sem futott az aggregálás. */
+  latest: MetricsDailyPoint | null;
+  /** Legfrissebb elöl. */
+  series: MetricsDailyPoint[];
+}
+
 export interface TunableItem {
   path: string;
   kind: 'number' | 'integer' | 'boolean';
@@ -739,6 +760,8 @@ export const api = {
 
   // ── Admin ───────────────────────────────────────────────────────────────
   adminStatus: () => request<AdminStatus>('/api/admin/status'),
+
+  adminMetrics: (days = 14) => request<AdminMetrics>(`/api/admin/metrics?days=${days}`),
 
   adminGameplay: () => request<GameplayState>('/api/admin/gameplay'),
 

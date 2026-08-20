@@ -1,23 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type AdminStatus } from '@/lib/api';
+import { api, type AdminMetrics, type AdminStatus } from '@/lib/api';
+import { formatArea, formatDistance } from '@/lib/format';
+import { GAMEPLAY } from '@/config/gameplay';
 
 /**
  * Admin áttekintő.
  *
- * Egyelőre a rendszer állapotát mutatja: a konfiguráció verzióját és a napi
- * forduló utolsó futását. A `docs/06` §1 szerinti teljes áttekintő (DAU/WAU/MAU,
- * regisztrációk, elfoglalt km²) a `metricsDaily` aggregátumra épül majd — az a
- * kollekció már be van jegyezve, de még nem íródik.
+ * A `docs/06` §1 szerinti napi-használati számok (DAU/WAU/MAU, regisztrációk,
+ * aktivitások, elfoglalt terület, aktív streakek) a `metricsDaily`
+ * aggregátumból jönnek — azt a napi forduló írja, naponta egyszer
+ * (`server/src/jobs/metricsDaily.ts`). Amíg egyszer sem futott, a felület ezt
+ * jelzi, nem nullát mutat: a kettő más állapotot jelent.
  */
 
 export function AdminHomeScreen() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
 
   useEffect(() => {
     api.adminStatus().then(setStatus).catch(() => setStatus(null));
+    api.adminMetrics().then(setMetrics).catch(() => setMetrics(null));
   }, []);
+
+  const latest = metrics?.latest ?? null;
 
   return (
     <div className="admin-page">
@@ -66,13 +73,61 @@ export function AdminHomeScreen() {
       </div>
 
       <section className="admin-card">
+        <h2>Napi használat</h2>
+        {latest ? (
+          <>
+            <p className="admin-muted">{formatDay(latest.day)}, utoljára számolva</p>
+            <div className="admin-tiles">
+              <div className="admin-tile admin-tile--static">
+                <span className="admin-tile__value">{latest.dau}</span>
+                <span className="admin-tile__label">DAU</span>
+                <span className="admin-muted">
+                  WAU {latest.wau} · MAU {latest.mau}
+                </span>
+              </div>
+              <div className="admin-tile admin-tile--static">
+                <span className="admin-tile__value">{latest.signups}</span>
+                <span className="admin-tile__label">Új regisztráció</span>
+              </div>
+              <div className="admin-tile admin-tile--static">
+                <span className="admin-tile__value">{latest.activities}</span>
+                <span className="admin-tile__label">Aktivitás</span>
+                <span className="admin-muted">{formatDistance(latest.distanceKm * 1000)}</span>
+              </div>
+              <div className="admin-tile admin-tile--static">
+                <span className="admin-tile__value">
+                  {formatArea(latest.claimedCellsNet * GAMEPLAY.CELL_AREA_M2)}
+                </span>
+                <span className="admin-tile__label">Elfoglalt terület</span>
+              </div>
+              <div className="admin-tile admin-tile--static">
+                <span className="admin-tile__value">{latest.activeStreaks}</span>
+                <span className="admin-tile__label">Aktív sorozat</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="admin-muted">
+            Még nem futott a napi aggregátum — az első `Europe/Budapest` szerinti éjfél utáni
+            napi forduló írja meg.
+          </p>
+        )}
+      </section>
+
+      <section className="admin-card">
         <h2>Ami még nincs kész</h2>
         <p className="admin-muted">
-          Használati statisztika (DAU/WAU/MAU), felhasználókezelés, moderáció és
-          útvonal-jóváhagyás — ezek a következő menetekben jönnek. Az aktivitás-audit és a
+          Felhasználókezelés, moderáció és útvonal-jóváhagyás — ezek a következő menetekben
+          jönnek. Pro-konverzió, konnektor-hibaarány és hibás job-futások a napi áttekintőben
+          egyelőre nincsenek, mert nincs mögöttük adatforrás. Az aktivitás-audit és a
           visszajátszó viszont már itt van a felső sávban.
         </p>
       </section>
     </div>
   );
+}
+
+/** A napszámból olvasható dátum — a napszám UTC `Date.UTC(y,m,d)`-ből jön, tehát UTC-ben formázva helyes. */
+function formatDay(day: number): string {
+  return new Date(day * 86_400_000).toLocaleDateString('hu-HU', { timeZone: 'UTC' });
 }
