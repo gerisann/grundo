@@ -117,6 +117,23 @@
   gap: 10px;
 }
 
+.home__logo {
+  display: block;
+  width: 140px;
+  height: auto;
+}
+
+.home__logo--dark {
+  display: none;
+}
+
+[data-theme='dark'] .home__logo--light {
+  display: none;
+}
+
+[data-theme='dark'] .home__logo--dark {
+  display: block;
+}
 /**
  * A GRUNDO jele: szabályos hatszög, a betűkkel EGYMAGAS.
  *
