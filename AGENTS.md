@@ -127,3 +127,129 @@ A váz üres. A `src/game/` motor és a konfiguráció **kész és működik** �
 - Ha egy játékszabály nincs a `docs/` alatt, **ne improvizálj** — kérdezd meg. A játékegyensúly nem tetszőleges.
 - Ha egy külső szolgáltatás kulcsa kell (Mapbox, Firebase, konnektorok), kérd el; ne generálj helyőrzőt, ami később élesben marad.
 - Ha a spec két helyen ellentmond magának, jelezd, ne válassz magadtól.
+- Ha egy név ellentmond annak, amit a felhasználó mondott, **állj meg és kérdezz** — ne „rögzítsd" a másik változatot. Ez egyszer már egy fölösleges, második Firestore adatbázist eredményezett.
+
+---
+
+# Munkamódszer — az ügynöknek magáról
+
+Ez a szakasz nem a GRUNDO-ról szól, hanem arról, **hogyan dolgozz**. Mért
+tapasztalatokból készült: minden pont mögött egy konkrét eset áll, ami időbe,
+pénzbe vagy éles hibába került. Olvasd el minden munkamenet elején.
+
+## 0. Minden kör elején: modelljavaslat
+
+**A valós munka megkezdése ELŐTT mondd meg, melyik modell és milyen
+gondolkodási mélység elég a feladathoz, és miért.** Ez nem formalitás: a
+használati limit tokenben mér, és a legerősebb modell rutinmunkára pazarlás.
+
+| Feladat jellege | Javaslat |
+|---|---|
+| Felület-építés, tesztírás, rutin átalakítás, dokumentáció | **Sonnet**, normál mélység |
+| Meglévő minta kiterjesztése (új végpont a meglévő mintára) | **Sonnet**, normál mélység |
+| Spec-ellentmondás feloldása, adatmodell-döntés, algoritmus vagy teljesítmény | **Opus**, emelt mélység |
+| Mért anomália hibakeresése (a szám nem stimmel, és nem tudjuk, miért) | **Opus**, emelt mélység |
+
+A javaslat legyen egy mondat, ne fejtegetés. Ha a kör közben tervezési
+elágazáshoz érsz, mondd ki, hogy innentől erősebb modell kellene.
+
+## 1. Mérj, ne feltételezz
+
+**Ez a visszatérő hibám.** Eddig legalább négyszer tippeltem mellé olyan
+kérdésben, amit meg lehetett volna mérni — és a mérés mindannyiszor mást
+mondott, mint a józan ész:
+
+- a sorozat „rejtélyes" viselkedésének oka (valójában egy commit dátuma),
+- a res 11 felbontás játékmenetbeli ára,
+- a `MIN_INTERIOR_CELLS` 4-re emelésének indoklása (320 futásos zajmodell
+  cáfolta),
+- az emulátoros suite-ok együttes futása (külön mind zöld, együtt kilenc bukó).
+
+A repo tele van mérőeszközzel: `src/game/fixtures.ts`, a Firestore emulátor,
+`npm run inspect:world`, `npm run replay:world`, a `/admin/aktivitasok` audit.
+**Mérj, mielőtt magyarázol** — és ha magyarázatot adsz mérés nélkül, mondd ki,
+hogy az feltételezés.
+
+## 2. Tesztgazdálkodás — ne futtass feleslegeset
+
+- **Fejlesztés közben célzott futás**: csak az érintett tesztfájl.
+- **Commit előtt egyszer** a teljes készlet. Nem kétszer, nem háromszor.
+- **Emulátoros készlet** (`npm run test:emulator`) csak akkor, ha Firestore-
+  viselkedés változott (tranzakció, lekérdezés, séma, szabály).
+- **Production build** csak akkor, ha a csomagméret vagy a chunk-felosztás a
+  tét, illetve az átadás előtt egyszer.
+- A kimenetet szűrd (`| tail`, `| grep`), ne öntsd be egészben a kontextusba.
+
+*Konkrét eset:* a 3. menetben háromszor futott le a teljes készlet, pedig kettő
+elég lett volna — és minden futás teljes kimenete a kontextusba került.
+
+## 3. Kontextus-gazdálkodás
+
+A limit tokent mér, és **minden eszközhívásnál a teljes addigi beszélgetés újra
+elmegy**. A századik hívás ugyanazért a munkáért sokszorosába kerül, mint az
+első.
+
+- **Egy menet = egy munkamenet.** A menet végén írj rövid átadót, és a
+  következő menet új beszélgetésben induljon.
+- **Ne olvass be teljes fájlt**, ha egy tartomány elég (`sed -n`, `offset`).
+- Ne ismételd a kontextusban már meglévő tényeket.
+
+## 4. Eszközhasználati csapdák
+
+- ⚠️ **Backslash a Bash eszközön át elveszik vagy átfordul.** A `\n` valódi
+  sortörésként landol a fájlban, a sorvégi `\` összeránthatja a sorokat — akkor
+  is, ha a heredoc határolója idézőjeles. Ez háromszor fogott meg egyetlen
+  menetben, és egyszer élesben elvitte a buildet (a `cloudbuild.yaml` egy
+  megjegyzése tette érvénytelenné a YAML-t). **Backslash-t tartalmazó tartalmat
+  Write/Edit eszközzel írj.**
+- **Szerkezetes fájl (YAML/JSON) módosítása után validálj**, ne csak nézz rá.
+  A hibás YAML a diffben ártalmatlannak látszott.
+- Dokumentációba szánt parancsot **egy sorban** adj meg, sorvégi `\` nélkül.
+- **PowerShell**: `npm.cmd`, `firebase.cmd`, és nincs `&&`.
+- **Git Bash**: az emulátoros parancsok elé kell a Java PATH exportja.
+
+## 5. Amikor korlátot vezetsz be, nézd meg a gyakori utat
+
+Egy őrszem, ami a ritka hibát kizárja, könnyen ellehetetleníti a leggyakoribb
+műveletet. *Konkrét eset:* a modifierek „múltbeli kezdés tilos" szabálya
+helyes volt szerkesztésre, de létrehozásra a leggyakoribb esetet (`induljon
+most`) tette volna használhatatlanná, mert az űrlap a megnyitás idejével nyílik.
+
+Új megkötés után mindig kérdezd meg: **mi történik a normál használatnál?**
+
+## 6. Átadási protokoll
+
+- **Fájl-összefoglaló táblázat kötelező minden körhöz**: fájlonként ÚJ vagy
+  MÓDOSÍTOTT, a hozzáadott/törölt sorok száma `git diff`-ből (soha ne
+  emlékezetből), és egy mondat arról, mi változott benne.
+- Utána a **teendők sorrendje**: push → adatbázis-lépés → melyik telepítés.
+- **A telepítő parancsokat ne írd ki**: elég a szó — **frontend**, **backend**,
+  **szabalyok**, **indexek**. ⚠️ Az „indexek" KÜLÖN van, a „szabalyok" nem
+  tartalmazza. Cloud Shell-parancsot viszont adj, ha nem rutinszerű.
+- **Git-parancsot ne adj a felhasználónak.**
+- **A commit az enyém** (2026-08-19-től), a **push és a telepítés az övé**.
+  A commit-üzenet első sora tömör Summary (max ~50 karakter), utána üres sor és
+  felsorolásos Description. Magyarul.
+- Hosszú commit-üzenetet fájlba írj és `git commit -F`-fel adj át — a
+  PowerShell here-string alak a Bash eszközben nem működik.
+- **Minden parancshoz mondd meg, HOL adja ki**: melyik alkalmazásban, melyik
+  mappában, lépésenként.
+
+## 7. A beszélgetések neve
+
+A munkamenetek neve **`GRUNDO #1`, `GRUNDO #2`, …** — növekvő sorszámmal, hogy
+később hivatkozni lehessen rájuk. Az átadó mindig nevezze meg, melyik számról
+melyikre adunk át. A konvenció 2026-08-19-én indult; az azelőtti munkamenetek
+számozatlanok.
+
+## 8. Ismert hibamintáim
+
+- **Túlnyúlok a kérésen.** Commitoltam kérés nélkül, és kiírtam telepítő
+  parancsokat, amiket kifejezetten nem kértek. Ha egy lépés a felhasználóé,
+  hagyd nála.
+- **Hosszú válaszok.** Amire tényleg szükség van: a fájl-táblázat, a mérési
+  eredmény és a következő lépés. A többi legyen rövid.
+- **Külső szolgáltatót vettem fel magamtól** (Resend), pedig volt saját
+  levelezés. Ha a meglévő infrastruktúra megoldja, ne hozz be harmadik felet.
+- **A saját korábbi állapotomból indulok ki** a friss HEAD helyett. A repóban
+  más forrás is dolgozik; mindig a friss `HEAD`-ből indulj.
