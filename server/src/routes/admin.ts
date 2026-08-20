@@ -351,111 +351,171 @@ adminRouter.get('/modifiers', async (req, res, next) => {
   }
 });
 
+/**
+ * A beküldött akció ellenőrzése és normalizálása.
+ *
+ * Közös a létrehozásnak és a szerkesztésnek. Ha a kettő külön ellenőrizne, a
+ * szerkesztés lenne az a kapu, amin a lejárt korlátok kicsúsznak — pontosan az
+ * a fajta rés, ami hónapokig észrevétlen marad.
+ *
+ * @param existingFrom szerkesztésnél a MÁR MENTETT kezdés. A múltban induló
+ *   akciót nem hibáztatjuk azért, mert a múltban indul — csak azt nézzük, hogy
+ *   a kezdést nem tolták-e visszamenőleg.
+ */
+function parseModifierInput(
+  body: Record<string, any>,
+  existingFrom?: Date,
+): { record: Record<string, unknown>; clear: string[] } {
+  const kind = String(body.kind ?? '');
+  const scope = String(body.scope ?? '');
+  if (!KINDS.has(kind as ModifierKind)) throw badRequest('invalid_kind', 'Ismeretlen modifier-fajta.');
+  if (!SCOPES.has(scope as ModifierScope)) throw badRequest('invalid_scope', 'Ismeretlen hatókör.');
+
+  const value = Number(body.value);
+  if (!Number.isFinite(value) || value < 0 || value > GAMEPLAY.MODIFIER_MAX_FACTOR) {
+    throw badRequest(
+      'invalid_value',
+      `A szorzó 0 és ${GAMEPLAY.MODIFIER_MAX_FACTOR} közötti szám lehet.`,
+    );
+  }
+
+  const from = new Date(String(body.from ?? ''));
+  const to = new Date(String(body.to ?? ''));
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    throw badRequest('invalid_dates', 'A kezdés és a vég időpontja kötelező.');
+  }
+  if (to.getTime() <= from.getTime()) {
+    throw badRequest('invalid_dates', 'A vége nem lehet a kezdés előtt.');
+  }
+  if (to.getTime() <= Date.now()) {
+    throw badRequest('already_expired', 'Ez az akció már lejárt volna. Adj meg jövőbeli véget.');
+  }
+
+  /**
+   * A KEZDÉST SZERKESZTÉSKOR NEM LEHET KORÁBBRA HÚZNI.
+   *
+   * A `gpLedger` bejegyzések a jóváírás pillanatában érvényes szorzót rögzítik.
+   * Egy visszahúzott kezdés olyan időszakot állítana érvényesnek, amire senki
+   * nem kapta meg a bónuszt — a napló és a szabály ettől szétcsúszna, és utólag
+   * nem lenne eldönthető, melyik a valóság.
+   *
+   * LÉTREHOZÁSNÁL viszont a múltbeli kezdés ártalmatlan, és kell is: az
+   * „induljon most" a leggyakoribb eset, az űrlap pedig a megnyitás
+   * időpontjával nyílik — mire kitöltik, az már néhány perce múlt. Egy korábbi
+   * kezdés ilyenkor annyit jelent, hogy az akció azonnal fut.
+   */
+  if (existingFrom && from.getTime() < existingFrom.getTime() - 1000) {
+    throw badRequest(
+      'from_in_past',
+      'A kezdés nem tolható korábbra. Ami már megtörtént, azt visszamenőleg nem írjuk át.',
+    );
+  }
+
+  const days = (to.getTime() - from.getTime()) / 86_400_000;
+  if (days > GAMEPLAY.MODIFIER_MAX_DAYS) {
+    throw badRequest(
+      'too_long',
+      `Egy akció legfeljebb ${GAMEPLAY.MODIFIER_MAX_DAYS} napig tarthat. Hosszabbat meghosszabbítani kell, nem elfelejteni.`,
+    );
+  }
+
+  const reason = String(body.reason ?? '').trim().slice(0, 200);
+  if (reason.length < 3) {
+    // A `reason` a felhasználónak is megjelenik — üresen egy néma szorzó
+    // maradna, amit senki nem tud megmagyarázni, három hónappal később sem.
+    throw badRequest('missing_reason', 'Adj meg egy rövid indoklást — ez a játékosnak is megjelenik.');
+  }
+
+  const record: Record<string, unknown> = {
+    kind,
+    scope,
+    value,
+    reason,
+    from: Timestamp.fromDate(from),
+    to: Timestamp.fromDate(to),
+  };
+
+  if (scope === 'area') {
+    const lat = Number(body.area?.lat);
+    const lng = Number(body.area?.lng);
+    const radiusKm = Number(body.area?.radiusKm);
+    if (!Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lng) || Math.abs(lng) > 180) {
+      throw badRequest('invalid_area', 'A terület középpontja érvénytelen.');
+    }
+    if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
+      throw badRequest('invalid_area', 'A sugár pozitív szám kell legyen.');
+    }
+
+    const cells = areaCellsFor(lat, lng, radiusKm);
+    if (cells.length > GAMEPLAY.MODIFIER_MAX_AREA_CELLS) {
+      throw badRequest(
+        'area_too_large',
+        `Ez a sugár ${cells.length} cellát fedne le, a határ ${GAMEPLAY.MODIFIER_MAX_AREA_CELLS}. Nem elgépelted a kilométert?`,
+      );
+    }
+    record.areaCells = cells;
+    record.areaCenter = { lat, lng, radiusKm };
+  }
+
+  if (scope === 'segment') {
+    const inactiveDays = Number(body.segment?.inactiveDays);
+    if (!Number.isInteger(inactiveDays) || inactiveDays < 1) {
+      throw badRequest('invalid_segment', 'A szegmenshez egész napszám kell.');
+    }
+    record.segment = { inactiveDays };
+  }
+
+  /**
+   * Amit a HATÓKÖR-VÁLTÁS után törölni kell.
+   *
+   * Külön listaként, nem `FieldValue.delete()` sentinelként a rekordban: a
+   * sentinel egy új dokumentumban hibát adna, és a naplóba sem másolható át.
+   * Így a létrehozás egyszerűen kihagyja, a szerkesztés pedig kiüríti — egy
+   * maradék `areaCells` egy globálissá alakított akción különben némán
+   * szűkítene tovább.
+   */
+  const clear = ['areaCells', 'areaCenter', 'segment'].filter((key) => !(key in record));
+
+  return { record, clear };
+}
+
+/**
+ * A naplóba szánt alak.
+ *
+ * A cellalista helyett csak a darabszám megy: egy 500 elemű tömb minden
+ * bejegyzést feleslegesen felfújna. A szervermezőket (`serverTimestamp()`,
+ * `delete()`) is kihagyjuk — azokat a Firestore nem engedi másik dokumentumba
+ * átmásolni, és a művelet 500-zal hasalna el.
+ */
+function auditableModifier(record: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value === undefined || value instanceof FieldValue) continue;
+    if (key === 'areaCells') {
+      clean.areaCellCount = Array.isArray(value) ? value.length : 0;
+      continue;
+    }
+    clean[key] = value;
+  }
+  return clean;
+}
+
 adminRouter.post('/modifiers', async (req: AuthedRequest, res, next) => {
   try {
     requireWrite(req);
     const body = (req.body ?? {}) as Record<string, any>;
 
-    const kind = String(body.kind ?? '');
-    const scope = String(body.scope ?? '');
-    if (!KINDS.has(kind as ModifierKind)) throw badRequest('invalid_kind', 'Ismeretlen modifier-fajta.');
-    if (!SCOPES.has(scope as ModifierScope)) throw badRequest('invalid_scope', 'Ismeretlen hatókör.');
-
-    const value = Number(body.value);
-    if (!Number.isFinite(value) || value < 0 || value > GAMEPLAY.MODIFIER_MAX_FACTOR) {
-      throw badRequest(
-        'invalid_value',
-        `A szorzó 0 és ${GAMEPLAY.MODIFIER_MAX_FACTOR} közötti szám lehet.`,
-      );
-    }
-
-    const from = new Date(String(body.from ?? ''));
-    const to = new Date(String(body.to ?? ''));
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw badRequest('invalid_dates', 'A kezdés és a vég időpontja kötelező.');
-    }
-    if (to.getTime() <= from.getTime()) {
-      throw badRequest('invalid_dates', 'A vége nem lehet a kezdés előtt.');
-    }
-    if (to.getTime() <= Date.now()) {
-      throw badRequest('already_expired', 'Ez az akció már lejárt volna. Adj meg jövőbeli véget.');
-    }
-
-    const days = (to.getTime() - from.getTime()) / 86_400_000;
-    if (days > GAMEPLAY.MODIFIER_MAX_DAYS) {
-      throw badRequest(
-        'too_long',
-        `Egy akció legfeljebb ${GAMEPLAY.MODIFIER_MAX_DAYS} napig tarthat. Hosszabbat meghosszabbítani kell, nem elfelejteni.`,
-      );
-    }
-
-    const reason = String(body.reason ?? '').trim().slice(0, 200);
-    if (reason.length < 3) {
-      // A `reason` a felhasználónak is megjelenik — üresen egy néma szorzó
-      // maradna, amit senki nem tud megmagyarázni, három hónappal később sem.
-      throw badRequest('missing_reason', 'Adj meg egy rövid indoklást — ez a játékosnak is megjelenik.');
-    }
-
-    const record: Record<string, unknown> = {
-      kind,
-      scope,
-      value,
-      reason,
+    // Létrehozáskor a `clear` érdektelen: ami nincs a rekordban, az nem is
+    // létezik még, tehát nincs mit kiüríteni.
+    const { record } = parseModifierInput(body);
+    const created = await db.collection(COLLECTIONS.modifiers).add({
+      ...record,
       source: 'manual',
-      from: Timestamp.fromDate(from),
-      to: Timestamp.fromDate(to),
       createdBy: req.uid ?? null,
       createdAt: FieldValue.serverTimestamp(),
-    };
-
-    if (scope === 'area') {
-      const lat = Number(body.area?.lat);
-      const lng = Number(body.area?.lng);
-      const radiusKm = Number(body.area?.radiusKm);
-      if (!Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lng) || Math.abs(lng) > 180) {
-        throw badRequest('invalid_area', 'A terület középpontja érvénytelen.');
-      }
-      if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
-        throw badRequest('invalid_area', 'A sugár pozitív szám kell legyen.');
-      }
-
-      const cells = areaCellsFor(lat, lng, radiusKm);
-      if (cells.length > GAMEPLAY.MODIFIER_MAX_AREA_CELLS) {
-        throw badRequest(
-          'area_too_large',
-          `Ez a sugár ${cells.length} cellát fedne le, a határ ${GAMEPLAY.MODIFIER_MAX_AREA_CELLS}. Nem elgépelted a kilométert?`,
-        );
-      }
-      record.areaCells = cells;
-      record.areaCenter = { lat, lng, radiusKm };
-    }
-
-    if (scope === 'segment') {
-      const inactiveDays = Number(body.segment?.inactiveDays);
-      if (!Number.isInteger(inactiveDays) || inactiveDays < 1) {
-        throw badRequest('invalid_segment', 'A szegmenshez egész napszám kell.');
-      }
-      record.segment = { inactiveDays };
-    }
-
-    const created = await db.collection(COLLECTIONS.modifiers).add(record);
-    resetModifierCache();
-
-    /**
-     * A naplóba a cellalista HELYETT csak a darabszám megy.
-     *
-     * Két okból nem a `record` másolata: egy 500 elemű cellatömb minden
-     * naplóbejegyzést feleslegesen felfújna, a `createdAt` pedig szervermezőt
-     * (sentinelt) tartalmaz, amit nem szabad két íráshoz újrahasználni.
-     * A hiányzó mezőket sem lehet `undefined`-ként átadni — a Firestore azt
-     * kivétellel utasítja el, és a művelet 500-zal hasal el.
-     */
-    const { areaCells, createdAt, ...auditable } = record;
-    void createdAt;
-    await audit(req, 'modifier_create', 'modifiers', created.id, null, {
-      ...auditable,
-      areaCellCount: Array.isArray(areaCells) ? areaCells.length : 0,
     });
+    resetModifierCache();
+    await audit(req, 'modifier_create', 'modifiers', created.id, null, auditableModifier(record));
 
     res.status(201).json({ id: created.id });
   } catch (error) {
@@ -464,11 +524,64 @@ adminRouter.post('/modifiers', async (req: AuthedRequest, res, next) => {
 });
 
 /**
- * Lezárás — nem törlés.
+ * Szerkesztés.
  *
- * A lejárt vagy visszavont akció nyoma megmarad: a `gpLedger` bejegyzések rá
- * hivatkoznak, és utólag meg kell tudni mondani, miért kapott valaki
- * kétszeres pontot egy kedden.
+ * Egy futó akció is módosítható — a `gpLedger` bejegyzések a jóváírás
+ * pillanatában érvényes szorzót és indoklást ŐRZIK MEG magukban, tehát a
+ * korábbi jóváírások nem változnak meg attól, hogy a szabály ma máshogy szól.
+ * A kezdést viszont nem lehet visszamenőleg korábbra húzni (lásd
+ * `parseModifierInput`).
+ */
+adminRouter.put('/modifiers/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    requireWrite(req);
+    const id = String(req.params.id ?? '');
+    if (!id) throw badRequest('missing_id', 'Hiányzik az akció azonosítója.');
+
+    const ref = db.collection(COLLECTIONS.modifiers).doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFound('modifier_missing', 'Ez az akció nem található.');
+
+    const before = snap.data() as Record<string, any>;
+    if (before.cancelledAt) {
+      throw badRequest('cancelled', 'A lezárt akció nem szerkeszthető. Hozz létre újat.');
+    }
+
+    const existingFrom: Date | undefined = before.from?.toDate?.();
+    const { record, clear } = parseModifierInput(
+      (req.body ?? {}) as Record<string, any>,
+      existingFrom,
+    );
+
+    const update: Record<string, unknown> = {
+      ...record,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: req.uid ?? null,
+    };
+    for (const key of clear) update[key] = FieldValue.delete();
+
+    await ref.set(update, { merge: true });
+    resetModifierCache();
+    await audit(
+      req,
+      'modifier_update',
+      'modifiers',
+      id,
+      auditableModifier(before),
+      auditableModifier(record),
+    );
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Lezárás — a hatás megszűnik, a dokumentum marad.
+ *
+ * Ez a szelídebb művelet: egy futó akciót így lehet leállítani úgy, hogy a
+ * listában és a naplóban is látszik, mi volt és meddig.
  */
 adminRouter.post('/modifiers/:id/cancel', async (req: AuthedRequest, res, next) => {
   try {
@@ -485,7 +598,40 @@ adminRouter.post('/modifiers/:id/cancel', async (req: AuthedRequest, res, next) 
       { merge: true },
     );
     resetModifierCache();
-    await audit(req, 'modifier_cancel', 'modifiers', ref.id, snap.data() ?? null, null);
+    await audit(req, 'modifier_cancel', 'modifiers', ref.id, auditableModifier(snap.data() ?? {}), null);
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Végleges törlés.
+ *
+ * MIÉRT SZABAD EGYÁLTALÁN? Mert a főkönyvi bejegyzések nem hivatkozásként
+ * tárolják az akciót, hanem PILLANATKÉPET vesznek róla: a `gpLedger` sor
+ * tartalmazza az azonosítót, az indoklást, a szorzót és az érintettség
+ * arányát. Egy törölt akció tehát nem hagy megválaszolhatatlan kérdést a
+ * pontok mögött — a hangolási fázisban keletkező elgépelt próbaakciókat
+ * viszont fölösleges örökre magunkkal hurcolni.
+ *
+ * A teljes dokumentum a törlés ELŐTT bekerül az `adminAudit`-ba, tehát a nyom
+ * akkor is megmarad, ha a listából eltűnik.
+ */
+adminRouter.delete('/modifiers/:id', async (req: AuthedRequest, res, next) => {
+  try {
+    requireWrite(req);
+    const id = String(req.params.id ?? '');
+    if (!id) throw badRequest('missing_id', 'Hiányzik az akció azonosítója.');
+
+    const ref = db.collection(COLLECTIONS.modifiers).doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFound('modifier_missing', 'Ez az akció nem található.');
+
+    await audit(req, 'modifier_delete', 'modifiers', id, auditableModifier(snap.data() ?? {}), null);
+    await ref.delete();
+    resetModifierCache();
 
     res.json({ ok: true });
   } catch (error) {

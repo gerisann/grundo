@@ -436,6 +436,13 @@
   font-size: 14px;
 }
 
+.admin-modifier__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
 @media (max-width: 640px) {
   .admin-tunable {
     grid-template-columns: 1fr;

@@ -15,6 +15,14 @@ import { Button, TextField } from '@/components/ui';
  * élettartammal. Ez a különbség adja a biztonságot, és később ugyanide fog
  * írni az automatikus esemény-generálás is — az `appConfig`-hoz nem nyúlhat.
  *
+ * Három művelet, három különböző súllyal:
+ *   **Szerkesztés** — futó akción is; a korábbi jóváírásokat nem érinti, mert a
+ *     `gpLedger` a jóváírás pillanatában érvényes szorzót őrzi meg magában.
+ *   **Lezárás** — a hatás megszűnik, a nyom marad. Ez a szelíd megállítás.
+ *   **Törlés** — a dokumentum eltűnik. Szabad, mert a főkönyv nem hivatkozásként,
+ *     hanem pillanatképként tárolja az akciót; a teljes rekord a törlés előtt
+ *     bekerül az `adminAudit`-ba.
+ *
  * docs/06-architektura-es-admin.md → Modifierek
  */
 
@@ -26,8 +34,10 @@ const KIND_LABEL: Record<ModifierKindName, string> = {
 
 const KIND_HELP: Record<ModifierKindName, string> = {
   gp_multiplier: 'Az aktivitás teljes pontszámát szorozza — az alappontot is.',
-  claim_multiplier: 'Csak a bezárt területért járó igénypontot szorozza (és rajta keresztül a lopás- és áttörésbónuszt).',
-  hold_multiplier: 'A napi tartás-bónuszt szorozza. Területi hatókör itt egyelőre nem érvényesül.',
+  claim_multiplier:
+    'Csak a bezárt területért járó igénypontot szorozza (és rajta keresztül a lopás- és áttörésbónuszt).',
+  hold_multiplier:
+    'A napi tartás-bónuszt szorozza. Területi hatókör itt egyelőre nem érvényesül.',
 };
 
 const SCOPE_LABEL: Record<ModifierScopeName, string> = {
@@ -55,14 +65,12 @@ export function ModifiersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<AdminModifier | null>(null);
 
-  const load = useCallback(
-    async (expired: boolean) => {
-      const result = await api.adminModifiers(expired);
-      setItems(result.modifiers);
-    },
-    [],
-  );
+  const load = useCallback(async (expired: boolean) => {
+    const result = await api.adminModifiers(expired);
+    setItems(result.modifiers);
+  }, []);
 
   useEffect(() => {
     load(showExpired).catch((cause: unknown) =>
@@ -70,17 +78,38 @@ export function ModifiersScreen() {
     );
   }, [load, showExpired]);
 
-  async function cancel(id: string) {
+  function closeForm() {
+    setOpen(false);
+    setEditing(null);
+  }
+
+  async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
     try {
-      await api.adminCancelModifier(id);
+      await action();
       await load(showExpired);
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'A lezárás nem sikerült.');
+      setError(cause instanceof Error ? cause.message : 'A művelet nem sikerült.');
     } finally {
       setBusy(false);
     }
+  }
+
+  function remove(item: AdminModifier) {
+    /**
+     * A megerősítés szövege attól függ, futott-e már.
+     *
+     * Egy még el nem indult akció törlése következmény nélküli takarítás; egy
+     * lefutotté viszont már osztott pontokat, és bár a főkönyv önállóan megőrzi
+     * a nyomát, ezt ki kell mondani, mielőtt eltűnik a listából.
+     */
+    const ran = item.state !== 'scheduled';
+    const message = ran
+      ? `Törlöd? Ez az akció már futott, tehát osztott pontokat. A jóváírások megmaradnak, és a teljes rekord bekerül a naplóba — a listából viszont eltűnik.\n\n„${item.reason}"`
+      : `Törlöd? Ez az akció még el sem indult, tehát nyoma sem lesz a pontokban.\n\n„${item.reason}"`;
+    if (!window.confirm(message)) return;
+    void run(() => api.adminDeleteModifier(item.id));
   }
 
   return (
@@ -90,16 +119,23 @@ export function ModifiersScreen() {
           <h1>Akciók</h1>
           <p className="admin-muted">Időszakos szorzók. Minden akció lejár magától.</p>
         </div>
-        <Button onClick={() => setOpen((value) => !value)}>
+        <Button
+          onClick={() => {
+            if (open) return closeForm();
+            setEditing(null);
+            setOpen(true);
+          }}
+        >
           {open ? 'Mégsem' : 'Új akció'}
         </Button>
       </header>
 
       {open ? (
-        <CreateForm
-          onCancel={() => setOpen(false)}
-          onCreated={() => {
-            setOpen(false);
+        <ModifierForm
+          editing={editing}
+          onCancel={closeForm}
+          onSaved={() => {
+            closeForm();
             void load(showExpired);
           }}
         />
@@ -152,11 +188,33 @@ export function ModifiersScreen() {
                 {item.from ? new Date(item.from).toLocaleString('hu-HU') : '?'} —{' '}
                 {item.to ? new Date(item.to).toLocaleString('hu-HU') : '?'}
               </p>
-              {item.state === 'active' || item.state === 'scheduled' ? (
-                <Button variant="ghost" disabled={busy} onClick={() => void cancel(item.id)}>
-                  Lezárás
+
+              <div className="admin-modifier__actions">
+                {item.state === 'active' || item.state === 'scheduled' ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditing(item);
+                        setOpen(true);
+                      }}
+                    >
+                      Szerkesztés
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => void run(() => api.adminCancelModifier(item.id))}
+                    >
+                      Lezárás
+                    </Button>
+                  </>
+                ) : null}
+                <Button variant="danger" disabled={busy} onClick={() => remove(item)}>
+                  Törlés
                 </Button>
-              ) : null}
+              </div>
             </li>
           ))}
         </ul>
@@ -165,22 +223,36 @@ export function ModifiersScreen() {
   );
 }
 
-function CreateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
+function ModifierForm({
+  editing,
+  onCancel,
+  onSaved,
+}: {
+  editing: AdminModifier | null;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const now = new Date();
   const inTwoDays = new Date(now.getTime() + 2 * 86_400_000);
 
-  const [kind, setKind] = useState<ModifierKindName>('gp_multiplier');
-  const [scope, setScope] = useState<ModifierScopeName>('global');
-  const [value, setValue] = useState('2');
-  const [reason, setReason] = useState('');
-  const [from, setFrom] = useState(toLocalInput(now));
-  const [to, setTo] = useState(toLocalInput(inTwoDays));
-  const [lat, setLat] = useState('47.4979');
-  const [lng, setLng] = useState('19.0402');
-  const [radiusKm, setRadiusKm] = useState('5');
-  const [inactiveDays, setInactiveDays] = useState('7');
+  const [kind, setKind] = useState<ModifierKindName>(editing?.kind ?? 'gp_multiplier');
+  const [scope, setScope] = useState<ModifierScopeName>(editing?.scope ?? 'global');
+  const [value, setValue] = useState(String(editing?.value ?? 2));
+  const [reason, setReason] = useState(editing?.reason ?? '');
+  const [from, setFrom] = useState(
+    toLocalInput(editing?.from ? new Date(editing.from) : now),
+  );
+  const [to, setTo] = useState(toLocalInput(editing?.to ? new Date(editing.to) : inTwoDays));
+  const [lat, setLat] = useState(String(editing?.area?.lat ?? 47.4979));
+  const [lng, setLng] = useState(String(editing?.area?.lng ?? 19.0402));
+  const [radiusKm, setRadiusKm] = useState(String(editing?.area?.radiusKm ?? 5));
+  const [inactiveDays, setInactiveDays] = useState(
+    String(editing?.segment?.inactiveDays ?? 7),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const started = editing !== null && editing.state === 'active';
 
   async function submit() {
     setBusy(true);
@@ -200,10 +272,12 @@ function CreateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: 
       if (scope === 'segment') {
         input.segment = { inactiveDays: Number(inactiveDays) };
       }
-      await api.adminCreateModifier(input);
-      onCreated();
+
+      if (editing) await api.adminUpdateModifier(editing.id, input);
+      else await api.adminCreateModifier(input);
+      onSaved();
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'A létrehozás nem sikerült.');
+      setError(cause instanceof Error ? cause.message : 'A mentés nem sikerült.');
     } finally {
       setBusy(false);
     }
@@ -211,7 +285,15 @@ function CreateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: 
 
   return (
     <section className="admin-card">
-      <h2>Új akció</h2>
+      <h2>{editing ? 'Akció szerkesztése' : 'Új akció'}</h2>
+
+      {started ? (
+        <p className="admin-note">
+          Ez az akció MÁR FUT. A módosítás mostantól érvényes; a korábbi jóváírásokat nem
+          írja át, mert a főkönyv a jóváírás pillanatában érvényes szorzót őrzi meg. A
+          kezdést viszont nem lehet korábbra húzni.
+        </p>
+      ) : null}
 
       <div className="admin-form">
         <label className="admin-field">
@@ -261,6 +343,7 @@ function CreateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: 
           type="datetime-local"
           value={from}
           onChange={(event) => setFrom(event.target.value)}
+          hint={started ? 'Futó akciónál nem tolható korábbra.' : undefined}
         />
         <TextField
           label="Vége"
@@ -324,7 +407,7 @@ function CreateForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: 
           Mégsem
         </Button>
         <Button onClick={() => void submit()} disabled={busy}>
-          {busy ? 'Létrehozás…' : 'Létrehozás'}
+          {busy ? 'Mentés…' : editing ? 'Mentés' : 'Létrehozás'}
         </Button>
       </div>
     </section>

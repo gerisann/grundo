@@ -348,8 +348,28 @@ export interface DevActivityListItem {
   areaGainedM2: number;
   gp: number;
   trustVerdict: 'trusted' | 'pending_review' | 'rejected';
+  /**
+   * A bizalmi pontszám (0–100), vagy `null`, ha nincs rekord.
+   *
+   * CSAK az admin útvonalon jön le, szerepkör-kapu mögül. A játékos felületére
+   * továbbra sem kerülhet ki — ott a verdikt az egyetlen publikus információ.
+   */
+  trustScore: number | null;
   deleted: boolean;
   hasAudit: boolean;
+}
+
+/** A bizalmi pontszám részletei — admin-only. */
+export interface DevActivityTrust {
+  score: number;
+  /** részjelenként 0–1 (1 = teljesen rendben) */
+  signals: Record<string, number>;
+  reasons: string[];
+  /** amit a pontszám mondana */
+  measuredVerdict: string;
+  /** ténylegesen módosított-e birtokviszonyt */
+  appliedGameplayDecision: string;
+  observeOnly: boolean;
 }
 
 export interface DevClaimAudit {
@@ -671,6 +691,7 @@ export const api = {
   devActivity: (id: string) =>
     request<{
       activity: DevActivityDetail;
+      trust: DevActivityTrust | null;
       points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
       audit: DevActivityAudit | null;
     }>(`/api/dev/activities/${encodeURIComponent(id)}`),
@@ -712,8 +733,19 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  adminUpdateModifier: (id: string, input: CreateModifierInput) =>
+    request<{ ok: true }>(`/api/admin/modifiers/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
   adminCancelModifier: (id: string) =>
     request<{ ok: true }>(`/api/admin/modifiers/${encodeURIComponent(id)}/cancel`, {
       method: 'POST',
+    }),
+
+  adminDeleteModifier: (id: string) =>
+    request<{ ok: true }>(`/api/admin/modifiers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     }),
 };

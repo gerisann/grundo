@@ -128,3 +128,113 @@
   .audit-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .audit-detail__header { flex-direction: column; }
 }
+
+/* ── Bizalmi pontszám panel ─────────────────────────────────────────────
+   Csak az admin területen létezik. A játékos felületén a Trust Score
+   továbbra sem jelenhet meg — ott a verdikt az egyetlen publikus adat. */
+
+.trust-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+}
+
+.trust-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.trust-panel__score {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  min-width: 56px;
+}
+
+.trust-panel__verdict {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.trust-signals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.trust-signal {
+  display: grid;
+  grid-template-columns: 1fr 120px 96px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.trust-signal__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.trust-signal__weight {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.trust-signal__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.trust-signal__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* A levont pontot pirosan jelöljük: hangoláskor ez az egyetlen szám,
+   ami tényleg érdekes — nem az, hogy mi maradt, hanem hogy mi veszett el. */
+.trust-signal--lost .trust-signal__bar > span {
+  background: var(--danger, #d33);
+}
+
+.trust-signal--lost .trust-signal__value {
+  color: var(--danger, #d33);
+  font-weight: 600;
+}
+
+.trust-signal__value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.trust-reasons {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .trust-signal {
+    grid-template-columns: 1fr 72px;
+  }
+
+  .trust-signal__bar {
+    display: none;
+  }
+}

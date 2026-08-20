@@ -30,16 +30,34 @@ devRouter.get('/activities', async (req: AuthedRequest, res, next) => {
 
     const snapshot = await query.get();
     const userIds = [...new Set(snapshot.docs.map((doc) => String(doc.data().userId ?? '')).filter(Boolean))];
-    const [users, audits] = await Promise.all([
+    const [users, audits, trusts] = await Promise.all([
       userIds.length > 0
         ? db.getAll(...userIds.map((id) => db.collection(COLLECTIONS.users).doc(id)))
         : Promise.resolve([]),
       snapshot.docs.length > 0
         ? db.getAll(...snapshot.docs.map((doc) => db.collection(COLLECTIONS.activityAudits).doc(doc.id)))
         : Promise.resolve([]),
+      snapshot.docs.length > 0
+        ? db.getAll(...snapshot.docs.map((doc) => db.collection(COLLECTIONS.activityTrust).doc(doc.id)))
+        : Promise.resolve([]),
     ]);
     const usernames = new Map(users.map((doc) => [doc.id, String(doc.data()?.username ?? 'ismeretlen')]));
     const audited = new Set(audits.filter((doc) => doc.exists).map((doc) => doc.id));
+
+    /**
+     * A BIZALMI PONTSZÁM ITT SZÁNDÉKOSAN KIKERÜL A KLIENSRE.
+     *
+     * Az AGENTS.md 6. szabálya („a Trust Score sosem publikus") a JÁTÉKOS
+     * felületére vonatkozik: ott csak a verdikt látszik. A `docs/06` §3 viszont
+     * kifejezetten megköveteli, hogy a moderátor lássa a pontszámot és a
+     * részjeleket — enélkül nem tud dönteni, csak találgatni. Ez az útvonal
+     * szerepkör-kapu mögött van, tehát a kettő nem mond ellent egymásnak.
+     */
+    const trustScores = new Map(
+      trusts
+        .filter((doc) => doc.exists)
+        .map((doc) => [doc.id, Number(doc.data()?.score ?? 0)]),
+    );
 
     res.json({
       activities: snapshot.docs.map((doc) => {
@@ -61,6 +79,7 @@ devRouter.get('/activities', async (req: AuthedRequest, res, next) => {
           areaGainedM2: Number(data.areaGainedM2 ?? summary.areaGainedM2 ?? 0),
           gp: Number(asRecord(data.gp).total ?? summary.gp ?? 0),
           trustVerdict: data.trustVerdict,
+          trustScore: trustScores.get(doc.id) ?? null,
           deleted: data.deletedAt != null,
           hasAudit: audited.has(doc.id),
         };
@@ -76,10 +95,11 @@ devRouter.get('/activities/:id', async (req: AuthedRequest, res, next) => {
   try {
     const activityId = String(req.params.id);
     const activityRef = db.collection(COLLECTIONS.activities).doc(activityId);
-    const [activity, track, audit] = await Promise.all([
+    const [activity, track, audit, trust] = await Promise.all([
       activityRef.get(),
       activityRef.collection('private').doc('track').get(),
       db.collection(COLLECTIONS.activityAudits).doc(activityId).get(),
+      db.collection(COLLECTIONS.activityTrust).doc(activityId).get(),
     ]);
     if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
 
@@ -115,6 +135,27 @@ devRouter.get('/activities/:id', async (req: AuthedRequest, res, next) => {
         trustVerdict: data.trustVerdict,
         deleted: data.deletedAt != null,
       },
+      /**
+       * A bizalmi pontszám részletei — CSAK ezen az admin útvonalon.
+       *
+       * A `measuredVerdict` az, amit a pontszám mondana; a `trustVerdict` a
+       * publikus dokumentumban az, ami ténylegesen érvényesült. Megfigyelő
+       * módban a kettő eltérhet, és pont ez a különbség a hasznos: ebből
+       * derül ki, mit tenne a rendszer élesítve.
+       */
+      trust: trust.exists
+        ? (() => {
+            const t = trust.data() as Record<string, unknown>;
+            return {
+              score: Number(t.score ?? 0),
+              signals: (t.signals ?? {}) as Record<string, number>,
+              reasons: Array.isArray(t.reasons) ? (t.reasons as string[]) : [],
+              measuredVerdict: String(t.measuredVerdict ?? ''),
+              appliedGameplayDecision: String(t.appliedGameplayDecision ?? ''),
+              observeOnly: Boolean(t.observeOnly),
+            };
+          })()
+        : null,
       points: Array.isArray(trackData?.points) ? trackData.points : [],
       audit: auditData
         ? {

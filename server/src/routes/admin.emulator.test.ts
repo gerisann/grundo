@@ -297,6 +297,23 @@ describe.skipIf(!EMULATOR)('Admin API — valódi Firestore ellen', () => {
       expect(created.body.code).toBe('missing_reason');
     });
 
+    /**
+     * Az „induljon most" a leggyakoribb eset, és az űrlap a megnyitás
+     * időpontjával nyílik — mire kitöltik, az már néhány perce múlt. Ha ezt
+     * elutasítanánk, a leggyakoribb művelet lenne a legnehezebb.
+     */
+    it('múltbeli kezdéssel is létrehozható — az akció azonnal fut', async () => {
+      const created = await call('/modifiers', {
+        method: 'POST',
+        body: validBody({
+          from: new Date(Date.now() - 10 * hour).toISOString(),
+          to: new Date(Date.now() + hour).toISOString(),
+        }),
+      });
+      expect(created.status).toBe(201);
+      expect((await call('/modifiers')).body.modifiers[0].state).toBe('active');
+    });
+
     it('a véget kötelezővé teszi, és a múltba nem engedi', async () => {
       const past = await call('/modifiers', {
         method: 'POST',
@@ -366,6 +383,106 @@ describe.skipIf(!EMULATOR)('Admin API — valódi Firestore ellen', () => {
       expect((await call('/modifiers?expired=1')).body.modifiers).toHaveLength(1);
     });
 
+    it('szerkeszthető: a szorzó és az indoklás is módosul', async () => {
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
+
+      const updated = await call(`/modifiers/${created.body.id}`, {
+        method: 'PUT',
+        body: validBody({ value: 3, reason: 'Módosított indok' }),
+      });
+      expect(updated.status).toBe(200);
+
+      const list = await call('/modifiers');
+      expect(list.body.modifiers[0]).toMatchObject({ value: 3, reason: 'Módosított indok' });
+    });
+
+    it('szerkesztéskor hatókört is lehet váltani, és a régi mezők eltűnnek', async () => {
+      const created = await call('/modifiers', {
+        method: 'POST',
+        body: validBody({ scope: 'area', area: { lat: 47.4979, lng: 19.0402, radiusKm: 5 } }),
+      });
+
+      await call(`/modifiers/${created.body.id}`, {
+        method: 'PUT',
+        body: validBody({ scope: 'global' }),
+      });
+
+      const doc = await db.collection(collections.modifiers!).doc(created.body.id).get();
+      expect(doc.data()?.scope).toBe('global');
+      // Egy maradék cellalista egy globálissá alakított akción némán szűkítene.
+      expect(doc.data()?.areaCells).toBeUndefined();
+      expect(doc.data()?.areaCenter).toBeUndefined();
+
+      const list = await call('/modifiers');
+      expect(list.body.modifiers[0].areaCellCount).toBe(0);
+    });
+
+    it('szerkesztéskor ugyanazok a korlátok élnek, mint létrehozáskor', async () => {
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
+
+      const bad = await call(`/modifiers/${created.body.id}`, {
+        method: 'PUT',
+        body: validBody({ value: GAMEPLAY.MODIFIER_MAX_FACTOR + 1 }),
+      });
+      expect(bad.status).toBe(400);
+    });
+
+    /**
+     * A visszamenőleges indítás azért tilos, mert a főkönyv a jóváírás
+     * pillanatában érvényes szorzót őrzi. A korábbra húzott kezdés olyan
+     * időszakot állítana érvényesnek, amire senki nem kapta meg a bónuszt.
+     */
+    it('a kezdést nem lehet visszamenőleg korábbra húzni', async () => {
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
+
+      const back = await call(`/modifiers/${created.body.id}`, {
+        method: 'PUT',
+        body: validBody({ from: new Date(Date.now() - 10 * hour).toISOString() }),
+      });
+      expect(back.status).toBe(400);
+      expect(back.body.code).toBe('from_in_past');
+    });
+
+    it('a lezárt akció nem szerkeszthető', async () => {
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
+      await call(`/modifiers/${created.body.id}/cancel`, { method: 'POST' });
+
+      const edit = await call(`/modifiers/${created.body.id}`, {
+        method: 'PUT',
+        body: validBody({ value: 3 }),
+      });
+      expect(edit.status).toBe(400);
+      expect(edit.body.code).toBe('cancelled');
+    });
+
+    it('törölhető, és a törlés előtt naplózódik', async () => {
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
+
+      const deleted = await call(`/modifiers/${created.body.id}`, { method: 'DELETE' });
+      expect(deleted.status).toBe(200);
+
+      const doc = await db.collection(collections.modifiers!).doc(created.body.id).get();
+      expect(doc.exists).toBe(false);
+
+      const audit = await db
+        .collection(collections.adminAudit!)
+        .where('action', '==', 'modifier_delete')
+        .get();
+      expect(audit.size).toBe(1);
+      // A nyom megmarad akkor is, ha a dokumentum már nincs meg.
+      expect(audit.docs[0]?.data()?.before).toMatchObject({ reason: 'Teszt akció' });
+    });
+
+    it('a readonly nem törölhet és nem szerkeszthet', async () => {
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
+      currentRole = 'readonly';
+
+      expect((await call(`/modifiers/${created.body.id}`, { method: 'DELETE' })).status).toBe(403);
+      expect(
+        (await call(`/modifiers/${created.body.id}`, { method: 'PUT', body: validBody() })).status,
+      ).toBe(403);
+    });
+
     it('kétszer nem lehet lezárni', async () => {
       const created = await call('/modifiers', { method: 'POST', body: validBody() });
       await call(`/modifiers/${created.body.id}/cancel`, { method: 'POST' });
@@ -374,10 +491,7 @@ describe.skipIf(!EMULATOR)('Admin API — valódi Firestore ellen', () => {
     });
 
     it('a lezárt akció a játékmotorhoz sem jut el', async () => {
-      const created = await call('/modifiers', {
-        method: 'POST',
-        body: validBody({ from: new Date(Date.now() - hour).toISOString() }),
-      });
+      const created = await call('/modifiers', { method: 'POST', body: validBody() });
 
       const { getModifiers, resetModifierCache } = await import('../lib/modifiers');
       resetModifierCache();

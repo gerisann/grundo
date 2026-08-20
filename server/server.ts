@@ -49,7 +49,14 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    /**
+     * A PUT hiánya egyszer már megfogott (2026-08-19): az admin
+     * konfiguráció-mentése `PUT`-tal megy, és a böngésző már az előkérésnél
+     * elutasította. A felületen ez „Nincs kapcsolat a szerverrel" alakban
+     * jelent meg, ami a hálózatra mutatott — pedig a szerver válaszolt, csak
+     * nem engedte a metódust. Új metódust ide is fel kell venni.
+     */
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Max-Age', '3600');
   }
   if (req.method === 'OPTIONS') return res.status(204).end();

@@ -6,6 +6,7 @@ import {
   ApiError,
   api,
   type DevActivityAudit,
+  type DevActivityTrust,
   type DevActivityDetail,
   type DevActivityListItem,
   type DevClaimAudit,
@@ -17,9 +18,33 @@ const ACTIVITY_LABEL = { run: 'Futás', walk: 'Séta', ride: 'Bringa' } as const
 
 interface LoadedActivity {
   activity: DevActivityDetail;
+  trust: DevActivityTrust | null;
   points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
   audit: DevActivityAudit | null;
 }
+
+/**
+ * A hét részjel magyarul, a súlyukkal.
+ *
+ * A súly nem dísz: ebből derül ki, MI húzta le a pontszámot. Egy 0,5-ös
+ * sebességjel 20 súllyal tíz pontot visz el, ugyanaz a jelentés-jelnél
+ * kettő és felet.
+ */
+const TRUST_SIGNALS: Array<{ key: string; label: string; weight: number }> = [
+  { key: 'speed', label: 'Sebesség', weight: 20 },
+  { key: 'teleport', label: 'Teleport / folytonosság', weight: 20 },
+  { key: 'acceleration', label: 'Gyorsulás', weight: 15 },
+  { key: 'gpsPrecision', label: 'GPS-pontosság', weight: 15 },
+  { key: 'sensorConsistency', label: 'Szenzor-konzisztencia', weight: 15 },
+  { key: 'history', label: 'Történeti viselkedés', weight: 10 },
+  { key: 'reports', label: 'Bejelentések', weight: 5 },
+];
+
+const VERDICT_LABEL: Record<string, string> = {
+  trusted: 'érvényes',
+  pending_review: 'ellenőrzés alatt',
+  rejected: 'elutasítva',
+};
 
 export function ActivityAuditScreen() {
   const [activities, setActivities] = useState<DevActivityListItem[]>([]);
@@ -161,7 +186,15 @@ export function ActivityAuditScreen() {
               >
                 <span className="audit-list__item-top">
                   <strong>{activity.title || ACTIVITY_LABEL[activity.type]}</strong>
-                  <span>{activity.hasAudit ? 'auditált' : 'régi adat'}</span>
+                  {/* A pontszám a listában is látszik: így a gyanús tételt ki
+                      lehet szúrni anélkül, hogy mindegyiket meg kéne nyitni. */}
+                  <span>
+                    {activity.trustScore === null
+                      ? activity.hasAudit
+                        ? 'auditált'
+                        : 'régi adat'
+                      : `${activity.trustScore}/100`}
+                  </span>
                 </span>
                 <span>{activity.username} · {formatDateTime(activity.startedAt)}</span>
                 <span>{formatDistance(activity.distanceM)} · {activity.loops} hurok · {formatGp(activity.gp)}</span>
@@ -187,10 +220,15 @@ export function ActivityAuditScreen() {
                   <p>{formatDateTime(detail.activity.startedAt)} · {detail.activity.id}</p>
                 </div>
                 <div className="audit-badges">
-                  <span>{detail.activity.trustVerdict}</span>
+                  <span>
+                    {VERDICT_LABEL[detail.activity.trustVerdict] ?? detail.activity.trustVerdict}
+                    {detail.trust ? ` · ${detail.trust.score}/100` : ''}
+                  </span>
                   {detail.activity.deleted ? <span className="audit-badge--danger">törölt</span> : null}
                 </div>
               </header>
+
+              {detail.trust ? <TrustPanel trust={detail.trust} /> : null}
 
               {!detail.audit ? (
                 <div className="audit-notice">
@@ -421,4 +459,71 @@ function mergeClaims(claims: DevClaimAudit[]): DevClaimAudit {
 
 function messageOf(reason: unknown): string {
   return reason instanceof ApiError ? reason.message : 'Nem sikerült betölteni a fejlesztői adatokat.';
+}
+
+/**
+ * A bizalmi pontszám döntéstámogató panelje (docs/06 → 3. Aktivitások).
+ *
+ * ⚠️ Ez a felület CSAK az admin területen létezik. Az AGENTS.md 6. szabálya
+ * („a Trust Score sosem publikus") a játékos felületére vonatkozik — ott
+ * továbbra is a verdikt az egyetlen látható információ. A moderátornak viszont
+ * látnia kell a részjeleket, különben nem dönteni tud, hanem találgatni.
+ */
+function TrustPanel({ trust }: { trust: DevActivityTrust }) {
+  const differs = trust.measuredVerdict && trust.measuredVerdict !== 'trusted';
+
+  return (
+    <section className="trust-panel">
+      <header className="trust-panel__head">
+        <span className="trust-panel__score">{trust.score}</span>
+        <div>
+          <strong>Bizalmi pontszám</strong>
+          <span className="trust-panel__verdict">
+            mért verdikt: {VERDICT_LABEL[trust.measuredVerdict] ?? trust.measuredVerdict}
+            {trust.observeOnly ? ' · megfigyelő mód' : ''}
+            {trust.appliedGameplayDecision === 'withheld' ? ' · nem módosított birtokviszonyt' : ''}
+          </span>
+        </div>
+      </header>
+
+      {trust.observeOnly && differs ? (
+        <p className="audit-notice audit-notice--warning">
+          Megfigyelő módban vagyunk, tehát ez az aktivitás érvényesült — élesítve viszont
+          nem érvényesült volna. Pontosan ezt kell mérni, mielőtt a küszöböket élesítjük.
+        </p>
+      ) : null}
+
+      <ul className="trust-signals">
+        {TRUST_SIGNALS.map((signal) => {
+          const raw = trust.signals[signal.key];
+          const value = typeof raw === 'number' ? raw : 1;
+          const lost = Math.round((1 - value) * signal.weight * 10) / 10;
+          return (
+            <li key={signal.key} className={lost > 0 ? 'trust-signal trust-signal--lost' : 'trust-signal'}>
+              <span className="trust-signal__label">
+                {signal.label}
+                <span className="trust-signal__weight">súly {signal.weight}</span>
+              </span>
+              <span className="trust-signal__bar" aria-hidden="true">
+                <span style={{ width: `${Math.round(value * 100)}%` }} />
+              </span>
+              <span className="trust-signal__value">
+                {Math.round(value * 100)}%{lost > 0 ? ` · −${lost}` : ''}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {trust.reasons.length > 0 ? (
+        <ul className="trust-reasons">
+          {trust.reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="admin-muted">Nincs kifogásolt jel.</p>
+      )}
+    </section>
+  );
 }
