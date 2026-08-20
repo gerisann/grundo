@@ -1,175 +1,287 @@
-/* Értesítések — alulról felcsúszó lap, a CommentSheet mintájára */
+/* Értesítések — teljes képernyős lap, húzható sorokkal */
 
 .npanel {
   position: fixed;
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: flex-end;
-}
-
-.npanel__scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  cursor: default;
-}
-
-.npanel__sheet {
-  position: relative;
-  display: flex;
   flex-direction: column;
-  width: 100%;
-  max-height: 82dvh;
-  background: var(--bg-secondary);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-  border-top: 1px solid var(--border-subtle);
-  box-shadow: 0 -8px 32px var(--shadow);
-  animation: npanel-up 200ms ease-out;
+  /* Teljes takarás: ez önálló képernyő, nem egy réteg a Home fölött. */
+  background: var(--bg-primary);
+  animation: npanel-in 160ms ease-out;
 }
 
-@keyframes npanel-up {
-  from { transform: translateY(16px); opacity: 0; }
+@keyframes npanel-in {
+  from { transform: translateY(12px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .npanel__sheet { animation: none; }
+  .npanel { animation: none; }
 }
 
+/* ── Fejléc ──────────────────────────────────────────────────────── */
+
 .npanel__head {
-  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-3) var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
-}
-
-.npanel__grip {
-  position: absolute;
-  top: 7px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 4px;
-  border-radius: var(--r-pill);
-  background: var(--border-strong);
+  background: var(--bg-elevated);
 }
 
 .npanel__title {
   flex: 1;
   margin: 0;
-  font-size: var(--fs-body);
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   color: var(--text-primary);
 }
 
-.npanel__markall {
-  padding: 6px var(--sp-3);
-  border-radius: var(--r-pill);
-  background: var(--surface-2);
-  color: var(--accent);
-  font-size: var(--fs-label);
-  font-weight: 700;
+.npanel__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
 
-.npanel__close {
+.npanel__tool {
   display: grid;
   place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--r-sm);
+  background: transparent;
   color: var(--text-secondary);
 }
 
-.npanel__close:hover {
+.npanel__tool:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--text-primary);
 }
 
+.npanel__tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* A bezárás a jobb sarokban, kis térközzel a két művelet-ikontól: az X nem
+   az értesítésekre hat, hanem a lapra. */
+.npanel__tool--close {
+  margin-left: var(--sp-2);
+  color: var(--text-primary);
+}
+
+/* ── „Mindet törlöm" megerősítése ────────────────────────────────── */
+
+.npanel__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.npanel__confirm-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.npanel__confirm-btn {
+  padding: 6px var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-default);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.npanel__confirm-btn--danger {
+  border-color: transparent;
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ── A lista ─────────────────────────────────────────────────────── */
+
+/*
+  A LISTA FLEX OSZLOP, NEM RÁCS — és a sorok nem zsugorodhatnak.
+
+  ⚠️ Mérve (2026-08-20): `display: grid`-del, amikor a tartalom magasabb a
+  lapnál, a böngésző ÖSSZENYOMJA a sorokat a rendelkezésre álló magasságra
+  ahelyett, hogy görgetne — egy háromsoros értesítés kártyája így belelógott a
+  sor aljába, a `overflow: hidden` pedig levágta. A lista ilyenkor NEM is volt
+  görgethető (`scrollHeight === clientHeight`). Flex oszlopban, `flex: none`
+  gyerekekkel a sor pontosan a kártya magassága, és a lista görget.
+*/
 .npanel__list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  /* A lista széléig érve ne a mögötte lévő lap kezdjen mozogni. */
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  padding: var(--sp-2) var(--sp-2) calc(var(--sp-3) + var(--safe-bottom));
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) calc(var(--safe-bottom) + var(--sp-6));
+}
+
+.npanel__list > * {
+  flex: none;
 }
 
 .npanel__note {
   margin: var(--sp-6) 0;
   text-align: center;
-  font-size: var(--fs-small);
   color: var(--text-tertiary);
+  font-size: var(--fs-small);
 }
 
-.npanel__row {
+.npanel__more {
+  margin-top: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.npanel__more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Egy sor ─────────────────────────────────────────────────────── */
+
+.nrow {
+  position: relative;
+  border-radius: var(--r-md);
+  /* A kártya kicsúszása nem lóghat ki a sorból. */
+  overflow: hidden;
+}
+
+/*
+  A HÁTTÉR a kártya mögött: bal szélen a kuka (jobbra húzva ez történik), jobb
+  szélen a nyitott boríték (balra húzva ez). Alapból láthatatlan — húzás
+  közben, illetve egérrel a sor fölé érve jelenik meg.
+*/
+.nrow__behind {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-4);
+  background: var(--surface-2);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.nrow:hover .nrow__behind,
+.nrow__behind--open {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nrow__behind { transition: none; }
+}
+
+.nrow__behind-icon {
+  display: grid;
+  place-items: center;
+}
+
+.nrow__behind-icon--delete {
+  color: var(--danger);
+}
+
+.nrow__behind-icon--read {
+  color: var(--accent);
+  /* Ha a sor már olvasott, ez az ikon meg sem jelenik (lásd a komponenst) —
+     a `margin-left: auto` tartja a jobb szélen akkor is, ha egyedül maradt. */
+  margin-left: auto;
+}
+
+.nrow__card {
   position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
   width: 100%;
-  padding: var(--sp-3) var(--sp-3);
-  border-radius: var(--r-md);
+  padding: var(--sp-3);
   text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  /* A FÜGGŐLEGES húzás a listáé (görgetés), a vízszintes a miénk. Enélkül a
+     böngésző a saját gesztusfelismerésével versengene a húzással. */
+  touch-action: pan-y;
 }
 
-.npanel__row:hover {
-  background: var(--surface-2);
+.nrow__card--unread {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
 }
 
-/* Az OLVASATLAN sor halvány háttérrel emelkedik ki — a pötty jelöli
-   egyértelműen, a háttér csak segéd, nem az egyetlen jelzés. */
-.npanel__row--unread {
-  background: var(--accent-soft);
+/* Csak visszapattanáskor animálunk: húzás közben a kártya az ujjat követi,
+   ott egy átmenet késleltetésnek látszana. */
+.nrow__card--snap {
+  transition: transform 180ms ease-out;
 }
 
-.npanel__row--unread:hover {
-  background: color-mix(in srgb, var(--accent-soft) 80%, var(--surface-2));
+.nrow--leaving .nrow__card {
+  transition: transform 180ms ease-in;
 }
 
-.npanel__icon {
+.nrow__icon {
   flex: none;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: var(--surface-1);
+  background: var(--surface-2);
   font-size: 17px;
 }
 
-.npanel__text {
+.nrow__text {
   display: grid;
+  gap: 2px;
   min-width: 0;
-  gap: 1px;
 }
 
-.npanel__row-title {
-  font-size: var(--fs-small);
+.nrow__title {
+  font-size: var(--fs-body);
   font-weight: 700;
-  color: var(--text-primary);
+  line-height: 1.3;
 }
 
-.npanel__row-body {
+.nrow__body {
   font-size: var(--fs-small);
   color: var(--text-secondary);
-  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 
-.npanel__row-when {
-  margin-top: 2px;
+.nrow__when {
   font-size: var(--fs-label);
   color: var(--text-tertiary);
 }
 
-.npanel__dot {
-  position: absolute;
-  top: var(--sp-3);
-  right: var(--sp-3);
+.nrow__dot {
+  flex: none;
+  align-self: center;
   width: 8px;
   height: 8px;
+  margin-left: auto;
   border-radius: 50%;
   background: var(--accent);
 }

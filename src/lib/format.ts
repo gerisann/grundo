@@ -114,6 +114,24 @@ export function formatSpeed(metersPerSecond: number): string {
 }
 
 /**
+ * Sebesség a rögzítés képernyő nagy számához — az ÁLLÁS is mérés.
+ *
+ * A `formatSpeed` a nullát „nincs adat"-nak veszi, és `--`-t ad rá: egy kész
+ * aktivitás átlagánál ez a helyes. Mérés közben viszont a 0,0 km/h VALÓDI
+ * érték (állsz a lámpánál), és a felület sem lehet olyan, hogy minden
+ * megállásnál eltűnik a legnagyobb szám a képernyőről.
+ *
+ * A mértékegység SZÁNDÉKOSAN a sztring része: a rögzítés panelen a sebesség
+ * ugyanúgy „12,0 km/h" alakban áll, ahogy a megtett táv „1,55 km" — azonos
+ * méretben és színben, a címke pedig alatta a mérőszám NEVE („sebesség").
+ */
+export function formatLiveSpeed(metersPerSecond: number | null): string {
+  if (metersPerSecond === null || !Number.isFinite(metersPerSecond)) return '—';
+  const kmh = Math.max(0, metersPerSecond) * 3.6;
+  return `${hu({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(kmh)} km/h`;
+}
+
+/**
  * A mozgásforma fő tempó-mérőszáma.
  *
  * Futásnál és sétánál a TEMPÓ (perc/km) a beszélt mérték, bringánál a

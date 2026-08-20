@@ -69,10 +69,20 @@
    mozdulatával. A jobb alsó sarok azért jó, mert ott a hüvelykujj eléri, és
    nem takarja a nyomvonalat. */
 
+/*
+  „Vissza a pozíciómra" — a jobb alsó sarokban, a DOCK FÖLÖTT.
+
+  A gomb a térkép dobozához igazodik, az viszont a teljes képernyőt kitölti,
+  tehát a puszta `bottom: var(--sp-4)` a Dock ALÁ tette: a gomb ott volt, csak
+  nem lehetett elérni. Ezért a dock magassága, a kinyúló középső gomb és a
+  telefon alsó biztonságos sávja is beleszámít.
+*/
 .mapview__recenter {
   position: absolute;
   right: var(--sp-4);
-  bottom: var(--sp-4);
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3)
+  );
   width: 40px;
   height: 40px;
   display: grid;

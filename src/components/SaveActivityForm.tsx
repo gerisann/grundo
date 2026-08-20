@@ -154,101 +154,119 @@ export function SaveActivityForm({
 
   return (
     <div className="save">
-      <TextField
-        label="Név"
-        placeholder="Pl. Reggeli kör a Duna-parton"
-        value={title}
-        maxLength={80}
-        onChange={(event) => setTitle(event.target.value)}
-        hint="Ha üresen hagyod, a napszak és a mozgásforma adja a nevet."
-      />
+      {/*
+        A MEZŐK GÖRGETHETŐK, A GOMB NEM.
 
-      <label className="save__field">
-        <span className="save__label">Leírás</span>
-        <textarea
-          className="save__textarea"
-          rows={3}
-          maxLength={2000}
-          placeholder="Milyen volt? Mi történt útközben?"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
+        Rögzítés után ez az űrlap a képernyőt kitöltő panelben ül
+        (`.track__panel--upload`), és a magassága a fotósortól függ: hat kép
+        mellett hosszabb, mint a képernyő. Ha az egész egy dobozban lenne, a
+        Mentés gomb kicsúszna a kép aljáról — ezért a törzs görget, a gombsor
+        pedig a doboz alján marad.
+
+        Beágyazva (aktivitás szerkesztése) ez a szerkezet nem változtat
+        semmin: ott a törzs nem kap külön görgetést, a lap görget, mint eddig.
+      */}
+      <div className="save__body">
+        <TextField
+          label="Név"
+          placeholder="Pl. Reggeli kör a Duna-parton"
+          value={title}
+          maxLength={80}
+          onChange={(event) => setTitle(event.target.value)}
+          hint="Ha üresen hagyod, a napszak és a mozgásforma adja a nevet."
         />
-      </label>
 
-      <div className="save__field">
-        <span className="save__label">
-          Képek{' '}
-          <span className="save__count">{keptPhotos.length + files.length}/{MAX_PHOTOS}</span>
-        </span>
+        <label className="save__field">
+          <span className="save__label">Leírás</span>
+          <textarea
+            className="save__textarea"
+            rows={3}
+            maxLength={2000}
+            placeholder="Milyen volt? Mi történt útközben?"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
 
-        <div className="save__photos">
-          {keptPhotos.map((photo, index) => (
-            <div key={photo.path} className="save__thumb">
-              <img src={photo.url} alt="" />
+        <div className="save__field">
+          <span className="save__label">
+            Képek{' '}
+            <span className="save__count">{keptPhotos.length + files.length}/{MAX_PHOTOS}</span>
+          </span>
+
+          <div className="save__photos">
+            {keptPhotos.map((photo, index) => (
+              <div key={photo.path} className="save__thumb">
+                <img src={photo.url} alt="" />
+                <button
+                  type="button"
+                  className="save__thumb-remove"
+                  aria-label="Kép eltávolítása"
+                  disabled={saving}
+                  onClick={() => removeStoredPhoto(index)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+
+            {previews.map((url, index) => (
+              <div key={url} className="save__thumb">
+                <img src={url} alt="" />
+                <button
+                  type="button"
+                  className="save__thumb-remove"
+                  aria-label="Kép eltávolítása"
+                  disabled={saving}
+                  onClick={() => removeFile(index)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+
+            {keptPhotos.length + files.length < MAX_PHOTOS ? (
               <button
                 type="button"
-                className="save__thumb-remove"
-                aria-label="Kép eltávolítása"
+                className="save__add"
                 disabled={saving}
-                onClick={() => removeStoredPhoto(index)}
+                onClick={() => fileInput.current?.click()}
               >
-                ×
+                <PlusIcon />
+                <span>Kép</span>
               </button>
-            </div>
-          ))}
+            ) : null}
+          </div>
 
-          {previews.map((url, index) => (
-            <div key={url} className="save__thumb">
-              <img src={url} alt="" />
-              <button
-                type="button"
-                className="save__thumb-remove"
-                aria-label="Kép eltávolítása"
-                disabled={saving}
-                onClick={() => removeFile(index)}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-
-          {keptPhotos.length + files.length < MAX_PHOTOS ? (
-            <button
-              type="button"
-              className="save__add"
-              disabled={saving}
-              onClick={() => fileInput.current?.click()}
-            >
-              <PlusIcon />
-              <span>Kép</span>
-            </button>
-          ) : null}
+          <input
+            ref={fileInput}
+            className="save__file"
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(event) => {
+              addFiles(event.target.files);
+              // Ugyanazt a fájlt máskor is ki lehessen választani: az input
+              // értékét nullázni kell, különben nem tüzel újra a `change`.
+              event.target.value = '';
+            }}
+          />
         </div>
-
-        <input
-          ref={fileInput}
-          className="save__file"
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(event) => {
-            addFiles(event.target.files);
-            // Ugyanazt a fájlt máskor is ki lehessen választani: az input
-            // értékét nullázni kell, különben nem tüzel újra a `change`.
-            event.target.value = '';
-          }}
-        />
       </div>
 
-      {error ? (
-        <p className="save__error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {/* A hiba a gomb FÖLÖTT, a nem görgő sávban: különben a felhasználó
+          megnyomja a Mentést, és a magyarázat a kép alatt marad. */}
+      <div className="save__actions">
+        {error ? (
+          <p className="save__error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
-      <Button block onClick={() => void save()} disabled={saving}>
-        {saving ? progress || 'Mentés…' : 'Mentés'}
-      </Button>
+        <Button block onClick={() => void save()} disabled={saving}>
+          {saving ? progress || 'Mentés…' : 'Mentés'}
+        </Button>
+      </div>
     </div>
   );
 }

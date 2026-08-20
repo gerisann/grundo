@@ -272,6 +272,12 @@ később hivatkozni lehessen rájuk. Az átadó mindig nevezze meg, melyik szám
 melyikre adunk át. A konvenció 2026-08-19-én indult; az azelőtti munkamenetek
 számozatlanok.
 
+⚠️ **A sorszám a BESZÉLGETÉSEKÉ, nem a munkameneteké.** Azt kell nézni, hány
+chat van a Claude Code-ban, nem azt, hányszor futott le egy menet — Geri
+pontosított 2026-08-20-án, amikor a `HANDOFF.md` #8-at írt, miközben az ötödik
+beszélgetés folyt. Ha a kettő eltér, a beszélgetés száma az igazság, és a
+`HANDOFF.md`-t ahhoz kell igazítani.
+
 ## 8. Ismert hibamintáim
 
 - **Túlnyúlok a kérésen.** Commitoltam kérés nélkül, és kiírtam telepítő

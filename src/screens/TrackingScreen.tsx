@@ -20,7 +20,13 @@ import {
   paceSecPerKm,
   type RecorderState,
 } from '@/tracking/recorder';
-import { formatArea, formatDistance, formatDuration, formatPace } from '@/lib/format';
+import {
+  formatArea,
+  formatDistance,
+  formatDuration,
+  formatLiveSpeed,
+  formatPace,
+} from '@/lib/format';
 import type { ActivityType } from '@/types';
 import './tracking.css';
 
@@ -472,7 +478,6 @@ export function TrackingScreen() {
                  megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
                  és a profilon számít. */
               cells={countsAsActivity ? cells.length : null}
-              points={displayPoints.length}
               speedMps={remoteState?.speedMps ?? currentSpeedMps(state)}
               hasFix={remoteState !== null ? displayPoints.length > 0 : recorder.hasFix}
             />
@@ -666,14 +671,24 @@ function LapList({ state }: { state: RecorderState }) {
 
   return (
     <div className="track__laps">
-      <button
-        type="button"
-        className="track__laps-close"
-        aria-label="Körök elrejtése"
-        onClick={() => setCollapsed(true)}
-      >
-        ✕
-      </button>
+      {/*
+        A SAJÁT SORÁBAN ül az összecsukó gomb, nem a kártya sarkába lebegtetve.
+
+        Lebegő gombként ráült a legfelső kör távolságára („0,00 km"), és pont
+        azt takarta ki, amiért a panel létezik. Egy saját fejlécsáv nem tud
+        ütközni: a sorok alatta kezdődnek, akármilyen hosszú a szám.
+      */}
+      <div className="track__laps-head">
+        <button
+          type="button"
+          className="track__laps-close"
+          aria-label="Körök elrejtése"
+          title="Körök elrejtése"
+          onClick={() => setCollapsed(true)}
+        >
+          <MinimizeIcon />
+        </button>
+      </div>
       {/*
         A sorok KÜLÖN, görgethető dobozban élnek, nem a kártyában közvetlenül.
         Enélkül egy húszkörös futásnál a lista lelógott a képernyőről, és vele
@@ -724,7 +739,6 @@ function StatsPanel({
   cells,
   claimableCells,
   expectedGp,
-  points,
   speedMps,
   hasFix,
 }: {
@@ -735,7 +749,6 @@ function StatsPanel({
   /** Amit MOST megkapnál, ha befejeznéd — a bezárt területtel együtt. */
   claimableCells: number;
   expectedGp: number;
-  points: number;
   speedMps: number | null;
   hasFix: boolean;
 }) {
@@ -772,14 +785,16 @@ function StatsPanel({
       label: 'GP',
       value: String(expectedGp),
       icon: <SignalIcon />,
-    },
-    {
-      key: 'points',
-      label: 'pont',
-      value: String(points),
-      icon: <SignalIcon />,
-      // A jelállapot ide költözött a különálló chipről: ahol a pontszám van,
-      // ott a legbeszédesebb, hogy nő-e egyáltalán.
+      /*
+        A JELÁLLAPOT ITT VAN, mert a nyerspont-számláló megszűnt.
+
+        Korábban külön „pont" mezőt mutattunk (hány GPS-pontot vettünk fel), és
+        a jelzőpötty is ott ült. Geri kérésére a nyerspont kikerült: a
+        felhasználónak nem mond semmit, a panel viszont ötödik értékként
+        eltörte a négyes rácsot (egy sor, kinyitva 2×2). A jelzés a GP mellé
+        költözött — így a négy érték megvan, és a „van-e fix" továbbra is
+        egy pillantással látszik.
+      */
       dot: hasFix ? 'live' : 'searching',
     },
   ] as const;
@@ -796,10 +811,11 @@ function StatsPanel({
           Futás közben ez a két szám az, amit egy pillantással leolvasol. */}
       <div className="track__primary">
         <span className="track__primary-cell">
-          <span className="track__primary-value">
-            {speedMps === null ? '—' : (speedMps * 3.6).toFixed(1)}
-          </span>
-          <span className="track__primary-label">km/h</span>
+          {/* A mértékegység a SZÁMMAL egy sorban, azonos méretben és színben —
+              ugyanúgy, ahogy a megtett távnál („1,55 km"). A címke alatta a
+              mérőszám neve, nem a mértékegysége. */}
+          <span className="track__primary-value">{formatLiveSpeed(speedMps)}</span>
+          <span className="track__primary-label">sebesség</span>
         </span>
         <span className="track__primary-cell">
           <span className="track__primary-value">{formatDistance(distanceM)}</span>
@@ -837,6 +853,23 @@ const iconProps = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
+
+function MinimizeIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M6 16.5h12" />
+    </svg>
+  );
+}
 
 function ClockIcon() {
   return (
@@ -904,8 +937,13 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
 
   if (upload.status === 'done') {
     const { summary, duplicate } = upload;
+    /*
+      A `--upload` változat a képernyő maradék magasságát kapja, és belül
+      görget: az űrlap mezői mozognak, a Mentés és az Új rögzítés gomb pedig
+      a panel alján marad. Indoklás a tracking.css-ben.
+    */
     return (
-      <div className="track__panel">
+      <div className="track__panel track__panel--upload">
         <p className="track__saved">
           {duplicate ? 'Ez a rögzítés már mentve volt.' : 'Mentve.'}
         </p>

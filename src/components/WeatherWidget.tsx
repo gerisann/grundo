@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { useAuth } from '@/hooks/AuthProvider';
@@ -7,11 +7,15 @@ import { api, apiConfigured, ApiError, type WeatherResult } from '@/lib/api';
 import './weatherWidget.css';
 
 /**
- * Kompakt időjárás — a köszöntő sor jobb szélén.
+ * Kompakt időjárás — a köszöntő sor jobb szélén, KIBONTHATÓAN.
  *
- * Egyetlen ikon és a hőmérséklet, EGYMÁS MELLETT. (A referenciaképen egymás
- * alatt vannak; ez szándékos eltérés, Geri kérésére — a köszöntő sorba így fér
- * be anélkül, hogy megnőne a fejléc magassága.)
+ * Zárva egyetlen ikon és a hőmérséklet, egymás mellett. (A referenciaképen
+ * egymás alatt vannak; ez szándékos eltérés, Geri kérésére — a köszöntő sorba
+ * így fér be anélkül, hogy megnőne a fejléc magassága.)
+ *
+ * Koppintásra BALRA csúszik ki a részletes sáv négy adattal: hőmérséklet,
+ * csapadék esélye, páratartalom, szél. A sáv a köszöntést takarja ki, nem
+ * tolja arrébb — a fejléc magassága így akkor sem változik, ha a név hosszú.
  *
  * ⚠️ NEM KÉR HELYZETET MAGÁTÓL, amikor betölt az app.
  *
@@ -39,6 +43,8 @@ export function WeatherWidget() {
   /** Nem tudunk hova nyúlni: se tárolt pozíció, se megadott engedély. */
   const [needsPosition, setNeedsPosition] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement | null>(null);
 
   /* ── 1. A már tárolt pozíció — engedélykérés NÉLKÜL ──────────── */
 
@@ -105,8 +111,8 @@ export function WeatherWidget() {
             A HIÁNYZÓ ADAT ITT NEM HIBAÜZENET.
 
             Az időjárás dísz a köszöntő sorban, nem funkció. Ha a szolgáltató
-            néma vagy a kulcs nincs beállítva, a widget egyszerűen nincs ott —
-            egy piros hibasáv a Home tetején rosszabb, mint a hiánya.
+            néma, a widget egyszerűen nincs ott — egy piros hibasáv a Home
+            tetején rosszabb, mint a hiánya.
           */
           if (alive) {
             setFailed(true);
@@ -122,6 +128,30 @@ export function WeatherWidget() {
       window.clearInterval(timer);
     };
   }, [position]);
+
+  /* ── 4. A kibontott sáv bezárása ─────────────────────────────── */
+
+  useEffect(() => {
+    if (!open) return;
+    /*
+      Kívülre koppintva és Escape-re is záródik. A `pointerdown` (és nem
+      `click`) azért kell, hogy a sáv már a következő koppintás ELEJÉN
+      eltűnjön — különben a mögötte lévő gombot csak második nekifutásra
+      lehetne eltalálni.
+    */
+    function onPointerDown(event: PointerEvent) {
+      if (!wrap.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   if (failed) return null;
 
@@ -142,15 +172,110 @@ export function WeatherWidget() {
   if (weather === null) return <span className="weather weather--pending" aria-hidden="true" />;
 
   return (
-    <div
-      className="weather"
-      /* A képernyőolvasónak a leírás is jár — az ikon önmagában néma. */
-      aria-label={`${weather.description}, ${weather.tempC} fok`}
-      title={weather.description}
-    >
-      <WeatherIcon condition={weather.condition} night={weather.night} />
-      <span className="weather__temp">{weather.tempC} °C</span>
+    <div className={`weather-wrap${open ? ' weather-wrap--open' : ''}`} ref={wrap}>
+      <div className="weather__detail" aria-hidden={!open}>
+        <Metric icon={<ThermometerIcon />} label="hőmérséklet" value={`${weather.tempC} °C`} />
+        <Metric
+          icon={<PrecipitationIcon />}
+          label="csapadék esélye"
+          value={weather.precipitationChance === null ? '–' : `${weather.precipitationChance}%`}
+        />
+        <Metric
+          icon={<HumidityIcon />}
+          label="páratartalom"
+          value={weather.humidity === null ? '–' : `${weather.humidity}%`}
+        />
+        <Metric
+          icon={<WindIcon />}
+          label="szél"
+          value={weather.windKph === null ? '–' : `${weather.windKph} km/h`}
+        />
+      </div>
+
+      <button
+        type="button"
+        className="weather weather--toggle"
+        aria-expanded={open}
+        /* A képernyőolvasónak a leírás is jár — az ikon önmagában néma. */
+        aria-label={`${weather.description}, ${weather.tempC} fok. Részletek megnyitása.`}
+        title={weather.description}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <WeatherIcon condition={weather.condition} night={weather.night} />
+        <span className="weather__temp">{weather.tempC} °C</span>
+      </button>
     </div>
+  );
+}
+
+function Metric({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <span className="weather__metric" title={label}>
+      <span className="weather__metric-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="weather__metric-value">
+        {/* A címke csak a képernyőolvasónak és az egérnek szól: a sávban
+            négy adatnak kell elférnie egy telefon szélességében. */}
+        <span className="weather__metric-label">{label}: </span>
+        {value}
+      </span>
+    </span>
+  );
+}
+
+/* ── Ikonok ───────────────────────────────────────────────────────── */
+
+const metricIcon = {
+  width: 15,
+  height: 15,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+} as const;
+
+function ThermometerIcon() {
+  return (
+    <svg {...metricIcon}>
+      <path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z" />
+    </svg>
+  );
+}
+
+function PrecipitationIcon() {
+  return (
+    <svg {...metricIcon}>
+      <path d="M7 15a4 4 0 0 1 .6-8A5 5 0 0 1 17 8.5a3.2 3.2 0 0 1 .3 6.5" />
+      <path d="M9 18.5v1.5M13 18v2.5M17 18.5v1.5" />
+    </svg>
+  );
+}
+
+function HumidityIcon() {
+  return (
+    <svg {...metricIcon}>
+      <path d="M12 3.5s5.5 6 5.5 9.5a5.5 5.5 0 1 1-11 0C6.5 9.5 12 3.5 12 3.5Z" />
+    </svg>
+  );
+}
+
+function WindIcon() {
+  return (
+    <svg {...metricIcon}>
+      <path d="M3 8h10a2.5 2.5 0 1 0-2.5-2.5M3 12h14a2.5 2.5 0 1 1-2.5 2.5M3 16h7.5a2 2 0 1 1-2 2" />
+    </svg>
   );
 }
 

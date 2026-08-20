@@ -74,13 +74,31 @@ service cloud.firestore {
       match /following/{targetUid} { allow read: if signedIn(); allow write: if false; }
       match /followers/{sourceUid} { allow read: if signedIn(); allow write: if false; }
 
-      // Tiltás és némítás: a felhasználó saját maga kezeli.
+      // Tiltás és némítás.
       //
       // ⚠️ FIGYELEM: ez a `blocks` a felhasználó-TILTÁS, nem a rács. A
       // rács-blokk mutató szándékosan külön névtérben van (`blockIndex`),
-      // mert ez az alkollekció a felhasználó által írható — ha a rács-mutató
-      // is itt lenne, a saját területét törölhetné le a térképéről.
-      match /blocks/{targetUid} { allow read, write: if isSelf(uid); }
+      // mert az a felhasználó képernyőjét szolgálja — ha a rács-mutató is
+      // itt lenne, a saját területét törölhetné le a térképéről.
+      //
+      // ⚠️ A TILTÁS ÍRÁSA 2026-08-20 óta SZERVEROLDALI. Két oka van:
+      // a művelet ilyenkor bontja a követéseket és a függő kéréseket is
+      // (`routes/users.ts` → block), és megírja a `blockedBy` tükröt, amiből
+      // a feed a MÁSIK irányt szűri. Egy közvetlen kliens-írás mindkettőt
+      // kihagyná, és a tiltás csak félig működne. A kliens az API-t hívja,
+      // közvetlenül eddig sem írta.
+      match /blocks/{targetUid} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+
+      // Ki tiltott ENGEM — a szerver által írt tükör. Csak olvasható, és csak
+      // a tulajdonosnak: ez a lista mondja meg a feednek, kinek az
+      // aktivitásait ne mutassa.
+      match /blockedBy/{sourceUid} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
 
       // Mely rács-blokkokban van cellája? Szerveroldali mutató, rétegenként
       // egy dokumentum. A tulajdonos olvashatja (a saját területképernyője
@@ -245,7 +263,16 @@ service cloud.firestore {
       allow read: if isSelf(uid);
       // A felhasználó csak olvasottnak jelölheti.
       allow update: if isSelf(uid) && onlyChanges(['read']);
-      allow create, delete: if false;
+      /*
+        TÖRÖLNI SZABAD, LÉTREHOZNI NEM.
+
+        Az értesítés keletkezése a szerveré (`createNotification` — az az
+        egyetlen kapu, ami a felhasználó kapcsolóit nézi), a saját listája
+        viszont a felhasználóé: az értesítés-lapon a kártyát jobbra húzva
+        vagy a fejléc „összes törlése" gombjával takaríthat.
+      */
+      allow delete: if isSelf(uid);
+      allow create: if false;
     }
 
     match /conversations/{conversationId} {

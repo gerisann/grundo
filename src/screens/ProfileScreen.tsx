@@ -4,6 +4,7 @@ import { Chip } from '@/components/ui';
 import { ActivityList } from '@/components/Feed';
 import { BadgeList } from '@/components/BadgeList';
 import { Avatar } from '@/components/ActivityCard';
+import { ConnectionsSheet } from '@/components/ConnectionsSheet';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useAuth } from '@/hooks/AuthProvider';
@@ -38,6 +39,8 @@ export function ProfileScreen() {
   const { user } = useAuth();
   const avatarInput = useRef<HTMLInputElement>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  /** Melyik kapcsolat-lista van nyitva a számlálókról — vagy egyik sem. */
+  const [connections, setConnections] = useState<'followers' | 'following' | null>(null);
   const [avatarError, setAvatarError] = useState('');
   const { result, loading, error, reload } = useActivities({ scope: 'mine', limit: HISTORY_LIMIT });
 
@@ -143,10 +146,24 @@ export function ProfileScreen() {
           </span>
         </section>
 
+        {/*
+          A két KAPCSOLAT-számláló koppintható, az aktivitásoké nem: azok
+          listája már ott van lentebb ezen a képernyőn. A `Stat` ettől lesz
+          gomb — enélkül egy div maradna, amit billentyűzetről nem lehet
+          elérni.
+        */}
         <div className="prof__stats">
           <Stat value={String(profile?.counters.activities ?? 0)} label="aktivitás" />
-          <Stat value={String(profile?.counters.followers ?? 0)} label="követő" />
-          <Stat value={String(profile?.counters.following ?? 0)} label="követett" />
+          <Stat
+            value={String(profile?.counters.followers ?? 0)}
+            label="követő"
+            onOpen={profile?.username ? () => setConnections('followers') : undefined}
+          />
+          <Stat
+            value={String(profile?.counters.following ?? 0)}
+            label="követett"
+            onOpen={profile?.username ? () => setConnections('following') : undefined}
+          />
         </div>
 
         {/* ── Ez a hét ────────────────────────────────────────────── */}
@@ -241,16 +258,46 @@ export function ProfileScreen() {
           />
         </div>
       </div>
+
+      {connections && profile?.username ? (
+        <ConnectionsSheet
+          username={profile.username}
+          kind={connections}
+          onClose={() => setConnections(null)}
+        />
+      ) : null}
     </>
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="prof__stat">
+function Stat({
+  value,
+  label,
+  onOpen,
+}: {
+  value: string;
+  label: string;
+  /** Ha van, a csempe GOMB lesz — koppintásra listát nyit. */
+  onOpen?: () => void;
+}) {
+  const content = (
+    <>
       <span className="prof__stat-value">{value}</span>
       <span className="prof__stat-label">{label}</span>
-    </div>
+    </>
+  );
+
+  if (!onOpen) return <div className="prof__stat">{content}</div>;
+
+  return (
+    <button
+      type="button"
+      className="prof__stat prof__stat--tap"
+      onClick={onOpen}
+      aria-label={`${value} ${label} — lista megnyitása`}
+    >
+      {content}
+    </button>
   );
 }
 

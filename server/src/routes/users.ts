@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, auth as adminAuth, db } from '../lib/firebase';
 import { adminNotifyAddress, createMailer, userReportEmail } from '../lib/mailer';
 import { notifyNewFollower } from '../lib/notifications';
-import { badRequest, conflict, notFound } from '../lib/errors';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { normalizeUsername } from '../lib/user';
 import { toEarnedBadges } from '../lib/badges';
 import type { AuthedRequest } from '../../server';
@@ -222,6 +222,105 @@ usersRouter.get('/:username', async (req: AuthedRequest, res: Response, next) =>
 });
 
 /* ═══════════════════════════════════════════════════════════════════
+   GET /api/users/:username/followers  ·  /following
+   ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Ennyi kapcsolat megy ki egy kérésre.
+ *
+ * Nincs lapozás: a listát a profil számlálójáról nyitja meg valaki, hogy
+ * megnézze, KIK azok — és ehhez a legfrissebb száz bőven elég. A `hasMore`
+ * őszintén megmondja, ha többen vannak; ha ez valaha zavaró lesz, a
+ * `createdAt` szerinti kurzor mehet rá utólag, séma-változtatás nélkül.
+ */
+const CONNECTION_LIMIT = 100;
+
+interface Connection {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+}
+
+/**
+ * A követők és a követettek listája.
+ *
+ * MIÉRT SZERVEROLDALON? A `firestore.rules` a `followers`/`following`
+ * alkollekciót olvashatóvá teszi minden bejelentkezett felhasználónak, de az
+ * ott csak azonosítókat ad — a névhez és a képhez felhasználónként külön
+ * olvasás kellene a kliensről, ráadásul a privát fiók kapuja nélkül. Itt egy
+ * `getAll` hozza mind, a láthatóságot pedig ugyanaz a szabály dönti el, mint
+ * a profilnál.
+ */
+async function listConnections(
+  kind: 'followers' | 'following',
+  req: AuthedRequest,
+  res: Response,
+): Promise<void> {
+  const viewerUid = req.uid!;
+  const target = await resolveTarget(String(req.params.username ?? ""), viewerUid);
+  const relationship = await readRelationship(viewerUid, target.uid);
+
+  const isPrivate =
+    (target.data.privacy as { account?: string } | undefined)?.account === 'private';
+  /*
+    UGYANAZ A KAPU, mint a profilnál: privát fióknál csak ő maga és a
+    követői látják, kikkel van kapcsolatban. Enélkül a számláló mögötti
+    lista megkerülné a privát fiók lényegét.
+  */
+  if (relationship.blocked || (isPrivate && !relationship.self && !relationship.following)) {
+    throw forbidden('Ez a lista privát fióknál csak a követőknek látszik.');
+  }
+
+  const snapshot = await db
+    .collection(COLLECTIONS.users)
+    .doc(target.uid)
+    .collection(kind)
+    .orderBy('createdAt', 'desc')
+    .limit(CONNECTION_LIMIT + 1)
+    .get();
+
+  const hasMore = snapshot.docs.length > CONNECTION_LIMIT;
+  const ids = snapshot.docs.slice(0, CONNECTION_LIMIT).map((doc) => doc.id);
+
+  // Egy körben minden felhasználó dokumentuma — nem azonosítónként külön.
+  const users = ids.length
+    ? await db.getAll(...ids.map((id) => db.collection(COLLECTIONS.users).doc(id)))
+    : [];
+
+  const items: Connection[] = [];
+  for (const doc of users) {
+    if (!doc.exists) continue;
+    const data = doc.data() as Record<string, unknown>;
+    const username = String(data.username ?? '');
+    // Felhasználónév nélkül nincs hova navigálni — az ilyen sor csak zavarna.
+    if (!username) continue;
+    items.push({
+      uid: doc.id,
+      username,
+      photoURL: (data.photoURL as string | null) ?? null,
+    });
+  }
+
+  res.json({ items, hasMore });
+}
+
+usersRouter.get('/:username/followers', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    await listConnections('followers', req, res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+usersRouter.get('/:username/following', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    await listConnections('following', req, res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
    Követés
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -354,6 +453,20 @@ async function unfollow(followerUid: string, targetUid: string): Promise<boolean
  * kéréseket is. Enélkül a letiltott fél továbbra is követő maradna, és a
  * feedjében ott lenne a tiltó minden aktivitása — a tiltás csak látszólag
  * működne.
+ *
+ * ⚠️ A TILTÁS KÉT HELYRE ÍRÓDIK (2026-08-20 óta):
+ *
+ *   - `users/{tiltó}/blocks/{tiltott}` — kit tiltottam ÉN,
+ *   - `users/{tiltott}/blockedBy/{tiltó}` — ki tiltott ENGEM.
+ *
+ * A második egy tükör, és pontosan egy dolgot old meg: a feed olcsón meg
+ * tudja mondani, kinek az aktivitásait NE mutassa, mert az illető tiltott
+ * engem. Enélkül minden szerző `blocks` alkollekcióját külön kellene
+ * olvasni soronként — ez volt a #7 menetben nyitva maradt „másik irány".
+ *
+ * A tükröt CSAK A SZERVER írja (`firestore.rules` → `blockedBy` írásra
+ * zárva), ezért nem tud szétcsúszni: a kliensnek nincs útja a `blocks`
+ * közvetlen írásához sem.
  */
 usersRouter.post('/:username/block', async (req: AuthedRequest, res: Response, next) => {
   try {
@@ -363,12 +476,16 @@ usersRouter.post('/:username/block', async (req: AuthedRequest, res: Response, n
       throw badRequest('self_block', 'Magadat nem tilthatod le.');
     }
 
-    await db
-      .collection(COLLECTIONS.users)
-      .doc(viewerUid)
-      .collection('blocks')
-      .doc(target.uid)
-      .set({ createdAt: FieldValue.serverTimestamp() });
+    // Egy kötegben megy a két irány: vagy mindkettő létrejön, vagy egyik sem.
+    const blockBatch = db.batch();
+    const users = db.collection(COLLECTIONS.users);
+    blockBatch.set(users.doc(viewerUid).collection('blocks').doc(target.uid), {
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    blockBatch.set(users.doc(target.uid).collection('blockedBy').doc(viewerUid), {
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    await blockBatch.commit();
 
     await Promise.all([
       unfollow(viewerUid, target.uid),
@@ -383,17 +500,23 @@ usersRouter.post('/:username/block', async (req: AuthedRequest, res: Response, n
   }
 });
 
-/** DELETE /api/users/:username/block — a tiltás feloldása. Nem állítja vissza a követést. */
+/**
+ * DELETE /api/users/:username/block — a tiltás feloldása. Nem állítja vissza
+ * a követést.
+ *
+ * A tükör (`blockedBy`) is itt szűnik meg — ugyanabban a kötegben, mint a
+ * tiltás maga. Ha csak az egyik törlődne, a feed némán tovább rejtené a
+ * másik fél aktivitásait.
+ */
 usersRouter.delete('/:username/block', async (req: AuthedRequest, res: Response, next) => {
   try {
     const viewerUid = req.uid!;
     const target = await resolveTarget(String(req.params.username ?? ""), viewerUid);
-    await db
-      .collection(COLLECTIONS.users)
-      .doc(viewerUid)
-      .collection('blocks')
-      .doc(target.uid)
-      .delete();
+    const users = db.collection(COLLECTIONS.users);
+    const batch = db.batch();
+    batch.delete(users.doc(viewerUid).collection('blocks').doc(target.uid));
+    batch.delete(users.doc(target.uid).collection('blockedBy').doc(viewerUid));
+    await batch.commit();
     res.json({ status: 'none' as const });
   } catch (error) {
     next(error);

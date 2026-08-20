@@ -342,12 +342,19 @@ export function MapView({
     }
   }, [position, follow]);
 
-  // Ha a hívó abbahagyja a követést, a gombnak sincs értelme.
+  /*
+    Ha a hívó abbahagyja a KÖVETÉST, a szüneteltetés jelzőjét nullázzuk — de a
+    gombot NEM rejtjük el.
+
+    ⚠️ Korábban itt eltűnt a gomb, és ezzel a leggyakoribb esetben nem is
+    létezett: a rögzítés képernyőn a követés csak MÉRÉS KÖZBEN van bekapcsolva
+    (`follow={running}`), tehát aki állva pásztázott el a térképen, annak
+    semmi nem hozta vissza a saját helyzetéhez. A gomb feltétele innentől az,
+    amitől értelme van: a felhasználó elmozdította a térképet, és tudjuk, hol
+    van (lásd a `showRecenter && position` feltételt a renderben).
+  */
   useEffect(() => {
-    if (!follow) {
-      followPaused.current = false;
-      setShowRecenter(false);
-    }
+    if (!follow) followPaused.current = false;
   }, [follow]);
 
   /**
@@ -384,7 +391,7 @@ export function MapView({
         style={fill ? { height: '100%' } : { height }}
       />
       {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
-      {showRecenter ? (
+      {showRecenter && position ? (
         <button
           type="button"
           className="mapview__recenter"

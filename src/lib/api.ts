@@ -658,6 +658,19 @@ export type ReportCategory =
 
 export type FollowStatus = 'following' | 'requested' | 'none';
 
+/** Egy sor a követő- vagy követett-listában. */
+export interface Connection {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+}
+
+export interface ConnectionList {
+  items: Connection[];
+  /** Igaz, ha a listánál többen vannak — a felület ezt kiírja. */
+  hasMore: boolean;
+}
+
 /**
  * Időjárás-állapotok — pontosan annyi, ahány ikonpárunk van.
  *
@@ -680,6 +693,17 @@ export interface WeatherResult {
   /** Éjszaka van-e a MÉRT helyen — nem a böngésző órája szerint. */
   night: boolean;
   description: string;
+  /*
+    A kibontott widget három további adata. Mindegyik lehet `null`: a
+    hiányzó mérést NEM pótoljuk nullával, mert a „0% csapadék" azt jelenti,
+    hogy biztosan nem esik — az pedig nem ugyanaz, mint hogy nem tudjuk.
+  */
+  /** Csapadék esélye a folyó órában, százalék. */
+  precipitationChance: number | null;
+  /** Relatív páratartalom, százalék. */
+  humidity: number | null;
+  /** Szélsebesség, km/h. */
+  windKph: number | null;
 }
 
 export const api = {
@@ -709,6 +733,15 @@ export const api = {
     request<{ status: FollowStatus }>(`/api/users/${encodeURIComponent(username)}/follow`, {
       method: 'DELETE',
     }),
+
+  /**
+   * Kik követik, illetve kiket követ — a profil számlálói mögötti lista.
+   *
+   * A `kind` közvetlenül az útvonal vége, ezért zárt halmaz, nem sztring:
+   * elgépelve néma 404 lenne belőle.
+   */
+  connections: (username: string, kind: 'followers' | 'following') =>
+    request<ConnectionList>(`/api/users/${encodeURIComponent(username)}/${kind}`),
 
   /** Tiltás — a követés mindkét irányban megszűnik. */
   blockUser: (username: string) =>

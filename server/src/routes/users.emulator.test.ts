@@ -66,7 +66,7 @@ describe.skipIf(!EMULATOR)('Users API — valódi Firestore ellen', () => {
   /** Egy felhasználó teljes törlése az alkollekcióival együtt. */
   async function wipeUser(uid: string) {
     const ref = db.collection('users').doc(uid);
-    for (const sub of ['following', 'followers', 'blocks', 'mutes']) {
+    for (const sub of ['following', 'followers', 'blocks', 'blockedBy', 'mutes']) {
       const snap = await ref.collection(sub).get();
       for (const doc of snap.docs) await doc.ref.delete();
     }
@@ -249,6 +249,44 @@ describe.skipIf(!EMULATOR)('Users API — valódi Firestore ellen', () => {
     const result = await call('/masik');
     expect(result.status).toBe(404);
     expect(result.body.code).toBe('user_not_found');
+  });
+
+  it('a tiltás megírja a TÜKRÖT a másik oldalon, a feloldás elviszi', async () => {
+    /*
+      Ez a `blockedBy` alkollekció az, amiből a feed a MÁSIK irányt szűri
+      („ki tiltott engem"). Ha csak a `blocks` jönne létre, a szűrés némán
+      félig működne — a tiltó nem látná a tiltottat, fordítva viszont igen.
+    */
+    const mirror = () => db.collection('users').doc(OTHER).collection('blockedBy').doc(ME).get();
+
+    await call('/masik/block', 'POST');
+    expect((await mirror()).exists).toBe(true);
+    expect(
+      (await db.collection('users').doc(ME).collection('blocks').doc(OTHER).get()).exists,
+    ).toBe(true);
+
+    await call('/masik/block', 'DELETE');
+    expect((await mirror()).exists).toBe(false);
+    expect(
+      (await db.collection('users').doc(ME).collection('blocks').doc(OTHER).get()).exists,
+    ).toBe(false);
+  });
+
+  it('a követő-lista nevet és képet ad, privát fiókét viszont nem adja ki', async () => {
+    currentUid = OTHER;
+    await call('/en/follow', 'POST');
+    currentUid = ME;
+
+    const list = await call('/en/followers');
+    expect(list.status).toBe(200);
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0].username).toBe('Masik');
+    expect(list.body.hasMore).toBe(false);
+
+    // A másik privátra vált, és nem követem: a listája sem látszik.
+    await db.collection('users').doc(OTHER).update({ 'privacy.account': 'private' });
+    const denied = await call('/masik/following');
+    expect(denied.status).toBe(403);
   });
 
   it('letiltottat nem lehet követni, feloldás után igen', async () => {

@@ -129,3 +129,23 @@
   font-size: var(--fs-small);
   color: var(--danger);
 }
+
+/* ═══ Törzs és gombsor ═══
+   A mezők (név, leírás, képek) és a Mentés gomb KÜLÖN dobozban ülnek.
+   Alaphelyzetben — beágyazva, az aktivitás szerkesztésénél — ez semmit nem
+   változtat: mindkettő rács, a lap görget, mint eddig. A rögzítés utáni
+   panelben viszont a törzs kap saját görgetést, a gombsor pedig a helyén
+   marad (lásd tracking.css → `.track__panel--upload`). */
+
+.save__body {
+  display: grid;
+  gap: var(--sp-4);
+  /* Rugalmas szülőben ez engedi, hogy a doboz a tartalmánál kisebb legyen —
+     enélkül a görgetés helyett kilógna. */
+  min-height: 0;
+}
+
+.save__actions {
+  display: grid;
+  gap: var(--sp-2);
+}

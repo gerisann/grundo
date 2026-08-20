@@ -174,3 +174,63 @@
     transition: none;
   }
 }
+
+/* ── Befejezés: nyomva tartós gomb ──────────────────────────────────
+ *
+ * A felirat KÉTSZER van a gombban: alul a rendes (piros) szöveg, fölötte
+ * ugyanaz fehéren, a kitöltés széléig vágva. Ettől a betűk pontosan ott
+ * váltanak fehérre, ahol a piros háttér már alattuk van — nem előbb, nem
+ * később. Egy sima szín-átmenet a szövegen ezt nem tudná: az az EGÉSZ
+ * feliratot egyszerre színezné.
+ */
+
+.dock__finish {
+  position: relative;
+  overflow: hidden;
+  /* A hosszú nyomás ne indítson szövegkijelölést vagy görgetést. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.dock__finish-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--danger);
+  /* Elengedésre visszafolyik; nyomás közben (lásd `--holding`) nincs
+     átmenet, mert ott minden képkockán mi állítjuk a szélességet. */
+  transition: width 140ms ease-out;
+}
+
+.dock__finish--holding .dock__finish-fill {
+  transition: none;
+}
+
+.dock__finish-label {
+  position: relative;
+  display: block;
+  text-align: center;
+}
+
+.dock__finish-label--filled {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  /* A vágás ugyanazt a százalékot követi, mint a kitöltés szélessége. */
+  transition: clip-path 140ms ease-out;
+}
+
+.dock__finish--holding .dock__finish-label--filled {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock__finish-fill,
+  .dock__finish-label--filled {
+    transition: none;
+  }
+}

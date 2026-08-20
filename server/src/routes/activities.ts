@@ -343,7 +343,7 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       }),
     );
     /**
-     * A TILTOTT FELHASZNÁLÓK aktivitásai KIESNEK a feedből.
+     * A TILTOTT FELHASZNÁLÓK aktivitásai KIESNEK a feedből — MINDKÉT IRÁNYBAN.
      *
      * ⚠️ Ez a szűrés a lekérdezés UTÁN történik, nem benne. A Firestore-nak
      * nincs „nem egyenlő ezekkel a uid-ekkel" szűrője (a `not-in` legfeljebb
@@ -352,21 +352,26 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
      * felhasználónál a feed rövidebb lehet a kért `limit`-nél. Ez a helyes
      * csere — inkább kevesebb sor, mint egy letiltott ember bejegyzése.
      *
-     * A tiltás KÉTIRÁNYÚ (`docs/05` → „sem a tiltó, sem a tiltott nem látja a
-     * másikat"), de a feed csak az EGYIK irányt tudja olcsón: hogy ÉN kit
-     * tiltottam. A másik irányhoz (ki tiltott engem) minden szerző
-     * `blocks` alkollekcióját olvasni kellene soronként. A `users/{uid}`
-     * olvasását a `firestore.rules` már mindkét irányban zárja, tehát a
-     * profil felől a tiltás teljes — a feedben egyelőre az egyirányú szűrés
-     * van meg.
+     * A KÉT IRÁNY KÉT ALKOLLEKCIÓ, és mindkettő a SAJÁT felhasználómé:
+     *
+     *   - `blocks` — kit tiltottam én,
+     *   - `blockedBy` — ki tiltott engem (a szerver által írt tükör, lásd
+     *     `routes/users.ts` → block).
+     *
+     * A tükör nélkül a második irányhoz minden szerző `blocks`
+     * alkollekcióját külön kellene olvasni soronként; így két olcsó,
+     * párhuzamos lekérdezés adja mindkettőt. (`docs/05` → „sem a tiltó, sem
+     * a tiltott nem látja a másikat".)
      */
-    const blocked = await db
-      .collection(COLLECTIONS.users)
-      .doc(req.uid!)
-      .collection('blocks')
-      .select()
-      .get();
-    const blockedIds = new Set(blocked.docs.map((doc) => doc.id));
+    const own = db.collection(COLLECTIONS.users).doc(req.uid!);
+    const [blocked, blockedBy] = await Promise.all([
+      own.collection('blocks').select().get(),
+      own.collection('blockedBy').select().get(),
+    ]);
+    const blockedIds = new Set([
+      ...blocked.docs.map((doc) => doc.id),
+      ...blockedBy.docs.map((doc) => doc.id),
+    ]);
 
     let rows = documents
       .map((data, index) => ({ data, doc: docs[index]! }))

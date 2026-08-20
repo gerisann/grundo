@@ -18,6 +18,7 @@
     "rollover:seed": "tsx src/scripts/seedRollover.ts",
     "rollover:run": "tsx src/scripts/runRollover.ts",
     "clean:gp-ledger-junk": "tsx src/scripts/cleanGpLedgerJunk.ts",
+    "backfill:blocked-by": "tsx src/scripts/backfillBlockedBy.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts"
   },
   "dependencies": {

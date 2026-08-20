@@ -226,8 +226,8 @@
   margin-top: var(--sp-2);
 }
 
-/* Kinyitva 2×2, nagyobb számokkal — ezt a nézetet megállva nézi az ember. */
-/* Kinyitva 2x2 + 1: a legfontosabbak nagyobb helyet kapnak. */
+/* Kinyitva 2×2, nagyobb számokkal — ezt a nézetet megállva nézi az ember.
+   Pontosan NÉGY érték van (idő, tempó, mező, GP), ezért jön ki a rács. */
 .track__panel--open .track__stats {
   grid-template-columns: repeat(2, 1fr);
   gap: var(--sp-3);
@@ -470,27 +470,34 @@
    Futás közben a térkép a fontos. Összecsukva csak egy stopper ikon marad a
    bal szélen, a körök számával — arra koppintva jön vissza a panel. */
 
-.track__laps {
-  position: relative;
+/* A fejlécsáv egyetlen dolga, hogy HELYET adjon az összecsukó gombnak: a
+   korábbi, kártyasarokba lebegtetett gomb ráült a legfelső kör távolságára. */
+.track__laps-head {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: blur(12px);
 }
 
+/* Hangsúlyosabb, mint a régi csupasz ✕: saját köre van, tehát látszik, hogy
+   gomb — és a jel „_", ami azt ígéri, amit tesz (összecsukás), nem azt, hogy
+   bezár valamit véglegesen. */
 .track__laps-close {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  width: 26px;
-  height: 26px;
   display: grid;
   place-items: center;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  color: var(--text-tertiary);
-  font-size: 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--text-secondary);
   line-height: 1;
-  z-index: 1;
 }
 
 .track__laps-close:hover {
   color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 .track__laps-open {
@@ -591,4 +598,59 @@
   .track__saving-hex {
     transition: none;
   }
+}
+
+/* ── A rögzítés utáni panel: kötött magasság, belül görgő mezők ──────
+ *
+ * A panel a képernyő maradék magasságát kapja, és MAGA görget — nem az
+ * overlayre bízzuk. Két okból:
+ *
+ *   1. **A Mentés gombnak mindig látszania kell.** Hat felvett képnél a
+ *      fotósor két sorra nő, és az overlay-görgetésnél a gomb a kép alá
+ *      csúszik: a felhasználó a mentés gombot keresi, miközben azt hiszi,
+ *      elakadt a felület.
+ *   2. **Az overlay `pointer-events: none`**, hogy a térkép mozgatható
+ *      maradjon — a görgetés így a kártyák érintéséből kell hogy
+ *      származzon, ami nem minden eszközön adódik tovább a görgő ősnek.
+ *      Ha a görgetés ott van, ahol az ujj is, ez a kérdés fel sem merül.
+ */
+.track__panel--upload {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  /* Nagyon alacsony képernyőn (fekvő tájolás) inkább az overlay görgessen,
+     mintsem hogy a panel egy csíkká lapuljon. */
+  min-height: 220px;
+  overflow: hidden;
+}
+
+.track__panel--upload .save {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Ez az egyetlen elem, ami görget: a név, a leírás és a képek sávja. */
+.track__panel--upload .save__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* A függőleges húzás a mezőké — a vízszintes maradhat a térképé. */
+  touch-action: pan-y;
+  /* A sáv széléig érve ne a lap kezdjen el mozogni. */
+  overscroll-behavior: contain;
+  padding-bottom: var(--sp-2);
+}
+
+/* A fejrész és a két gomb nem zsugorodhat: ezek a fix pontok. */
+.track__panel--upload .track__saved,
+.track__panel--upload .track__stats,
+.track__panel--upload .save__actions,
+.track__panel--upload .track__new-recording {
+  flex: none;
+}
+
+.track__panel--upload .save__actions {
+  margin-top: var(--sp-3);
 }

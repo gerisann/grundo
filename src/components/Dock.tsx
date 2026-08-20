@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import './Dock.css';
@@ -86,11 +87,7 @@ export function Dock() {
         )}
       </button>
 
-      {active ? (
-        <button className="dock__side dock__side--right" onClick={() => void finish()}>
-          Befejezés
-        </button>
-      ) : null}
+      {active ? <FinishButton onFinish={() => void finish()} /> : null}
     </div>
   );
 
@@ -125,6 +122,98 @@ export function Dock() {
         <PersonIcon />
       </NavLink>
     </nav>
+  );
+}
+
+/**
+ * A befejezés NYOMVA TARTÁSSAL megy — két másodpercig.
+ *
+ * MIÉRT? Mert a Befejezés visszavonhatatlan pont a rögzítésben, és pont ott
+ * van, ahol futás közben a hüvelykujj kapkod: a Szünet mellett. Egy téves
+ * koppintás a mérés végét jelenti, nem egy visszavonható lépést.
+ *
+ * A visszajelzés a gomb HÁTTERE: balról jobbra pirosra telik, és a felirat
+ * pontosan ott vált fehérre, ameddig a piros ért — a felső, fehér
+ * szövegréteg ugyanarra a szélességre van vágva, mint a kitöltés. Így a két
+ * réteg együtt mozog, nem külön animációként.
+ */
+const FINISH_HOLD_MS = 2000;
+
+function FinishButton({ onFinish }: { onFinish: () => void }) {
+  const [progress, setProgress] = useState(0);
+  const holding = useRef(false);
+  const frame = useRef(0);
+  const startedAt = useRef(0);
+
+  // A kilépő komponens ne hagyjon futó animációs kérést maga után.
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  function start() {
+    if (holding.current) return;
+    holding.current = true;
+    startedAt.current = performance.now();
+
+    const step = (now: number) => {
+      if (!holding.current) return;
+      const value = Math.min(1, (now - startedAt.current) / FINISH_HOLD_MS);
+      setProgress(value);
+      if (value >= 1) {
+        holding.current = false;
+        setProgress(0);
+        onFinish();
+        return;
+      }
+      frame.current = requestAnimationFrame(step);
+    };
+    frame.current = requestAnimationFrame(step);
+  }
+
+  function cancel() {
+    if (!holding.current) return;
+    holding.current = false;
+    cancelAnimationFrame(frame.current);
+    // Nullára áll, és MOST már animálva: a `--holding` osztály lekerül róla,
+    // azzal együtt a `transition: none` is. Így a félbehagyott nyomás
+    // visszafolyik, nem ugrik.
+    setProgress(0);
+  }
+
+  const percent = progress * 100;
+
+  return (
+    <button
+      className={`dock__side dock__side--right dock__finish${
+        progress > 0 ? ' dock__finish--holding' : ''
+      }`}
+      /* Nyomva tartásnál a böngésző saját gesztusai (szöveg kijelölés,
+         helyi menü, görgetés) csak zavarnának. */
+      onPointerDown={start}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onContextMenu={(event) => event.preventDefault()}
+      /* Billentyűzetről ugyanígy: a lenyomás indít, az elengedés megszakít. */
+      onKeyDown={(event) => {
+        if (event.key === ' ' || event.key === 'Enter') {
+          event.preventDefault();
+          start();
+        }
+      }}
+      onKeyUp={cancel}
+      onBlur={cancel}
+      aria-label="Befejezés — tartsd nyomva két másodpercig"
+    >
+      <span className="dock__finish-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
+      <span className="dock__finish-label">Befejezés</span>
+      {/* Ugyanaz a felirat fehéren, a kitöltés széléig vágva. */}
+      <span
+        className="dock__finish-label dock__finish-label--filled"
+        style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
+        aria-hidden="true"
+      >
+        Befejezés
+      </span>
+    </button>
   );
 }
 

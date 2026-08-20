@@ -159,6 +159,21 @@
   border: 1px solid var(--border-subtle);
 }
 
+/* A koppintható csempe (követő / követett) gomb, nem doboz: a `button`
+   alapértelmezett betűtípusát és szélességét kell visszavenni, hogy a három
+   csempe egyformán nézzen ki. */
+.prof__stat--tap {
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.prof__stat--tap:hover {
+  border-color: var(--accent);
+}
+
 .prof__stat-value {
   display: block;
   font-size: 20px;

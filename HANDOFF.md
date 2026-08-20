@@ -3,107 +3,187 @@
 Ez a fájl az AKTUÁLIS állapotot mutatja, nem a történetet — minden menet végén
 felülíródik, nem bővül. A történet a git logban van.
 
-**Következő menet neve: GRUNDO #8.** (A számozási konvenció: [AGENTS.md → 7. A
+**Következő menet neve: GRUNDO #6.** (A számozás a BESZÉLGETÉSEKÉ, nem a
+munkameneteké: azt kell nézni, hány chat van. Az előző napló tévesen #8-at
+írt, miközben az ötödik beszélgetés folyt — javítva, lásd [AGENTS.md → 7. A
 beszélgetések neve](AGENTS.md).)
-
-## ⚠️ ELSŐ OLVASATRA: A #7/b JAVÍTÓ KÖR FÉLBEMARADT
-
-A #7 menet FŐ commitja (értesítési rendszer) után Geri élesben kipróbálta, és
-egy **13 pontos hibalistát** adott át. Ebből egy második commit **10 pontot
-elvégzett**, de a használati limit miatt **3 pont NEM készült el**. A
-kimaradtak pontosan, hogy a következő menet ne keresgéljen:
-
-1. **Az értesítés-panel ÁTÉPÍTÉSE teljes képernyősre.** Ma alulról felcsúszó
-   lap (`NotificationPanel.tsx`), Geri viszont teljes képernyős modált kért,
-   „Értesítések" fejléccel. A részletes kérés: fentről lefelé töltés,
-   legfeljebb 20 elem + „továbbiak betöltése", **swipe balra = olvasott**,
-   **swipe jobbra = törlés** (PC-n a kártya jobb 50%-ára húzva), a kártya
-   MÖGÖTT bal szélen kuka ikon és jobb szélen nyitott boríték ikon (swipe-ra
-   VAGY hover-re látszik), a fejléc jobb oldalán ikonos „összes törlése" és
-   „összes olvasottba" gomb, mellettük a jobb sarokban bezáró X.
-   ⚠️ Ehhez a `useNotifications` hookot is bővíteni kell: ma nincs benne
-   `delete`, se lapozás — csak `markRead`/`markAllRead` és fix 50-es limit.
-   A `firestore.rules` a `notifications/{uid}/items` alatt ma **`allow
-   delete: if false`** — a törléshez EZT IS módosítani kell (szabály-telepítés
-   kell hozzá), vagy szerveroldali végpontot kell írni rá.
-2. **Időjárás-widget kibontása.** Kattintásra balra kicsúszva (animálva, akár
-   a felhasználónevet kitakarva) jelenjen meg négy adat ikonokkal:
-   hőmérséklet, csapadék esélye (%), páratartalom (%), szél (km/h).
-   ⚠️ **ADATFORRÁS-KORLÁT, amit meg kell oldani**: a jelenleg használt
-   OpenWeatherMap „current weather" végpont a páratartalmat
-   (`main.humidity`) és a szelet (`wind.speed`, m/s → km/h váltás kell) adja,
-   de a **csapadék ESÉLYÉT (%) NEM** — az csak az előrejelzés-végponton van
-   (`/data/2.5/forecast` → `pop` mező). Vagy egy MÁSODIK hívás kell (a
-   meglévő gyorsítótárba bekötve), vagy a csapadék-esély kimarad. Ezt Gerivel
-   egyeztetni kell, mert az ő kérése négy adatot sorolt fel.
-3. **A tiltás MÁSIK iránya a feedben.** A most elkészült szűrés csak azt
-   fedi, hogy ÉN kit tiltottam. Aki ENGEM tiltott le, annak az aktivitásai
-   továbbra is megjelennek a feedemben — a részletes indoklás a kódban van
-   (`server/src/routes/activities.ts`, a `blockedIds` fölött).
 
 ## ÁLLAPOT
 
-Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`.
-A pontos HEAD-et `git log -1`-gyel ellenőrizd — ez a fájl nem tartalmaz
-commit-hash-t, mert az a frissítés pillanatában azonnal elavulna.
+Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. A pontos HEAD-et
+`git log -1`-gyel nézd meg.
 
-A #7 menet **jóval nagyobb volt a szokásosnál** — Geri kifejezetten kérte,
-hogy próbáljam meg egyben. Két rész:
+Tesztek, most mérve: gyökérből `npm test` → **333 teszt zöld** (24 fájl, 8
+emulátoros kihagyva). Emulátoros (`npm.cmd run test:emulator`) → **8 fájl, 99
+teszt zöld**. Typecheck (gyökér ÉS `server/`) és mindkét production build
+hibamentes.
 
-1. **Négy előzetes javítás**, amit Geri a fő kérés elé sorolt. Ebből
-   **kettő elkészült** (Home statisztikapanel átalakítása, aktivitás-
-   részletező profil-link), **egy részben** (komment-válasz — a
-   funkció maga kész, csak a térkép-vizualizáció maradt ki belőle
-   tévedésből az eredeti listán), **egy KIMARADT** (aktív akciók a
-   térképen — lásd „NYITOTT, KISEBB").
-2. **Teljes értesítési rendszer** — alkalmazáson belüli lista ÉS push
-   (FCM), mind a 10 típussal bekötve. A KNOWS Community projektből
-   (`C:\Users\Geri\Documents\GitHub\knows-community`) átvett architektúra
-   (Express + firebase-admin, Cloud Functions nélkül), GRUNDO saját
-   sémájára illesztve.
+A #5 menetben Geri hét pontot kért, kettő menetben (négy + a rögzítés/profil
+lista). **Mind a hét elkészült.**
 
-Tesztek, most mérve: a gyökérből `npm test` → **327 teszt zöld** (24 fájl, 8
-emulátoros fájl kihagyva). Emulátoros: `npm.cmd run test:emulator` → **8 fájl,
-97 teszt zöld** (+5 új a `notifications.emulator.test.ts`-ből). Typecheck
-(gyökér ÉS `server/`) és mindkét production build hibamentes.
+## ⚠️ ELSŐ OLVASATRA: MIT KELL TELEPÍTENI ÉS FUTTATNI
 
-⚠️ **Egy méréssel talált hiba ebben a körben is**: `src/game/claim.test.ts`
-egy tesztje a `stolenFrom`-ban kereste a védekező károsultat — ez a mező
-korábban egy „0 értékű bejegyzés" trükkel jelezte ezt (lásd lent, „A védelem-
-csökkenés most már valódi adat"), amit ez a menet kiváltott egy valódi
-`breakthroughFrom` mezőre. A teszt frissült, a viselkedés NEM romlott —
-ellenkezőleg, ez volt a lényeg.
+1. **frontend + backend** telepítés kell.
+2. **szabalyok** telepítés is kell (a `firestore.rules` változott: az
+   értesítés törölhető, a tiltás írása szerveroldalra került, és van egy új
+   `blockedBy` alkollekció).
+3. **Egyszeri migráció**, a szabályok után: a régi tiltásokhoz meg kell írni a
+   `blockedBy` tükröt. Cloud Shellben:
 
-## AMIT EBBEN A MENETBEN MÉRTEM, ÉS AMIT NEM SIKERÜLT
+   `cd ~/grundo/server && npm run backfill:blocked-by -- --apply --allow-production`
 
-**Szerveroldalon alaposan mérve**, valódi Firestore-emulátoron:
-- `createNotification` a KAPU-tulajdonságát 5 új emulátoros teszt bizonyítja:
-  alapból BE van kapcsolva minden típus, egy kikapcsolt típusnál SEMMI nem
-  íródik, a kapcsoló típusonként hat (nem globálisan), token nélküli
-  felhasználónál a push csendben kimarad, és a függvény SOSE dob (egy hibás
-  `uid` mellett is lefut, csak nem ír).
-- Egy `evaluateAndAwardBadges`-hez hasonló próbafuttatással: `commitActivity`
-  most már visszaadja a `stolenFrom`/`breakthroughFrom` térképet, ebből a
-  route ténylegesen ki tudja küldeni a `territory_stolen`/`territory_defended`
-  értesítést — ezt a teljes emulátoros aktivitás-készlet (18 teszt) zölden
-  futtatva ellenőriztem, a meglévő pontos GP-összegeket ellenőrző tesztek nem
-  romlottak.
+   (Előbb `git pull`. `--apply` nélkül csak jelentést ír. Amíg nem futott le, a
+   RÉGI tiltásoknál a „ki tiltott engem" irány nem szűr — az újaknál igen.)
+4. Indexek NEM kellenek.
 
-**Amit NEM sikerült böngészőben, élő adaton igazolnom**: a
-`NotificationPanel` `onSnapshot`-feliratkozását. A szerkezetet (fejléc, üres
-állapot, „Mind olvasott" gomb) böngészőben megnéztem és jó — DE a
-feliratkozás magát, valódi Firestore-adattal, nem sikerült végigvinnem: a
-teszt-környezetben a kliens Firestore-kapcsolat makacsul az ÉLES projektre
-ugrott vissza az emulátor helyett (az Auth-emulátor viszont helyesen működött
-— ebből tudom, hogy a kapcsolási minta önmagában jó, csak ennek a
-munkamenetnek a rögtönzött tesztfelállása nem tudta stabilan tartani mindkét
-emulátor-kapcsolatot egyszerre). **Ezt Geri nézze meg élesben, telepítés
-után** — ha a harangon nem jelenik meg a piros pötty valódi értesítésnél, ez
-az első hely, ahol keresni kell.
+## AMI A #5 MENETBEN ELKÉSZÜLT
 
-A **push-küldés VÉGIG-VITELE** (valódi eszközön megjelenő rendszerértesítés)
-szintén nincs élesben kipróbálva — ahhoz telepített frontend és egy valódi
-böngésző-engedélykérés kell, amit ez a környezet nem tud kiváltani.
+### 1. Értesítés-panel: teljes képernyős, húzható sorokkal
+
+`NotificationPanel.tsx` + `notificationPanel.css` teljesen újraírva,
+`useNotifications.ts` bővítve.
+
+- Teljes képernyő, „Értesítések" fejléc; jobbra ikonos **összes törlése**
+  (kétlépcsős megerősítéssel) és **mind olvasott**, mellettük a bezáró X.
+- **20 elem + „További értesítések betöltése"**. A lapozás az élő
+  feliratkozás ABLAKÁT növeli (`limit(size)`), nem indít új lekérdezést — így
+  az új értesítés továbbra is magától jelenik meg a lista tetején.
+- **Balra húzva olvasott, jobbra húzva törlés.** A kártya MÖGÖTT bal szélen a
+  kuka, jobb szélen a nyitott boríték — mindig az az ikon bukkan elő, amelyik
+  művelet történni fog. Egérrel a sor fölé érve is látszanak (PC-n enélkül
+  semmi nem árulná el, hogy húzható).
+- A küszöb a kártya szélességének fele; gyors pöccintésnél (300 ms alatt) a
+  negyede is elég. Az első nyolc pixel dönti el, hogy húzás vagy görgetés.
+- A hook új képességei: `remove`, `removeAll` (a TELJES kollekciót törli, nem
+  csak a betöltött ablakot), `loadMore`, `hasMore`.
+
+⚠️ **A `firestore.rules` ezért engedi a törlést** (`allow delete: if
+isSelf(uid)`), a létrehozást továbbra sem: az értesítés keletkezése a szerver
+egyetlen kapujáé (`createNotification`).
+
+### 2. Időjárás: Open-Meteo, egy hívás, kibontható widget
+
+`server/src/routes/weather.ts` újraírva, `WeatherWidget.tsx` kibontható.
+
+Geri döntése: legyen EGY forrás, ahonnan minden adat jön. Az OpenWeather
+„current" végpontja a csapadék ESÉLYÉT nem adja (az csak az előrejelzésen van),
+ezért az Open-Meteo-ra váltottunk: egy hívás, mind a négy adat, **API-kulcs
+nélkül**, a szél rögtön km/h-ban.
+
+- A widget koppintásra BALRA csúszik ki: hőmérséklet, csapadék esélye,
+  páratartalom, szél. A sáv a köszöntést kitakarja, nem tolja arrébb.
+- A WMO kódokat mi képezzük le a hét ikon-állapotra, és a **magyar leírás
+  innentől a miénk** (`describe`) — a szolgáltató nem ad szöveget.
+- A csapadék-esély a FOLYÓ órára illesztve jön (`pickPrecipitationChance`),
+  nem vakon a tömb nulladik eleméből.
+- **Élő méréssel ellenőrizve** (2026-08-20, gazdagréti koordinátán): 200-as
+  válasz, `°C` / `%` / `km/h` egységek, az óránkénti tömb a mostani órával
+  kezdődik. 13 új egységteszt.
+
+⚠️ **Az `OPENWEATHER_API_KEY` kikerült a `cloudbuild.yaml`-ból.** A titok
+maga megmaradt a Secret Managerben — ha véglegesen nem kell, Geri törölheti.
+
+### 3. Tiltás: a MÁSIK irány is szűr a feedben
+
+A tiltás mostantól két helyre íródik: `users/{tiltó}/blocks/{tiltott}` ÉS
+`users/{tiltott}/blockedBy/{tiltó}` (egy kötegben, a feloldás ugyanígy). A feed
+mindkettőt beolvassa a SAJÁT felhasználó alól — két olcsó lekérdezés, nem
+soronkénti olvasás.
+
+- A `blocks` írása szerveroldalra került (`firestore.rules`): a kliens eddig is
+  csak az API-t hívta, de a közvetlen írás megkerülte volna a tükröt és a
+  követés-bontást.
+- Új emulátoros teszt bizonyítja, hogy a tükör létrejön és a feloldás elviszi.
+- A meglévő tiltásokhoz **egyszeri migráció kell** (lásd fent).
+
+### 4. Aktivitás-mentés: görgő mezők, fix Mentés gomb
+
+`SaveActivityForm.tsx` törzsre (`save__body`) és gombsorra (`save__actions`)
+bomlik. A rögzítés utáni panel (`track__panel--upload`) a képernyő maradék
+magasságát kapja, és BELÜL görget: a mezők mozognak, a Mentés és az Új
+rögzítés gomb a helyén marad.
+
+⚠️ **Amit mértem, és amit nem sikerült**: a régi CSS-t 375×812-es és 360×560-as
+nézetben reprodukálva a felület MAGÁTÓL görgethető volt (`scrollHeight >
+clientHeight`), tehát a „nem lehet görgetni" okát nem sikerült ebben a
+környezetben előhívni — valódi eszközön a `pointer-events: none`-os
+overlay-réteg vagy a Mapbox gesztuskezelése a legvalószínűbb gyanúsított. Az új
+szerkezet ezt a kérdést megkerüli: a görgetés ott van, ahol az ujj is, és a
+gombhoz nem kell görgetni. Mérve: 6 kép mellett a törzs görget (487 px látszik
+558-ból), a Mentés gomb helye NEM változik, és 560 px magas képernyőn is
+mindkét gomb látszik.
+
+### 5. Rögzítés képernyő — öt változás
+
+- **„Vissza a pozíciómra" gomb**: már létezett a `MapView`-ban (célkeresztes
+  ikon), de két baja volt. A Dock ALÁ került (`bottom: var(--sp-4)`), tehát nem
+  lehetett elérni — most a dokk magassága, a kinyúló gomb és a biztonságos sáv
+  is beleszámít. És csak akkor jelent meg, ha a KÖVETÉS be volt kapcsolva
+  (vagyis csak mérés közben) — mostantól elég, hogy a felhasználó elmozdította
+  a térképet, és tudjuk, hol van. ⚠️ Ettől a Grund képernyőn is megjelenik
+  pásztázás után; ez szándékos.
+- **A „pont" érték kikerült** a panelről, a GPS-jelzőpötty a GP mellé
+  költözött. Így négy érték maradt: idő, tempó, mező, GP — egy sorban,
+  kinyitva 2×2 (a CSS eddig is erre volt tervezve, az ötödik érték törte el).
+- **A sebesség mértékegysége a számmal egy sorba került** (`12,4 km/h`,
+  ugyanabban a méretben és színben, mint a `1,55 km`), a címke pedig
+  „sebesség". Új formázó: `formatLiveSpeed` — a `formatSpeed`-del ellentétben a
+  0,0 km/h nála VALÓDI érték, nem „nincs adat".
+- **A körök panel fejlécsávot kapott**: az összecsukó gomb a saját sorában ül,
+  nem a kártya sarkába lebegtetve, ahol ráült a legfelső kör távolságára
+  (mérve: most 19 px a hézag). A jel `✕` helyett `_`, kör háttérrel.
+- **A Befejezés gomb nyomva tartós**: két másodperc, közben balról jobbra
+  pirosra telik a háttér, és a felirat PONTOSAN addig vált fehérre, ameddig a
+  piros ért (két szövegréteg, a felső ugyanarra a százalékra vágva).
+  Billentyűzetről is működik, elengedésre visszafolyik.
+
+### 6. Profil: követő/követett lista
+
+- Új végpontok: `GET /api/users/:username/followers` és `/following` — egy
+  `getAll`-lal hozza a neveket és a képeket, és **ugyanaz a kapu védi, mint a
+  profilt** (privát fióknál csak ő maga és a követői látják; a tiltott 403-at
+  kap). Legfeljebb 100 elem, `hasMore` jelzéssel.
+- Új komponens: `ConnectionsSheet.tsx` — teljes képernyős lista, kép + név,
+  koppintásra a nyilvános profil. Z-index 60, azaz a lapok szintje (a Dock 40,
+  a feed lebegő eleme 30) — így a lista alól nem érhető el a navigáció.
+- A profil két számlálója (követő, követett) ettől GOMB lett, nem doboz.
+
+## AMIT MÉRTEM EBBEN A MENETBEN
+
+**Egy valódi hibát a saját új kódomban is** — a mérés hozta elő, nem a
+kódolvasás: a `npanel__list` és a `conn__list` eredetileg `display: grid` volt,
+és amikor a tartalom magasabb a lapnál, a böngésző ÖSSZENYOMTA a sorokat
+görgetés helyett (`scrollHeight === clientHeight`), a háromsoros értesítés
+kártyáját pedig levágta a sor `overflow: hidden`-je. Flex oszlopra és `flex:
+none` gyerekekre cserélve a sor pontosan a kártya magassága, és a lista
+görget. **Ez ugyanaz a hibaosztály, mint amit Geri az aktivitás-mentésnél
+bejelentett** — érdemes gyanakodni rá minden görgethető rácsnál.
+
+Mérőeszköz: a `tmp/` alatt két eldobható HTML (`dev-track.html`, `dev-ui.html`)
+a VALÓDI CSS-fájlokat tölti be, és a Vite dev szerveren (`/tmp/dev-ui.html`)
+nyitva mérhető vele minden elem befoglaló doboza. A `tmp/` gitignore-olt, tehát
+ezek nem kerülnek a repóba. Ütközés-, magasság- és görgethetőség-vizsgálathoz
+sokkal olcsóbb, mint a teljes app felállítása.
+
+## AMIT NEM SIKERÜLT ELLENŐRIZNI
+
+⚠️ **Egyik új felületet sem láttam futó alkalmazásban.** A böngésző-előnézet
+ebben a munkamenetben nem tudott képernyőképet készíteni („the Browser pane is
+not displayed"), a bejelentkezést igénylő képernyőkhöz pedig kliens-oldali
+Firebase-hitelesítés kellett volna. Amit tehát Gerinek élesben KÜLÖN meg kell
+néznie:
+
+1. **Az értesítés-kártya húzása valódi ujjal** — a küszöb (fél kártya) nem
+   túl hosszú-e, és a görgetés/húzás szétválasztása jól esik-e kézre.
+2. **A Befejezés gomb nyomva tartása** — a két másodperc nem sok-e.
+3. **A követő-lista** valódi adaton (a végpontot emulátoros teszt fedi, a
+   felületet nem).
+4. **A kibontott időjárás-sáv** egy hosszú felhasználónévnél.
+5. A #7 menetből örökölt két nyitott ellenőrzés: a **push-küldés** valódi
+   eszközön, és a `NotificationPanel` élő `onSnapshot`-feliratkozása.
+
+Komponens-tesztet szándékosan NEM írtam: nincs `jsdom`/testing-library a
+projektben, és új függőséget nem veszek fel magamtól.
 
 ## ÉLESBEN FUT
 
@@ -113,222 +193,89 @@ böngésző-engedélykérés kell, amit ez a környezet nem tud kiváltani.
 - **Futásidejű konfiguráció**: `appConfig/gameplay` a v1-en áll. Fut egy aktív
   akció: „Gazdagrét Rush", globális 2×-es GP-szorzó — ellenőrizd, hátha
   időközben lejárt.
-- **Jelvény-katalógus**: feltöltve Firestore-ba (`seed:badges` lefutott
-  2026-08-20-án, 45 dokumentum).
+- **Jelvény-katalógus**: feltöltve (`seed:badges`, 45 dokumentum).
 
 ## TELEPÍTETLEN
 
-Négy menet munkája vár telepítésre — a #4, #5, #6 és #7 együtt (a korábbiak
-részletei a git történetben). Ami ÚJ ebben a körben:
+A #4, #5, #6, #7 (a régi számozás szerint) ÉS ez a menet — együtt. Frontend +
+backend + szabályok, plusz a `blockedBy` migráció (lásd fent).
 
-- **A teljes értesítési rendszer.** Kell hozzá **frontend + backend**.
-  Adatbázis-lépés (index) NEM kell — a `notifications`/`devices` séma a
-  meglévő szabályokkal és egyenlőség-szűrővel működik.
-- ⚠️ **A backend telepítése ELŐTT be kell állítani a Firebase Admin
-  Messaging jogosultságot.** A `firebase-admin/messaging` a meglévő
-  szolgáltatásfiók hitelesítésével megy (nincs külön titok, mint az
-  OpenWeather-kulcsnál) — DE a Cloud Run szolgáltatásfióknak
-  `roles/firebasecloudmessaging.admin` (vagy tágabb) szerepkör kell hozzá,
-  különben a push-küldés csendben elhasal (a `createNotification` úgyis
-  elnyeli a hibát, tehát az alkalmazáson belüli lista működni fog akkor is,
-  ha ez kimarad — csak a push nem megy).
-- A frontend `.env.local`-jába (Cloud Shell) fel kell venni:
-  `VITE_FIREBASE_VAPID_KEY=BIMRvwkmQxpciXnk-3s5x_HqtKX5j8K7hDiQNhC3vV_shO_Kislr3iE4cDZ59Ih2wJLaA_0LK5YzbMAbiYEORL8`
-  (ugyanez most már a `.env.example`-ben is szerepel).
+⚠️ **A backend telepítése előtt** továbbra is érvényes az előző menet
+figyelmeztetése: a Cloud Run szolgáltatásfióknak
+`roles/firebasecloudmessaging.admin` kell a push-küldéshez, különben az
+alkalmazáson belüli értesítés megy, a push csendben nem.
 
-## AMI A #7 MENETBEN ELKÉSZÜLT
+A frontend `.env.local`-jába (Cloud Shell) továbbra is kell:
+`VITE_FIREBASE_VAPID_KEY=BIMRvwkmQxpciXnk-3s5x_HqtKX5j8K7hDiQNhC3vV_shO_Kislr3iE4cDZ59Ih2wJLaA_0LK5YzbMAbiYEORL8`
 
-### Home statisztikapanel — három sor
+## KÖVETKEZŐ: 6. MENET
 
-`src/screens/HomeScreen.tsx` + `home.css`. Mindhárom doboz (GRUND, AKTIVITÁS,
-SOROZAT) most három sort mutat: felül a címke, középen a KIEMELT érték
-(20%-kal nagyobb betűvel, `calc(14px * 1.2)`), alul a mértékegység vagy —
-csak a GRUND-nál — egy másik adat (mezőszám). Új segédfüggvény:
-`formatNumber()` (`src/lib/format.ts`) a mértékegység nélküli számhoz.
+Geri sorrendje szerint most a #7 menet nagy listájából hátralévők jönnek
+(„utána mehet a 4–8"):
 
-### Aktivitás-részletező — kattintható profil
-
-`src/screens/ActivityScreen.tsx`. A szerző fejléce (kép + név) most
-`/felhasznalo/:username`-re visz, ugyanazzal a mintával, mint a feed-
-kártyáknál (#5 menet): külön gomb, nem beágyazva a nyitógombba.
-
-### Komment-válasz
-
-**Séma**: a komment dokumentum kapott egy opcionális `replyToId` /
-`replyToUserId` / `replyToUsername` mezőt (denormalizálva, hogy a lista
-lekérdezés ne kérjen külön olvasást válaszonként).
-**Szerver**: `POST /api/activities/:id/comments` elfogad `replyToId`-t,
-feloldja a célszemélyt, és KÉT külön értesítést küldhet (aktivitás-szerző +
-válasz-címzett — lásd `notifyCommentPosted` a `server/src/lib/
-notifications.ts`-ben).
-**Kliens**: `CommentSheet.tsx` — „Válasz" gomb minden sor alatt, „Válasz — X"
-chip a beviteli mező fölött, válasz-jelzés a válasz-sorban.
-
-⚠️ **A térkép-vizualizáció (aktív akciók) NEM készült el** — ez Geri eredeti
-négy pontjából az egyetlen, ami teljesen kimaradt. Lásd „NYITOTT, KISEBB".
-
-### Értesítési rendszer
-
-**A minta forrása**: KNOWS Community (`fcmService.ts`, `notificationService.ts`,
-`server/src/routes/notifications.ts`) — egy Explore-ügynökkel átnézve. A
-LÉNYEG, amit átvettünk: Cloud Functions NÉLKÜL, plain Express + firebase-admin,
-`sendEachForMulticast` a küldéshez, invalid token takarítás a válaszból. A
-SÉMA viszont GRUNDO SAJÁTJA maradt (a docs/05 már korábban kijelölte):
-`notifications/{uid}/items/{id}` (nem KNOWS flat `notifications` kollekciója),
-`devices/{uid}/tokens/{token}` (nem hash-elt doc-id), kapcsolók a
-`users/{uid}/private/settings.notifications` mezőn (nem egy külön flat mező a
-felhasználó dokumentumon).
-
-**A legfontosabb architekturális döntés**: MINDEN értesítés EGY kapun megy át
-(`createNotification`, `server/src/lib/notifications.ts`) — ez szándékos
-válasz egy KNOWS Community-ban megfigyelt hibamintára, ahol az alkalmazáson
-belüli írás és a push-küldés KÜLÖN helyen nézte (vagy nem nézte) a
-felhasználó kapcsolóit, és a `send-push-bulk` végpont csak EGYETLEN
-kategóriát ellenőrzött szerveroldalon a többi közül. Itt ez nem fordulhat
-elő: egyetlen függvény dönt, mindkét csatornáról.
-
-**10 típus, mind bekötve** (Geri 9 pontjából 10 lett — a „GP-vel kapcsolatos"
-kettéválik aktivitás-utáni ÉS napi összegzésre, a spec `docs/02` táblázata is
-külön sorban tartja őket):
-
-| Típus | Kiváltó hely |
-|---|---|
-| `gp_activity` | aktivitás-mentés után (grund-növekmény + GP) |
-| `gp_daily` | napi forduló (tartás-bónusz) |
-| `activity_liked` | kedvelés |
-| `activity_commented` | hozzászólás |
-| `comment_replied` | válasz egy hozzászólásra |
-| `badge_awarded` | jelvény-kiosztás (a #6 menet visszaadott listájából) |
-| `followed_activity` | követő-fanout aktivitás-mentéskor (max 300 követő) |
-| `territory_stolen` | sikeres lopás — a károsultnak |
-| `territory_defended` | sikertelen áttörés — a védekezőnek (ÚJ adat, lásd lent) |
-| `modifier_started` | globális akció élesedik (óránként ellenőrizve) |
-
-**A védelem-csökkenés MOST MÁR VALÓDI ADAT.** A `src/game/claim.ts` régóta
-tartalmazott egy megjegyzést („a károsult értesül") egy 0-értékű
-`stolenFrom`-bejegyzés mellett — ez elő volt készítve, de sosem lett kész: a
-lopás és a védekezés-áttörés UGYANABBA a mezőbe írt, megkülönböztethetetlenül.
-Ez a menet szétválasztotta: új `breakthroughFrom: Record<string, number>`
-mező a `ClaimResult`-on, végigvezetve `resolveClaim`, `mergeClaims`,
-`absorbIsolatedRivalCells`, `activityCommit.ts` és `activityChunked.ts`-en.
-Innentől a `territory_defended` értesítés (docs/02 → „Megvédted a
-területed") valódi, felhasználónkénti adatból megy, nem kitalálásból.
-
-⚠️ **A globális akció-értesítés (`modifier_started`) NINCS emulátoros
-teszttel lefedve** — a `dailyRollover.emulator.test.ts` nem hoz létre
-modifier-dokumentumot, tehát ez a kód-ág a teljes futás alatt sosem futott le
-ténylegesen az emulátoron. Típusellenőrizve van, és a logika egyszerű
-(lekérdezés + jelzés + broadcast), de EZ AZ EGYETLEN új értesítés-trigger,
-amit nem mértem meg valódi adaton.
-
-**Push-infrastruktúra**:
-- `public/firebase-messaging-sw.js` — a Firebase-konfiguráció itt SZÁNDÉKOSAN
-  be van égetve (a service worker a Vite modulrendszerén kívül fut, nincs
-  build-idejű változó-behelyettesítés — de egyik érték sem titok, lásd a
-  fájl fejlécét).
-- `src/lib/push.ts` — engedélykérés, token-mentés KÖZVETLENÜL a klienstől
-  Firestore-ba (`devices/{uid}/tokens/{token}`, a `firestore.rules` ezt már
-  korábban is engedte), passzív token-frissítés app-indításkor
-  (`initIfAlreadyGranted`, csak akkor csinál bármit, ha az engedély MÁR
-  megvan — nem kér engedélyt magától).
-- `server/src/lib/notifications.ts` → `sendPush` — `sendEachForMulticast`,
-  500-as kötegben, érvénytelen token törlésével.
-
-**Kliens felület**: `NotificationPanel.tsx` (alulról felcsúszó lap, a
-`CommentSheet` mintájára), `useNotifications.ts` (élő `onSnapshot`-
-feliratkozás), a Home fejléc harang-ikonja mostantól aktív, olvasatlan
-pöttyel. Beállítások: `src/screens/settings/NotificationsScreen.tsx` —
-típusonkénti kapcsoló + egy push-mesterkapcsoló, mind közvetlen Firestore-
-írással (`users/{uid}/private/settings`).
-
-## KÖVETKEZŐ: 8. MENET
-
-- **Aktív akciók a térképen** (Geri eredeti 4 pontjából az egyetlen, ami
-  kimaradt). A modifier `areaCells` mezője (`src/game/modifiers.ts`) H3-
-  cellalista `MODIFIER_AREA_RES` felbontáson — ebből rajzolható határvonal a
-  Grund-térképen (`MapView.tsx`/`HexMap.tsx`, GeoJSON-forrás/réteg
-  hozzáadásával, a meglévő cella-réteg mintájára). ⚠️ **Csak `scope: 'area'`
-  modifierekre van geometria** — egy globális akciónak (mint a most futó
-  „Gazdagrét Rush") NINCS térképi kiterjedése, azt kitalálni hazugság lenne.
-  Jelmagyarázat-sor is kell hozzá.
-- **A push-küldés élő ellenőrzése.** Telepítés után egy valódi böngészőben
-  be kell kapcsolni az Értesítések → push kapcsolót, és megnézni, jön-e
-  tényleges rendszerértesítés.
-- **A `NotificationPanel` élő feliratkozásának böngészős ellenőrzése** —
-  lásd fent, ez a menet nem tudta végigvinni.
-- Geri 7 pontos jelvény/profil-listája (korábbi menetek) továbbra is:
-  keresés (5.) és rivális rendszer (7.) vannak hátra onnan.
+- **Aktív akciók a térképen.** A modifier `areaCells` mezője
+  (`src/game/modifiers.ts`) H3-cellalista `MODIFIER_AREA_RES` felbontáson —
+  ebből rajzolható határvonal a Grund-térképen, a meglévő cella-réteg
+  mintájára. ⚠️ Csak `scope: 'area'` modifierekre van geometria; egy globális
+  akciónak (mint a most futó „Gazdagrét Rush") NINCS térképi kiterjedése.
+  Jelmagyarázat is kell hozzá.
+- **A push-küldés és a `NotificationPanel` élő ellenőrzése** telepítés után.
+- Geri 7 pontos jelvény/profil-listájából: **keresés** és **rivális rendszer**.
 
 ## NYITOTT, KISEBB
 
-- **A `modifier_started` broadcast MINDEN felhasználóhoz megy**, lekérdezés-
-  szűrés nélkül. GRUNDO jelenlegi méreténél elhanyagolható; ha a
-  felhasználószám megnő, ez a lépés (`dailyRollover.ts` →
-  `notifyStartedModifiersIfDue`) újragondolandó.
-- **A jelvény-jutalom GP nem frissíti azonnal a `level` mezőt** — változatlan
-  a #6 menet óta, lásd az ottani megjegyzést `server/src/lib/badges.ts`-ben.
-- **A `badges` Firestore-katalógus** fel van töltve (lásd „ÉLESBEN FUT").
+- **Az értesítés-sor törlése csak húzással megy** — billentyűzetről nincs rá
+  út (a fejléc „összes törlése" igen). Ha kell, a háttér-ikonok kattinthatóvá
+  tehetők.
+- **A követő-lista nem lapoz**: a legfrissebb 100 megy ki, a `hasMore` pedig
+  kiírja, ha többen vannak. Kurzoros lapozás utólag rátehető, séma-változtatás
+  nélkül.
+- **A harang olvasatlan-számlálója a betöltött ablakból számol** (20 elem):
+  huszonötnél több olvasatlannál 20-at mutat. A pötty maga jó.
+- A `modifier_started` broadcast MINDEN felhasználóhoz megy, szűrés nélkül.
+- A jelvény-jutalom GP nem frissíti azonnal a `level` mezőt.
 - **Az időjárás csak akkor jelenik meg magától, ha van tárolt pozíció.**
-  Változatlan a #5 menet óta.
-- **Hőmérséklet-egység: csak °C.**
 - **gpLedger-takarítás — elő van készítve, futtatásra vár.**
-  `server/src/scripts/cleanGpLedgerJunk.ts`. Legutóbb mérve (2026-08-20): 12
-  sor törlésre vár.
+  `server/src/scripts/cleanGpLedgerJunk.ts`, legutóbb 12 sor várt törlésre.
 - **A követési KÉRÉSEK elbírálására még nincs felület.**
-- **A tiltottak listája sincs sehol.**
-- Területi hatókörű hold-modifier nem hat: a `zones` kollekció még nincs
-  megírva.
+- **A tiltottak listája sincs sehol** — most, hogy a `blockedBy` tükör
+  megvan, egy „kiket tiltottam" képernyő olcsón megírható.
+- Területi hatókörű hold-modifier nem hat: a `zones` kollekció még nincs meg.
 - `gpWeek`/`gpMonth` ablakzárás él, de éles adaton még nem láttuk működni.
 
 ## Fejlesztői előnézet — hogyan látunk éles adatot a böngészőben
 
-**Írás nélküli, csak-olvasó ellenőrzéshez** (éles adaton, nem-író
-képernyőkhöz):
+**Írás nélküli, csak-olvasó ellenőrzéshez** (nem-író képernyőkhöz):
 
 1. `.claude/launch.json` a `G:\Saját meghajtó\WORK\CLAUDE` gyökérben — Vite
-   dev szerver, port 5173.
+   dev szerver, port 5173. Innen a `tmp/*.html` mérő-lapok is elérhetők.
 2. Szerver, csak-olvasó ADC-vel: `server/`-ből
    `GOOGLE_CLOUD_PROJECT=grundo PORT=8080 npx tsx watch server.ts`.
 3. `grundo/.env.local`-ban `VITE_API_BASE_URL=http://localhost:8080`, majd a
    Vite dev szervert ÚJRA KELL INDÍTANI.
 
-**ÍRÓ funkcióhoz (jelvények, értesítések) NE az éles, csak-olvasó ADC-t —
-helyi Firestore-emulátort**:
+**ÍRÓ funkcióhoz helyi Firestore-emulátort**, ne az éles ADC-t:
 
 1. `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`,
-   majd `firebase.cmd emulators:start --only auth,firestore --project demo-grundo`
-   (Firestore 8081, Auth 9099).
-2. Szerver, az emulátorhoz kötve:
-   `FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 GOOGLE_CLOUD_PROJECT=demo-grundo npx tsx watch server.ts`.
-3. Egy VALÓDI kliens-oldali bejelentkezéshez a `.env.local`-ba a TELJES
-   Firebase-konfiguráció kell (lásd `.env.example`), PLUSZ
-   `VITE_USE_EMULATORS=1`. ⚠️ Ebben a menetben ez a lépés NEM sikerült
-   stabilan — a kliens Firestore-kapcsolat makacsul visszaugrott az éles
-   projektre. Ha legközelebb ez kell, érdemes lehet egy tiszta, friss Vite
-   dev-szerver-indítással (ne csak `preview_stop`/`preview_start`) próbálni,
-   vagy explicit `connectFirestoreEmulator`-hívással a modul BETÖLTÉSE
-   előtt, nem utána.
-4. Ha hitelesítést igénylő képernyőt kell látni ANÉLKÜL, hogy a fenti
-   kliens-emulátor-kapcsolatot meg kellene oldani: a `server/tmp/`-be egy
-   eldobható Express-szerver (rögzített uid-del, ugyanaz a minta, mint a #5–#6
-   menetekben), a `.env.local` `VITE_API_BASE_URL`-jét erre állítva. Ez a
-   Home képernyő ÉS a statisztikapanel-átalakítás vizuális ellenőrzésénél
-   bevált ebben a menetben is.
-5. A `.env.local`-t telepítés előtt vissza kell állítani
-   (`VITE_API_BASE_URL=https://grundo-api-irb5rjve6a-ew.a.run.app`, a Firebase-
-   config sorok és a `VITE_USE_EMULATORS` törlésével).
+   majd `firebase.cmd emulators:start --only auth,firestore --project demo-grundo`.
+2. Szerver: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 GOOGLE_CLOUD_PROJECT=demo-grundo npx tsx watch server.ts`.
+3. Kliens-oldali bejelentkezéshez a `.env.local`-ba a TELJES Firebase-konfig
+   kell, PLUSZ `VITE_USE_EMULATORS=1`. ⚠️ Ez a lépés a #7 menetben NEM
+   sikerült stabilan (a kliens visszaugrott az éles projektre); érdemes
+   explicit `connectFirestoreEmulator`-hívással próbálni, a modul BETÖLTÉSE
+   előtt.
+4. A `.env.local`-t telepítés előtt vissza kell állítani.
 
 ## Infrastruktúra: éles, csak olvasó Firestore-hozzáférés
 
 Változatlan. `grundo-reader@grundo.iam.gserviceaccount.com`
-(`roles/datastore.viewer`), Geri (`gergely.marthon@gmail.com`)
-megszemélyesíti. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
+(`roles/datastore.viewer`), Geri (`gergely.marthon@gmail.com`) személyesíti
+meg. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Opus, emelt mélységgel**, ha a **térkép-vizualizációval** folytatjuk — a
-`scope: 'area'` vs `'global'` megkülönböztetés és a GeoJSON-réteg
-hozzáadása a meglévő Mapbox-rétegekhez valódi tervezési döntés, nem rutin
-minta-követés. **Sonnet** elég, ha csak a push élő ellenőrzését vagy a
-`NotificationPanel` böngészős próbáját végezzük el — az ehhez a menethez
-tartozó kód már megvan, csak látni kell működés közben.
+**Opus, emelt mélységgel**, ha a **térkép-vizualizációval** folytatjuk: a
+`scope: 'area'` vs `'global'` megkülönböztetés és az új GeoJSON-réteg a
+meglévő Mapbox-rétegek közé valódi tervezési döntés. **Sonnet** elég, ha a
+telepítés utáni élő ellenőrzésekkel (push, feliratkozás, követő-lista) vagy
+a „kiket tiltottam" képernyővel kezdünk — ott a minta már megvan.
