@@ -59,6 +59,33 @@ if (app && auth && db && storage && import.meta.env.VITE_USE_EMULATORS === '1') 
   connectStorageEmulator(storage, 'localhost', 9199);
   // eslint-disable-next-line no-console
   console.info('[GRUNDO] Firebase emulátorokhoz csatlakozva.');
+
+  /*
+    FEJLESZTŐI BEJELENTKEZÉS — csak emulátoron.
+
+    A `seed:emulator` szkript által létrehozott teszt-fiókba lép be, a
+    böngésző konzoljából (vagy egy automatizált ellenőrzésből) hívva:
+
+        await __grundoDevSignIn()
+
+    MIÉRT KELL? Mert a felületek nagy része bejelentkezés nélkül meg sem
+    jelenik, és a fejlesztői ellenőrzés így nem kér senkitől jelszót — a
+    fiók az emulátoré, leállításkor elszáll vele együtt.
+
+    Az éles build ezt a blokkot NEM tartalmazza: a `VITE_USE_EMULATORS` ott
+    nincs beállítva, a feltétel behelyettesítés után hamis, és a
+    csomagolóból kiesik.
+  */
+  const dev = window as unknown as {
+    __grundoDevSignIn?: (email?: string, password?: string) => Promise<unknown>;
+  };
+  dev.__grundoDevSignIn = async (
+    email = 'geri@grundo.local',
+    password = 'grundo-emulator',
+  ) => {
+    const { signInWithEmailAndPassword } = await import('firebase/auth');
+    return signInWithEmailAndPassword(auth, email, password);
+  };
 }
 
 /** Ott használd, ahol a hiányzó konfiguráció programozói hiba lenne. */

@@ -13,9 +13,14 @@ import './weatherWidget.css';
  * egymás alatt vannak; ez szándékos eltérés, Geri kérésére — a köszöntő sorba
  * így fér be anélkül, hogy megnőne a fejléc magassága.)
  *
- * Koppintásra BALRA csúszik ki a részletes sáv négy adattal: hőmérséklet,
- * csapadék esélye, páratartalom, szél. A sáv a köszöntést takarja ki, nem
- * tolja arrébb — a fejléc magassága így akkor sem változik, ha a név hosszú.
+ * KOPPINTÁSRA UGYANAZ A PANEL NŐ MEG BALRA, nem nyílik külön doboz: a
+ * mérőszámok a pillen BELÜL jelennek meg, a bal szélen álló nyílhegy pedig
+ * eleve elárulja, hogy van mit kinyitni. Három adat jön elő — csapadék
+ * esélye, páratartalom, szél —, a hőmérséklet és az égkép NEM ismétlődik
+ * meg, hiszen ott van mellettük a panel jobb szélén.
+ *
+ * Nyitva a „Szia, <név>" felirat elrejtőzik (`home.css`, `:has()`): a sáv
+ * úgyis eltakarná, így viszont a hely is felszabadul neki.
  *
  * ⚠️ NEM KÉR HELYZETET MAGÁTÓL, amikor betölt az app.
  *
@@ -44,7 +49,7 @@ export function WeatherWidget() {
   const [needsPosition, setNeedsPosition] = useState(false);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement | null>(null);
+  const wrap = useRef<HTMLButtonElement | null>(null);
 
   /* ── 1. A már tárolt pozíció — engedélykérés NÉLKÜL ──────────── */
 
@@ -172,54 +177,61 @@ export function WeatherWidget() {
   if (weather === null) return <span className="weather weather--pending" aria-hidden="true" />;
 
   return (
-    <div className={`weather-wrap${open ? ' weather-wrap--open' : ''}`} ref={wrap}>
-      <div className="weather__detail" aria-hidden={!open}>
-        <Metric icon={<ThermometerIcon />} label="hőmérséklet" value={`${weather.tempC} °C`} />
+    <button
+      type="button"
+      ref={wrap}
+      className={`weather weather--toggle${open ? ' weather--open' : ''}`}
+      aria-expanded={open}
+      /* A képernyőolvasónak a leírás is jár — az ikon önmagában néma. */
+      aria-label={`${weather.description}, ${weather.tempC} fok. Részletek megnyitása.`}
+      title={weather.description}
+      onClick={() => setOpen((value) => !value)}
+    >
+      {/* Csak a nyílhegy: ennyi elég ahhoz, hogy legyen mire koppintani. */}
+      <ChevronIcon />
+
+      <span className="weather__detail" aria-hidden={!open}>
         <Metric
           icon={<PrecipitationIcon />}
+          tone="precip"
           label="csapadék esélye"
           value={weather.precipitationChance === null ? '–' : `${weather.precipitationChance}%`}
         />
         <Metric
           icon={<HumidityIcon />}
+          tone="humidity"
           label="páratartalom"
           value={weather.humidity === null ? '–' : `${weather.humidity}%`}
         />
         <Metric
           icon={<WindIcon />}
+          tone="wind"
           label="szél"
           value={weather.windKph === null ? '–' : `${weather.windKph} km/h`}
         />
-      </div>
+      </span>
 
-      <button
-        type="button"
-        className="weather weather--toggle"
-        aria-expanded={open}
-        /* A képernyőolvasónak a leírás is jár — az ikon önmagában néma. */
-        aria-label={`${weather.description}, ${weather.tempC} fok. Részletek megnyitása.`}
-        title={weather.description}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <WeatherIcon condition={weather.condition} night={weather.night} />
-        <span className="weather__temp">{weather.tempC} °C</span>
-      </button>
-    </div>
+      <WeatherIcon condition={weather.condition} night={weather.night} />
+      <span className="weather__temp">{weather.tempC} °C</span>
+    </button>
   );
 }
 
 function Metric({
   icon,
+  tone,
   label,
   value,
 }: {
   icon: React.ReactNode;
+  /** Az ikon színe — mérőszámonként más, hogy szét lehessen kapni őket. */
+  tone: 'precip' | 'humidity' | 'wind';
   label: string;
   value: string;
 }) {
   return (
     <span className="weather__metric" title={label}>
-      <span className="weather__metric-icon" aria-hidden="true">
+      <span className={`weather__metric-icon weather__metric-icon--${tone}`} aria-hidden="true">
         {icon}
       </span>
       <span className="weather__metric-value">
@@ -234,9 +246,14 @@ function Metric({
 
 /* ── Ikonok ───────────────────────────────────────────────────────── */
 
+/*
+  A mérőszám-ikonok 20%-kal nagyobbak az égkép ikonjánál (22 px az alap):
+  ezek hordozzák a jelentést a kibontott sávban, a szám mellettük már csak
+  megerősítés.
+*/
 const metricIcon = {
-  width: 15,
-  height: 15,
+  width: 26,
+  height: 26,
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
@@ -245,14 +262,6 @@ const metricIcon = {
   strokeLinejoin: 'round',
   'aria-hidden': true,
 } as const;
-
-function ThermometerIcon() {
-  return (
-    <svg {...metricIcon}>
-      <path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z" />
-    </svg>
-  );
-}
 
 function PrecipitationIcon() {
   return (
@@ -275,6 +284,25 @@ function WindIcon() {
   return (
     <svg {...metricIcon}>
       <path d="M3 8h10a2.5 2.5 0 1 0-2.5-2.5M3 12h14a2.5 2.5 0 1 1-2.5 2.5M3 16h7.5a2 2 0 1 1-2 2" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      className="weather__chevron"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14.5 5.5 8 12l6.5 6.5" />
     </svg>
   );
 }

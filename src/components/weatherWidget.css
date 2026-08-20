@@ -81,77 +81,117 @@
   opacity: 0.6;
 }
 
-/* ═══ Kibontott sáv ═══
-   Koppintásra BALRA csúszik ki a négy adat. A sáv abszolút pozíciójú: a
-   köszöntést KITAKARJA, nem tolja arrébb — így a fejléc magassága és a név
-   helye akkor sem változik, ha a sáv nyitva van. */
-
-.weather-wrap {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-}
+/* ═══ Kibontható sáv — UGYANAZ A PANEL, csak megnő ═══
+   Nem külön doboz nyílik ki a pill mellett: a mérőszámok a panelen BELÜL
+   jelennek meg, a nyílhegy és az égkép ikonja között. Így a kinyitott
+   állapot egyetlen összefüggő felület marad. */
 
 .weather--toggle {
   cursor: pointer;
+  /* Nyitva a sáv veheti el a köszöntés helyét — a `min-width: 0` engedi, hogy
+     szükség esetén a benne lévő szöveg vágjon, ne a panel lógjon ki a sorból. */
+  min-width: 0;
+}
+
+.weather__chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform 160ms ease-out;
+}
+
+/* Nyitva a nyíl visszafordul: ugyanaz a koppintás csukja be. */
+.weather--open .weather__chevron {
+  transform: rotate(180deg);
 }
 
 .weather__detail {
-  position: absolute;
-  top: 50%;
-  /* A pilltől balra, egy térköznyire — innen indul a kicsúszás. */
-  right: calc(100% + var(--sp-2));
-  z-index: 3;
+  /*
+    ⚠️ A `position: relative` NEM elhelyezésre kell, hanem KLIPPELÉSRE.
+
+    A képernyőolvasónak szánt címkék abszolút pozíciójúak, és az ilyen elemet
+    csak olyan ős `overflow: hidden`-je vágja el, amelyik a befoglaló blokkja
+    is. Enélkül a becsukott (nulla széles) sáv címkéi kint maradtak a
+    képernyő jobb szélén túl: mérve a dokumentum 445 pixel széles lett egy
+    390-es nézetben, vagyis a Home vízszintesen görgethetővé vált.
+  */
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  max-width: calc(100vw - 130px);
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-pill);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
-  white-space: nowrap;
-  overflow: hidden;
-  /* Zárva: a helyén van, de nincs ott. A `visibility` azért kell, hogy a
-     bezárt sáv ne legyen se kattintható, se olvasható. */
+  /* Szűk térköz: három mérőszámnak KELL elférnie egy 360 pixeles telefonon
+     is, a panel saját ikonja és a fok mellett. */
+  gap: var(--sp-1);
+  min-width: 0;
+  /* Zárva nulla széles és láthatatlan — a nyitás ezt a két értéket animálja,
+     ezért nő ki a panel balra, ahelyett hogy ugrana. */
+  max-width: 0;
   opacity: 0;
-  visibility: hidden;
-  transform: translateY(-50%) translateX(10px);
-  transition: opacity 160ms ease-out, transform 160ms ease-out, visibility 160ms;
+  overflow: hidden;
+  transition: max-width 220ms ease-out, opacity 160ms ease-out;
 }
 
-.weather-wrap--open .weather__detail {
+.weather--open .weather__detail {
+  max-width: 260px;
   opacity: 1;
-  visibility: visible;
-  transform: translateY(-50%) translateX(0);
+}
+
+/*
+  Nyitva a panel SZŰKEBB béléssel dolgozik, és zsugorodhat is.
+
+  Mérve (360 px széles képernyőn): a három mérőszám és a fok együtt 364 px-t
+  kért egy 348 px-es sorban. A szűkebb bélés és a `flex-shrink` együtt
+  visszahozza a sorba — és ha egyszer mégis kevés lenne a hely (hosszabb
+  szélérték, nagyobb betűméret), a sáv vág, nem a panel lóg ki a képernyőről.
+*/
+.weather--open {
+  padding-left: var(--sp-2);
+  padding-right: var(--sp-2);
+  /* Szűkebb belső térköz is: minden megspórolt pixel a mérőszámoké. */
+  gap: var(--sp-1);
+  flex-shrink: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .weather__detail { transition: none; }
+  .weather__detail,
+  .weather__chevron {
+    transition: none;
+  }
 }
 
 .weather__metric {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-secondary);
+  flex: none;
 }
 
 .weather__metric-icon {
   display: grid;
   place-items: center;
-  color: var(--text-tertiary);
 }
 
+/* Mérőszámonként saját szín — egy pillantással szétválaszthatók. */
+.weather__metric-icon--precip {
+  color: var(--weather-precip);
+}
+
+.weather__metric-icon--humidity {
+  color: var(--weather-sun);
+}
+
+.weather__metric-icon--wind {
+  color: var(--weather-wind);
+}
+
+/* A szám ugyanakkora és ugyanolyan, mint a panel alap felirata (a fok). */
 .weather__metric-value {
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-/* A címke csak a képernyőolvasónak: négy adatnak kell elférnie egy telefon
+/* A címke csak a képernyőolvasónak: három adatnak kell elférnie egy telefon
    szélességében, oda a szöveges megnevezés nem fér be. Egérrel a `title`
    mutatja meg. */
 .weather__metric-label {

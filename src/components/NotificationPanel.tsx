@@ -188,6 +188,17 @@ function NotificationRow({
   /** A koppintás és a húzás ugyanazzal az eseménnyel indul — ez választja szét. */
   const dragged = useRef(false);
   const [dx, setDx] = useState(0);
+  /*
+    ⚠️ AZ ELMOZDULÁS REFBEN IS BENNE VAN, nem csak állapotban.
+
+    A `pointerup` kezelője a saját renderelésének a lezárásából olvasná a
+    `dx`-et — ha a mozdulat és az elengedés UGYANABBA a feldolgozási körbe
+    esik (gyors pöccintés, automatizált ellenőrzés), a React még nem
+    rajzolt újra, tehát ott a RÉGI érték állna: nulla. Mérve is így volt:
+    a kártyát 220 pixellel elhúzva sem történt semmi. A megjelenítéshez
+    az állapot kell (attól mozdul a kártya), a döntéshez a ref.
+  */
+  const dxNow = useRef(0);
   const [snapping, setSnapping] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
@@ -226,14 +237,27 @@ function NotificationRow({
       */
       g.axis = Math.abs(moveX) > Math.abs(moveY) ? 'x' : 'y';
       if (g.axis === 'x') {
-        card.current?.setPointerCapture(event.pointerId);
+        /*
+          A mutató elfogása ATTÓL FÜGG, hogy az adott mutató még aktív-e. Ha
+          közben elengedték (vagy a húzást nem valódi ujj/egér indította,
+          hanem egy automatizált ellenőrzés), a hívás dob — és a kivétel a
+          húzás közepén hagyná a kártyát. A húzás enélkül is megy, csak a
+          sor széléről kifutva megszakad.
+        */
+        try {
+          card.current?.setPointerCapture(event.pointerId);
+        } catch {
+          /* nem baj: elfogás nélkül is végigvihető a mozdulat */
+        }
         dragged.current = true;
       }
     }
     if (g.axis !== 'x') return;
 
     // Olvasott sornál a balra húzásnak nincs értelme: nem is enged elmozdulni.
-    setDx(item.read ? Math.max(0, moveX) : moveX);
+    const next = item.read ? Math.max(0, moveX) : moveX;
+    dxNow.current = next;
+    setDx(next);
   }
 
   function up(event: React.PointerEvent<HTMLButtonElement>) {
@@ -243,15 +267,17 @@ function NotificationRow({
 
     const flick = Date.now() - g.at < FLICK_MS;
     const needed = g.width * (flick ? FLICK_RATIO : COMMIT_RATIO);
+    const moved = dxNow.current;
 
-    if (dx >= needed) {
+    if (moved >= needed) {
       setLeaving(true);
       return;
     }
-    if (dx <= -needed && !item.read) {
+    if (moved <= -needed && !item.read) {
       onRead(item.id);
     }
     setSnapping(true);
+    dxNow.current = 0;
     setDx(0);
   }
 

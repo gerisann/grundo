@@ -6,6 +6,7 @@
   "description": "GRUNDO — közösségi mozgás- és területfoglaló app",
   "scripts": {
     "dev": "vite",
+    "dev:emulator": "vite --mode emulator",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

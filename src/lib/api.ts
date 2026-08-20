@@ -7,7 +7,22 @@ import { auth } from './firebase';
  * közvetlenül csak a saját, engedélyezett mezőit írhatja (firestore.rules).
  */
 
-export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+/**
+ * Emulátoros módban a backend MINDIG a helyi szerver.
+ *
+ * ⚠️ Ez nem kényelmi döntés, hanem védőháló. A Vite sorrendjében a `.env.local`
+ * előbbre van, mint a `.env.emulator`, és a `.env.local`-ban az ÉLES Cloud Run
+ * cím áll — vagyis emulátoros felületről az éles backendre mennének az írások,
+ * miközben a fejlesztő azt hiszi, hogy homokozóban játszik. A mód és a
+ * backend együtt jár: ha emulátor, akkor helyi szerver.
+ */
+const EMULATOR_API_BASE = 'http://localhost:8080';
+
+export const API_BASE = (
+  import.meta.env.VITE_USE_EMULATORS === '1'
+    ? EMULATOR_API_BASE
+    : (import.meta.env.VITE_API_BASE_URL ?? '')
+).replace(/\/+$/, '');
 
 /**
  * A saját eredetére mutató API-cím NEM backend.

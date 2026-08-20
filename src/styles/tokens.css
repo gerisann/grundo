@@ -144,6 +144,10 @@
   --weather-moon:   #7b86b8;
   --weather-bolt:   #f59e0b;
   --weather-precip: #3b82f6;
+  /* A kibontott sáv mérőszámai — mindegyik SAJÁT színt kap, hogy egy
+     pillantással szét lehessen választani őket. */
+  --weather-temp:   #f97316;
+  --weather-wind:   #14b8a6;
 
   /* ── Jelvény-ritkaság ─────────────────────────────────────────────
      Négy fokozat, a hagyományos érem-sorrendben — a platina a legritkább,
@@ -254,6 +258,8 @@
   --weather-moon:   #cbd5f5;
   --weather-bolt:   #fbbf24;
   --weather-precip: #60a5fa;
+  --weather-temp:   #fb923c;
+  --weather-wind:   #2dd4bf;
 
   /* Sötét témában mind a négy fokozat VILÁGOSABB, hogy sötét kártyán is
      olvasható maradjon a szöveg mellette. */

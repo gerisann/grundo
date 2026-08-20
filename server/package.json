@@ -6,6 +6,8 @@
   "description": "GRUNDO backend — Cloud Run",
   "scripts": {
     "dev": "tsx watch server.ts",
+    "dev:emulator": "node scripts/dev-emulator.mjs",
+    "seed:emulator": "tsx src/scripts/seedEmulator.ts",
     "build": "tsc && tsc-alias",
     "start": "node dist/server/server.js",
     "typecheck": "tsc --noEmit",

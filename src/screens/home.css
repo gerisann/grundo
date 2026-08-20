@@ -3,6 +3,15 @@
   gap: var(--sp-3);
   padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--border-subtle);
+  /*
+    ⚠️ A `min-width: 0` NEM DÍSZ. Rács-elemként az alapértelmezett minimum a
+    tartalom min-content mérete: egy széles gyerek (például a kinyitott
+    időjárás-sáv) egyszerűen KITOLJA a dobozt a képernyő szélén túlra, és
+    ettől az egész lap vízszintesen görgethetővé válik. Mérve (360 px-es
+    nézetben): a hero 566 pixelre nőtt, a Home pedig oldalra csúszott. Ezzel
+    a sorra hárul a szűkítés — ott a köszöntés zsugorodik, ahogy kell.
+  */
+  min-width: 0;
 }
 
 /*
@@ -19,6 +28,37 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
+  min-width: 0;
+}
+
+/*
+  KINYITOTT IDŐJÁRÁSNÁL A KÖSZÖNTÉS ELTŰNIK.
+
+  A sáv úgyis eltakarná, így viszont a helye is felszabadul neki — a köszöntés
+  `flex: 1`-es doboza nullára húzódik össze, és a panel balra tud nőni.
+  `visibility` és nem `display`, mert a sor `space-between`-nel igazít: ha az
+  elem KIESNE a folyamatból, a panel átugrana a sor bal szélére.
+
+  A `:has()` a szülőre néző szelektor — a widget maga csak magára tud
+  osztályt tenni, a köszöntés viszont a testvére.
+*/
+/* A nullára húzott köszöntés melletti térköz is felszabadul: mérve pont ez a
+   12 pixel hiányzott ahhoz, hogy a szélérték ne vágjon 360 pixeles nézetben. */
+.home__greet-row:has(.weather--open) {
+  gap: 0;
+}
+
+.home__greet-row:has(.weather--open) .home__greeting {
+  visibility: hidden;
+  /*
+    NULLA SZÉLES, de a folyamatban marad. A `visibility` önmagában megtartaná
+    a szélességét is, és akkor a sáv csak a maradékot kapná meg — mérve
+    (360 px): a három mérőszámból csak az első fért volna ki. A `flex: 0 0 0`
+    adja oda az egész sort a panelnek, a `visibility` pedig megőrzi a
+    `space-between` igazítást (kiesve a panel a sor bal szélére ugrana).
+  */
+  flex: 0 0 0;
+  width: 0;
 }
 
 .home__greeting {
