@@ -6,6 +6,48 @@ felülíródik, nem bővül. A történet a git logban van.
 **Következő menet neve: GRUNDO #5.** (A számozási konvenció: [AGENTS.md → 7. A
 beszélgetések neve](AGENTS.md).)
 
+⚠️ **A #4 menet végén Geri egy 7 pontos, önmagában is nagy feladatsort adott
+át, amihez 10 Stryde-referenciaképernyőt is mellékelt.** Mivel a képek csak a
+chatben élnek (a `HANDOFF.md` szöveges), **Gerinek újra csatolnia kell őket az
+új beszélgetésben.** A feladatsor (nem feltétlenül ebben a sorrendben — vannak
+egymásra épülő elemek, elsősorban a profil → követés/jelentés/blokkolás lánc):
+
+1. Nyilvános felhasználói profil képernyő
+2. Jelvényrendszer + jelvények
+3. Követés, jelentés, blokkolás
+4. Időjárás widget a Home képernyőn
+5. Keresés + keresési modal
+6. Értesítések modal + alapvető értesítések
+7. Rivális rendszer
+
+**Docs-lefedettség, amit a #4 menet végén átnéztem** (a `docs/`-ot a következő
+menetnek MINDENKÉPP el kell olvasnia, ez csak gyorstalpaló):
+
+- **Már specifikált, csak nincs UI/route hozzá** (F3 „Közösség" és F0 „profil"
+  scope, docs/06 ütemterv): követés/követő/blokk (`docs/05` → „Közösségi
+  gráf"), jelentés (`reports/{id}`), jelvények (`badges/{id}` katalógus +
+  `users/{uid}/badges/{badgeId}`), értesítések (`notifications/{uid}/items/{id}`).
+- **NINCS a specben — döntés vagy legalább jóváhagyás kell, mielőtt kódolunk:**
+  - **Rivális rendszer.** A `rivális` szó ma KIZÁRÓLAG térképszínként létezik
+    (`--territory-rival`, `docs/01` → színek), listaként/funkcióként sehol. A
+    Stryde-referenciaképeken egy „Rivals — Across all territory" lista van a
+    profilon, kapcsolattörténettel (pl. „Stolen 17 territories"). Ez adatmodell-
+    döntés: honnan jön a „rivális" definíció (legtöbbet lopott/lopó pár?), és
+    kell-e hozzá új kollekció, vagy a meglévő `territoryEvents`-ből
+    aggregálható.
+  - **Időjárás widget a Home képernyőn.** A specben időjárás ma csak az
+    AKTIVITÁS fejlécén szerepel (`docs/05` → `activities.weather`,
+    `docs/02` → aktivitás-részletek fejléce), globális Home-widgetként sehol.
+    Külső API-t igényel (a referencia „22°C" élő hőmérsékletet mutat) —
+    kulcsot kérni kell, nem helyőrzőt generálni (`AGENTS.md` → „Amit kérdezz
+    meg, ne találj ki").
+
+**Modelljavaslat erre a menetre:** a fenti két hiányzó terület (rivális,
+időjárás) miatt a menet ELEJE — a docs-átolvasás és a hiányok lezárása
+Gerivel — **Opus**, emelt mélységgel induljon. Utána, ha a hatókör tisztázva
+van, a képernyők/route-ok építése meglévő mintára megy — arra **Sonnet** elég,
+és váltani érdemes, hogy ne égjen feleslegesen a limit.
+
 Az új beszélgetés nyitó üzenete elég, ha erre a fájlra hivatkozik — nem kell
 átmásolni a tartalmát.
 
