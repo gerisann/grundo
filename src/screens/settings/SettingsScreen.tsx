@@ -57,7 +57,11 @@ export function SettingsScreen() {
         <section>
           <div className="label list__group-label">Fiók</div>
           <List>
-            <ListRow label="Értesítések" chevron />
+            <ListRow
+              label="Értesítések"
+              description="Típusonként kapcsolható, alkalmazáson belül és push-ban is"
+              onClick={() => navigate('/beallitasok/ertesitesek')}
+            />
             <ListRow label="Csatlakoztatott appok" chevron />
             <ListRow label="Előfizetés" chevron />
           </List>

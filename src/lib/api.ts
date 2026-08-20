@@ -225,6 +225,10 @@ export interface ActivityComment {
   /** A sajátom-e — ettől függ, törölhető-e. */
   mine: boolean;
   author: { username: string; photoURL: string | null };
+  /** Melyik kommentre válaszol — `null`, ha ez egy önálló hozzászólás. */
+  replyToId: string | null;
+  /** A megcélzott felhasználó neve, denormalizálva — lásd a szerver oldali megjegyzést. */
+  replyToUsername: string | null;
 }
 
 /** Egy aktivitás teljes adatlapja — a részletek képernyőhöz. */
@@ -847,11 +851,14 @@ export const api = {
   comments: (id: string) =>
     request<{ comments: ActivityComment[] }>(`/api/activities/${id}/comments`),
 
-  addComment: (id: string, text: string) =>
-    request<{ id: string; text: string; createdAt: number }>(`/api/activities/${id}/comments`, {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    }),
+  addComment: (id: string, text: string, replyToId?: string) =>
+    request<{ id: string; text: string; createdAt: number; replyToId: string | null; replyToUsername: string | null }>(
+      `/api/activities/${id}/comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ text, ...(replyToId ? { replyToId } : {}) }),
+      },
+    ),
 
   deleteComment: (id: string, commentId: string) =>
     request<{ ok: true }>(`/api/activities/${id}/comments/${commentId}`, { method: 'DELETE' }),

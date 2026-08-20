@@ -40,6 +40,7 @@ export function CommentSheet({
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: string; username: string } | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -90,7 +91,7 @@ export function CommentSheet({
     setSending(true);
     setError('');
     try {
-      const created = await api.addComment(activityId, value);
+      const created = await api.addComment(activityId, value, replyTo?.id);
       /**
        * A választ a LISTÁHOZ FŰZZÜK, nem töltjük újra az egészet.
        *
@@ -106,6 +107,8 @@ export function CommentSheet({
             text: created.text,
             createdAt: created.createdAt,
             mine: true,
+            replyToId: created.replyToId,
+            replyToUsername: created.replyToUsername,
             /**
              * Az optimista sor is a már betöltött GRUNDO-profilt használja.
              * Korábban itt egy "Te" nevű ideiglenes szerző szerepelt, ezért
@@ -122,6 +125,7 @@ export function CommentSheet({
       });
       setText('');
       setEmojiOpen(false);
+      setReplyTo(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'A hozzászólás nem ment el.');
     } finally {
@@ -194,7 +198,22 @@ export function CommentSheet({
                     <span className="csheet__author">{comment.author.username}</span>
                     <span className="csheet__when">{formatRelativeDay(comment.createdAt)}</span>
                   </div>
+                  {comment.replyToUsername ? (
+                    <span className="csheet__replyto">
+                      <ReplyIcon /> Válasz — {comment.replyToUsername}
+                    </span>
+                  ) : null}
                   <p className="csheet__text">{comment.text}</p>
+                  <button
+                    type="button"
+                    className="csheet__reply-btn"
+                    onClick={() => {
+                      setReplyTo({ id: comment.id, username: comment.author.username });
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    Válasz
+                  </button>
                 </div>
               </div>
             ))
@@ -219,6 +238,22 @@ export function CommentSheet({
                 {emoji}
               </button>
             ))}
+          </div>
+        ) : null}
+
+        {replyTo ? (
+          <div className="csheet__replying">
+            <span>
+              Válasz — <strong>{replyTo.username}</strong>
+            </span>
+            <button
+              type="button"
+              className="csheet__replying-cancel"
+              aria-label="Válasz megszakítása"
+              onClick={() => setReplyTo(null)}
+            >
+              <CloseIcon />
+            </button>
           </div>
         ) : null}
 
@@ -276,6 +311,25 @@ function CloseIcon() {
       aria-hidden="true"
     >
       <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+function ReplyIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 17 4 12l5-5" />
+      <path d="M4 12h10a6 6 0 0 1 6 6v1" />
     </svg>
   );
 }

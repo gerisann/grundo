@@ -70,15 +70,37 @@
   opacity: 0.82;
 }
 
-.home__metric dd {
+/*
+  A KÖZÉPSŐ sor a kiemelt érték — 20%-kal nagyobb, mint korábban (14px → a
+  `calc` a szorzást tartja olvashatóan, nem kerekített pixelt ír be).
+*/
+.home__metric-value {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 14px;
+  font-size: calc(14px * 1.2);
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+  Az ALSÓ sor: a Grundnál egy MÁSIK adat (mezőszám), a másik kettőnél a
+  mértékegység a bare számhoz. Halványabb és kisebb, mint a kiemelt sor —
+  a szem elsőre a középső számra essen.
+*/
+.home__metric-unit {
+  display: block;
+  min-width: 0;
+  margin-top: 1px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.78;
+  letter-spacing: 0.01em;
 }
 
 /* ── Fejléc: jel, név, műveletek ──────────────────────────────────── */
@@ -120,12 +142,25 @@
 }
 
 .home__action {
+  position: relative;
   width: 36px;
   height: 36px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   color: var(--text-secondary);
+}
+
+/* Olvasatlan értesítés jelzése — a harangon. */
+.home__action-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-primary);
 }
 
 .home__action:hover:not(:disabled) {
@@ -142,15 +177,4 @@
 .home__action:disabled {
   opacity: 0.38;
   cursor: default;
-}
-
-/* ── A mezőszám a terület mellett ─────────────────────────────────── */
-
-.home__metric-extra {
-  display: block;
-  margin-top: 1px;
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.78;
-  letter-spacing: 0.01em;
 }

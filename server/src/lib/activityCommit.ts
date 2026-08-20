@@ -176,6 +176,14 @@ export function fitsOneTransaction(plan: ActivityPlan): boolean {
 export interface CommitOutcome {
   duplicate: boolean;
   summary: CommitSummary | unknown;
+  /**
+   * uid → hány cellát vesztett / hány cellája állt ellen ebben az
+   * aktivitásban. A ROUTE ezekből küld értesítést a károsultaknak — sem a
+   * duplikált, sem az observe-only (nem alkalmazott) mentésnél nincs értéke,
+   * mert azoknál semmi nem változott a birtokviszonyban.
+   */
+  stolenFrom?: Record<string, number>;
+  breakthroughFrom?: Record<string, number>;
 }
 
 
@@ -528,7 +536,12 @@ export async function commitActivity(
     });
   }
 
-  return { duplicate: false, summary };
+  return {
+    duplicate: false,
+    summary,
+    stolenFrom: Object.fromEntries(victims),
+    breakthroughFrom: result.claim?.breakthroughFrom ?? {},
+  };
 }
 
 

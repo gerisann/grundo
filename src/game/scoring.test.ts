@@ -34,6 +34,7 @@ function claimOf(parts: {
     fates: new Map(),
     counts,
     stolenFrom: {},
+    breakthroughFrom: {},
     weightedClaimM2: (free * 1 + reclaimed * reclaimMult + stolen * 1) * A,
     gainedM2: (free + stolen) * A,
   };

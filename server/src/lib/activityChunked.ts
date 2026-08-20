@@ -97,6 +97,7 @@ const MAX_GROUPS = 40;
 interface ClaimPart {
   counts: Record<CellFate, number>;
   stolenFrom: Record<string, number>;
+  breakthroughFrom: Record<string, number>;
   weightedClaimM2: number;
   gainedM2: number;
   cells: number;
@@ -324,6 +325,7 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
         group: index,
         counts: merged.counts,
         stolenFrom: merged.stolenFrom,
+        breakthroughFrom: merged.breakthroughFrom,
         weightedClaimM2: merged.weightedClaimM2,
         gainedM2: merged.gainedM2,
         cells: merged.updates.size,
@@ -360,6 +362,7 @@ async function closeBooks(
   const total: ClaimPart = {
     counts: { free: 0, reclaimed: 0, stolen: 0, breakthrough: 0 },
     stolenFrom: {},
+    breakthroughFrom: {},
     weightedClaimM2: 0,
     gainedM2: 0,
     cells: 0,
@@ -370,6 +373,9 @@ async function closeBooks(
     }
     for (const [victim, count] of Object.entries(part.stolenFrom ?? {})) {
       total.stolenFrom[victim] = (total.stolenFrom[victim] ?? 0) + Number(count);
+    }
+    for (const [victim, count] of Object.entries(part.breakthroughFrom ?? {})) {
+      total.breakthroughFrom[victim] = (total.breakthroughFrom[victim] ?? 0) + Number(count);
     }
     total.weightedClaimM2 += Number(part.weightedClaimM2 ?? 0);
     total.gainedM2 += Number(part.gainedM2 ?? 0);
@@ -406,6 +412,7 @@ async function closeBooks(
         fates: new Map(),
         counts: total.counts,
         stolenFrom: total.stolenFrom,
+        breakthroughFrom: total.breakthroughFrom,
         weightedClaimM2: total.weightedClaimM2,
         gainedM2: total.gainedM2,
       },
@@ -508,7 +515,12 @@ async function closeBooks(
     }
   });
 
-  return { duplicate: false, summary };
+  return {
+    duplicate: false,
+    summary,
+    stolenFrom: Object.fromEntries(victims),
+    breakthroughFrom: total.breakthroughFrom,
+  };
 
   function blankSummary(
     p: ActivityPlan,
@@ -541,6 +553,7 @@ function emptyPart(now: Date) {
   return {
     counts: { free: 0, reclaimed: 0, stolen: 0, breakthrough: 0 },
     stolenFrom: {},
+    breakthroughFrom: {},
     weightedClaimM2: 0,
     gainedM2: 0,
     cells: 0,

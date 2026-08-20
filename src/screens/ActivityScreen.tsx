@@ -178,7 +178,12 @@ export function ActivityScreen() {
         <div className="act__body stack">
           {/* ── Fejléc ──────────────────────────────────────────── */}
           <div>
-            <div className="act__who">
+            <button
+              type="button"
+              className="act__who act__who--link"
+              onClick={() => navigate(`/felhasznalo/${encodeURIComponent(activity.author.username)}`)}
+              aria-label={`${activity.author.username} profiljának megnyitása`}
+            >
               <Avatar url={activity.author.photoURL} name={activity.author.username} />
               <span className="act__who-text">
                 <span className="act__author">{activity.author.username}</span>
@@ -186,7 +191,7 @@ export function ActivityScreen() {
                   {ACTIVITY_LABEL[activity.type]} · {formatDateTime(activity.startedAt)}
                 </span>
               </span>
-            </div>
+            </button>
             <div className="act__title-row">
               <h1 className="act__title">
                 {activity.title ?? activityTitle(activity.type, activity.startedAt)}

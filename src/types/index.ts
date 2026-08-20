@@ -79,6 +79,13 @@ export interface ClaimResult {
   counts: Record<CellFate, number>;
   /** kitől mennyi cellát vettél el (uid → cellaszám) */
   stolenFrom: Record<string, number>;
+  /**
+   * Kinek hány cellája állt ellen (uid → cellaszám) — védett cella, ami NEM
+   * cserélt gazdát, csak a védelme csökkent. Az „X cella védelme csökkent"
+   * értesítés adatforrása; nem ugyanaz, mint a `stolenFrom` — egy támadás
+   * adhat mindkettőből egyszerre, más-más cellákra.
+   */
+  breakthroughFrom: Record<string, number>;
   /** a megszerzett cellák súlyozott értéke a védelmi szorzóval, m²-ben */
   weightedClaimM2: number;
   /** a ténylegesen megszerzett terület m²-ben (szorzó nélkül) */

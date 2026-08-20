@@ -38,6 +38,8 @@ export const COLLECTIONS = {
   reports: 'reports',
   followRequests: 'followRequests',
   badges: 'badges',
+  notifications: 'notifications',
+  devices: 'devices',
   appConfig: 'appConfig',
   modifiers: 'modifiers',
   metricsDaily: 'metricsDaily',

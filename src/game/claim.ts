@@ -34,6 +34,7 @@ export function resolveClaim(
     free: 0, reclaimed: 0, stolen: 0, breakthrough: 0,
   };
   const stolenFrom: Record<string, number> = {};
+  const breakthroughFrom: Record<string, number> = {};
   let weightedCells = 0;
   let gainedCells = 0;
 
@@ -76,7 +77,7 @@ export function resolveClaim(
     updates.set(cell, { owner: held.owner, defense: held.defense - 1 });
     fates.set(cell, 'breakthrough');
     counts.breakthrough++;
-    stolenFrom[held.owner] = stolenFrom[held.owner] ?? 0; // a károsult értesül
+    breakthroughFrom[held.owner] = (breakthroughFrom[held.owner] ?? 0) + 1;
   }
 
   return {
@@ -84,6 +85,7 @@ export function resolveClaim(
     fates,
     counts,
     stolenFrom,
+    breakthroughFrom,
     weightedClaimM2: weightedCells * cfg.CELL_AREA_M2,
     gainedM2: gainedCells * cfg.CELL_AREA_M2,
   };
@@ -168,6 +170,9 @@ export function absorbIsolatedRivalCells(
       fates,
       counts,
       stolenFrom,
+      // Ez a lépés csak izolált, védelem nélküli cellákat von be — sosem
+      // termel áttörést, tehát a meglévő térkép változatlanul öröklődik.
+      breakthroughFrom: claim.breakthroughFrom,
       weightedClaimM2:
         claim.weightedClaimM2 + absorbed.size * multiplierFor(1, cfg) * cfg.CELL_AREA_M2,
       gainedM2: claim.gainedM2 + absorbed.size * cfg.CELL_AREA_M2,
@@ -215,6 +220,7 @@ export function mergeClaims(
   const updates = new Map<CellId, CellOwnership>();
   const fates = new Map<CellId, CellFate>();
   const stolenFrom: Record<string, number> = {};
+  const breakthroughFrom: Record<string, number> = {};
 
   // A későbbi hurok felülírja a korábbit: a cella VÉGSŐ állapota számít.
   for (const result of results) {
@@ -253,7 +259,9 @@ export function mergeClaims(
 
     if (fate === 'breakthrough') {
       // Nem a miénk: igénypont nem jár rá, de a károsult értesül róla.
-      if (previousOwner !== undefined) stolenFrom[previousOwner] ??= 0;
+      if (previousOwner !== undefined) {
+        breakthroughFrom[previousOwner] = (breakthroughFrom[previousOwner] ?? 0) + 1;
+      }
       continue;
     }
 
@@ -269,5 +277,5 @@ export function mergeClaims(
     }
   }
 
-  return { updates, fates, counts, stolenFrom, weightedClaimM2, gainedM2 };
+  return { updates, fates, counts, stolenFrom, breakthroughFrom, weightedClaimM2, gainedM2 };
 }

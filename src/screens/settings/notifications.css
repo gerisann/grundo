@@ -1,0 +1,5 @@
+/* Értesítés-beállítások — típusonkénti kapcsolók egy kártyában */
+
+.notif-settings > .switch-row + .switch-row {
+  border-top: 1px solid var(--border-subtle);
+}

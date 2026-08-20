@@ -170,6 +170,53 @@
   white-space: pre-wrap;
 }
 
+/* Melyik kommentre válaszol — a szerző fölött, a szöveg előtt. */
+.csheet__replyto {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--fs-label);
+}
+
+.csheet__reply-btn {
+  margin-top: var(--sp-1);
+  color: var(--text-tertiary);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.csheet__reply-btn:hover {
+  color: var(--accent);
+}
+
+/* A „Válasz — X" chip a beviteli mező FÖLÖTT, amíg tart a válaszolás. */
+.csheet__replying {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.csheet__replying-cancel {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+}
+
+.csheet__replying-cancel:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
 .csheet__error {
   margin: 0;
   padding: 0 var(--sp-4) var(--sp-2);

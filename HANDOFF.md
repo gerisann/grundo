@@ -3,7 +3,7 @@
 Ez a fájl az AKTUÁLIS állapotot mutatja, nem a történetet — minden menet végén
 felülíródik, nem bővül. A történet a git logban van.
 
-**Következő menet neve: GRUNDO #7.** (A számozási konvenció: [AGENTS.md → 7. A
+**Következő menet neve: GRUNDO #8.** (A számozási konvenció: [AGENTS.md → 7. A
 beszélgetések neve](AGENTS.md).)
 
 ## ÁLLAPOT
@@ -12,72 +12,63 @@ Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`.
 A pontos HEAD-et `git log -1`-gyel ellenőrizd — ez a fájl nem tartalmaz
 commit-hash-t, mert az a frissítés pillanatában azonnal elavulna.
 
-A #6 menet: **jelvényrendszer + jelvények** (Geri 7 pontos listájából a 2.
-pont). A 7 pontból most **négy kész** (1. profil, 3. követés/jelentés/tiltás,
-4. időjárás, 2. jelvények).
+A #7 menet **jóval nagyobb volt a szokásosnál** — Geri kifejezetten kérte,
+hogy próbáljam meg egyben. Két rész:
 
-Tesztek, most mérve: a gyökérből `npm test` → **327 teszt zöld** (24 fájl, 7
-emulátoros fájl kihagyva; +17 új a `src/game/badges.test.ts`-ből). Emulátoros:
-`npm.cmd run test:emulator` → **7 fájl, 92 teszt zöld** (a `dailyRollover` és
-`activities` fájlok tesztjei ÚJRA lefutottak és zöldek — lásd lent, miért volt
-ez különösen fontos ebben a körben). Typecheck (gyökér ÉS `server/`) és
-mindkét production build hibamentes.
+1. **Négy előzetes javítás**, amit Geri a fő kérés elé sorolt. Ebből
+   **kettő elkészült** (Home statisztikapanel átalakítása, aktivitás-
+   részletező profil-link), **egy részben** (komment-válasz — a
+   funkció maga kész, csak a térkép-vizualizáció maradt ki belőle
+   tévedésből az eredeti listán), **egy KIMARADT** (aktív akciók a
+   térképen — lásd „NYITOTT, KISEBB").
+2. **Teljes értesítési rendszer** — alkalmazáson belüli lista ÉS push
+   (FCM), mind a 10 típussal bekötve. A KNOWS Community projektből
+   (`C:\Users\Geri\Documents\GitHub\knows-community`) átvett architektúra
+   (Express + firebase-admin, Cloud Functions nélkül), GRUNDO saját
+   sémájára illesztve.
 
-⚠️ **Két méréssel talált, javított hiba ebben a körben — mindkettő arról szól,
-hogy egy ÚJ GP-forrás (a jelvény-jutalom) hol ér hozzá MEGLÉVŐ, pontos
-összeget ellenőrző tesztekhez:**
+Tesztek, most mérve: a gyökérből `npm test` → **327 teszt zöld** (24 fájl, 8
+emulátoros fájl kihagyva). Emulátoros: `npm.cmd run test:emulator` → **8 fájl,
+97 teszt zöld** (+5 új a `notifications.emulator.test.ts`-ből). Typecheck
+(gyökér ÉS `server/`) és mindkét production build hibamentes.
 
-1. A jelvény-kiértékelést ELŐSZÖR a napi fordulóba (`dailyRollover.ts`) is
-   bekötöttem, hogy a heti sorozat- és hűség-jelvények aktivitás nélkül is
-   kiértékelődjenek. A `dailyRollover.emulator.test.ts` két tesztje ERRE
-   MÉRVE bukott meg (a szeedelt teszt-userek területe simán 100 000 m² fölött
-   volt, tehát terület-jelvényt is kaptak volna). **A javítás: a hívás
-   KIKERÜLT a napi fordulóból**, csak az aktivitás-mentés útvonalán fut. A
-   heti/hűség-jelvények emiatt egy körrel később derülnek ki, mint
-   elméletileg lehetne — ez elfogadható késés, nem elveszett jutalom (lásd
-   `server/src/lib/badges.ts` fejléce).
-2. Az aktivitás-mentésbe eredetileg TŰZZ-ÉS-FELEJTSD módon (`void`) kötöttem
-   be — az `auth.ts` regisztrációs e-mailjének mintájára. Végiggondolva ez ITT
-   NEM biztonságos: a jelvény-jutalom UGYANAZT a `gpTotal` mezőt írja, amit a
-   hívó a válasz után azonnal visszaolvashat, tehát versenyhelyzet a saját
-   írásunk és egy azonnali visszaolvasás között. **Nem hagytam feltételezésen
-   — átírtam AWAIT-eltre, MIELŐTT bármi elromolhatott volna belőle**, tehát ezt
-   a hibát nem méréssel fogtam meg, hanem a kódot olvasva előre kiszűrtem. A
-   válasz így csak a jelvény-kiértékelés lezajlása UTÁN megy ki.
+⚠️ **Egy méréssel talált hiba ebben a körben is**: `src/game/claim.test.ts`
+egy tesztje a `stolenFrom`-ban kereste a védekező károsultat — ez a mező
+korábban egy „0 értékű bejegyzés" trükkel jelezte ezt (lásd lent, „A védelem-
+csökkenés most már valódi adat"), amit ez a menet kiváltott egy valódi
+`breakthroughFrom` mezőre. A teszt frissült, a viselkedés NEM romlott —
+ellenkezőleg, ez volt a lényeg.
 
-Két meglévő teszt-asszerció is módosult emiatt (`activities.emulator.test.ts`
-→ „elmenti az aktivitást" és „a duplikált azonosító" tesztek): egy friss
-felhasználó ELSŐ aktivitása mindig kivált `first_activity`+`first_loop`
-jelvényt (+70 GP), ezt most egy névvel ellátott konstans (`FIRST_ACTIVITY_BADGE_GP`)
-adja hozzá az elvárt értékhez — nem a teszt SZÁNDÉKA változott, csak a
-valós, immár helyes GP-összeg.
+## AMIT EBBEN A MENETBEN MÉRTEM, ÉS AMIT NEM SIKERÜLT
 
-## AMIT EBBEN A MENETBEN VIZUÁLISAN ELLENŐRIZTEM
+**Szerveroldalon alaposan mérve**, valódi Firestore-emulátoron:
+- `createNotification` a KAPU-tulajdonságát 5 új emulátoros teszt bizonyítja:
+  alapból BE van kapcsolva minden típus, egy kikapcsolt típusnál SEMMI nem
+  íródik, a kapcsoló típusonként hat (nem globálisan), token nélküli
+  felhasználónál a push csendben kimarad, és a függvény SOSE dob (egy hibás
+  `uid` mellett is lefut, csak nem ír).
+- Egy `evaluateAndAwardBadges`-hez hasonló próbafuttatással: `commitActivity`
+  most már visszaadja a `stolenFrom`/`breakthroughFrom` térképet, ebből a
+  route ténylegesen ki tudja küldeni a `territory_stolen`/`territory_defended`
+  értesítést — ezt a teljes emulátoros aktivitás-készlet (18 teszt) zölden
+  futtatva ellenőriztem, a meglévő pontos GP-összegeket ellenőrző tesztek nem
+  romlottak.
 
-A jelvényrendszert **valódi Firestore-emulátoron, éles kóddal** futtattam
-végig — NEM éles adatbázison, mert ez a funkció ÍR, és az olvasó
-szolgáltatásfiók nem tud írni:
+**Amit NEM sikerült böngészőben, élő adaton igazolnom**: a
+`NotificationPanel` `onSnapshot`-feliratkozását. A szerkezetet (fejléc, üres
+állapot, „Mind olvasott" gomb) böngészőben megnéztem és jó — DE a
+feliratkozás magát, valódi Firestore-adattal, nem sikerült végigvinnem: a
+teszt-környezetben a kliens Firestore-kapcsolat makacsul az ÉLES projektre
+ugrott vissza az emulátor helyett (az Auth-emulátor viszont helyesen működött
+— ebből tudom, hogy a kapcsolási minta önmagában jó, csak ennek a
+munkamenetnek a rögtönzött tesztfelállása nem tudta stabilan tartani mindkét
+emulátor-kapcsolatot egyszerre). **Ezt Geri nézze meg élesben, telepítés
+után** — ha a harangon nem jelenik meg a piros pötty valódi értesítésnél, ez
+az első hely, ahol keresni kell.
 
-- Egy `evaluateAndAwardBadges()` hívás egy megfelelően előkészített
-  felhasználón **11 jelvényt osztott ki egyszerre** (első lépések, távolság,
-  terület, napi és heti sorozat, hűség), helyes GP-összeggel (+1180 GP,
-  5000→6180).
-- **Idempotencia mérve**: ugyanaz a hívás újra futtatva `Kiosztva: []`-t adott
-  — egyetlen dokumentum sem duplázódott.
-- **A `.count()` aggregáció is mérve**: 12 `territoryEvents` dokumentum
-  `actorId`-val kiváltotta a `first_steal` és `conqueror_10` jelvényt, a
-  `conqueror_50`-et helyesen nem.
-- **Böngészőben, a `/felhasznalo/:username` képernyőn**: mind a 13 jelvény
-  megjelent helyes magyar névvel, a bronz pötty MÁS árnyalatot kapott világos
-  és sötét témában, a tooltip a leírást és a megszerzés dátumát is mutatta.
-- **Üres állapot, idegen profilon**: egy jelvény nélküli felhasználónál a
-  jelvény-blokk EGYSZERŰEN NEM JELENT MEG (`hideEmpty`) — nem lógott ki egy
-  „neked szóló" felszólítás máséin.
-- **Üres állapot, saját profilon**: a „Még nincs jelvényed" szöveg a helyén
-  jelent meg (bár ezt csak a `ProfileScreen` alapállapotában láttam, mert a
-  saját profil valódi Firebase-bejelentkezést igényel, amit ez a környezet
-  nem tud kiváltani — a komponens ugyanaz mindkét képernyőn, a logikát a
-  populált ág oldalán már bizonyítottam).
+A **push-küldés VÉGIG-VITELE** (valódi eszközön megjelenő rendszerértesítés)
+szintén nincs élesben kipróbálva — ahhoz telepített frontend és egy valódi
+böngésző-engedélykérés kell, amit ez a környezet nem tud kiváltani.
 
 ## ÉLESBEN FUT
 
@@ -85,161 +76,212 @@ szolgáltatásfiók nem tud írni:
 - **Admin felület**: `/admin` — játékszabály-szerkesztő, akciók, aktivitás-
   audit, visszajátszó.
 - **Futásidejű konfiguráció**: `appConfig/gameplay` a v1-en áll. Fut egy aktív
-  akció: „Gazdagrét Rush", globális 2×-es GP-szorzó, 2026-08-20 08:00 –
-  2026-08-23 23:59 (Budapest) — ellenőrizd, hátha időközben lejárt.
+  akció: „Gazdagrét Rush", globális 2×-es GP-szorzó — ellenőrizd, hátha
+  időközben lejárt.
+- **Jelvény-katalógus**: feltöltve Firestore-ba (`seed:badges` lefutott
+  2026-08-20-án, 45 dokumentum).
 
 ## TELEPÍTETLEN
 
-Három menet munkája vár telepítésre — a #4-é, #5-é és #6-é együtt:
+Négy menet munkája vár telepítésre — a #4, #5, #6 és #7 együtt (a korábbiak
+részletei a git történetben). Ami ÚJ ebben a körben:
 
-- **#4-ből**: a `metricsDaily` napi aggregátum job ÉS az admin
-  `/api/admin/metrics` végpont. Adat csak a telepítés UTÁNI első napi
-  fordulótól lesz benne.
-- **#5-ből**: a nyilvános profil, közösségi gráf és időjárás-widget. Kell
-  hozzá **frontend + backend + indexek**, és a backend ELŐTT az
-  `OPENWEATHER_API_KEY` titok létrehozása.
-- **#6-ból (most)**: a jelvényrendszer. Kell hozzá **frontend + backend**.
-  Adatbázis-lépés (index) NEM kell — a `.count()` aggregáció és a
-  `users/{uid}/badges` alkollekció a meglévő szabályokkal és egyenlőség-
-  szűrővel működik. **Viszont a `badges` katalógus-kollekciót Cloud Shellben
-  fel kell tölteni** (lásd „TEENDŐK" a záró chat-üzenetben) —
-  amíg üres, a jelvények kiosztódnak és jól működnek (a katalógus kódban
-  van), de a `challenges.rewardBadgeId`-hivatkozások és egy jövőbeli admin-
-  szerkesztő addig nem találnának Firestore-dokumentumot.
-- Régi, még mindig nyitott kérdés: **az F (szabálymagyarázó felület)** és a
-  **`c0a20da`** (CORS-javítás, akció-szerkesztés, trust-panel) éles állapota —
-  ezt Geri tudja megmondani.
+- **A teljes értesítési rendszer.** Kell hozzá **frontend + backend**.
+  Adatbázis-lépés (index) NEM kell — a `notifications`/`devices` séma a
+  meglévő szabályokkal és egyenlőség-szűrővel működik.
+- ⚠️ **A backend telepítése ELŐTT be kell állítani a Firebase Admin
+  Messaging jogosultságot.** A `firebase-admin/messaging` a meglévő
+  szolgáltatásfiók hitelesítésével megy (nincs külön titok, mint az
+  OpenWeather-kulcsnál) — DE a Cloud Run szolgáltatásfióknak
+  `roles/firebasecloudmessaging.admin` (vagy tágabb) szerepkör kell hozzá,
+  különben a push-küldés csendben elhasal (a `createNotification` úgyis
+  elnyeli a hibát, tehát az alkalmazáson belüli lista működni fog akkor is,
+  ha ez kimarad — csak a push nem megy).
+- A frontend `.env.local`-jába (Cloud Shell) fel kell venni:
+  `VITE_FIREBASE_VAPID_KEY=BIMRvwkmQxpciXnk-3s5x_HqtKX5j8K7hDiQNhC3vV_shO_Kislr3iE4cDZ59Ih2wJLaA_0LK5YzbMAbiYEORL8`
+  (ugyanez most már a `.env.example`-ben is szerepel).
 
-## AMI A #6 MENETBEN ELKÉSZÜLT
+## AMI A #7 MENETBEN ELKÉSZÜLT
 
-**A katalógus** — `src/game/badges.ts` (szerverrel közös kód, mint a
-`levels.ts`). **45 jelvény, hat kategóriában** — a spec tíz kategóriájából
-NÉGY KIMARADT, mert ma nincs mögöttük valódi adat, és kitalálni hazugság lenne
-(`AGENTS.md` → „Amit kérdezz meg, ne találj ki"):
+### Home statisztikapanel — három sor
 
-- **Védő** — nincs védekezés-eseménynapló (sikeres áttörés-elhárítás sosem
-  kerül rögzítésre).
-- **Felfedező** — a `users/{uid}/passport/{iso}` a specben megvan, DE a kódban
-  sehol nem íródik (ellenőriztem: nulla találat rá).
-- **Közösség** — klubok, kihívások, like-összesítő nincs megépítve.
-- **Pro** — az előfizetés-életciklus (`subscriptions`) nincs megépítve; a
-  `pro.active` mezőt ma semmilyen valós folyamat nem állítja be, tehát erre
-  jelvényt építeni kitalált adatra épülne.
+`src/screens/HomeScreen.tsx` + `home.css`. Mindhárom doboz (GRUND, AKTIVITÁS,
+SOROZAT) most három sort mutat: felül a címke, középen a KIEMELT érték
+(20%-kal nagyobb betűvel, `calc(14px * 1.2)`), alul a mértékegység vagy —
+csak a GRUND-nál — egy másik adat (mezőszám). Új segédfüggvény:
+`formatNumber()` (`src/lib/format.ts`) a mértékegység nélküli számhoz.
 
-Az **„első visszaszerzés"** jelvény is kimaradt az „első lépések"
-kategóriából: a `territoryEvents` ma NEM különbözteti meg a lopást a
-visszaszerzéstől (mindkettő ugyanaz a `territory_stolen` esemény) — ez
-játékegyensúly-kérdés, ugyanabba a körbe tartozik, mint a rivális-rendszer
-definíciója.
+### Aktivitás-részletező — kattintható profil
 
-**A kiértékelés TISZTA FÜGGVÉNY** (`earnedBadgeIds(ctx)`): csak a `ctx`-ből
-számol, Firestore-t nem lát, ugyanahhoz a bemenethez mindig ugyanazt adja.
-Emiatt biztonságosan újrafuttatható (aktivitás után ÉS elméletben egy
-jövőbeli visszamenőleges kiosztásnál is), és emiatt derült ki egyetlen
-próbafuttatással a fenti két hiba is — lásd „ÁLLAPOT".
+`src/screens/ActivityScreen.tsx`. A szerző fejléce (kép + név) most
+`/felhasznalo/:username`-re visz, ugyanazzal a mintával, mint a feed-
+kártyáknál (#5 menet): külön gomb, nem beágyazva a nyitógombba.
 
-**A szerver oldal** — `server/src/lib/badges.ts` (`evaluateAndAwardBadges`,
-Firestore-ral beszél) és `server/src/scripts/seedBadges.ts` (a katalógus
-Firestore-ba vetítése, `--apply`/`--allow-production` mintára). Egyetlen
-hívási pont: `routes/activities.ts`, aktivitás-mentés után, AWAIT-elve (lásd
-fent). A `.count()` aggregációs lekérdezés (`territoryEvents` darabszáma
-`actorId` szerint) egyetlen olvasásba kerül, függetlenül a dokumentumok
-számától.
+### Komment-válasz
 
-**A kliens oldal** — `BadgeList` komponens (pill-chipek, ritkaság szerint
-színezve), beágyazva a `ProfileScreen`-be és a `PublicProfileScreen`-be. A
-jelvény NÉV NÉLKÜL jön a szerverről (`{id, earnedAt}`), a nevet/leírást a
-kliens a közös katalógusból oldja fel — nincs duplikált szöveg a hálózaton.
+**Séma**: a komment dokumentum kapott egy opcionális `replyToId` /
+`replyToUserId` / `replyToUsername` mezőt (denormalizálva, hogy a lista
+lekérdezés ne kérjen külön olvasást válaszonként).
+**Szerver**: `POST /api/activities/:id/comments` elfogad `replyToId`-t,
+feloldja a célszemélyt, és KÉT külön értesítést küldhet (aktivitás-szerző +
+válasz-címzett — lásd `notifyCommentPosted` a `server/src/lib/
+notifications.ts`-ben).
+**Kliens**: `CommentSheet.tsx` — „Válasz" gomb minden sor alatt, „Válasz — X"
+chip a beviteli mező fölött, válasz-jelzés a válasz-sorban.
 
-⚠️ **Mellékes felfedezés, NEM javítottam, mert nem ehhez a körhöz tartozik és
-kockázatos módosítani telepített indexet direkt kérés nélkül**: a
-`firestore.indexes.json`-ban a `territoryEvents` két indexe a `victimId`/`at`
-mezőnevekre hivatkozik, de a tényleges kód `recipientId`/`createdAt`-et ír.
-Ez a két index ma HOLTAN áll (semmilyen lekérdezés nem használja őket) — ha
-egyszer valaki a doksi elnevezését próbálná lekérdezésben használni, csendben
-elhasalna.
+⚠️ **A térkép-vizualizáció (aktív akciók) NEM készült el** — ez Geri eredeti
+négy pontjából az egyetlen, ami teljesen kimaradt. Lásd „NYITOTT, KISEBB".
 
-## KÖVETKEZŐ: 7. MENET
+### Értesítési rendszer
 
-Geri 7 pontos feladatsorából **négy kész**. A maradék három:
+**A minta forrása**: KNOWS Community (`fcmService.ts`, `notificationService.ts`,
+`server/src/routes/notifications.ts`) — egy Explore-ügynökkel átnézve. A
+LÉNYEG, amit átvettünk: Cloud Functions NÉLKÜL, plain Express + firebase-admin,
+`sendEachForMulticast` a küldéshez, invalid token takarítás a válaszból. A
+SÉMA viszont GRUNDO SAJÁTJA maradt (a docs/05 már korábban kijelölte):
+`notifications/{uid}/items/{id}` (nem KNOWS flat `notifications` kollekciója),
+`devices/{uid}/tokens/{token}` (nem hash-elt doc-id), kapcsolók a
+`users/{uid}/private/settings.notifications` mezőn (nem egy külön flat mező a
+felhasználó dokumentumon).
 
-- **5. Keresés + keresési modal.** A referencián „Discover": keresőmező,
-  People / Clubs fülek, és javaslatok („friend of a friend", „similar pace").
-  Ehhez kell egy kereső végpont; a `usernames` kollekció prefix-kereséssel
-  már ma is elég a People fülhöz.
-- **6. Értesítések modal + alapvető értesítések.** A séma megvan
-  (`notifications/{uid}/items/{id}`) és az index is
-  (`read ASC, createdAt DESC`), író logika nincs. Több esemény is termelődik
-  már, amiről értesíteni lehetne: követés (#5-ből), és mostantól **jelvény-
-  szerzés** (`evaluateAndAwardBadges` visszaadja az újonnan kiosztott
-  jelvényeket, csak még senki nem hallgat rá).
-- **7. Rivális rendszer.** ⚠️ Geri megadta a definíciót: **aki elveszi a
-  területünket, vagy akitől mi vesszük el, rivális lesz.** A profilon a **TOP
-  3** látszik, a teljes lista külön modalban, és a „hányszorosan" szám is (pl.
-  `x17`). **Súlyozni kell**: nem csak a cserék száma számít, hanem az elvett
-  terület mérete is. A pontos képletet Geri szerint majd ott dolgozzuk ki.
-  Adatforrás valószínűleg a meglévő `territoryEvents`, de kell dönteni, hogy
-  futásidőben aggregálunk-e, vagy saját kollekcióba írunk. Ha ide kerül sor,
-  ÉRDEMES EGYÜTT ÁTGONDOLNI az „első visszaszerzés" jelvénnyel (fentebb
-  kimaradt) — ugyanaz a hiányzó megkülönböztetés (lopás vs. visszaszerzés)
-  mindkettőt érinti.
+**A legfontosabb architekturális döntés**: MINDEN értesítés EGY kapun megy át
+(`createNotification`, `server/src/lib/notifications.ts`) — ez szándékos
+válasz egy KNOWS Community-ban megfigyelt hibamintára, ahol az alkalmazáson
+belüli írás és a push-küldés KÜLÖN helyen nézte (vagy nem nézte) a
+felhasználó kapcsolóit, és a `send-push-bulk` végpont csak EGYETLEN
+kategóriát ellenőrzött szerveroldalon a többi közül. Itt ez nem fordulhat
+elő: egyetlen függvény dönt, mindkét csatornáról.
 
-**Amit még a #4-ből örököltünk**: az admin Áttekintőből hiányzik a
-Pro-konverzió, lemorzsolódás, konnektor-hibaarány és a hibás job-futások száma
-— ezekhez ma nincs adatforrás. Dönteni kell, kapjanak-e saját számlálót.
+**10 típus, mind bekötve** (Geri 9 pontjából 10 lett — a „GP-vel kapcsolatos"
+kettéválik aktivitás-utáni ÉS napi összegzésre, a spec `docs/02` táblázata is
+külön sorban tartja őket):
+
+| Típus | Kiváltó hely |
+|---|---|
+| `gp_activity` | aktivitás-mentés után (grund-növekmény + GP) |
+| `gp_daily` | napi forduló (tartás-bónusz) |
+| `activity_liked` | kedvelés |
+| `activity_commented` | hozzászólás |
+| `comment_replied` | válasz egy hozzászólásra |
+| `badge_awarded` | jelvény-kiosztás (a #6 menet visszaadott listájából) |
+| `followed_activity` | követő-fanout aktivitás-mentéskor (max 300 követő) |
+| `territory_stolen` | sikeres lopás — a károsultnak |
+| `territory_defended` | sikertelen áttörés — a védekezőnek (ÚJ adat, lásd lent) |
+| `modifier_started` | globális akció élesedik (óránként ellenőrizve) |
+
+**A védelem-csökkenés MOST MÁR VALÓDI ADAT.** A `src/game/claim.ts` régóta
+tartalmazott egy megjegyzést („a károsult értesül") egy 0-értékű
+`stolenFrom`-bejegyzés mellett — ez elő volt készítve, de sosem lett kész: a
+lopás és a védekezés-áttörés UGYANABBA a mezőbe írt, megkülönböztethetetlenül.
+Ez a menet szétválasztotta: új `breakthroughFrom: Record<string, number>`
+mező a `ClaimResult`-on, végigvezetve `resolveClaim`, `mergeClaims`,
+`absorbIsolatedRivalCells`, `activityCommit.ts` és `activityChunked.ts`-en.
+Innentől a `territory_defended` értesítés (docs/02 → „Megvédted a
+területed") valódi, felhasználónkénti adatból megy, nem kitalálásból.
+
+⚠️ **A globális akció-értesítés (`modifier_started`) NINCS emulátoros
+teszttel lefedve** — a `dailyRollover.emulator.test.ts` nem hoz létre
+modifier-dokumentumot, tehát ez a kód-ág a teljes futás alatt sosem futott le
+ténylegesen az emulátoron. Típusellenőrizve van, és a logika egyszerű
+(lekérdezés + jelzés + broadcast), de EZ AZ EGYETLEN új értesítés-trigger,
+amit nem mértem meg valódi adaton.
+
+**Push-infrastruktúra**:
+- `public/firebase-messaging-sw.js` — a Firebase-konfiguráció itt SZÁNDÉKOSAN
+  be van égetve (a service worker a Vite modulrendszerén kívül fut, nincs
+  build-idejű változó-behelyettesítés — de egyik érték sem titok, lásd a
+  fájl fejlécét).
+- `src/lib/push.ts` — engedélykérés, token-mentés KÖZVETLENÜL a klienstől
+  Firestore-ba (`devices/{uid}/tokens/{token}`, a `firestore.rules` ezt már
+  korábban is engedte), passzív token-frissítés app-indításkor
+  (`initIfAlreadyGranted`, csak akkor csinál bármit, ha az engedély MÁR
+  megvan — nem kér engedélyt magától).
+- `server/src/lib/notifications.ts` → `sendPush` — `sendEachForMulticast`,
+  500-as kötegben, érvénytelen token törlésével.
+
+**Kliens felület**: `NotificationPanel.tsx` (alulról felcsúszó lap, a
+`CommentSheet` mintájára), `useNotifications.ts` (élő `onSnapshot`-
+feliratkozás), a Home fejléc harang-ikonja mostantól aktív, olvasatlan
+pöttyel. Beállítások: `src/screens/settings/NotificationsScreen.tsx` —
+típusonkénti kapcsoló + egy push-mesterkapcsoló, mind közvetlen Firestore-
+írással (`users/{uid}/private/settings`).
+
+## KÖVETKEZŐ: 8. MENET
+
+- **Aktív akciók a térképen** (Geri eredeti 4 pontjából az egyetlen, ami
+  kimaradt). A modifier `areaCells` mezője (`src/game/modifiers.ts`) H3-
+  cellalista `MODIFIER_AREA_RES` felbontáson — ebből rajzolható határvonal a
+  Grund-térképen (`MapView.tsx`/`HexMap.tsx`, GeoJSON-forrás/réteg
+  hozzáadásával, a meglévő cella-réteg mintájára). ⚠️ **Csak `scope: 'area'`
+  modifierekre van geometria** — egy globális akciónak (mint a most futó
+  „Gazdagrét Rush") NINCS térképi kiterjedése, azt kitalálni hazugság lenne.
+  Jelmagyarázat-sor is kell hozzá.
+- **A push-küldés élő ellenőrzése.** Telepítés után egy valódi böngészőben
+  be kell kapcsolni az Értesítések → push kapcsolót, és megnézni, jön-e
+  tényleges rendszerértesítés.
+- **A `NotificationPanel` élő feliratkozásának böngészős ellenőrzése** —
+  lásd fent, ez a menet nem tudta végigvinni.
+- Geri 7 pontos jelvény/profil-listája (korábbi menetek) továbbra is:
+  keresés (5.) és rivális rendszer (7.) vannak hátra onnan.
 
 ## NYITOTT, KISEBB
 
-- **A jelvény-jutalom GP nem frissíti azonnal a `level` mezőt.** Egy jelvény
-  jutalma tipikusan kicsi ahhoz, hogy önmagában szintet lépjen; a legközelebbi
-  aktivitás úgyis frissíti. Egy körre elmaradó szint-kijelzés ártalmatlanabb,
-  mint egy plusz olvasás minden jelvényosztásnál — de ha ez zavaró lenne,
-  könnyen javítható (`server/src/lib/badges.ts` → a batch-írás mellé).
-- **Nincs értesítés az újonnan kiosztott jelvényről.** A funkció visszaadja,
-  mit osztott ki (`BadgeDef[]`), de ma senki nem használja fel — sem toast,
-  sem `notifications` bejegyzés. Ez a 6. pont (értesítések) alá tartozik.
-- **A `badges` Firestore-katalógus még üres** — a kódbeli katalógus a
-  forrás, de a Firestore-vetítést a `seed:badges` szkriptnek kell futtatnia
-  (lásd „TELEPÍTETLEN").
-- **Az időjárás csak akkor jelenik meg magától, ha van tárolt pozíció.** Friss
-  fiókkal a Home-on egy koppintható helyjel áll a widget helyén, amíg a
-  felhasználó nem járt a Grund képernyőn (az írja fel a pozíciót).
-- **Hőmérséklet-egység: csak °C**, a °F-váltás nincs megépítve.
+- **A `modifier_started` broadcast MINDEN felhasználóhoz megy**, lekérdezés-
+  szűrés nélkül. GRUNDO jelenlegi méreténél elhanyagolható; ha a
+  felhasználószám megnő, ez a lépés (`dailyRollover.ts` →
+  `notifyStartedModifiersIfDue`) újragondolandó.
+- **A jelvény-jutalom GP nem frissíti azonnal a `level` mezőt** — változatlan
+  a #6 menet óta, lásd az ottani megjegyzést `server/src/lib/badges.ts`-ben.
+- **A `badges` Firestore-katalógus** fel van töltve (lásd „ÉLESBEN FUT").
+- **Az időjárás csak akkor jelenik meg magától, ha van tárolt pozíció.**
+  Változatlan a #5 menet óta.
+- **Hőmérséklet-egység: csak °C.**
 - **gpLedger-takarítás — elő van készítve, futtatásra vár.**
-  `server/src/scripts/cleanGpLedgerJunk.ts` (dry-run alapértelmezett).
-  Legutóbb mérve (2026-08-20): 12 sor törlésre vár.
-- **A követési KÉRÉSEK elbírálására még nincs felület.** Privát fióknál a
-  kérés létrejön, de a célszemély ma sehol nem látja és nem tudja elfogadni.
-- **A tiltottak listája sincs sehol.** Feloldani ma csak úgy lehet, hogy
-  elnavigálsz a letiltott profiljára.
+  `server/src/scripts/cleanGpLedgerJunk.ts`. Legutóbb mérve (2026-08-20): 12
+  sor törlésre vár.
+- **A követési KÉRÉSEK elbírálására még nincs felület.**
+- **A tiltottak listája sincs sehol.**
 - Területi hatókörű hold-modifier nem hat: a `zones` kollekció még nincs
-  megírva. Kódban és specben rögzítve.
+  megírva.
 - `gpWeek`/`gpMonth` ablakzárás él, de éles adaton még nem láttuk működni.
 
 ## Fejlesztői előnézet — hogyan látunk éles adatot a böngészőben
 
-**⚠️ ÍRÓ FUNKCIÓHOZ (pl. jelvények) NE az éles, csak-olvasó ADC-t használd —
-az úgysem tudna írni, a próba hamis biztonságérzetet adna. Helyette a helyi
-Firestore-emulátort:**
+**Írás nélküli, csak-olvasó ellenőrzéshez** (éles adaton, nem-író
+képernyőkhöz):
 
 1. `.claude/launch.json` a `G:\Saját meghajtó\WORK\CLAUDE` gyökérben — Vite
-   dev szerver, port 5173. Már létrehozva.
-2. Emulátor: a repo gyökeréből
-   `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`,
-   majd `firebase.cmd emulators:start --only firestore --project demo-grundo`
-   (Firestore a 8081-es porton).
-3. Szerver `server/`-ből, az emulátorhoz kötve:
-   `FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 GOOGLE_CLOUD_PROJECT=demo-grundo npx tsx watch server.ts`.
-   Csak-olvasó ÉLES adathoz (nem-író képernyőkhöz) a korábbi recept marad:
+   dev szerver, port 5173.
+2. Szerver, csak-olvasó ADC-vel: `server/`-ből
    `GOOGLE_CLOUD_PROJECT=grundo PORT=8080 npx tsx watch server.ts`.
-4. `grundo/.env.local`-ban `VITE_API_BASE_URL=http://localhost:8080`, majd a
+3. `grundo/.env.local`-ban `VITE_API_BASE_URL=http://localhost:8080`, majd a
    Vite dev szervert ÚJRA KELL INDÍTANI.
-5. ⚠️ Ebben a módban **nincs Firebase-hitelesítés**. Ha egy hitelesítést
-   igénylő képernyőt kell látni, a `server/tmp/` alatt egy eldobható szerver
-   mountolja a routereket rögzített uid-del — a menetben ez volt a recept,
-   a fájlt a végén törölni kell (`tmp/` amúgy is `.gitignore`-olt).
-6. A `.env.local`-t telepítés előtt vissza kell állítani a valódi Cloud Run
-   URL-re (`https://grundo-api-irb5rjve6a-ew.a.run.app`).
+
+**ÍRÓ funkcióhoz (jelvények, értesítések) NE az éles, csak-olvasó ADC-t —
+helyi Firestore-emulátort**:
+
+1. `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`,
+   majd `firebase.cmd emulators:start --only auth,firestore --project demo-grundo`
+   (Firestore 8081, Auth 9099).
+2. Szerver, az emulátorhoz kötve:
+   `FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 GOOGLE_CLOUD_PROJECT=demo-grundo npx tsx watch server.ts`.
+3. Egy VALÓDI kliens-oldali bejelentkezéshez a `.env.local`-ba a TELJES
+   Firebase-konfiguráció kell (lásd `.env.example`), PLUSZ
+   `VITE_USE_EMULATORS=1`. ⚠️ Ebben a menetben ez a lépés NEM sikerült
+   stabilan — a kliens Firestore-kapcsolat makacsul visszaugrott az éles
+   projektre. Ha legközelebb ez kell, érdemes lehet egy tiszta, friss Vite
+   dev-szerver-indítással (ne csak `preview_stop`/`preview_start`) próbálni,
+   vagy explicit `connectFirestoreEmulator`-hívással a modul BETÖLTÉSE
+   előtt, nem utána.
+4. Ha hitelesítést igénylő képernyőt kell látni ANÉLKÜL, hogy a fenti
+   kliens-emulátor-kapcsolatot meg kellene oldani: a `server/tmp/`-be egy
+   eldobható Express-szerver (rögzített uid-del, ugyanaz a minta, mint a #5–#6
+   menetekben), a `.env.local` `VITE_API_BASE_URL`-jét erre állítva. Ez a
+   Home képernyő ÉS a statisztikapanel-átalakítás vizuális ellenőrzésénél
+   bevált ebben a menetben is.
+5. A `.env.local`-t telepítés előtt vissza kell állítani
+   (`VITE_API_BASE_URL=https://grundo-api-irb5rjve6a-ew.a.run.app`, a Firebase-
+   config sorok és a `VITE_USE_EMULATORS` törlésével).
 
 ## Infrastruktúra: éles, csak olvasó Firestore-hozzáférés
 
@@ -249,8 +291,9 @@ megszemélyesíti. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Sonnet, normál mélységgel**, ha a **kereséssel** (5. pont) vagy az
-**értesítésekkel** (6. pont) folytatjuk — mindkettő meglévő mintára épül,
-nincs benne spec-ellentmondás. **Opus, emelt mélységgel** a **rivális
-rendszerhez** (7. pont), mert ott a súlyozó képlet, az aggregálás helye és a
-lopás/visszaszerzés megkülönböztetése valódi adatmodell-döntés.
+**Opus, emelt mélységgel**, ha a **térkép-vizualizációval** folytatjuk — a
+`scope: 'area'` vs `'global'` megkülönböztetés és a GeoJSON-réteg
+hozzáadása a meglévő Mapbox-rétegekhez valódi tervezési döntés, nem rutin
+minta-követés. **Sonnet** elég, ha csak a push élő ellenőrzését vagy a
+`NotificationPanel` böngészős próbáját végezzük el — az ehhez a menethez
+tartozó kód már megvan, csak látni kell működés közben.

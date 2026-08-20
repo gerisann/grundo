@@ -39,6 +39,7 @@ import { gameDay, localDay, monthOf, nextLocalMidnight, weekOf } from '../lib/gr
 import { getGameplaySnapshot } from '../lib/gameplayConfig';
 import { getModifiers } from '../lib/modifiers';
 import { maybeRunMetricsDaily } from './metricsDaily';
+import { notifyGpDaily, notifyModifierStarted } from '../lib/notifications';
 
 export const DEFAULT_TIMEZONE = 'Europe/Budapest';
 
@@ -310,6 +311,12 @@ export async function runDailyRollover(
         summary.freezesUsed += result.freezeUsed ? 1 : 0;
         summary.milestonesAwarded += result.milestoneWeeks !== null ? 1 : 0;
         summary.weeksClosed += result.weekClosed ? 1 : 0;
+        // Csak a Firestore `notifications` alkollekcióba ír — a `users` doksi
+        // GP-mezőit NEM érinti, tehát nem veszélyezteti a fenti, pontos
+        // értékeket ellenőrző teszteket (lásd a jelvény-kiértékelés
+        // eltávolításának indoklását `lib/badges.ts` fejlécében — ez a hívás
+        // más okból biztonságos, nem azért, mert ugyanazt kevésbé nézzük).
+        notifyGpDaily(doc.id, result.hold.total);
       }
     } catch (error) {
       /**
@@ -324,7 +331,51 @@ export async function runDailyRollover(
 
   await recordRun(now, summary);
   await runMetricsDailyIfDue(now);
+  await notifyStartedModifiersIfDue(now);
   return summary;
+}
+
+/**
+ * „Aktív akció indul" — Geri 5. pontja.
+ *
+ * Az óránként futó fordulóban ellenőrizzük, elindult-e azóta egy GLOBÁLIS
+ * modifier — a `notifiedAt` mező zárja ki az ismétlést, akkor is, ha a
+ * forduló egy órán belül kétszer fut.
+ *
+ * ⚠️ CSAK `scope: 'global'`. Egy `area`/`segment` modifier csak a
+ * felhasználók egy részét érinti, és a célzáshoz (kinek a birodalma esik az
+ * érintett cellákba) a `zones` kollekció kellene, ami még nincs megírva
+ * (ugyanaz a hiány, mint a hold-modifier területi hatókörénél,
+ * `dailyRollover.ts` fentebb). Kitalálni helyette rossz célzást hazugság
+ * lenne — inkább kimarad, amíg a `zones` megvan.
+ *
+ * ⚠️ A BROADCAST MINDEN felhasználóhoz megy. GRUNDO jelenlegi méreténél ez
+ * elhanyagolható; ha a felhasználószám megnő, ez a lépés újragondolandó
+ * (pl. kötegelt, több lépcsős kiküldés).
+ */
+async function notifyStartedModifiersIfDue(now: Date): Promise<void> {
+  try {
+    const snapshot = await db
+      .collection(COLLECTIONS.modifiers)
+      .where('scope', '==', 'global')
+      .where('from', '<=', Timestamp.fromDate(now))
+      .where('to', '>', Timestamp.fromDate(now))
+      .get();
+
+    const starting = snapshot.docs.filter((doc) => !doc.data().notifiedAt);
+    if (starting.length === 0) return;
+
+    const users = await db.collection(COLLECTIONS.users).select().get();
+    const uids = users.docs.map((doc) => doc.id);
+
+    for (const doc of starting) {
+      const reason = String((doc.data() as { reason?: string }).reason ?? 'Új akció');
+      notifyModifierStarted(uids, reason);
+      await doc.ref.set({ notifiedAt: Timestamp.fromDate(now) }, { merge: true });
+    }
+  } catch (error) {
+    console.error('[dailyRollover] az akció-indulás értesítés elhasalt', error);
+  }
 }
 
 /**

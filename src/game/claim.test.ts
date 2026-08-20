@@ -72,8 +72,11 @@ describe('resolveClaim — cellánkénti szabályok', () => {
     expect(result.counts.breakthrough).toBe(1);
     expect(result.updates.get('a')).toEqual({ owner: RIVAL, defense: 2 });
     expect(result.gainedM2).toBe(0);
-    // A károsult akkor is értesül, ha nem vesztett területet
-    expect(result.stolenFrom).toHaveProperty(RIVAL);
+    // A károsult akkor is értesül, ha nem vesztett területet — de ez most
+    // a `breakthroughFrom`-ban van, NEM a `stolenFrom`-ban (a kettő
+    // szándékosan külön számlál, lásd a `ClaimResult` dokumentációját).
+    expect(result.breakthroughFrom[RIVAL]).toBe(1);
+    expect(result.stolenFrom).not.toHaveProperty(RIVAL);
   });
 
   it('vegyes halmaz: minden cella a saját szabálya szerint', () => {

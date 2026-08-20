@@ -1,0 +1,175 @@
+/* Értesítések — alulról felcsúszó lap, a CommentSheet mintájára */
+
+.npanel {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+}
+
+.npanel__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.npanel__sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 82dvh;
+  background: var(--bg-secondary);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-top: 1px solid var(--border-subtle);
+  box-shadow: 0 -8px 32px var(--shadow);
+  animation: npanel-up 200ms ease-out;
+}
+
+@keyframes npanel-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .npanel__sheet { animation: none; }
+}
+
+.npanel__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.npanel__grip {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--border-strong);
+}
+
+.npanel__title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.npanel__markall {
+  padding: 6px var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.npanel__close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+}
+
+.npanel__close:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.npanel__list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2) var(--sp-2) calc(var(--sp-3) + var(--safe-bottom));
+}
+
+.npanel__note {
+  margin: var(--sp-6) 0;
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
+
+.npanel__row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3) var(--sp-3);
+  border-radius: var(--r-md);
+  text-align: left;
+}
+
+.npanel__row:hover {
+  background: var(--surface-2);
+}
+
+/* Az OLVASATLAN sor halvány háttérrel emelkedik ki — a pötty jelöli
+   egyértelműen, a háttér csak segéd, nem az egyetlen jelzés. */
+.npanel__row--unread {
+  background: var(--accent-soft);
+}
+
+.npanel__row--unread:hover {
+  background: color-mix(in srgb, var(--accent-soft) 80%, var(--surface-2));
+}
+
+.npanel__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  font-size: 17px;
+}
+
+.npanel__text {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.npanel__row-title {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.npanel__row-body {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.npanel__row-when {
+  margin-top: 2px;
+  font-size: var(--fs-label);
+  color: var(--text-tertiary);
+}
+
+.npanel__dot {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}

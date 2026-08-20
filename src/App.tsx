@@ -17,6 +17,7 @@ import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
 import { PrivacyScreen } from './screens/settings/PrivacyScreen';
 import { RulesScreen } from './screens/settings/RulesScreen';
+import { NotificationsScreen } from './screens/settings/NotificationsScreen';
 import { WelcomeScreen } from './screens/auth/WelcomeScreen';
 import { LoginScreen } from './screens/auth/LoginScreen';
 import { RegisterScreen } from './screens/auth/RegisterScreen';
@@ -150,6 +151,7 @@ function Router() {
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
           <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
           <Route path="/beallitasok/szabalyok" element={<RulesScreen />} />
+          <Route path="/beallitasok/ertesitesek" element={<NotificationsScreen />} />
           <Route
             path="/admin/*"
             element={

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { OtpDialog } from '@/components/OtpDialog';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
-import { formatArea, formatCellCount, formatGp } from '@/lib/format';
+import { formatArea, formatCellCount, formatNumber } from '@/lib/format';
 import { Feed } from '@/components/Feed';
 import { WeatherWidget } from '@/components/WeatherWidget';
+import { NotificationPanel } from '@/components/NotificationPanel';
+import { useNotifications } from '@/hooks/useNotifications';
+import { initIfAlreadyGranted } from '@/lib/push';
 import './home.css';
 
 /**
@@ -17,6 +20,19 @@ export function HomeScreen() {
   const { user } = useAuth();
   const { profile, reload } = useProfile();
   const [otpOpen, setOtpOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const { unreadCount } = useNotifications();
+
+  /**
+   * PASSZÍV token-frissítés — csak akkor, ha az engedély MÁR megvan.
+   *
+   * Nem itt kérünk push-engedélyt (az a Beállítások/Értesítések kapcsolója,
+   * felhasználói gesztusra) — ez csak azt biztosítja, hogy egy már
+   * engedélyezett eszköz tokenje ne évüljön el csendben.
+   */
+  useEffect(() => {
+    if (user) void initIfAlreadyGranted(user.uid);
+  }, [user]);
 
   /**
    * A GRUNDO-identitás a FELHASZNÁLÓNÉV, nem a Google-fiókból átvett valódi
@@ -51,8 +67,14 @@ export function HomeScreen() {
           <button type="button" className="home__action" aria-label="Üzenetek" disabled>
             <MessageIcon />
           </button>
-          <button type="button" className="home__action" aria-label="Értesítések" disabled>
+          <button
+            type="button"
+            className="home__action"
+            aria-label={unreadCount > 0 ? `Értesítések, ${unreadCount} olvasatlan` : 'Értesítések'}
+            onClick={() => setNotificationsOpen(true)}
+          >
             <BellIcon />
+            {unreadCount > 0 ? <span className="home__action-dot" aria-hidden="true" /> : null}
           </button>
         </div>
       </header>
@@ -89,20 +111,27 @@ export function HomeScreen() {
             {/*
               A GRUND doboz SZÉLESEBB (40%), mert két adatot hordoz: mekkora és
               hány mezőből. A másik kettő 30-30% — azoknak egy szám elég.
+
+              Mindhárom doboz HÁROM SORT mutat: felül a címke, középen a
+              KIEMELT érték (nagyobb betű), alul a mértékegység vagy a
+              kiegészítő adat. A GRUND-nál a középső sor már tartalmazza a
+              saját mértékegységét (km²), az alsó sor ott egy MÁSIK adat
+              (mezőszám) — a másik kettőnél viszont az alsó sor tényleg csak
+              a felirat a bare számhoz.
             */}
             <HomeMetric
               label="Grund"
               value={formatArea(
                 (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0),
               )}
-              extra={`${formatCellCount(
+              unit={`${formatCellCount(
                 (profile?.cellCount.foot ?? 0) + (profile?.cellCount.bike ?? 0),
               )} mező`}
             />
-            {/* A címke „Aktivitás", de az ÉRTÉK továbbra is GP — a mértékegység
+            {/* A címke „Aktivitás", de az érték továbbra is GP — a mértékegység
                 nem változik attól, hogy a doboz felirata beszédesebb lett. */}
-            <HomeMetric label="Aktivitás" value={formatGp(profile?.gpTotal ?? 0)} />
-            <HomeMetric label="Sorozat" value={`${profile?.streak.current ?? 0} nap`} />
+            <HomeMetric label="Aktivitás" value={formatNumber(profile?.gpTotal ?? 0)} unit="GP" />
+            <HomeMetric label="Sorozat" value={formatNumber(profile?.streak.current ?? 0)} unit="nap" />
           </dl>
         </div>
 
@@ -119,6 +148,8 @@ export function HomeScreen() {
           }}
         />
       ) : null}
+
+      {notificationsOpen ? <NotificationPanel onClose={() => setNotificationsOpen(false)} /> : null}
     </>
   );
 }
@@ -126,20 +157,19 @@ export function HomeScreen() {
 function HomeMetric({
   label,
   value,
-  extra,
+  unit,
 }: {
   label: string;
+  /** A KIEMELT, középső sor — 20%-kal nagyobb betűvel, mint a többi szöveg. */
   value: string;
-  /** Másodlagos adat a fő érték mellé — ma csak a grund mezőszáma. */
-  extra?: string;
+  /** Az alsó sor: a Grundnál másik adat (mezőszám), a többinél a mértékegység. */
+  unit: string;
 }) {
   return (
     <div className="home__metric">
       <dt>{label}</dt>
-      <dd>
-        {value}
-        {extra ? <span className="home__metric-extra">{extra}</span> : null}
-      </dd>
+      <dd className="home__metric-value">{value}</dd>
+      <span className="home__metric-unit">{unit}</span>
     </div>
   );
 }

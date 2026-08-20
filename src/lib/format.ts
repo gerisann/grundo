@@ -61,6 +61,11 @@ export function formatGp(gp: number): string {
   return `${hu({ maximumFractionDigits: 0 }).format(gp)} GP`;
 }
 
+/** Csak a szám, mértékegység nélkül — pl. a Home statisztikapanel kiemelt sorához. */
+export function formatNumber(value: number): string {
+  return hu({ maximumFractionDigits: 0 }).format(value);
+}
+
 export function formatDistance(meters: number, unit: 'km' | 'mi' = 'km'): string {
   if (unit === 'mi') {
     return `${hu({ minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(meters / 1609.344)} mi`;

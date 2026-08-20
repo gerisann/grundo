@@ -3,6 +3,7 @@ import { type DocumentReference, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { distanceM } from '../../../src/game/geo';
+import { GAMEPLAY } from '../../../src/config/gameplay';
 import type { ActivityType, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
 import {
@@ -27,6 +28,15 @@ import {
 } from '../lib/activityCommit';
 import { commitChunkedActivity } from '../lib/activityChunked';
 import { evaluateAndAwardBadges } from '../lib/badges';
+import {
+  notifyActivityLiked,
+  notifyBadgesAwarded,
+  notifyCommentPosted,
+  notifyFollowedActivity,
+  notifyGpActivity,
+  notifyTerritoryDefended,
+  notifyTerritoryStolen,
+} from '../lib/notifications';
 
 export const activitiesRouter = Router();
 
@@ -155,7 +165,56 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
      * két emulátoros tesztet, mert azok a jutalom-GP-t pontos értékkel
      * ellenőrzik.)
      */
-    await evaluateAndAwardBadges(uid);
+    const awardedBadges = await evaluateAndAwardBadges(uid);
+
+    /**
+     * Az összes ÉRTESÍTÉS a VÁLASZ UTÁN indul, tűzz-és-felejtsd módon.
+     *
+     * Ezek — a jelvényektől eltérően — SEMMILYEN mezőt nem írnak, amit a
+     * hívó a válasz után visszaolvasna (se `gpTotal`-t, se mást a saját
+     * profilján), tehát a fenti versenyhelyzet itt nem áll fenn.
+     */
+    void (async () => {
+      const summary = committed.summary as { gp?: number; areaGainedM2?: number } | undefined;
+      if (summary) {
+        notifyGpActivity(uid, activityId, Number(summary.gp ?? 0), Number(summary.areaGainedM2 ?? 0));
+      }
+      if (awardedBadges.length > 0) notifyBadgesAwarded(uid, awardedBadges);
+
+      const stolenFrom = Object.entries(committed.stolenFrom ?? {}).filter(([, c]) => c > 0);
+      const breakthroughFrom = Object.entries(committed.breakthroughFrom ?? {}).filter(([, c]) => c > 0);
+      if (stolenFrom.length > 0 || breakthroughFrom.length > 0) {
+        const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
+        const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
+        for (const [victimId, count] of stolenFrom) {
+          notifyTerritoryStolen(victimId, username, count, count * GAMEPLAY.CELL_AREA_M2);
+        }
+        for (const [victimId, count] of breakthroughFrom) {
+          notifyTerritoryDefended(victimId, count);
+        }
+      }
+
+      /**
+       * A KÖVETŐK — legfeljebb 300, ugyanaz a felső korlát, mint a `following`
+       * feed-nézetnél (`following` alkollekció, lásd `routes/users.ts`).
+       */
+      const followers = await db
+        .collection(COLLECTIONS.users)
+        .doc(uid)
+        .collection('followers')
+        .limit(300)
+        .select()
+        .get();
+      if (!followers.empty) {
+        const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
+        const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
+        notifyFollowedActivity(followers.docs.map((doc) => doc.id), username, activityId);
+      }
+    })().catch((error: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[activities] aktivitás utáni értesítések elhasaltak', error);
+    });
+
     res.status(201).json({ activityId, summary: committed.summary });
   } catch (error) {
     next(error);
@@ -743,21 +802,36 @@ async function setLike(activityId: string, uid: string, liked: boolean) {
     const existing = await tx.get(likeRef);
     if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
 
-    const count = Number((activity.data() as { likeCount?: number }).likeCount ?? 0);
-    if (existing.exists === liked) return { likeCount: count, likedByMe: liked };
+    const activityData = activity.data() as { likeCount?: number; userId?: string };
+    const count = Number(activityData.likeCount ?? 0);
+    const ownerId = String(activityData.userId ?? '');
+    if (existing.exists === liked) return { likeCount: count, likedByMe: liked, ownerId, isNew: false };
 
     if (liked) tx.set(likeRef, { createdAt: new Date() });
     else tx.delete(likeRef);
 
     const next = Math.max(0, count + (liked ? 1 : -1));
     tx.set(activityRef, { likeCount: next }, { merge: true });
-    return { likeCount: next, likedByMe: liked };
+    return { likeCount: next, likedByMe: liked, ownerId, isNew: true };
   });
 }
 
 activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
   try {
-    res.json(await setLike(String(req.params.id), req.uid!, true));
+    const activityId = String(req.params.id);
+    const uid = req.uid!;
+    const result = await setLike(activityId, uid, true);
+    const { ownerId, isNew, ...body } = result;
+
+    // Csak VALÓDI, új kedvelésnél értesítünk — a saját aktivitásod
+    // kedvelése pedig magától értetődően nem szól neked.
+    if (isNew && ownerId && ownerId !== uid) {
+      const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
+      const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
+      notifyActivityLiked(ownerId, username, activityId);
+    }
+
+    res.json(body);
   } catch (error) {
     next(error);
   }
@@ -765,7 +839,8 @@ activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
 
 activitiesRouter.delete('/:id/like', async (req: AuthedRequest, res, next) => {
   try {
-    res.json(await setLike(String(req.params.id), req.uid!, false));
+    const { ownerId, isNew, ...body } = await setLike(String(req.params.id), req.uid!, false);
+    res.json(body);
   } catch (error) {
     next(error);
   }
@@ -815,6 +890,11 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
         userId: String(comment.userId ?? ''),
         text: String(comment.text ?? ''),
         createdAt: toMillis(comment.createdAt),
+        replyToId: (comment.replyToId as string | undefined) ?? null,
+        // A megcélzott felhasználónév DENORMALIZÁLVA van a komment dokumentumon
+        // (lásd a POST kezelőt) — a lista lekérdezés így nem kér külön olvasást
+        // minden egyes válaszhoz.
+        replyToUsername: (comment.replyToUsername as string | undefined) ?? null,
       };
     });
 
@@ -851,11 +931,34 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
     if (text.length > MAX_COMMENT) {
       throw badRequest('comment_too_long', `A hozzászólás legfeljebb ${MAX_COMMENT} karakter.`);
     }
+    const replyToId = String((req.body as { replyToId?: unknown }).replyToId ?? '') || null;
 
     const activityRef = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
     const commentRef = activityRef.collection('comments').doc();
     const now = new Date();
 
+    /**
+     * A VÁLASZ CÉLSZEMÉLYE denormalizálva kerül a komment dokumentumára
+     * (`replyToUserId`, `replyToUsername`) — a lista lekérdezés így nem kér
+     * külön olvasást minden egyes válaszhoz, és az értesítés is ebből tudja,
+     * kinek szól.
+     */
+    let replyTo: { userId: string; username: string } | null = null;
+    if (replyToId) {
+      const target = await activityRef.collection('comments').doc(replyToId).get();
+      if (target.exists) {
+        const targetUserId = String((target.data() as { userId?: string }).userId ?? '');
+        if (targetUserId && targetUserId !== req.uid) {
+          const author = await db.collection(COLLECTIONS.users).doc(targetUserId).get();
+          replyTo = {
+            userId: targetUserId,
+            username: String((author.data() as { username?: string })?.username ?? 'ismeretlen'),
+          };
+        }
+      }
+    }
+
+    let activityOwnerId = '';
     await db.runTransaction(async (tx) => {
       const activity = await tx.get(activityRef);
       if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
@@ -873,12 +976,39 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
       if (data.allowComments === false) {
         throw forbidden('Ehhez az aktivitáshoz nem lehet hozzászólni.');
       }
+      activityOwnerId = String(data.userId ?? '');
 
-      tx.set(commentRef, { userId: req.uid, text, createdAt: now });
+      tx.set(commentRef, {
+        userId: req.uid,
+        text,
+        createdAt: now,
+        ...(replyTo ? { replyToId, replyToUserId: replyTo.userId, replyToUsername: replyTo.username } : {}),
+      });
       tx.set(activityRef, { commentCount: Number(data.commentCount ?? 0) + 1 }, { merge: true });
     });
 
-    res.status(201).json({ id: commentRef.id, text, createdAt: now.getTime() });
+    /**
+     * Két KÜLÖNBÖZŐ értesítés-cél, és nem esnek egybe automatikusan: az
+     * aktivitás szerzője ("valaki kommentelt nálad") és a válasz címzettje
+     * ("válaszoltak a hozzászólásodra") két másik ember is lehet — pl. Anna
+     * aktivitásán Béla ír, Cili pedig Béla kommentjére válaszol: ekkor Anna
+     * ÉS Béla is külön értesítést kap, a kommentelő (Cili) pedig egyiket sem.
+     */
+    void notifyCommentPosted({
+      activityId: activityRef.id,
+      actorId: req.uid!,
+      activityOwnerId,
+      replyTo,
+      text,
+    });
+
+    res.status(201).json({
+      id: commentRef.id,
+      text,
+      createdAt: now.getTime(),
+      replyToId,
+      replyToUsername: replyTo?.username ?? null,
+    });
   } catch (error) {
     next(error);
   }
