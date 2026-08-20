@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chip } from '@/components/ui';
 import { ActivityList } from '@/components/Feed';
+import { BadgeList } from '@/components/BadgeList';
 import { Avatar } from '@/components/ActivityCard';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
@@ -202,6 +203,16 @@ export function ProfileScreen() {
             value={String((profile?.cellCount.foot ?? 0) + (profile?.cellCount.bike ?? 0))}
             label="meződ"
           />
+        </div>
+
+        {/* docs/02 → „Jelvények fül (kép #12)". Itt nem külön fülként, hanem
+            beágyazva jelenik meg — a képernyőnek jelenleg nincs füles
+            szerkezete, és egy jelvény-sáv önmagában nem indokol egyet. */}
+        <div>
+          <div className="label" style={{ marginBottom: 'var(--sp-3)' }}>
+            Jelvények
+          </div>
+          <BadgeList badges={profile?.badges ?? []} />
         </div>
 
         {/* A saját aktivitások — fülek nélkül: ez a te oldalad. */}

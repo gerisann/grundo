@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { normalizeUsername } from '../lib/user';
+import { toEarnedBadges } from '../lib/badges';
 import type { AuthedRequest } from '../../server';
 
 /**
@@ -117,6 +118,18 @@ usersRouter.get('/:username', async (req: AuthedRequest, res: Response, next) =>
     const data = target.data;
 
     /**
+     * A jelvények FÜGGETLENEK a privát fiók korlátozásától.
+     *
+     * A `firestore.rules` a `users/{uid}/badges` alkollekciót külön, feltétel
+     * nélkül olvashatóvá teszi (`allow read: if signedIn()`) — nem esik az
+     * `account: 'private'` kapu alá, amit a fejléc lentebb ellenőriz. Ez
+     * szándékos elválasztás a sémában: a jelvény elismerés, nem
+     * tevékenységi adat, tehát privát fiókon is látszik.
+     */
+    const badgesSnapshot = await db.collection(COLLECTIONS.users).doc(target.uid).collection('badges').get();
+    const badges = toEarnedBadges(badgesSnapshot);
+
+    /**
      * A FEJLÉC MINDIG LÁTSZIK, a többi nem feltétlenül.
      *
      * Privát fióknál (docs/02 → „Privát fióknál csak a fejléc látszik") és
@@ -134,6 +147,7 @@ usersRouter.get('/:username', async (req: AuthedRequest, res: Response, next) =>
       account: (data.privacy as { account?: string } | undefined)?.account === 'private'
         ? ('private' as const)
         : ('public' as const),
+      badges,
     };
 
     const restricted =

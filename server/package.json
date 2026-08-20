@@ -17,7 +17,8 @@
     "replay:world": "tsx src/scripts/replayWorld.ts",
     "rollover:seed": "tsx src/scripts/seedRollover.ts",
     "rollover:run": "tsx src/scripts/runRollover.ts",
-    "clean:gp-ledger-junk": "tsx src/scripts/cleanGpLedgerJunk.ts"
+    "clean:gp-ledger-junk": "tsx src/scripts/cleanGpLedgerJunk.ts",
+    "seed:badges": "tsx src/scripts/seedBadges.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",

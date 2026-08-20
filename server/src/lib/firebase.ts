@@ -37,6 +37,7 @@ export const COLLECTIONS = {
   adminAudit: 'adminAudit',
   reports: 'reports',
   followRequests: 'followRequests',
+  badges: 'badges',
   appConfig: 'appConfig',
   modifiers: 'modifiers',
   metricsDaily: 'metricsDaily',

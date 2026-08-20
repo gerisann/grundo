@@ -148,6 +148,18 @@ export interface Profile {
     endRadiusM: 50 | 100 | 200;
     routeRevision: number;
   };
+  /**
+   * Név nélkül jön — csak `{id, earnedAt}`. A nevet, leírást és ritkasági
+   * színt a `src/game/badges.ts` katalógusból oldjuk fel, ami a szerverrel
+   * közös kódban él.
+   */
+  badges: EarnedBadge[];
+}
+
+export interface EarnedBadge {
+  id: string;
+  /** Unix ms. */
+  earnedAt: number;
 }
 
 /** Amit a szerver visszaad egy feldolgozott aktivitásról. */
@@ -592,6 +604,8 @@ export interface PublicProfileHeader {
   memberSince: number | null;
   pro: { active: boolean };
   account: 'public' | 'private';
+  /** Privát fiókon és tiltásnál is látszik — a jelvény elismerés, nem tevékenységi adat. */
+  badges: EarnedBadge[];
 }
 
 /** A teljes profil — csak akkor jön, ha `restricted: false`. */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { ActivityList } from '@/components/Feed';
+import { BadgeList } from '@/components/BadgeList';
 import { Button, Chip, EmptyState } from '@/components/ui';
 import { ReportUserSheet } from '@/components/ReportUserSheet';
 import { useActivities } from '@/hooks/useActivities';
@@ -186,6 +187,14 @@ export function PublicProfileScreen() {
             {relationship?.followedBy && !relationship.blocked ? (
               <p className="pprof__followsyou">Követ téged</p>
             ) : null}
+
+            {/*
+              A jelvények privát fiókon és tiltásnál is látszanak — lásd a
+              szerver oldali indoklást (`server/src/routes/users.ts`). Üres
+              listánál nem jelenik meg semmi (`hideEmpty`): idegen profilon
+              az „Még nincs jelvényed" felszólítás nem neked szól.
+            */}
+            <BadgeList badges={state.profile.badges} hideEmpty />
 
             {state.restricted ? (
               <EmptyState

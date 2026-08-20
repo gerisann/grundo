@@ -16,6 +16,7 @@ import {
   otpEmail,
 } from '../lib/mailer';
 import { canResend, createOtp, verifyOtp, type OtpRecord } from '../lib/otp';
+import { toEarnedBadges } from '../lib/badges';
 import { displayUsername, newUserDoc, normalizeUsername, validateUsername } from '../lib/user';
 import type { AuthedRequest } from '../../server';
 import {
@@ -46,7 +47,8 @@ const mailer = createMailer();
  */
 export const meHandler: RequestHandler = async (req: AuthedRequest, res: Response, next) => {
   try {
-    const snapshot = await db.collection(COLLECTIONS.users).doc(req.uid!).get();
+    const userRef = db.collection(COLLECTIONS.users).doc(req.uid!);
+    const [snapshot, badgesSnapshot] = await Promise.all([userRef.get(), userRef.collection('badges').get()]);
     if (!snapshot.exists) {
       // Nem hiba: Firebase-fiók már van, GRUNDO-profil még nincs. A kliens
       // ilyenkor a felhasználónév-választó képernyőre visz.
@@ -58,6 +60,7 @@ export const meHandler: RequestHandler = async (req: AuthedRequest, res: Respons
         uid: req.uid,
         ...data,
         privacy: { ...((data.privacy ?? {}) as object), ...normalizePrivacy(data.privacy) },
+        badges: toEarnedBadges(badgesSnapshot),
       },
     });
   } catch (error) {

@@ -1,0 +1,47 @@
+/* Jelvény-lista — pill chipek, ritkaság szerint színezve */
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--sp-3) 6px var(--sp-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--text-primary);
+  /* A leírás és a megszerzés dátuma title-attribútumként ül rajta —
+     böngészőn belüli, extra jelölés nélküli tooltip. */
+  cursor: default;
+}
+
+/*
+  A PONT hordozza a ritkaságot, a szöveg mindig `--text-primary` marad. Egy
+  bronz/arany SZÍNŰ FELIRAT rossz kontrasztot adna világos témán — a pont
+  viszont elég kicsi ahhoz, hogy önmagában is felismerhető maradjon.
+*/
+.badge__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.badge--bronze .badge__dot   { background: var(--tier-bronze); }
+.badge--silver .badge__dot   { background: var(--tier-silver); }
+.badge--gold .badge__dot     { background: var(--tier-gold); }
+.badge--platinum .badge__dot { background: var(--tier-platinum); }
+
+.badge__name {
+  white-space: nowrap;
+}

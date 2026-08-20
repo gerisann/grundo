@@ -145,6 +145,14 @@
   --weather-bolt:   #f59e0b;
   --weather-precip: #3b82f6;
 
+  /* ── Jelvény-ritkaság ─────────────────────────────────────────────
+     Négy fokozat, a hagyományos érem-sorrendben — a platina a legritkább,
+     ezért a legvilágosabb, leghidegebb szín, hogy elüssön az arany melegétől. */
+  --tier-bronze:   #b5651d;
+  --tier-silver:   #8a8f99;
+  --tier-gold:     #c9922a;
+  --tier-platinum: #6ea8c9;
+
   /* ── Rögzítés közbeni ideiglenes nyom ────────────────────────────
      "Ez most a tiéd — ha bezárod." Halványabb, mint a birtokolt. */
   --trail-pending:      #9b6dff;
@@ -246,6 +254,13 @@
   --weather-moon:   #cbd5f5;
   --weather-bolt:   #fbbf24;
   --weather-precip: #60a5fa;
+
+  /* Sötét témában mind a négy fokozat VILÁGOSABB, hogy sötét kártyán is
+     olvasható maradjon a szöveg mellette. */
+  --tier-bronze:   #d98c4a;
+  --tier-silver:   #b8bcc6;
+  --tier-gold:     #e0ab52;
+  --tier-platinum: #94c7e6;
 
   --trail-pending:      #b99aff;
   --trail-pending-fill: rgba(185, 154, 255, 0.16);

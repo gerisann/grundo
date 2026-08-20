@@ -37,6 +37,15 @@ const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST;
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-grundo';
 const DATABASE = process.env.FIRESTORE_DATABASE_ID ?? 'grundo-db';
 
+/**
+ * Egy friss felhasználó ELSŐ, területet foglaló aktivitása MINDIG kiváltja az
+ * `first_activity` (20 GP) és a `first_loop` (50 GP) jelvényt — lásd
+ * `src/game/badges.ts`. A `seedUser` itt gpTotal:0-val és `counters` nélkül
+ * indít mindenkit, tehát ez a bónusz determinisztikus minden ilyen tesztnél,
+ * amíg a jelvények nem érnek el nagyobb küszöböt (pl. `territory_100000`).
+ */
+const FIRST_ACTIVITY_BADGE_GP = 20 + 50;
+
 describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', () => {
   let server: Server;
   let base: string;
@@ -153,7 +162,7 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     expect(summary.areaGainedM2).toBeGreaterThan(0);
 
     const user = (await db.collection(collections.users!).doc('alice').get()).data()!;
-    expect(user.gpTotal).toBe(summary.gp);
+    expect(user.gpTotal).toBe(summary.gp + FIRST_ACTIVITY_BADGE_GP);
     // A profil a NETTÓ szerzést könyveli, nem az összes érintett mezőt.
     expect(user.cellCount.foot).toBeLessThanOrEqual(summary.claimedCells);
     expect(user.cellCount.foot).toBeGreaterThan(0);
@@ -171,7 +180,7 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
 
     const user = (await db.collection(collections.users!).doc('alice').get()).data()!;
     const summary = first.body.summary as unknown as Record<string, number>;
-    expect(user.gpTotal).toBe(summary.gp);
+    expect(user.gpTotal).toBe(summary.gp + FIRST_ACTIVITY_BADGE_GP);
     expect(user.counters.activities).toBe(1);
 
     const ledger = await db.collection(collections.gpLedger!).get();
@@ -473,6 +482,16 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
       movingMs: points[points.length - 1]!.t - points[0]!.t,
     });
     const chunked = await commitChunkedActivity(plan);
+    /**
+     * A jelvény-kiértékelés a ROUTE-ban van (`routes/activities.ts`), nem a
+     * `commitChunkedActivity`-ben — ez a közvetlen hívás szándékosan kihagyja
+     * a HTTP-réteget, hogy a tiszta játékmotor-logikát vizsgálja. Az (a)
+     * gyors út viszont az `upload()`-on, tehát a valódi route-on ment át, és
+     * ott jelvényt is kapott. Hogy a `gpTotal`-összevetés alább ne térjen el
+     * emiatt szándéktalanul, itt kézzel pótoljuk ugyanazt a lépést.
+     */
+    const { evaluateAndAwardBadges } = await import('../lib/badges');
+    await evaluateAndAwardBadges('alice');
     const chunkedGrid = await gridSnapshot();
     const chunkedUser = (await db.collection(collections.users!).doc('alice').get()).data()!;
 

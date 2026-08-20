@@ -26,6 +26,7 @@ import {
   sanitizePublicSummary,
 } from '../lib/activityCommit';
 import { commitChunkedActivity } from '../lib/activityChunked';
+import { evaluateAndAwardBadges } from '../lib/badges';
 
 export const activitiesRouter = Router();
 
@@ -135,6 +136,26 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     if (committed.duplicate) {
       return res.json({ activityId, summary: committed.summary, duplicate: true });
     }
+    /**
+     * A jelvény-kiértékelés a FŐ TRANZAKCIÓN KÍVÜL fut, de a válasz ELŐTT,
+     * bevárva.
+     *
+     * ⚠️ EZ SZÁNDÉKOSAN NEM TŰZZ-ÉS-FELEJTSD, az `auth.ts` regisztrációs
+     * levelével ellentétben. Ott a mellékhatás (e-mail) semmilyen később
+     * olvasott állapotot nem érint. Itt viszont a jelvény-jutalom UGYANAZT a
+     * `gpTotal` mezőt írja, amit a hívó a válasz UTÁN azonnal visszaolvashat
+     * — egy `void`-dal indított háttérírás versenyhelyzetbe kerülne ezzel:
+     * az `activities.emulator.test.ts` egy tesztje a badge-írás előtti VAGY
+     * utáni `gpTotal`-t is láthatná, időzítéstől függően. A bevárás ezt
+     * kizárja, és mivel `evaluateAndAwardBadges` sose dob, a mentés sikere
+     * nem függ a jelvény-kiértékelés kimenetelétől.
+     *
+     * (A `dailyRollover.ts`-ből EGYÁLTALÁN NEM hívjuk — lásd
+     * `server/src/lib/badges.ts` fejlécét: ott a badge-GP MÉRVE megbuktatott
+     * két emulátoros tesztet, mert azok a jutalom-GP-t pontos értékkel
+     * ellenőrzik.)
+     */
+    await evaluateAndAwardBadges(uid);
     res.status(201).json({ activityId, summary: committed.summary });
   } catch (error) {
     next(error);
