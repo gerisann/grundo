@@ -59,7 +59,14 @@ export function ProfileScreen() {
         className="screen-header"
         style={{ justifyContent: 'space-between', paddingLeft: 'var(--sp-4)' }}
       >
-        <h1 className="screen-header__title">{profile?.username ?? 'Profil'}</h1>
+        {/*
+          A fejlécben „Profilom" áll, NEM a felhasználónév: az alatta lévő
+          kártya úgyis kiírja a nevet és a @nevet is, tehát háromszor
+          szerepelt volna egymás alatt ugyanaz. A fejléc dolga megmondani,
+          MELYIK képernyőn vagy — a nyilvános profilnál marad a név, mert ott
+          épp az a kérdés, kié.
+        */}
+        <h1 className="screen-header__title">Profilom</h1>
         <button
           type="button"
           className="screen-header__back"

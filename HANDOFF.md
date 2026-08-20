@@ -147,6 +147,9 @@ mindkét gomb látszik.
   koppintásra a nyilvános profil. Z-index 60, azaz a lapok szintje (a Dock 40,
   a feed lebegő eleme 30) — így a lista alól nem érhető el a navigáció.
 - A profil két számlálója (követő, követett) ettől GOMB lett, nem doboz.
+- A profil fejlécében **„Profilom"** áll a felhasználónév helyett: az alatta
+  lévő kártya úgyis kiírja a nevet és a `@nevet`, tehát háromszor szerepelt
+  egymás alatt ugyanaz. A nyilvános profilnál marad a név.
 
 ## AMIT MÉRTEM EBBEN A MENETBEN
 
