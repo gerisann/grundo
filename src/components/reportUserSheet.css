@@ -1,0 +1,146 @@
+/* Felhasználó bejelentése — alulról felcsúszó lap */
+
+.rsheet {
+  position: fixed;
+  inset: 0;
+  /* A dokk 40-en, a teljes képernyős térkép 50-en ül — a lap mindkettő fölé. */
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.rsheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.rsheet__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 520px;
+  /* Nem teljes magasság: alatta látszódjon, kiről van szó. */
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: var(--sp-5) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
+  border-top: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--bg-secondary);
+  box-shadow: 0 -8px 32px var(--shadow);
+  animation: rsheet-up 200ms ease-out;
+}
+
+@keyframes rsheet-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rsheet__panel { animation: none; }
+}
+
+.rsheet__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.rsheet__title {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.rsheet__lead {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.rsheet__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/*
+  Minden ok mellé ott a MAGYARÁZAT is. A puszta címke („Egyéb", „Adatvédelmi
+  aggály") félreérthető, és a rossz kategória rossz moderációs ágra viszi a
+  bejelentést — a docs/05 szerint a `branch` ebből származik.
+*/
+.rsheet__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rsheet__option:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.rsheet__option--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.rsheet__option-label {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.rsheet__option-help {
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+  line-height: 1.4;
+}
+
+.rsheet__note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.rsheet__textarea {
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r-md);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  resize: vertical;
+}
+
+.rsheet__textarea:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.rsheet__count {
+  align-self: flex-end;
+  color: var(--text-tertiary);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.rsheet__actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}

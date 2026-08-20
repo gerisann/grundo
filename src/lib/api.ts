@@ -171,7 +171,7 @@ export interface UploadActivityInput {
   movingMs: number;
 }
 
-export type FeedScope = 'mine' | 'world' | 'local' | 'following';
+export type FeedScope = 'mine' | 'world' | 'local' | 'following' | 'user';
 
 export interface FeedActivity {
   id: string;
@@ -257,8 +257,6 @@ export interface ActivityDetail {
 
 export interface FeedResult {
   activities: FeedActivity[];
-  /** Ha 'following', a követés még nem elérhető — nincs követési gráf. */
-  unavailable?: 'following';
   /** A helyi nézet a vizsgált halmaz végéig ért — lehet, hogy van még. */
   truncated?: boolean;
 }
@@ -273,6 +271,8 @@ export interface FeedQuery {
   lat?: number;
   lng?: number;
   radiusKm?: number;
+  /** Csak a `user` nézethez: kinek az aktivitásait kérjük. */
+  userId?: string;
 }
 
 export interface TerritoryResult {
@@ -573,8 +573,110 @@ export interface CreateModifierInput {
   segment?: { inactiveDays: number };
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   Nyilvános profil és közösségi gráf
+   ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * A fejléc — EZ MINDIG MEGJÖN, privát fióknál és tiltásnál is.
+ *
+ * A `restricted: true` válaszban csak ennyi van; a felület ebből is fel tudja
+ * építeni a fejlécet és a Követés kérése gombot.
+ */
+export interface PublicProfileHeader {
+  uid: string;
+  username: string;
+  usernameLower: string;
+  photoURL: string | null;
+  /** A csatlakozás ideje (Unix ms), `null`, ha a régi profilon nincs dátum. */
+  memberSince: number | null;
+  pro: { active: boolean };
+  account: 'public' | 'private';
+}
+
+/** A teljes profil — csak akkor jön, ha `restricted: false`. */
+export interface PublicProfile extends PublicProfileHeader {
+  bio: string | null;
+  city: string | null;
+  countryCode: string | null;
+  gpTotal: number;
+  territoryM2: { foot: number; bike: number };
+  cellCount: { foot: number; bike: number };
+  zoneCount: { foot: number; bike: number };
+  streak: { current: number; longest: number; weeks: number };
+  counters: {
+    activities: number;
+    followers: number;
+    following: number;
+    distanceKm: { run: number; walk: number; ride: number };
+  };
+}
+
+export interface Relationship {
+  /** A saját profilom — ilyenkor nincs se követés, se tiltás. */
+  self: boolean;
+  /** Én követem őt. */
+  following: boolean;
+  /** Ő követ engem. */
+  followedBy: boolean;
+  /** Privát fióknál elküldött, még el nem bírált kérés. */
+  requested: boolean;
+  /** Én tiltottam le őt. (Aki engem tiltott le, annak a profilja 404.) */
+  blocked: boolean;
+}
+
+export type PublicProfileResult =
+  | { profile: PublicProfileHeader; relationship: Relationship; restricted: true }
+  | { profile: PublicProfile; relationship: Relationship; restricted: false };
+
+/** A bejelentés okai — a `docs/05` `reports.category` értékkészlete. */
+export type ReportCategory =
+  | 'gps_spoof'
+  | 'vehicle'
+  | 'wrong_type'
+  | 'offensive'
+  | 'privacy'
+  | 'other';
+
+export type FollowStatus = 'following' | 'requested' | 'none';
+
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
+
+  /** Egy felhasználó nyilvános profilja, felhasználónév alapján. */
+  publicProfile: (username: string) =>
+    request<PublicProfileResult>(`/api/users/${encodeURIComponent(username)}`),
+
+  /** Követés — privát fióknál kérés lesz belőle (`requested`). */
+  follow: (username: string) =>
+    request<{ status: FollowStatus }>(`/api/users/${encodeURIComponent(username)}/follow`, {
+      method: 'POST',
+    }),
+
+  /** Követés vagy függő kérés visszavonása. */
+  unfollow: (username: string) =>
+    request<{ status: FollowStatus }>(`/api/users/${encodeURIComponent(username)}/follow`, {
+      method: 'DELETE',
+    }),
+
+  /** Tiltás — a követés mindkét irányban megszűnik. */
+  blockUser: (username: string) =>
+    request<{ status: 'blocked' }>(`/api/users/${encodeURIComponent(username)}/block`, {
+      method: 'POST',
+    }),
+
+  /** A tiltás feloldása. A követést NEM állítja vissza. */
+  unblockUser: (username: string) =>
+    request<{ status: 'none' }>(`/api/users/${encodeURIComponent(username)}/block`, {
+      method: 'DELETE',
+    }),
+
+  /** Bejelentés — egy felhasználóról egyszerre egy nyitott bejelentés lehet. */
+  reportUser: (username: string, category: ReportCategory, note: string) =>
+    request<{ ok: true }>(`/api/users/${encodeURIComponent(username)}/report`, {
+      method: 'POST',
+      body: JSON.stringify({ category, note }),
+    }),
 
   /**
    * Belépés felhasználónévvel. A szerver ellenőrzi a jelszót, és egy
@@ -637,6 +739,7 @@ export const api = {
       params.set('lng', String(query.lng ?? 0));
       params.set('radiusKm', String(query.radiusKm ?? 10));
     }
+    if (query.scope === 'user') params.set('userId', query.userId ?? '');
     return request<FeedResult>(`/api/activities?${params.toString()}`);
   },
 

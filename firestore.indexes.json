@@ -26,6 +26,26 @@
       ]
     },
     {
+      "//": "Idegen profil aktivitáslistája és a `following` feed. A követett uid-ekre menő `in` szűrő a Firestore szemében ugyanolyan egyenlőség, mint egyetlen userId — mindkét lekérdezés ezt az indexet használja.",
+      "collectionGroup": "activities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "A kétszer-bejelentés kiszűrése: van-e már nyitott bejelentésem erről a felhasználóról.",
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "reporterId", "order": "ASCENDING" },
+        { "fieldPath": "targetId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "activities",
       "queryScope": "COLLECTION",
       "fields": [

@@ -35,6 +35,8 @@ export const COLLECTIONS = {
   activityTrust: 'activityTrust',
   activityAudits: 'activityAudits',
   adminAudit: 'adminAudit',
+  reports: 'reports',
+  followRequests: 'followRequests',
   appConfig: 'appConfig',
   modifiers: 'modifiers',
   metricsDaily: 'metricsDaily',

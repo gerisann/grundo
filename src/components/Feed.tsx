@@ -331,7 +331,8 @@ export interface ActivityListProps {
   error: string;
   radiusKm?: number;
   onRetry: () => void;
-  onStart: () => void;
+  /** Csak a `mine` nézet üres állapotában van rá szükség. */
+  onStart?: () => void;
 }
 
 /**
@@ -365,29 +366,43 @@ export function ActivityList({
 
   if (result === null || loading) return <div className="card">Betöltés…</div>;
 
-  /**
-   * A követés nem „üres", hanem NINCS MÉG.
-   *
-   * A kettő között a felhasználó szempontjából óriási a különbség: az egyik
-   * azt jelenti, hogy keressen embereket, a másik azt, hogy ne is próbálja.
-   */
-  if (result.unavailable === 'following') {
-    return (
-      <EmptyState
-        title="A követés még nem elérhető"
-        description="Hamarosan követhetsz másokat, és itt fognak megjelenni az ő aktivitásaik. Addig nézd a Globális feedet."
-      />
-    );
-  }
-
   if (result.activities.length === 0) {
-    return scope === 'mine' ? (
-      <EmptyState
-        title="Még nincs aktivitásod"
-        description="Zárj be egy kört, és a közrezárt terület a tiéd lesz. Minden méter pontot ér — akkor is, ha nem zárul a kör."
-        action={<Button onClick={onStart}>Kezdd az első aktivitásod</Button>}
-      />
-    ) : (
+    if (scope === 'mine') {
+      return (
+        <EmptyState
+          title="Még nincs aktivitásod"
+          description="Zárj be egy kört, és a közrezárt terület a tiéd lesz. Minden méter pontot ér — akkor is, ha nem zárul a kör."
+          action={<Button onClick={onStart}>Kezdd az első aktivitásod</Button>}
+        />
+      );
+    }
+    /**
+     * A követett feed üressége KÉT dolgot jelenthet: nem követsz még senkit,
+     * vagy akiket követsz, azok nem mozogtak. A szerver ezt nem különbözteti
+     * meg, ezért a szöveg mindkettőre értelmes marad — de a globális feedre
+     * mutat, ahol embereket lehet találni.
+     */
+    if (scope === 'following') {
+      return (
+        <EmptyState
+          title="Üres a követett feed"
+          description="Vagy még nem követsz senkit, vagy akiket követsz, épp nem mozogtak. A Globális feeden találsz embereket — koppints valakinek a nevére, és onnan követheted."
+        />
+      );
+    }
+    /**
+     * Idegen profilon a globális feed szövege („Még senki nem rögzített
+     * aktivitást") hazugság: nem mindenkiről van szó, hanem EGY emberről.
+     */
+    if (scope === 'user') {
+      return (
+        <EmptyState
+          title="Még nincs látható aktivitás"
+          description="Ez a felhasználó vagy még nem rögzített aktivitást, vagy nem osztja meg őket nyilvánosan."
+        />
+      );
+    }
+    return (
       <EmptyState
         title={scope === 'local' ? 'Nincs itt még senki' : 'Nincs mit mutatni'}
         description={

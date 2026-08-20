@@ -149,10 +149,13 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
  *   world     — mindenki, időrendben
  *   local     — mindenki, de csak a közelben (lat/lng/radiusKm kell hozzá)
  *   following — akiket követek
+ *   user      — egyetlen felhasználó nyilvános aktivitásai (`userId` kell hozzá)
  *
- * A KÖVETÉS még nem működik: nincs követési gráf az adatbázisban. A végpont
- * ezt őszintén megmondja (`unavailable: 'following'`), hogy a felület ne úgy
- * tegyen, mintha csak épp nem követnél senkit.
+ * A KÖVETÉS a `users/{uid}/following` alkollekcióból dolgozik. A Firestore
+ * `in` szűrője EGYSZERRE 30 értéket enged, ezért a listát darabokra bontjuk,
+ * és a darabok eredményét itt fésüljük össze. A `FOLLOWING_CHUNKS` felső
+ * korlát azt fogja meg, hogy egy sok száz embert követő fiók feedje ne
+ * jelentsen tucatnyi lekérdezést minden görgetésnél.
  *
  * A HELYI nézet földrajzi szűrése ITT történik, nem a lekérdezésben: a
  * Firestore nem tud „adott ponttól x km-en belül" kérdést. A rendes megoldás
@@ -165,7 +168,13 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
  */
 const LOCAL_SCAN_LIMIT = 300;
 
-type Scope = 'mine' | 'world' | 'local' | 'following';
+/** A Firestore `in` szűrője egyszerre ennyi értéket enged. */
+const IN_CHUNK = 30;
+
+/** Legfeljebb ennyi darabban kérdezünk rá a követettekre (30 × 10 = 300 fő). */
+const FOLLOWING_CHUNKS = 10;
+
+type Scope = 'mine' | 'world' | 'local' | 'following' | 'user';
 
 activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
   try {
@@ -177,38 +186,88 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       throw badRequest('invalid_date_range', 'Az időszak kezdete nem lehet később a végénél.');
     }
 
-    if (scope === 'following') {
-      return res.json({ activities: [], unavailable: 'following' });
-    }
-
     const collection = db.collection(COLLECTIONS.activities);
+    const perQueryLimit =
+      scope === 'local' ? LOCAL_SCAN_LIMIT : scope === 'mine' ? Math.min(150, limit * 3) : limit;
 
-    let query: Query = scope === 'mine'
-      ? collection.where('userId', '==', req.uid!)
-      : collection.where('visibility', '==', 'everyone');
-    if (dateFrom !== null) query = query.where('startedAt', '>=', new Date(dateFrom));
-    if (dateTo !== null) query = query.where('startedAt', '<=', new Date(dateTo));
-    query = query
-      .orderBy('startedAt', 'desc')
+    /** A dátumszűrő és a rendezés minden nézetre ugyanaz — egy helyen. */
+    const finish = (query: Query): Query => {
+      let next = query;
+      if (dateFrom !== null) next = next.where('startedAt', '>=', new Date(dateFrom));
+      if (dateTo !== null) next = next.where('startedAt', '<=', new Date(dateTo));
       // A saját listában a 30 napig tárolt soft-delete dokumentumokat csak a
       // lekérés után tudjuk kiszűrni, ezért kis ráhagyással olvasunk.
-      .limit(scope === 'local' ? LOCAL_SCAN_LIMIT : scope === 'mine' ? Math.min(150, limit * 3) : limit);
+      return next.orderBy('startedAt', 'desc').limit(perQueryLimit);
+    };
 
-    const snapshot = await query.get();
-    const repairLimit = scope === 'local' ? Math.min(50, snapshot.docs.length) : snapshot.docs.length;
+    const queries: Query[] = [];
+    if (scope === 'mine') {
+      queries.push(finish(collection.where('userId', '==', req.uid!)));
+    } else if (scope === 'user') {
+      const target = String(req.query.userId ?? '');
+      if (!target) throw badRequest('missing_user', 'Hiányzik a felhasználó azonosítója.');
+      /**
+       * A SAJÁT profilom is ezen a nézeten megy — ott viszont a rejtett
+       * aktivitásokat is látnom kell, hiszen az enyémek. Idegen profilnál
+       * csak a `visibility: 'everyone'` megy ki; a `followers` láthatóság
+       * szűrése akkor kerül ide, amikor a Feed is tud vele mit kezdeni.
+       */
+      queries.push(
+        finish(
+          target === req.uid
+            ? collection.where('userId', '==', target)
+            : collection.where('userId', '==', target).where('visibility', '==', 'everyone'),
+        ),
+      );
+    } else if (scope === 'following') {
+      const following = await db
+        .collection(COLLECTIONS.users)
+        .doc(req.uid!)
+        .collection('following')
+        .limit(IN_CHUNK * FOLLOWING_CHUNKS)
+        .get();
+      const ids = following.docs.map((doc) => doc.id);
+      if (ids.length === 0) {
+        return res.json({ activities: [], truncated: false });
+      }
+      for (let index = 0; index < ids.length; index += IN_CHUNK) {
+        queries.push(
+          finish(
+            collection
+              .where('userId', 'in', ids.slice(index, index + IN_CHUNK))
+              .where('visibility', '==', 'everyone'),
+          ),
+        );
+      }
+    } else {
+      queries.push(finish(collection.where('visibility', '==', 'everyone')));
+    }
+
+    const snapshots = await Promise.all(queries.map((query) => query.get()));
+    /**
+     * Több darab esetén az egyesített halmazt ÚJRA RENDEZNI kell: külön-külön
+     * mindegyik időrendben jön, együtt viszont nem. Rendezés nélkül a feed
+     * darabonként csoportosítva mutatná a bejegyzéseket.
+     */
+    const docs = snapshots
+      .flatMap((snapshot) => snapshot.docs)
+      .sort((a, b) => toMillis(b.data().startedAt) - toMillis(a.data().startedAt))
+      .slice(0, scope === 'local' ? LOCAL_SCAN_LIMIT : perQueryLimit);
+
+    const repairLimit = scope === 'local' ? Math.min(50, docs.length) : docs.length;
     const documents = await Promise.all(
-      snapshot.docs.map(async (doc, index) => {
+      docs.map(async (doc, index) => {
         const data = doc.data() as Record<string, unknown>;
         if (index >= repairLimit || data.deletedAt != null) return data;
         return repairActivityRoute(doc.ref, data);
       }),
     );
     let rows = documents
-      .map((data, index) => ({ data, doc: snapshot.docs[index]! }))
+      .map((data, index) => ({ data, doc: docs[index]! }))
       .filter(({ data }) => data.deletedAt == null)
       .map(({ data, doc }) => toFeedRow(doc.id, data));
     rows = await withOwnerFullRoutes(rows, req.uid!);
-    if (scope === 'mine') rows = rows.slice(0, limit);
+    if (scope === 'mine' || scope === 'user' || scope === 'following') rows = rows.slice(0, limit);
 
     let truncated = false;
     if (scope === 'local') {
@@ -221,7 +280,7 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       rows = rows
         .filter((row) => row.center !== null && distanceM({ lat, lng }, row.center) <= radiusKm * 1000)
         .slice(0, limit);
-      truncated = snapshot.size >= LOCAL_SCAN_LIMIT;
+      truncated = docs.length >= LOCAL_SCAN_LIMIT;
     }
 
     res.json({ activities: await withAuthors(rows, req.uid!), truncated });
@@ -232,7 +291,13 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
 
 function parseScope(raw: unknown): Scope {
   const value = String(raw ?? 'mine');
-  if (value === 'mine' || value === 'world' || value === 'local' || value === 'following') {
+  if (
+    value === 'mine' ||
+    value === 'world' ||
+    value === 'local' ||
+    value === 'following' ||
+    value === 'user'
+  ) {
     return value;
   }
   throw badRequest('invalid_scope', 'Ismeretlen nézet.');

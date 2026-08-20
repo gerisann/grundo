@@ -1,0 +1,224 @@
+/* Nyilvános profil (/felhasznalo/:username) */
+
+/*
+  A fejléc három részre oszlik: vissza · név · ⋯ menü. A `justify-content` a
+  `.screen-header` alapértelmezését írja felül, ami a címet balra húzná.
+*/
+.pprof__header {
+  justify-content: space-between;
+}
+
+/*
+  KÖZÉPRE IGAZÍTOTT személyazonosság, nem balra, mint a saját profilon.
+  A különbség szándékos: itt nincs szerkesztés, a képernyő egyetlen kérdésre
+  felel — ki ez az ember —, és ehhez a középre helyezett arckép illik.
+*/
+.pprof__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  text-align: center;
+}
+
+.pprof__name {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-title);
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.pprof__handle {
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+}
+
+.pprof__since {
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+}
+
+.pprof__followsyou {
+  margin: calc(-1 * var(--sp-2)) 0 0;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+}
+
+.pprof__bio {
+  margin: 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.pprof__notice {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+}
+
+/* ── Számok ─────────────────────────────────────────────────────── */
+
+/*
+  HÁROM oszlop, két sorban. A referenciaképen ugyanez a ritmus: a hat szám
+  egyszerre látszik, görgetés nélkül, és a szem soronként olvassa.
+*/
+.pprof__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.pprof__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 76px;
+  padding: var(--sp-3) var(--sp-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  text-align: center;
+}
+
+button.pprof__tile {
+  cursor: pointer;
+}
+
+button.pprof__tile:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.pprof__tile-value {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--text-primary);
+  /* A hosszú számok (55.833 km²) ne törjék szét a csempét. */
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+}
+
+/*
+  A TERÜLETHEZ TARTOZÓ SZÁMOK kiemelve — ez a GRUNDO saját mértéke, nem egy
+  a sok futóapp-statisztika közül. A szín ugyanaz, mint a térképen a saját
+  területé, hogy a kettő összekapcsolódjon.
+*/
+.pprof__tile-value--accent {
+  color: var(--territory-own);
+}
+
+.pprof__tile-label {
+  color: var(--text-tertiary);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pprof__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  justify-content: center;
+}
+
+/* ── ⋯ menü ─────────────────────────────────────────────────────── */
+
+.pprof__sheet {
+  position: fixed;
+  inset: 0;
+  /* A dokk 40-en, a teljes képernyős térkép 50-en ül — a lap mindkettő fölé. */
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--safe-bottom));
+}
+
+.pprof__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.pprof__menu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+  max-width: 420px;
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  box-shadow: 0 -8px 32px var(--shadow);
+  animation: pprof-up 180ms ease-out;
+}
+
+@keyframes pprof-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pprof__menu { animation: none; }
+}
+
+.pprof__menu-title {
+  margin-bottom: var(--sp-1);
+  text-align: center;
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.pprof__menu-item {
+  padding: var(--sp-4);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pprof__menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pprof__menu-item:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+/*
+  A jelentés FIGYELMEZTETŐ, a tiltás VESZÉLYES színt kap — a referenciaképen
+  is így különül el a kettő. A jelentés egy kérés a moderáció felé; a tiltás
+  azonnal és visszavonhatóan is átszabja, mit lát a felhasználó.
+*/
+.pprof__menu-item--warn {
+  background: color-mix(in srgb, var(--warning) 16%, var(--surface-2));
+  color: var(--warning);
+}
+
+.pprof__menu-item--danger {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface-2));
+  color: var(--danger);
+}
+
+.pprof__menu-item--cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}

@@ -11,6 +11,7 @@ import { TerritoryScreen } from './screens/TerritoryScreen';
 import { TrackingScreen } from './screens/TrackingScreen';
 import { CommunityScreen } from './screens/CommunityScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { PublicProfileScreen } from './screens/PublicProfileScreen';
 import { ActivityScreen } from './screens/ActivityScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
@@ -142,6 +143,8 @@ function Router() {
           <Route path="/rogzites" element={<TrackingScreen />} />
           <Route path="/kozosseg" element={<CommunityScreen />} />
           <Route path="/profil" element={<ProfileScreen />} />
+          {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}
+          <Route path="/felhasznalo/:username" element={<PublicProfileScreen />} />
           <Route path="/aktivitas/:id" element={<ActivityScreen />} />
           <Route path="/beallitasok" element={<SettingsScreen />} />
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />

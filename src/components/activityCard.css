@@ -16,6 +16,22 @@
   padding: var(--sp-3) var(--sp-3) 0;
 }
 
+/*
+  Idegen szerzőnél a fejléc KÜLÖN gomb, ami a profiljára visz. Ilyenkor a
+  kártya maradék része már nem kaphat felső belső margót, különben a fejléc
+  és a cím között kétszeres hézag támadna.
+*/
+.acard__open--headless {
+  padding-top: 0;
+}
+
+.acard__author:focus-visible,
+.acard__open:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: -3px;
+  border-radius: var(--r-md);
+}
+
 .acard__head {
   display: flex;
   align-items: center;

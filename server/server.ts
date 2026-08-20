@@ -26,6 +26,7 @@ import { devRouter } from './src/routes/dev';
 import { jobsRouter } from './src/routes/jobs';
 import { adminRouter } from './src/routes/admin';
 import { rulesRouter } from './src/routes/rules';
+import { usersRouter } from './src/routes/users';
 
 export { db, FIRESTORE_DATABASE_ID };
 
@@ -134,6 +135,7 @@ app.use('/api/rules', rulesRouter);
 
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);
+app.use('/api/users', authenticate, usersRouter);
 app.use('/api/tiles', authenticate, tilesRouter);
 app.use('/api/missions', authenticate, missionsRouter);
 app.use('/api/dev', authenticate, devRouter);

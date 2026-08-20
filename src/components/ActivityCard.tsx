@@ -45,25 +45,46 @@ export function ActivityCard({
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
   const title = item.title ?? activityTitle(item.type, item.startedAt);
 
+  /*
+    A FEJLÉC A NYITÓ GOMBON KÍVÜL VAN, és ennek oka van: idegen szerzőnél a
+    névre koppintva a PROFILJA nyílik meg, nem az aktivitás. Két gomb egymásba
+    ágyazva sem HTML-ben, sem képernyőolvasóval nem működik, tehát a fejléc
+    saját sorként áll, és maga dönti el, hova visz.
+  */
+  const head = (
+    <header className="acard__head">
+      <Avatar url={item.author.photoURL} name={item.author.username} />
+      <span className="acard__who">
+        <span className="acard__name">{showAuthor ? item.author.username : title}</span>
+        <span className="acard__when">
+          <span aria-hidden="true">{ACTIVITY_ICON[item.type]}</span>{' '}
+          {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}
+          {formatRelativeDay(item.startedAt)}
+        </span>
+      </span>
+    </header>
+  );
+
   return (
     <article className="acard">
+      {showAuthor ? (
+        <button
+          type="button"
+          className="acard__open acard__author"
+          onClick={() => navigate(`/felhasznalo/${encodeURIComponent(item.author.username)}`)}
+          aria-label={`${item.author.username} profiljának megnyitása`}
+        >
+          {head}
+        </button>
+      ) : null}
+
       <button
         type="button"
-        className="acard__open"
+        className={`acard__open${showAuthor ? ' acard__open--headless' : ''}`}
         onClick={() => navigate(`/aktivitas/${item.id}`)}
         aria-label={`${title} megnyitása`}
       >
-        <header className="acard__head">
-          <Avatar url={item.author.photoURL} name={item.author.username} />
-          <span className="acard__who">
-            <span className="acard__name">{showAuthor ? item.author.username : title}</span>
-            <span className="acard__when">
-              <span aria-hidden="true">{ACTIVITY_ICON[item.type]}</span>{' '}
-              {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}
-              {formatRelativeDay(item.startedAt)}
-            </span>
-          </span>
-        </header>
+        {showAuthor ? null : head}
 
         {showAuthor ? <h3 className="acard__title">{title}</h3> : null}
 
