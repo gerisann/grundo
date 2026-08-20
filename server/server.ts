@@ -25,6 +25,7 @@ import { missionsRouter } from './src/routes/missions';
 import { devRouter } from './src/routes/dev';
 import { jobsRouter } from './src/routes/jobs';
 import { adminRouter } from './src/routes/admin';
+import { rulesRouter } from './src/routes/rules';
 
 export { db, FIRESTORE_DATABASE_ID };
 
@@ -123,6 +124,13 @@ app.post('/api/auth/login', loginHandler);
  * pörgethető névellenőrző.
  */
 app.post('/api/auth/method', signInMethodHandler);
+
+/**
+ * NYILVÁNOS: a szabálymagyarázó felület adatforrása. Nincs benne
+ * felhasználói adat, csak a hatályos játékkonstansok és az aktív akciók —
+ * lásd `src/routes/rules.ts`.
+ */
+app.use('/api/rules', rulesRouter);
 
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);

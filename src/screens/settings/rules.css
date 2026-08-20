@@ -1,0 +1,53 @@
+.rules-screen__intro {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.rules-screen__loading {
+  margin: 0;
+  color: var(--text-tertiary);
+}
+
+.rules-screen__value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+
+.rules-screen__badge {
+  height: 22px;
+  padding: 0 var(--sp-2);
+  font-size: 11px;
+}
+
+.rules-modifier {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+}
+
+.rules-modifier__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.rules-modifier__reason {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rules-modifier__detail {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+}
+
+.rules-modifier__until {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+}

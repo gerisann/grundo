@@ -46,6 +46,11 @@ export function SettingsScreen() {
               description="A megosztott útvonal elejének és végének elrejtése"
               onClick={() => navigate('/beallitasok/adatvedelem')}
             />
+            <ListRow
+              label="Játékszabályok"
+              description="A jelenleg érvényes pontszámítás és az aktív akciók"
+              onClick={() => navigate('/beallitasok/szabalyok')}
+            />
           </List>
         </section>
 

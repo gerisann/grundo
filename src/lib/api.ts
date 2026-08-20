@@ -489,6 +489,40 @@ export type ModifierKindName = 'gp_multiplier' | 'claim_multiplier' | 'hold_mult
 export type ModifierScopeName = 'global' | 'area' | 'segment';
 export type ModifierState = 'active' | 'scheduled' | 'expired' | 'cancelled';
 
+/**
+ * A nyilvános szabálymagyarázó egy sora.
+ *
+ * SZŰKEBB, mint az admin `TunableItem`: nincs benne `min`/`max` (ez nem
+ * szerkesztő) és a Trust Score-csoport itt eleve nem is jelenik meg — a
+ * szerver zárja ki, lásd `src/config/tunables.ts` → `playerVisible`.
+ */
+export interface PublicTunableItem {
+  path: string;
+  kind: 'number' | 'integer' | 'boolean';
+  unit?: string;
+  label: string;
+  help: string;
+  defaultValue: number | boolean;
+  value: number | boolean;
+  overridden: boolean;
+}
+
+export interface PublicActiveModifier {
+  id: string;
+  kind: ModifierKindName;
+  scope: ModifierScopeName;
+  value: number;
+  reason: string;
+  from: string;
+  to: string;
+}
+
+export interface RulesState {
+  version: number;
+  groups: Array<{ group: string; items: PublicTunableItem[] }>;
+  activeModifiers: PublicActiveModifier[];
+}
+
 export interface AdminModifier {
   id: string;
   kind: ModifierKindName;
@@ -695,6 +729,13 @@ export const api = {
       points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
       audit: DevActivityAudit | null;
     }>(`/api/dev/activities/${encodeURIComponent(id)}`),
+
+  /**
+   * Szabálymagyarázó — nyilvános, hitelesítés nélkül is hívható.
+   * Ugyanabból a sémából jön, mint az admin szerkesztő, ezért egy átállított
+   * szorzó után a szöveg sem hazudik.
+   */
+  rules: () => request<RulesState>('/api/rules'),
 
   // ── Admin ───────────────────────────────────────────────────────────────
   adminStatus: () => request<AdminStatus>('/api/admin/status'),

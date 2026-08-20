@@ -40,6 +40,15 @@ export interface TunableSpec {
   /** Magyar magyarázat — ez jelenik meg a felhasználónak is. */
   help: string;
   unit?: string;
+  /**
+   * Kikerülhet-e a nyilvános szabálymagyarázó végpontra. Alapértelmezés
+   * `false` — csak azok a kulcsok nyilvánosak, amiket EXPLICIT `true`-ra
+   * állítunk. Fordítva veszélyes lenne: egy elfelejtett jelölés így legfeljebb
+   * egy magyarázat marad ki, nem egy Trust Score-küszöb szivárog ki. Ez zárja
+   * ki a kockázatot a sémában magában, nem a fogyasztóban — a 6. alapszabály
+   * szerint „a Trust Score sosem publikus, se a szám, se a részjelek".
+   */
+  playerVisible?: boolean;
 }
 
 export const TUNABLES: readonly TunableSpec[] = [
@@ -51,6 +60,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100,
     unit: 'GP/km',
     group: 'Alappont',
+    playerVisible: true,
     label: 'Futás',
     help: 'Minden megtett kilométer ennyi pontot ér futás közben — akkor is, ha nem zárul be a kör.',
   },
@@ -61,6 +71,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100,
     unit: 'GP/km',
     group: 'Alappont',
+    playerVisible: true,
     label: 'Gyaloglás',
     help: 'Minden megtett kilométer ennyi pontot ér gyaloglás közben.',
   },
@@ -71,6 +82,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100,
     unit: 'GP/km',
     group: 'Alappont',
+    playerVisible: true,
     label: 'Kerékpár',
     help: 'Minden megtett kilométer ennyi pontot ér bringával. Azért alacsonyabb, mert bringával ugyanannyi idő alatt sokkal több kilométer jön össze.',
   },
@@ -83,6 +95,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 2000,
     unit: 'GP',
     group: 'Területfoglalás',
+    playerVisible: true,
     label: 'Igény-együttható',
     help: 'A bezárt területért járó pont: ennyi GP szorozva a terület négyzetgyökével (km²-ben). A gyök azért kell, mert a bezárt terület a kör méretének négyzetével nő, a megtett út viszont csak egyenes arányban — enélkül egyetlen nagy kör mindent vinne.',
   },
@@ -92,6 +105,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     min: 0,
     max: 3,
     group: 'Területfoglalás',
+    playerVisible: true,
     label: 'Lopás bónusz',
     help: 'Ha idegentől veszed el a mezőt, az arra eső igénypont ennyiszeresét kapod ráadásként. 0,5 = plusz 50 %.',
   },
@@ -101,6 +115,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     min: 0,
     max: 3,
     group: 'Területfoglalás',
+    playerVisible: true,
     label: 'Áttörés bónusz',
     help: 'Ha védett idegen mezőt támadsz, és az még nem cserél gazdát, csak a védelme csökken, az arra eső igénypont ennyiszerese jár. Így az „eredménytelen" támadás sem hiábavaló.',
   },
@@ -113,6 +128,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 20,
     unit: '×',
     group: 'Védelem',
+    playerVisible: true,
     label: '1-es védelem szorzója',
     help: 'Frissen szerzett mező. Ez a viszonyítási alap, ezért mindig 1.',
   },
@@ -123,6 +139,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 20,
     unit: '×',
     group: 'Védelem',
+    playerVisible: true,
     label: '2-es védelem szorzója',
     help: 'A saját meződ ismételt bezárása +1 védelmet ad, és az igénypont ezzel szorzódik.',
   },
@@ -133,6 +150,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 20,
     unit: '×',
     group: 'Védelem',
+    playerVisible: true,
     label: '3-as védelem szorzója',
     help: 'Harmadszor is ugyanaz a kör.',
   },
@@ -143,6 +161,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 20,
     unit: '×',
     group: 'Védelem',
+    playerVisible: true,
     label: '4-es védelem szorzója',
     help: 'Negyedszer is ugyanaz a kör.',
   },
@@ -153,6 +172,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 20,
     unit: '×',
     group: 'Védelem',
+    playerVisible: true,
     label: '5-ös védelem szorzója',
     help: 'A legmagasabb védelmi szint. A védelem naponta egy szintet gyengül, tehát ezt tartani csak rendszeres mozgással lehet.',
   },
@@ -164,6 +184,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     min: 0,
     max: 1,
     group: 'Sorozat',
+    playerVisible: true,
     label: 'Napi lépcső',
     help: 'A sorozat minden további napja ennyivel növeli a szorzót. 0,05 = naponta plusz 5 %.',
   },
@@ -174,6 +195,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 5,
     unit: '×',
     group: 'Sorozat',
+    playerVisible: true,
     label: 'Sorozat-plafon',
     help: 'A sorozatszorzó ennél nagyobb nem lehet, akármeddig tart a széria.',
   },
@@ -184,6 +206,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 7,
     unit: 'nap',
     group: 'Sorozat',
+    playerVisible: true,
     label: 'Heti fagyasztás',
     help: 'Hetente ennyi kihagyott nap nem töri meg a sorozatot. Ez véd attól, hogy egy betegség vagy egy utazás lenullázzon egy hosszú szériát.',
   },
@@ -194,6 +217,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 7,
     unit: 'nap',
     group: 'Sorozat',
+    playerVisible: true,
     label: 'Heti sorozat feltétele',
     help: 'Egy hét akkor számít bele a heti sorozatba, ha legalább ennyi napon volt mentett aktivitásod.',
   },
@@ -204,6 +228,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100000,
     unit: 'GP',
     group: 'Sorozat',
+    playerVisible: true,
     label: '4 hetes mérföldkő',
     help: 'Egyszeri jutalom, ha négy egymást követő héten volt legalább három aktív napod.',
   },
@@ -214,6 +239,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100000,
     unit: 'GP',
     group: 'Sorozat',
+    playerVisible: true,
     label: '12 hetes mérföldkő',
     help: 'Egyszeri jutalom tizenkét hetes heti sorozatért.',
   },
@@ -224,6 +250,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100000,
     unit: 'GP',
     group: 'Sorozat',
+    playerVisible: true,
     label: '26 hetes mérföldkő',
     help: 'Egyszeri jutalom fél évnyi heti sorozatért.',
   },
@@ -234,6 +261,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100000,
     unit: 'GP',
     group: 'Sorozat',
+    playerVisible: true,
     label: '52 hetes mérföldkő',
     help: 'Egyszeri jutalom egy teljes évnyi heti sorozatért.',
   },
@@ -246,6 +274,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 10000,
     unit: 'GP/km²/nap',
     group: 'Napi jóváírás',
+    playerVisible: true,
     label: 'Tartás-bónusz',
     help: 'A birtokolt terület minden nap ennyi pontot termel négyzetkilométerenként. Ez a passzív bevételed: a birodalom akkor is dolgozik, amikor te pihensz.',
   },
@@ -256,6 +285,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 100000,
     unit: 'GP/nap',
     group: 'Napi jóváírás',
+    playerVisible: true,
     label: 'Tartás-plafon',
     help: 'A tartás-bónusz naponta ennél többet nem adhat. Ez akadályozza meg, hogy egy korán induló nagybirtokos passzívan elszaladjon. A két réteg (gyalogos és bringás) külön-külön számít, saját plafonnal.',
   },
@@ -266,6 +296,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 365,
     unit: 'nap',
     group: 'Napi jóváírás',
+    playerVisible: true,
     label: 'Aktivitási feltétel',
     help: 'A tartás-bónusz csak akkor jár, ha ennyi napon belül volt legalább egy mentett aktivitásod. Az inaktív birodalom nem termel.',
   },
@@ -276,6 +307,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 1000000,
     unit: 'GP/nap',
     group: 'Napi jóváírás',
+    playerVisible: true,
     label: 'Lágy plafon',
     help: 'Efölött a napi pont csökkentett értéken számít. Nem kemény korlát: az extrém teljesítmény továbbra is jutalmazott, csak csökkenő hozammal.',
   },
@@ -285,6 +317,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     min: 0,
     max: 1,
     group: 'Napi jóváírás',
+    playerVisible: true,
     label: 'Lágy plafon hozama',
     help: 'A lágy plafon fölötti rész ennyiszeres értéken számít. 0,5 = fél értéken.',
   },
@@ -297,6 +330,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 10000,
     unit: 'm',
     group: 'Rögzítés',
+    playerVisible: true,
     label: 'Minimális távolság',
     help: 'Ennél rövidebb aktivitás nem menthető.',
   },
@@ -307,6 +341,7 @@ export const TUNABLES: readonly TunableSpec[] = [
     max: 200,
     unit: 'm',
     group: 'Rögzítés',
+    playerVisible: true,
     label: 'GPS-pontosság küszöbe',
     help: 'Az ennél pontatlanabb GPS-pontokat eldobjuk, hogy ne rajzoljanak hamis kanyarokat a nyomvonalba.',
   },
@@ -357,8 +392,21 @@ export function tunableAt(path: string): TunableSpec | undefined {
 
 /** A séma szerinti csoportok, a `TUNABLES` sorrendjét megtartva. */
 export function tunableGroups(): { group: string; items: TunableSpec[] }[] {
+  return groupSpecs(TUNABLES);
+}
+
+/**
+ * Ugyanaz, csak a `playerVisible: true` kulcsokra szűrve — ezt fogyasztja a
+ * nyilvános szabálymagyarázó végpont. Az admin szerkesztő a teljes
+ * `tunableGroups()`-ot használja, mert ott a Trust Score is állítható.
+ */
+export function playerVisibleTunableGroups(): { group: string; items: TunableSpec[] }[] {
+  return groupSpecs(TUNABLES.filter((spec) => spec.playerVisible === true));
+}
+
+function groupSpecs(specs: readonly TunableSpec[]): { group: string; items: TunableSpec[] }[] {
   const groups: { group: string; items: TunableSpec[] }[] = [];
-  for (const spec of TUNABLES) {
+  for (const spec of specs) {
     const last = groups[groups.length - 1];
     if (last && last.group === spec.group) last.items.push(spec);
     else groups.push({ group: spec.group, items: [spec] });
