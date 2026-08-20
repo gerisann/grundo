@@ -208,11 +208,26 @@
 
 .terr__board-row {
   display: grid;
-  grid-template-columns: 32px 1fr auto;
-  align-items: baseline;
+  /* Helyezés · profilkép · név · terület — a sor GOMB, ezért az
+     alapértelmezett gomb-stílusokat is vissza kell venni. */
+  grid-template-columns: 24px auto 1fr auto;
+  align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-3);
   background: var(--bg-elevated);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.terr__board-row:hover {
+  background: var(--surface-2);
+}
+
+.terr__board-row--me:hover {
+  background: var(--accent-soft);
 }
 
 /* A saját sor kiemelve: a ranglistán az első kérdés mindig „én hol vagyok". */

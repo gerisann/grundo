@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { api, apiConfigured, type ActivityComment } from '@/lib/api';
@@ -38,6 +39,7 @@ export function CommentSheet({
   onCountChange?: (count: number) => void;
 }) {
   const { profile } = useProfile();
+  const navigate = useNavigate();
   const [comments, setComments] = useState<ActivityComment[] | null>(null);
   const [error, setError] = useState('');
   const [text, setText] = useState('');
@@ -204,7 +206,17 @@ export function CommentSheet({
                   .filter(Boolean)
                   .join(' ')}
               >
-                <Avatar url={comment.author.photoURL} name={comment.author.username} size={32} />
+                <button
+                  type="button"
+                  className="csheet__avatar"
+                  onClick={() => {
+                    onClose();
+                    navigate(`/felhasznalo/${encodeURIComponent(comment.author.username)}`);
+                  }}
+                  aria-label={`${comment.author.username} profiljának megnyitása`}
+                >
+                  <Avatar url={comment.author.photoURL} name={comment.author.username} size={32} />
+                </button>
                 <div
                   className={`csheet__bubble${comment.mine ? ' csheet__bubble--mine' : ''}`}
                 >
@@ -219,7 +231,16 @@ export function CommentSheet({
                     </button>
                   ) : null}
                   <div className="csheet__meta">
-                    <span className="csheet__author">{comment.author.username}</span>
+                    <button
+                      type="button"
+                      className="csheet__author"
+                      onClick={() => {
+                        onClose();
+                        navigate(`/felhasznalo/${encodeURIComponent(comment.author.username)}`);
+                      }}
+                    >
+                      {comment.author.username}
+                    </button>
                     <span className="csheet__when">{formatRelativeDay(comment.createdAt)}</span>
                   </div>
                   {comment.replyToUsername ? (

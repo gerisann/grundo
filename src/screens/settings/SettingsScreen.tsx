@@ -47,6 +47,11 @@ export function SettingsScreen() {
               onClick={() => navigate('/beallitasok/adatvedelem')}
             />
             <ListRow
+              label="Tiltott felhasználók"
+              description="Kiket tiltottál le — innen oldható fel"
+              onClick={() => navigate('/beallitasok/tiltottak')}
+            />
+            <ListRow
               label="Játékszabályok"
               description="A jelenleg érvényes pontszámítás és az aktív akciók"
               onClick={() => navigate('/beallitasok/szabalyok')}

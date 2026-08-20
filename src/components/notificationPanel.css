@@ -172,6 +172,14 @@
   A HÁTTÉR a kártya mögött: bal szélen a kuka (jobbra húzva ez történik), jobb
   szélen a nyitott boríték (balra húzva ez). Alapból láthatatlan — húzás
   közben, illetve egérrel a sor fölé érve jelenik meg.
+
+  ⚠️ NINCS SAJÁT SZÍNE — Geri kifejezetten ezt kérte (2026-08-20, egy
+  screenshottal): korábban egy `--surface-2` doboz állt az ikon mögött, ami
+  egy MÁSODIK kártyának nézett ki a húzás alatt. A cél, hogy csak az ikon
+  lebegjen az alkalmazás alap hátterén — azt pedig a `.npanel` (a lap
+  gyökere) már úgyis adja, `background: var(--bg-primary)`. Ide elég a
+  `transparent`: a `.nrow` `overflow: hidden`-je vágja a sarkokat, tehát a
+  lapos, kerekítetlen alapháttér nem lóg ki a kártya kerekített szélén túl.
 */
 .nrow__behind {
   position: absolute;
@@ -180,7 +188,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--sp-4);
-  background: var(--surface-2);
+  background: transparent;
   opacity: 0;
   transition: opacity 120ms ease-out;
 }

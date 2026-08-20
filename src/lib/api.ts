@@ -758,6 +758,9 @@ export const api = {
   connections: (username: string, kind: 'followers' | 'following') =>
     request<ConnectionList>(`/api/users/${encodeURIComponent(username)}/${kind}`),
 
+  /** Kiket tiltottam le — a Beállítások → Tiltott felhasználók listája. */
+  blockedUsers: () => request<{ items: Connection[] }>('/api/users/me/blocked'),
+
   /** Tiltás — a követés mindkét irányban megszűnik. */
   blockUser: (username: string) =>
     request<{ status: 'blocked' }>(`/api/users/${encodeURIComponent(username)}/block`, {

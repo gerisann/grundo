@@ -177,10 +177,20 @@
   gap: var(--sp-2);
 }
 
+/* A profilkép mostantól GOMB — az alap keret/háttér vissza van véve. */
+.csheet__avatar {
+  flex: none;
+  border-radius: 50%;
+}
+
 .csheet__author {
   font-size: var(--fs-small);
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.csheet__author:hover {
+  color: var(--accent);
 }
 
 .csheet__when {

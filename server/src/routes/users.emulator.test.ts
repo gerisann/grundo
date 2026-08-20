@@ -272,6 +272,22 @@ describe.skipIf(!EMULATOR)('Users API — valódi Firestore ellen', () => {
     ).toBe(false);
   });
 
+  it('a /me/blocked a saját tiltás-listát adja, nevet és képet is', async () => {
+    // Kezdetben üres.
+    expect((await call('/me/blocked')).body.items).toEqual([]);
+
+    await call('/masik/block', 'POST');
+    const list = await call('/me/blocked');
+    expect(list.status).toBe(200);
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0].username).toBe('Masik');
+    expect(list.body.items[0]).toHaveProperty('photoURL');
+
+    // Feloldás után a listából is eltűnik — nem csak a `blocks`-ból.
+    await call('/masik/block', 'DELETE');
+    expect((await call('/me/blocked')).body.items).toEqual([]);
+  });
+
   it('a követő-lista nevet és képet ad, privát fiókét viszont nem adja ki', async () => {
     currentUid = OTHER;
     await call('/en/follow', 'POST');

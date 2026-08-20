@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cellToChildren } from 'h3-js';
 import type { HexRole } from '@/components/HexMap';
+import { Avatar } from '@/components/ActivityCard';
 import { LayerSwitch } from '@/components/ui';
 import { mapboxConfigured } from '@/lib/mapbox';
 import {
@@ -491,18 +493,24 @@ function Leaderboard({
     );
   }
 
+  const navigate = useNavigate();
+
   return (
     <div className="terr__board">
       {head}
       {entries.map((entry, index) => (
-        <div
+        <button
+          type="button"
           key={entry.uid}
           className={`terr__board-row${entry.uid === meUid ? ' terr__board-row--me' : ''}`}
+          onClick={() => navigate(`/felhasznalo/${encodeURIComponent(entry.username)}`)}
+          aria-label={`${entry.username} profiljának megnyitása`}
         >
           <span className="terr__board-rank">{index + 1}.</span>
+          <Avatar url={entry.photoURL} name={entry.username} size={28} />
           <span className="terr__board-name">{entry.username}</span>
           <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
-        </div>
+        </button>
       ))}
     </div>
   );

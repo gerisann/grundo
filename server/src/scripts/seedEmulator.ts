@@ -27,6 +27,8 @@
   helyüket — az `../lib/firebase` modul importáláskor azonnal inicializál.
   Ezért van itt dinamikus import lentebb, és ezért nem a fájl tetején.
 */
+export {};
+
 process.env.FIRESTORE_EMULATOR_HOST ??= '127.0.0.1:8081';
 process.env.FIREBASE_AUTH_EMULATOR_HOST ??= '127.0.0.1:9099';
 process.env.GOOGLE_CLOUD_PROJECT ??= 'demo-grundo';

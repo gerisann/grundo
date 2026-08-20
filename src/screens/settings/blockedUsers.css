@@ -1,0 +1,46 @@
+/* Tiltott felhasználók — a tiltás visszavonása */
+
+.blocked__note {
+  margin: var(--sp-6) 0;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+}
+
+.blocked__list {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.blocked__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.blocked__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.blocked__identity:hover .blocked__name {
+  color: var(--accent);
+}
+
+.blocked__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}

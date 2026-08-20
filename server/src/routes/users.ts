@@ -304,6 +304,56 @@ async function listConnections(
   res.json({ items, hasMore });
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   GET /api/users/me/blocked — kiket tiltottam le
+   ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * A saját tiltás-listám, feloldó gombhoz.
+ *
+ * ⚠️ A `/me/blocked` ÚT SZÁNDÉKOSAN NEM `/:username/blocked` — a letiltott
+ * félnek amúgy sem szabadna látnia, ki tiltotta le (ez nem publikus adat),
+ * tehát nincs is értelme más felhasználóra kérdezni. A `/me` előtag ráadásul
+ * elkerüli az útvonal-ütközést a `/:username` mintával: mivel ez a kettő
+ * SEGMENTBŐL áll, sosem esik bele az egy-szegmenses `/:username` illesztésbe,
+ * a regisztrálás sorrendje tehát itt nem számít.
+ *
+ * Ugyanaz a `getAll`-os minta, mint a követő-listánál — egy körben minden
+ * felhasználó dokumentuma, nem egyenként.
+ */
+usersRouter.get('/me/blocked', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const snapshot = await db
+      .collection(COLLECTIONS.users)
+      .doc(req.uid!)
+      .collection('blocks')
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    const ids = snapshot.docs.map((doc) => doc.id);
+    const users = ids.length
+      ? await db.getAll(...ids.map((id) => db.collection(COLLECTIONS.users).doc(id)))
+      : [];
+
+    const items: Connection[] = [];
+    for (const doc of users) {
+      if (!doc.exists) continue;
+      const data = doc.data() as Record<string, unknown>;
+      const username = String(data.username ?? '');
+      if (!username) continue;
+      items.push({
+        uid: doc.id,
+        username,
+        photoURL: (data.photoURL as string | null) ?? null,
+      });
+    }
+
+    res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
 usersRouter.get('/:username/followers', async (req: AuthedRequest, res: Response, next) => {
   try {
     await listConnections('followers', req, res);
