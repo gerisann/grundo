@@ -136,6 +136,15 @@
   --territory-neutral:      #8e8a97;
   --territory-neutral-fill: rgba(142, 138, 151, 0.14);
 
+  /* ── Időjárás-ikon kiemelt elemei ────────────────────────────────
+     A felhő és a vonalak a felirattal együtt mozognak (currentColor); csak
+     az égitest, a villám és a csapadék kap saját színt — ezek adják a
+     felismerhetőséget egyetlen pillantásra. */
+  --weather-sun:    #f59e0b;
+  --weather-moon:   #7b86b8;
+  --weather-bolt:   #f59e0b;
+  --weather-precip: #3b82f6;
+
   /* ── Rögzítés közbeni ideiglenes nyom ────────────────────────────
      "Ez most a tiéd — ha bezárod." Halványabb, mint a birtokolt. */
   --trail-pending:      #9b6dff;
@@ -230,6 +239,13 @@
   --territory-rival-fill: rgba(255, 95, 109, 0.22);
   --territory-neutral:      #6a6577;
   --territory-neutral-fill: rgba(106, 101, 119, 0.18);
+
+  /* Sötét téma: a nap és a hold VILÁGOSABB, mert sötét háttéren a világos
+     változatuk olvasható; a csapadék kékje szintén feljebb csúszik. */
+  --weather-sun:    #fbbf24;
+  --weather-moon:   #cbd5f5;
+  --weather-bolt:   #fbbf24;
+  --weather-precip: #60a5fa;
 
   --trail-pending:      #b99aff;
   --trail-pending-fill: rgba(185, 154, 255, 0.16);

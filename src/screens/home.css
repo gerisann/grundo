@@ -5,8 +5,28 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/*
+  A köszöntés és az időjárás EGY SORBAN, a widget a jobb szélen.
+
+  A név kapja a maradék helyet és szükség esetén elipszissel törik; a widget
+  sosem zsugorodik (`flex: none` a saját stílusában), mert egy félbevágott
+  hőmérséklet értelmetlen. A `min-width: 0` nélkül a hosszú felhasználónév
+  kitolná a widgetet a sorból — a flex elemek alapból nem mennek a
+  tartalmuknál keskenyebbre.
+*/
+.home__greet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
 .home__greeting {
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--fs-title);
   font-weight: 500;
   color: var(--text-primary);

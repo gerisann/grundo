@@ -1,0 +1,82 @@
+/* Kompakt időjárás a köszöntő sorban */
+
+.weather {
+  display: inline-flex;
+  align-items: center;
+  /* Az ikon és a szám EGYMÁS MELLETT, nem egymás alatt — lásd a komponens
+     fejlécében, miért tér el ez a referenciaképtől. */
+  gap: var(--sp-2);
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+/*
+  A HŐMÉRSÉKLET ERŐSEBB, mint a referencián.
+
+  Ott halványszürke; Geri kifejezetten kérte, hogy nálunk hangsúlyosabb legyen.
+  A `--text-primary` a sötét témában közel fehér, a világosban közel fekete —
+  beégetett fehér itt olvashatatlan lenne az alapértelmezett világos témán.
+
+  A `tabular-nums` azért kell, hogy a szám ne ugráljon vízszintesen, amikor
+  9 fokról 10-re vált.
+*/
+.weather__temp {
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Az ikon kiemelt elemei ─────────────────────────────────────── */
+
+/*
+  A felhő és a vonalak `currentColor`-t használnak (tehát a felirattal együtt
+  mozognak), az égitest és a villám viszont saját színt kap — ezek adják a
+  felismerhetőséget egyetlen pillantásra.
+*/
+.wicon__sun {
+  color: var(--weather-sun);
+}
+
+.wicon__moon {
+  color: var(--weather-moon);
+}
+
+.wicon__bolt {
+  color: var(--weather-bolt);
+}
+
+.wicon__rain,
+.wicon__snow {
+  color: var(--weather-precip);
+}
+
+/* ── Helyzet nélküli és betöltés alatti állapot ─────────────────── */
+
+.weather--ask {
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.weather--ask:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+/*
+  Betöltés közben egy csendes helyőrző tartja a helyet. Enélkül a köszöntő sor
+  megugrana, amikor az időjárás megérkezik.
+*/
+.weather--pending {
+  width: 78px;
+  height: 36px;
+  border-color: transparent;
+  background: var(--surface-2);
+  opacity: 0.6;
+}

@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea, formatCellCount, formatGp } from '@/lib/format';
 import { Feed } from '@/components/Feed';
+import { WeatherWidget } from '@/components/WeatherWidget';
 import './home.css';
 
 /**
@@ -73,9 +74,17 @@ export function HomeScreen() {
         ) : null}
 
         <div className="home__hero">
-          <h2 className="home__greeting">
-            Szia, <strong>{name}</strong>
-          </h2>
+          {/*
+            A köszöntés és az időjárás EGY SORBAN: a név balra, a widget a
+            jobb szélen. A widget maga dönti el, megjelenik-e — ha nincs
+            tárolt pozíció vagy néma a szolgáltató, nem foglal helyet.
+          */}
+          <div className="home__greet-row">
+            <h2 className="home__greeting">
+              Szia, <strong>{name}</strong>
+            </h2>
+            <WeatherWidget />
+          </div>
           <dl className="home__summary">
             {/*
               A GRUND doboz SZÉLESEBB (40%), mert két adatot hordoz: mekkora és

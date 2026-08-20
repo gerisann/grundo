@@ -111,15 +111,20 @@ steps:
       # és csak admin szerepkörrel lehet jobot indítani. Nem generálunk
       # alapértelmezett jelszót, mert egy hiányzó változó ne nyisson kaput.
       #
-      # FIGYELEM: mindkét titoknak LÉTEZNIE kell a telepítés előtt, különben a
-      # `gcloud run deploy` elhasal. A létrehozás parancsai a
+      # Az OPENWEATHER_API_KEY a Home képernyő időjárás-widgetjéhez kell.
+      # Szintén valódi titok: kvótás, és a mi számlánkhoz tartozik. A szerver
+      # nélküle is elindul, csak a widget marad üres — a végpont ilyenkor
+      # 503-at ad `weather_unconfigured` kóddal, nem kitalált hőmérsékletet.
+      #
+      # FIGYELEM: MINDHÁROM titoknak LÉTEZNIE kell a telepítés előtt, különben
+      # a `gcloud run deploy` elhasal. A létrehozás parancsai a
       # docs/06-architektura-es-admin.md alatt vannak, a jobok fejezetében.
       #
       # ⚠️ EBBE A FÁJLBA NE KERÜLJÖN TÖBBSZÖRÖS ESCAPE-ET TARTALMAZÓ PÉLDA.
       # Egy sorvégi backslash és egy idézőjeles minta egyszer már szétvágta a
       # YAML-t (2026-08-19): a build „unexpected end of stream" hibával állt le,
       # és a megjegyzés miatt hasalt el, nem a konfiguráció miatt.
-      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest,JOBS_TOKEN=JOBS_TOKEN:latest
+      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest,JOBS_TOKEN=JOBS_TOKEN:latest,OPENWEATHER_API_KEY=OPENWEATHER_API_KEY:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY

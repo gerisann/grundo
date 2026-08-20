@@ -12,20 +12,32 @@ Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`.
 A pontos HEAD-et `git log -1`-gyel ellenőrizd — ez a fájl nem tartalmaz
 commit-hash-t, mert az a frissítés pillanatában azonnal elavulna.
 
-Utolsó tartalmi commit: **nyilvános felhasználói profil + követés, jelentés,
-tiltás**, plusz a feed két új nézete (`following` és `user`). Ez a #5 menet
-teljes hozama; a 7 pontos feladatsorból az 1. és a 3. pont készült el.
+A #5 menet **két commitot** hagyott maga után:
 
-Tesztek, most mérve: a gyökérből `npm test` → **303 teszt zöld** (22 fájl, 7
+1. **Nyilvános felhasználói profil + követés, jelentés, tiltás**, plusz a feed
+   két új nézete (`following` és `user`).
+2. **Időjárás-widget a Home képernyőn** — Geri a menet közben átadta az
+   OpenWeatherMap kulcsot, ezért a 4. pont is belefért.
+
+A 7 pontos feladatsorból tehát az **1., a 3. és a 4. pont kész**.
+
+Tesztek, most mérve: a gyökérből `npm test` → **310 teszt zöld** (23 fájl, 7
 emulátoros fájl kihagyva). Emulátoros: `npm.cmd run test:emulator` → **7 fájl,
-92 teszt zöld** (korábban 5 fájl volt; a két új fájl 17 + 6 tesztet hozott).
-Typecheck (gyökér ÉS `server/`) és mindkét production build hibamentes. A
-Mapbox-chunk méretfigyelmeztetés régi, nem ebből a menetből jött.
+92 teszt zöld**. Az emulátoros készlet az időjárás-kör után NEM futott újra, és
+nem is kellett: az a kör Firestore-viselkedéshez nem nyúlt. Typecheck (gyökér
+ÉS `server/`) és mindkét production build hibamentes. A Mapbox-chunk
+méretfigyelmeztetés régi, nem ebből a menetből jött.
 
 ⚠️ **Az emulátor NEM kényszeríti ki az összetett indexeket.** A `following` és
 a `user` feed-nézet emulátoron zöld, de élesben a
 `userId + visibility + startedAt` index NÉLKÜL a lekérdezés hibára fut. Az
 **indexek** telepítése tehát nem opcionális ehhez a körhöz.
+
+⚠️ **AZ ELSŐ BACKEND-TELEPÍTÉS ELHASAL, amíg az `OPENWEATHER_API_KEY` titok
+nem létezik.** A `cloudbuild.yaml` mostantól hivatkozik rá a `--set-secrets`
+sorban, a `gcloud run deploy` pedig nem létező titokra hibát ad. A titkot
+Cloud Shellben kell létrehozni, a telepítés ELŐTT — a parancs a menet záró
+üzenetében van, és a `docs/06` jobok fejezetének mintáját követi.
 
 ## AMIT EBBEN A MENETBEN VIZUÁLISAN ELLENŐRIZTEM
 
@@ -34,16 +46,40 @@ profilja `geri`-ként nézve): a fejléc, a hat számcsempe, a szint- és
 GP-chipek, a Követés gomb, a ⋯ menü (Jelentés / Letiltás / Mégse) és a
 bejelentő lap mind helyesen áll össze, konzolhiba nélkül.
 
+Az **időjárás-widget** szintén éles adaton futott, valódi OpenWeatherMap
+válasszal. Amit mértem:
+
+- Budapest: `tiszta égbolt, 34 °C`, nappali napikonnal; Sydney ugyanabban a
+  pillanatban `borús égbolt, 17 °C`, `night: true`. Ez bizonyítja, hogy az
+  éjszakát a MÉRT HELY napkeltéjéből számoljuk, nem a szerver órájából — a
+  Cloud Run UTC-ben jár, abból fordítva jött volna ki.
+- Gyorsítótár: első hívás 79 ms, ugyanaz másodszor 2,8 ms, és a 300 m-rel
+  arrébb lévő pont is ugyanabba a rácscellába esik (2,4 ms) — nem indít új
+  külső hívást.
+- Elrendezés: a widget pontosan a köszöntő sor jobb szélén (0 px eltérés), az
+  ikon balra a szövegtől, egy sorban.
+- **Mindkét téma számolva**: a hőmérséklet világosban `#17151c` (majdnem
+  fekete), sötétben `#f7f5fa` (majdnem fehér). A „fehér, erősebb font" kérés
+  így a sötét témában szó szerint teljesül, a világosban pedig olvasható
+  marad — beégetett fehér ott láthatatlan lenne.
+
 Ehhez egy **eldobható előnézeti szervert** használtam a `server/tmp/` alatt,
 ami a routereket rögzített uid-del mountolja az éles, csak olvasható
 Firestore fölé — bejelentkezni ugyanis továbbra sem tudok. A fájlt a menet
-végén **törörtem**, a `.env.local` vissza van állítva a Cloud Run URL-re.
+végén **töröltem**, a `.env.local` vissza van állítva a Cloud Run URL-re.
 Ez a recept a jövőben is működik, ha egy hitelesítést igénylő képernyőt kell
 látni.
 
-**Amit így sem láttam, és Gerire marad**: a **sötét téma** és a valódi
-telefonképernyő arányai. Képernyőképet nem tudtam készíteni (a böngészőpanel
-nem jelenik meg ebben a környezetben), csak a DOM-ot olvastam.
+**Amit így sem láttam, és Gerire marad:**
+
+- A **sötét téma tényleges látványa** és a valódi telefonképernyő arányai.
+  Képernyőképet nem tudtam készíteni (a böngészőpanel nem jelenik meg ebben a
+  környezetben), csak a DOM-ot és a számolt stílusokat olvastam.
+- ⚠️ Az **éjszakai hold- és csillagikon RAJZA**. A `night` jelzés útját végig
+  bizonyítottam, de a hold csak `clear` vagy `partly_cloudy` éjszakán
+  látszik, és a próbált tíz városban egyikben sem volt épp tiszta éjszaka.
+  A hold és a csillagok tehát kódban helyesek, de rajzban ellenőrizetlenek —
+  Geri este ránézve látja először.
 
 ## ÉLESBEN FUT
 
@@ -63,8 +99,9 @@ Két menet munkája vár telepítésre — a #4-é és a #5-é együtt:
   régi kódot futtatja (nem ír `metricsDaily`-t), és az admin Áttekintő a régi,
   számok nélküli felületet mutatja. Adat csak a telepítés UTÁNI első napi
   fordulótól lesz benne.
-- **#5-ből**: az egész nyilvános profil és közösségi gráf. Kell hozzá
-  **frontend + backend + indexek**.
+- **#5-ből**: az egész nyilvános profil és közösségi gráf, valamint az
+  időjárás-widget. Kell hozzá **frontend + backend + indexek**, és a backend
+  ELŐTT az `OPENWEATHER_API_KEY` titok létrehozása (lásd fent).
 - Régi, még mindig nyitott kérdés: **az F (szabálymagyarázó felület)** és a
   **`c0a20da`** (CORS-javítás, akció-szerkesztés, trust-panel) éles állapota —
   ezt Geri tudja megmondani.
@@ -103,24 +140,33 @@ bejelentő lap (`ReportUserSheet`), és a feed-kártyák szerzőneve mostantól 
 profilra visz. A kártya fejléce ezért KIKERÜLT a nyitógombból: két gomb
 egymásba ágyazva sem HTML-ben, sem képernyőolvasóval nem működik.
 
+**Időjárás** — új `server/src/routes/weather.ts` (`GET /api/weather?lat&lon`),
+`WeatherWidget` és `WeatherIcon` a kliensen, hét ikonállapot nappali és
+éjszakai változatban. Három döntés, ami nem következik a kérésből:
+
+1. **A widget NEM kér helyzetet magától az app indulásakor.** Egy
+   engedélykérő ablak egy időjárás-csempéért a legbiztosabb módja annak, hogy
+   a felhasználó örökre megtagadja a helyzetét — és akkor a TÉRKÉP sem
+   működik, ami viszont a termék lényege. Ezért először a Grund képernyő által
+   már felírt `users/{uid}/private/position` dokumentumot olvassuk; ha az
+   nincs, a widget helyén egy koppintható jel áll, és az engedélykérés csak
+   felhasználói szándékra indul.
+2. **A hiányzó időjárás NEM hibaüzenet.** Ha a szolgáltató néma vagy a kulcs
+   hiányzik, a widget egyszerűen nincs ott. Egy piros hibasáv a Home tetején
+   rosszabb, mint a hiánya — az időjárás dísz, nem funkció.
+3. **A végpont hitelesítés MÖGÖTT van**, pedig az időjárás nem személyes
+   adat. Nyitva hagyva ingyenes időjárás-proxy lenne bárkinek, a mi
+   számlánkra. A gyorsítótár ~1,1 km-es rácsra kerekít, 10 perces élettartammal.
+
 ## KÖVETKEZŐ: 6. MENET
 
-Geri 7 pontos feladatsorából **kettő kész** (1. profil, 3. követés/jelentés/
-tiltás). A maradék öt, és ami mindegyikről most tudni kell:
+Geri 7 pontos feladatsorából **három kész** (1. profil, 3. követés/jelentés/
+tiltás, 4. időjárás). A maradék négy, és ami mindegyikről most tudni kell:
 
 - **2. Jelvényrendszer + jelvények.** A specben megvan a séma (`badges/{id}`
   katalógus + `users/{uid}/badges/{badgeId}`), de **nincs se katalógus, se
   kiosztó logika**. A profilon már van helye. Ez jól határolt, önálló egység —
   ez a legkézenfekvőbb következő lépés.
-- **4. Időjárás widget.** ⚠️ **Geri döntött: OpenWeatherMap, kulccsal** — mert
-  a díjmentes szintje kereskedelmi használatra is jó, szemben az Open-Meteóval.
-  **A kulcsot Gerinek kell megszereznie és átadnia**, addig ez a pont nem
-  indulhat. A widget a „Szia, *név*" sorba, JOBBRA kerül: ikon és hőmérséklet
-  EGYMÁS MELLETT (a referenciaképen egymás alatt vannak — ez szándékos
-  eltérés), a felirat fehér, kicsit erősebb. Az ikon a tényleges időt jelzi,
-  nappali és éjszakai változatban is (napos / részben felhős / felhős / esős /
-  havas, illetve hold + felhő, csillagos tiszta ég, stb.). A hívás a saját
-  backendünkön menjen át, cache-elve — a kulcs soha ne kerüljön kliensre.
 - **5. Keresés + keresési modal.** A referencián „Discover": keresőmező,
   People / Clubs fülek, és javaslatok („friend of a friend", „similar pace").
   Ehhez kell egy kereső végpont; a `usernames` kollekció prefix-kereséssel
@@ -144,6 +190,14 @@ Pro-konverzió, lemorzsolódás, konnektor-hibaarány és a hibás job-futások 
 
 ## NYITOTT, KISEBB
 
+- **Az időjárás csak akkor jelenik meg magától, ha van tárolt pozíció.** Friss
+  fiókkal a Home-on egy koppintható helyjel áll a widget helyén, amíg a
+  felhasználó nem járt a Grund képernyőn (az írja fel a pozíciót). Ez
+  szándékos — de ha zavaró, a Grund első megnyitásakor kiírt pozíciót előbbre
+  is lehetne hozni az onboardingba.
+- **Hőmérséklet-egység: csak °C.** A referenciakép „Hold to switch °F"
+  lehetőséget kínál; ezt nem építettem meg, mert nem kérted, és a `docs/05`
+  `units` mezője sem tartalmaz hőmérsékletet. Ha kell, oda kell felvenni.
 - **gpLedger-takarítás — elő van készítve, futtatásra vár.**
   `server/src/scripts/cleanGpLedgerJunk.ts` (dry-run alapértelmezett,
   `npm run clean:gp-ledger-junk`). Legutóbb mérve (2026-08-20): 12 sor

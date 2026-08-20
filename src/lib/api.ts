@@ -640,8 +640,41 @@ export type ReportCategory =
 
 export type FollowStatus = 'following' | 'requested' | 'none';
 
+/**
+ * Időjárás-állapotok — pontosan annyi, ahány ikonpárunk van.
+ *
+ * Mindegyikhez tartozik nappali ÉS éjszakai rajz, ezért minden új állapot két
+ * ikont jelent. A szolgáltató ötvennél több kódját a szerver képezi le ezekre
+ * (`server/src/routes/weather.ts`).
+ */
+export type WeatherCondition =
+  | 'clear'
+  | 'partly_cloudy'
+  | 'cloudy'
+  | 'rain'
+  | 'snow'
+  | 'storm'
+  | 'fog';
+
+export interface WeatherResult {
+  tempC: number;
+  condition: WeatherCondition;
+  /** Éjszaka van-e a MÉRT helyen — nem a böngésző órája szerint. */
+  night: boolean;
+  description: string;
+}
+
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
+
+  /**
+   * Az aktuális időjárás egy koordinátára.
+   *
+   * A hívás a saját backendünkön megy át, ott van gyorsítótárazva — a
+   * szolgáltató kulcsa soha nem kerül kliensre.
+   */
+  weather: (lat: number, lon: number) =>
+    request<WeatherResult>(`/api/weather?lat=${lat}&lon=${lon}`),
 
   /** Egy felhasználó nyilvános profilja, felhasználónév alapján. */
   publicProfile: (username: string) =>

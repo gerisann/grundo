@@ -27,6 +27,7 @@ import { jobsRouter } from './src/routes/jobs';
 import { adminRouter } from './src/routes/admin';
 import { rulesRouter } from './src/routes/rules';
 import { usersRouter } from './src/routes/users';
+import { weatherRouter } from './src/routes/weather';
 
 export { db, FIRESTORE_DATABASE_ID };
 
@@ -136,6 +137,13 @@ app.use('/api/rules', rulesRouter);
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);
 app.use('/api/users', authenticate, usersRouter);
+/**
+ * Hitelesítés MÖGÖTT, pedig az időjárás nem személyes adat.
+ *
+ * A külső hívás pénzbe kerül és kvótás. Nyitva hagyva a végpont ingyenes
+ * időjárás-proxy lenne bárkinek, a mi számlánkra.
+ */
+app.use('/api/weather', authenticate, weatherRouter);
 app.use('/api/tiles', authenticate, tilesRouter);
 app.use('/api/missions', authenticate, missionsRouter);
 app.use('/api/dev', authenticate, devRouter);
