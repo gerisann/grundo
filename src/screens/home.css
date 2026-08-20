@@ -118,14 +118,39 @@
 }
 
 /**
- * A GRUNDO jele: szabályos hatszög, a betűkkel EGYMAGAS.
+ * A LOGÓ — a szöveges „GRUNDO" felirat és az előtte állt hexagon helyén.
  *
- * A magasságot `1em` adja, tehát a jel együtt nő a címmel — nem kell külön
- * hangolni, ha a betűméret változik. A `clip-path` hatszöge csúcsával felfelé
- * áll, ahogy a térkép mezői is.
+ * TÉMÁNKÉNT KÉT FÁJL, mert a két változat nem csak színben tér el (a betűk
+ * belső üregei máshogy vannak kivágva) — lásd a `HomeScreen.tsx` megjegyzését.
  *
- * A színátmenet SZÁNDÉKOSAN ugyanaz, mint a statisztikapanelé: a kettő így
- * egy rendszer két darabja, nem két külön díszítés.
+ * A váltás CSAK a `data-theme` attribútumon megy, `prefers-color-scheme`
+ * nélkül: a témát az `src/lib/theme.ts` MINDIG explicit attribútumként írja ki
+ * a <html>-re. Az alapállapot a VILÁGOS változat, hogy az attribútum
+ * kiírása előtti első képkockán se villanjon fel a rossz logó.
+ */
+.home__logo {
+  display: block;
+  height: 24px;
+  width: auto;
+}
+
+.home__logo--dark {
+  display: none;
+}
+
+[data-theme='dark'] .home__logo--dark {
+  display: block;
+}
+
+[data-theme='dark'] .home__logo--light {
+  display: none;
+}
+
+/**
+ * A RÉGI hexagon-jel — már nincs használatban.
+ *
+ * A szabály itt marad dokumentálva, de a `HomeScreen` nem rendereli többé:
+ * Geri kérésére a logó önmagában áll, jel nélkül.
  */
 .home__mark {
   width: 0.88em;

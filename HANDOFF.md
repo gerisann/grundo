@@ -9,9 +9,9 @@ beszélgetések neve](AGENTS.md).)
 ## ⚠️ ELSŐ OLVASATRA: A #7/b JAVÍTÓ KÖR FÉLBEMARADT
 
 A #7 menet FŐ commitja (értesítési rendszer) után Geri élesben kipróbálta, és
-egy **13 pontos hibalistát** adott át. Ebből egy második commit **9 pontot
-elvégzett**, de a limit miatt **4 pont NEM készült el**. A kimaradtak
-pontosan, hogy a következő menet ne keresgéljen:
+egy **13 pontos hibalistát** adott át. Ebből egy második commit **10 pontot
+elvégzett**, de a használati limit miatt **3 pont NEM készült el**. A
+kimaradtak pontosan, hogy a következő menet ne keresgéljen:
 
 1. **Az értesítés-panel ÁTÉPÍTÉSE teljes képernyősre.** Ma alulról felcsúszó
    lap (`NotificationPanel.tsx`), Geri viszont teljes képernyős modált kért,
@@ -21,13 +21,12 @@ pontosan, hogy a következő menet ne keresgéljen:
    MÖGÖTT bal szélen kuka ikon és jobb szélen nyitott boríték ikon (swipe-ra
    VAGY hover-re látszik), a fejléc jobb oldalán ikonos „összes törlése" és
    „összes olvasottba" gomb, mellettük a jobb sarokban bezáró X.
-2. **Logócsere.** Geri két SVG-t adott át (`grundo_logo_v2.svg` sötét témára,
-   `grundo_logo_v2_light.svg` világosra) — ezeket a `C:\Users\Geri\Downloads`
-   mappából kell átvenni, mert a chatben lévő tartalmuk nem marad meg. A
-   mostani `GRUNDO` szöveges felirat ÉS a előtte álló színátmenetes hexagon
-   (`.home__mark`) helyére kerül a logó, nagyjából a felirat eddigi
-   méretében.
-3. **Időjárás-widget kibontása.** Kattintásra balra kicsúszva (animálva, akár
+   ⚠️ Ehhez a `useNotifications` hookot is bővíteni kell: ma nincs benne
+   `delete`, se lapozás — csak `markRead`/`markAllRead` és fix 50-es limit.
+   A `firestore.rules` a `notifications/{uid}/items` alatt ma **`allow
+   delete: if false`** — a törléshez EZT IS módosítani kell (szabály-telepítés
+   kell hozzá), vagy szerveroldali végpontot kell írni rá.
+2. **Időjárás-widget kibontása.** Kattintásra balra kicsúszva (animálva, akár
    a felhasználónevet kitakarva) jelenjen meg négy adat ikonokkal:
    hőmérséklet, csapadék esélye (%), páratartalom (%), szél (km/h).
    ⚠️ **ADATFORRÁS-KORLÁT, amit meg kell oldani**: a jelenleg használt
@@ -37,7 +36,7 @@ pontosan, hogy a következő menet ne keresgéljen:
    (`/data/2.5/forecast` → `pop` mező). Vagy egy MÁSODIK hívás kell (a
    meglévő gyorsítótárba bekötve), vagy a csapadék-esély kimarad. Ezt Gerivel
    egyeztetni kell, mert az ő kérése négy adatot sorolt fel.
-4. **A tiltás MÁSIK iránya a feedben.** A most elkészült szűrés csak azt
+3. **A tiltás MÁSIK iránya a feedben.** A most elkészült szűrés csak azt
    fedi, hogy ÉN kit tiltottam. Aki ENGEM tiltott le, annak az aktivitásai
    továbbra is megjelennek a feedemben — a részletes indoklás a kódban van
    (`server/src/routes/activities.ts`, a `blockedIds` fölött).
