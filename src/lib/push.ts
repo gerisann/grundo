@@ -27,13 +27,31 @@ let messagingInstance: Messaging | null | undefined;
 /** `undefined` = még nem próbáltuk; `null` = nem támogatott ezen a böngészőn/eszközön. */
 async function getMessagingIfSupported(): Promise<Messaging | null> {
   if (messagingInstance !== undefined) return messagingInstance;
-  if (!app || !VAPID_KEY || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+  if (!app || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
     messagingInstance = null;
     return null;
   }
   messagingInstance = (await isSupported()) ? getMessaging(app) : null;
   return messagingInstance;
 }
+
+/**
+ * A regisztráció hibája NEM némán vész el.
+ *
+ * Mérve, éles használatban: a push bekapcsolása egyetlen általános
+ * „nem sikerült" üzenettel hasalt el, amiből semmi nem derült ki. A leggyakoribb
+ * ok az, hogy a `VITE_FIREBASE_VAPID_KEY` hiányzik a TELEPÍTETT buildből (a
+ * helyi `.env.local`-ban ott van, a Cloud Shell-másolatban nem) — ezt a
+ * felhasználó sosem találná ki. Innentől minden ág saját, megnevezett okot ad.
+ */
+export type PushFailure =
+  | 'no_vapid_key'
+  | 'unsupported'
+  | 'permission_denied'
+  | 'sw_failed'
+  | 'token_failed';
+
+export type PushResult = { ok: true } | { ok: false; reason: PushFailure };
 
 async function registerServiceWorker(): Promise<ServiceWorkerRegistration | undefined> {
   try {
@@ -62,24 +80,40 @@ export function currentPushPermission(): PushPermission {
 /**
  * Felhasználói gesztusra hívd (pl. egy kapcsoló bekapcsolásakor).
  *
- * @returns `true`, ha a token sikeresen regisztrálódott.
+ * MINDEN sikertelen ág MEGNEVEZETT okot ad vissza — lásd a `PushFailure`
+ * fölötti magyarázatot arról, miért nem elég egy `false`.
  */
-export async function requestPermissionAndSubscribe(uid: string): Promise<boolean> {
+export async function requestPermissionAndSubscribe(uid: string): Promise<PushResult> {
+  /**
+   * A VAPID-kulcs hiánya KÜLÖN ág, és ez az ELSŐ ellenőrzés.
+   *
+   * Ez a build konfigurációjának hibája, nem a felhasználóé vagy a böngészőé
+   * — összemosva a „nem támogatott" ággal a hibakeresés a rossz irányba
+   * indulna (böngésző/eszköz helyett a telepítést kell megnézni).
+   */
+  if (!VAPID_KEY) return { ok: false, reason: 'no_vapid_key' };
+
   const messaging = await getMessagingIfSupported();
-  if (!messaging) return false;
+  if (!messaging) return { ok: false, reason: 'unsupported' };
 
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') return false;
+  if (permission !== 'granted') return { ok: false, reason: 'permission_denied' };
 
   const registration = await registerServiceWorker();
+  if (!registration) return { ok: false, reason: 'sw_failed' };
+
   const token = await getToken(messaging, {
     vapidKey: VAPID_KEY,
     serviceWorkerRegistration: registration,
-  }).catch(() => null);
-  if (!token) return false;
+  }).catch((error: unknown) => {
+    // eslint-disable-next-line no-console
+    console.error('[GRUNDO] FCM token kérése elhasalt', error);
+    return null;
+  });
+  if (!token) return { ok: false, reason: 'token_failed' };
 
   await saveToken(uid, token);
-  return true;
+  return { ok: true };
 }
 
 /** Passzív út: csak akkor frissít, ha az engedély MÁR megvan — app-indításkor hívható. */

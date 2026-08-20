@@ -4,7 +4,12 @@ import { ScreenHeader, Switch } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
 import { db } from '@/lib/firebase';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_ORDER, type NotificationType } from '@/lib/notificationTypes';
-import { currentPushPermission, requestPermissionAndSubscribe, unsubscribe } from '@/lib/push';
+import {
+  currentPushPermission,
+  requestPermissionAndSubscribe,
+  unsubscribe,
+  type PushFailure,
+} from '@/lib/push';
 import './notifications.css';
 
 /**
@@ -21,6 +26,25 @@ import './notifications.css';
  * egy itt kikapcsolt típus a szerveren se ír, se küld — nem csak a
  * felületen tűnik el.
  */
+/**
+ * A push-hiba MEGNEVEZETT okhoz tartozó, ÉRTHETŐ magyar üzenete.
+ *
+ * A `no_vapid_key` szándékosan üzemeltetési nyelven szól: az a build
+ * konfigurációjának hibája, nem a felhasználóé — ha ezt kapja, nem az ő
+ * böngészőjével van baj, és a szöveg ezt ki is mondja.
+ */
+const PUSH_ERROR: Record<PushFailure, string> = {
+  no_vapid_key:
+    'A push-értesítés nincs beállítva ezen a kiszolgálón (hiányzó VAPID-kulcs). Ez a mi hibánk, nem a tiéd — szólj nekünk.',
+  unsupported: 'Ez a böngésző vagy eszköz nem támogatja a push-értesítést.',
+  permission_denied:
+    'A böngésző letiltotta az értesítést. A böngésző beállításaiban (a címsor melletti lakat ikonnál) engedélyezheted újra.',
+  sw_failed:
+    'Nem sikerült elindítani a háttérszolgáltatást. Próbáld újratölteni az oldalt — privát böngészés közben ez nem működik.',
+  token_failed:
+    'Nem sikerült eszközazonosítót kérni az értesítéshez. A részletek a böngésző konzoljában láthatók.',
+};
+
 export function NotificationsScreen() {
   const { user } = useAuth();
   const [settings, setSettings] = useState<Partial<Record<NotificationType, boolean>>>({});
@@ -57,14 +81,8 @@ export function NotificationsScreen() {
     setPushError('');
     try {
       if (value) {
-        const ok = await requestPermissionAndSubscribe(user.uid);
-        if (!ok) {
-          setPushError(
-            currentPushPermission() === 'denied'
-              ? 'A böngésző letiltotta az értesítést. A böngésző beállításaiban engedélyezheted újra.'
-              : 'Nem sikerült bekapcsolni a push-értesítést ezen az eszközön.',
-          );
-        }
+        const result = await requestPermissionAndSubscribe(user.uid);
+        if (!result.ok) setPushError(PUSH_ERROR[result.reason]);
       } else {
         await unsubscribe(user.uid);
       }

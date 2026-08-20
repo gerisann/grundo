@@ -45,14 +45,35 @@ export function HomeScreen() {
   return (
     <>
       <header className="screen-header home__header">
+        {/*
+          A LOGÓ két fájlból jön, témánként — a szöveges „GRUNDO" felirat és
+          az előtte állt színátmenetes hexagon helyére.
+
+          Miért KÉT fájl egy `currentColor`-os inline SVG helyett? Mert a két
+          változat nem csak színben tér el: a betűk belső üregei (a G és a d
+          „lyukai") máshogy vannak kivágva bennük. Egyetlen fájl átszínezése
+          tehát nem adná vissza pontosan azt, amit a tervező készített.
+
+          Az `alt` CSAK a világos változaton van kitöltve: a kettő ugyanazt a
+          szót jelenti, és képernyőolvasóval kétszer felolvasva „GRUNDO
+          GRUNDO" hangzana el.
+        */}
         <h1 className="screen-header__title home__brand">
-          {/*
-            A jel a NÉV ELŐTT áll, és pontosan olyan magas, mint a betűk.
-            A színátmenete ugyanaz, mint a statisztikapanelé — a kettő így egy
-            rendszer része, nem két külön díszítés.
-          */}
-          <span className="home__mark" aria-hidden="true" />
-          GRUNDO
+          <img
+            className="home__logo home__logo--light"
+            src="/grundo-logo-light.svg"
+            alt="GRUNDO"
+            width={80}
+            height={24}
+          />
+          <img
+            className="home__logo home__logo--dark"
+            src="/grundo-logo-dark.svg"
+            alt=""
+            aria-hidden="true"
+            width={80}
+            height={24}
+          />
         </h1>
 
         {/*

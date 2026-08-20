@@ -406,6 +406,11 @@ export function ActivityScreen() {
       {commentsOpen ? (
         <CommentSheet
           activityId={activity.id}
+          /*
+            Egy értesítésről érkezve a KIEMELENDŐ hozzászólás azonosítója is
+            jön (`?kiemelt=`) — a lap erre görget és kiemeli.
+          */
+          highlightCommentId={search.get('kiemelt')}
           onClose={() => setSearch({}, { replace: true })}
           onCountChange={setCommentCount}
         />

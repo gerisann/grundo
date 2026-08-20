@@ -19,6 +19,7 @@ export type NotificationType =
   | 'modifier_started'
   | 'badge_awarded'
   | 'followed_activity'
+  | 'new_follower'
   | 'territory_stolen'
   | 'territory_defended';
 
@@ -37,8 +38,9 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeInfo> 
   modifier_started: { label: 'Aktív akció indul', fallbackScreen: '/beallitasok/szabalyok' },
   badge_awarded: { label: 'Új jelvény', fallbackScreen: '/profil' },
   followed_activity: { label: 'Követett felhasználó aktivitása', fallbackScreen: '/kozosseg' },
-  territory_stolen: { label: 'Elvették a területed', fallbackScreen: '/grund' },
-  territory_defended: { label: 'Sikeresen megvédted a területed', fallbackScreen: '/grund' },
+  new_follower: { label: 'Új követő', fallbackScreen: '/profil' },
+  territory_stolen: { label: 'Elvették a grundod', fallbackScreen: '/grund' },
+  territory_defended: { label: 'Sikeresen megvédted a grundod', fallbackScreen: '/grund' },
 } as const;
 
 /** A sorrend, ahogy a Beállítások képernyőn a kapcsolók megjelennek. */
@@ -51,6 +53,7 @@ export const NOTIFICATION_TYPE_ORDER: readonly NotificationType[] = [
   'activity_liked',
   'activity_commented',
   'comment_replied',
+  'new_follower',
   'followed_activity',
   'modifier_started',
 ];
@@ -84,6 +87,8 @@ function typeIcon(type: NotificationType): string {
       return '💬';
     case 'followed_activity':
       return '🏃';
+    case 'new_follower':
+      return '👤';
     case 'modifier_started':
       return '📣';
   }
@@ -93,9 +98,26 @@ export function iconFor(type: NotificationType): string {
   return typeIcon(type);
 }
 
+/**
+ * Hova visz az értesítésre koppintás.
+ *
+ * A KOMMENT-értesítések nem csak az aktivitást nyitják meg, hanem a
+ * hozzászólás-lapot is (`?komment=1`), és megjelölik a kiemelendő sort
+ * (`?kiemelt=<id>`). A `komment` paramétert az `ActivityScreen` már régóta
+ * érti (a feed-kártya hozzászólás-gombja is ezt használja) — a `kiemelt`
+ * ehhez jött hozzá.
+ */
 export function screenFor(notification: StoredNotification): string {
   const info = NOTIFICATION_TYPES[notification.type];
   const activityId = notification.data?.activityId;
-  if (activityId) return `/aktivitas/${activityId}`;
+  const commentId = notification.data?.commentId;
+  const username = notification.data?.username;
+
+  if (activityId) {
+    if (commentId) return `/aktivitas/${activityId}?komment=1&kiemelt=${commentId}`;
+    if (notification.type === 'activity_commented') return `/aktivitas/${activityId}?komment=1`;
+    return `/aktivitas/${activityId}`;
+  }
+  if (username) return `/felhasznalo/${encodeURIComponent(username)}`;
   return info.fallbackScreen;
 }

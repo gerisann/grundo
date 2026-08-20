@@ -77,7 +77,9 @@ export function ProfileScreen() {
             onClick={() => avatarInput.current?.click()}
           >
             <Avatar url={profile?.photoURL ?? null} name={profile?.username ?? '?'} size={64} />
-            <span className="prof__avatar-badge" aria-hidden="true">+</span>
+            <span className="prof__avatar-badge" aria-hidden="true">
+              <PencilIcon />
+            </span>
           </button>
           <input
             ref={avatarInput}
@@ -196,13 +198,22 @@ export function ProfileScreen() {
           </dl>
         </section>
 
-        <div className="prof__stats">
-          <Stat value={formatDistance(distanceKm * 1000)} label="összes táv" />
-          <Stat value={String(profile?.streak.current ?? 0)} label="napos sorozat" />
+        {/*
+          NÉGY doboz, 2×2-ben — korábban három volt egy sorban.
+
+          A negyedik a „Grundod mérete": eddig a terület csak a fenti
+          chip-sorban szerepelt, tehát a legfontosabb saját szám hiányzott
+          innen. A 2×2 elrendezésben a felső sor a GRUNDRÓL szól (mérete és
+          mezőszáma), az alsó a MOZGÁSRÓL (táv, sorozat).
+        */}
+        <div className="prof__stats prof__stats--grid">
+          <Stat value={formatArea(territoryM2)} label="Grundod mérete" />
           <Stat
             value={String((profile?.cellCount.foot ?? 0) + (profile?.cellCount.bike ?? 0))}
-            label="meződ"
+            label="Birtokolt mező"
           />
+          <Stat value={formatDistance(distanceKm * 1000)} label="Megtett táv" />
+          <Stat value={`${profile?.streak.current ?? 0} nap`} label="Sorozat" />
         </div>
 
         {/* docs/02 → „Jelvények fül (kép #12)". Itt nem külön fülként, hanem
@@ -249,6 +260,24 @@ function Summary({ label, value }: { label: string; value: string }) {
       <dt className="prof__summary-label">{label}</dt>
       <dd className="prof__summary-value">{value}</dd>
     </div>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
   );
 }
 

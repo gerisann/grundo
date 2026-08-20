@@ -1,6 +1,8 @@
 import { Router, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
-import { COLLECTIONS, db } from '../lib/firebase';
+import { COLLECTIONS, auth as adminAuth, db } from '../lib/firebase';
+import { adminNotifyAddress, createMailer, userReportEmail } from '../lib/mailer';
+import { notifyNewFollower } from '../lib/notifications';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { normalizeUsername } from '../lib/user';
 import { toEarnedBadges } from '../lib/badges';
@@ -22,6 +24,7 @@ import type { AuthedRequest } from '../../server';
  * amit a regisztráció foglal le.
  */
 export const usersRouter = Router();
+const mailer = createMailer();
 
 /** A bejelentés kategóriái és az az ág, ahová a moderációban kerülnek. */
 const REPORT_BRANCH = {
@@ -34,6 +37,20 @@ const REPORT_BRANCH = {
 } as const;
 
 type ReportCategory = keyof typeof REPORT_BRANCH;
+
+/**
+ * A kategóriák MAGYAR feliratai — ugyanazok, amiket a felhasználó a
+ * bejelentő lapon látott (`src/components/ReportUserSheet.tsx`). A
+ * moderációs levélben a gépi kulcs önmagában nehezen olvasható.
+ */
+const REPORT_LABEL: Record<ReportCategory, string> = {
+  gps_spoof: 'Hamisított helyadat',
+  vehicle: 'Járművel tette meg',
+  wrong_type: 'Rossz aktivitástípus',
+  offensive: 'Sértő tartalom',
+  privacy: 'Adatvédelmi aggály',
+  other: 'Egyéb',
+};
 
 /** Egy bejelentés indoklása legfeljebb ennyi karakter. */
 const NOTE_MAX = 500;
@@ -250,19 +267,32 @@ usersRouter.post('/:username/follow', async (req: AuthedRequest, res: Response, 
       return res.json({ status: 'requested' as const });
     }
 
-    await db.runTransaction(async (tx) => {
+    const isNewFollow = await db.runTransaction(async (tx) => {
       const followingRef = users.doc(viewerUid).collection('following').doc(target.uid);
       const followerRef = users.doc(target.uid).collection('followers').doc(viewerUid);
       const already = await tx.get(followingRef);
-      if (already.exists) return;
+      if (already.exists) return false;
 
       tx.set(followingRef, { createdAt: now });
       tx.set(followerRef, { createdAt: now });
       tx.update(users.doc(viewerUid), { 'counters.following': FieldValue.increment(1) });
       tx.update(users.doc(target.uid), { 'counters.followers': FieldValue.increment(1) });
+      return true;
     });
 
     res.json({ status: 'following' as const });
+
+    // Csak VALÓDI, új követésnél értesítünk — az idempotens ismétlés nem
+    // szól újra (ugyanaz az elv, mint a kedvelésnél).
+    if (isNewFollow) {
+      const actor = await users.doc(viewerUid).get();
+      const data = actor.data() as { username?: string; usernameLower?: string } | undefined;
+      notifyNewFollower(
+        target.uid,
+        String(data?.username ?? 'Valaki'),
+        String(data?.usernameLower ?? ''),
+      );
+    }
   } catch (error) {
     next(error);
   }
@@ -410,7 +440,7 @@ usersRouter.post('/:username/report', async (req: AuthedRequest, res: Response, 
       throw conflict('already_reported', 'Ezt a felhasználót már bejelentetted, vizsgáljuk.');
     }
 
-    await db.collection(COLLECTIONS.reports).add({
+    const created = await db.collection(COLLECTIONS.reports).add({
       targetType: 'user',
       targetId: target.uid,
       reporterId: viewerUid,
@@ -422,6 +452,46 @@ usersRouter.post('/:username/report', async (req: AuthedRequest, res: Response, 
     });
 
     res.json({ ok: true });
+
+    /**
+     * MODERÁCIÓS ÉRTESÍTŐ — A VÁLASZ UTÁN, tűzz-és-felejtsd módon.
+     *
+     * ⚠️ EGY LEVELEZÉSI HIBA SOHA NEM BUKTATHATJA EL A BEJELENTÉST. A
+     * felhasználó szempontjából a bejelentés már megtörtént (a Firestore-
+     * dokumentum megvan); ha az SMTP éppen nem elérhető, az a mi üzemeltetési
+     * gondunk, nem az övé. Ugyanaz a minta, mint az `auth.ts` regisztrációs
+     * levelénél — és itt biztonságos is, mert semmilyen később olvasott
+     * állapotot nem érint.
+     */
+    void (async () => {
+      try {
+        const [reporterDoc, reporterAuth] = await Promise.all([
+          db.collection(COLLECTIONS.users).doc(viewerUid).get(),
+          adminAuth.getUser(viewerUid).catch(() => null),
+        ]);
+        await mailer.send({
+          to: adminNotifyAddress(),
+          ...userReportEmail({
+            reporterUsername: String(
+              (reporterDoc.data() as { username?: string })?.username ?? 'ismeretlen',
+            ),
+            reporterEmail: reporterAuth?.email ?? '',
+            reporterUid: viewerUid,
+            targetUsername: String(target.data.username ?? 'ismeretlen'),
+            targetUid: target.uid,
+            category,
+            categoryLabel: REPORT_LABEL[category as ReportCategory],
+            branch: REPORT_BRANCH[category as ReportCategory],
+            note,
+            reportId: created.id,
+            createdAt: new Date(),
+          }),
+        });
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[users] a bejelentés-értesítő levél nem ment el', error);
+      }
+    })();
   } catch (error) {
     next(error);
   }

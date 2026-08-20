@@ -342,10 +342,37 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
         return repairActivityRoute(doc.ref, data);
       }),
     );
+    /**
+     * A TILTOTT FELHASZNÁLÓK aktivitásai KIESNEK a feedből.
+     *
+     * ⚠️ Ez a szűrés a lekérdezés UTÁN történik, nem benne. A Firestore-nak
+     * nincs „nem egyenlő ezekkel a uid-ekkel" szűrője (a `not-in` legfeljebb
+     * 10 értéket enged, és nem kombinálható a meglévő rendezéssel), ezért a
+     * sorokat itt dobjuk el. Ennek ÁRA van: egy sok embert letiltó
+     * felhasználónál a feed rövidebb lehet a kért `limit`-nél. Ez a helyes
+     * csere — inkább kevesebb sor, mint egy letiltott ember bejegyzése.
+     *
+     * A tiltás KÉTIRÁNYÚ (`docs/05` → „sem a tiltó, sem a tiltott nem látja a
+     * másikat"), de a feed csak az EGYIK irányt tudja olcsón: hogy ÉN kit
+     * tiltottam. A másik irányhoz (ki tiltott engem) minden szerző
+     * `blocks` alkollekcióját olvasni kellene soronként. A `users/{uid}`
+     * olvasását a `firestore.rules` már mindkét irányban zárja, tehát a
+     * profil felől a tiltás teljes — a feedben egyelőre az egyirányú szűrés
+     * van meg.
+     */
+    const blocked = await db
+      .collection(COLLECTIONS.users)
+      .doc(req.uid!)
+      .collection('blocks')
+      .select()
+      .get();
+    const blockedIds = new Set(blocked.docs.map((doc) => doc.id));
+
     let rows = documents
       .map((data, index) => ({ data, doc: docs[index]! }))
       .filter(({ data }) => data.deletedAt == null)
-      .map(({ data, doc }) => toFeedRow(doc.id, data));
+      .map(({ data, doc }) => toFeedRow(doc.id, data))
+      .filter((row) => !blockedIds.has(row.userId));
     rows = await withOwnerFullRoutes(rows, req.uid!);
     if (scope === 'mine' || scope === 'user' || scope === 'following') rows = rows.slice(0, limit);
 
@@ -943,7 +970,7 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
      * külön olvasást minden egyes válaszhoz, és az értesítés is ebből tudja,
      * kinek szól.
      */
-    let replyTo: { userId: string; username: string } | null = null;
+    let replyTo: { userId: string; username: string; commentId: string } | null = null;
     if (replyToId) {
       const target = await activityRef.collection('comments').doc(replyToId).get();
       if (target.exists) {
@@ -953,6 +980,9 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
           replyTo = {
             userId: targetUserId,
             username: String((author.data() as { username?: string })?.username ?? 'ismeretlen'),
+            // Az ÚJ komment azonosítója, nem a megválaszolté: az értesítésre
+            // koppintva a VÁLASZT akarjuk kiemelni, nem azt, amire válaszolt.
+            commentId: commentRef.id,
           };
         }
       }

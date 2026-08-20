@@ -6,6 +6,42 @@ felülíródik, nem bővül. A történet a git logban van.
 **Következő menet neve: GRUNDO #8.** (A számozási konvenció: [AGENTS.md → 7. A
 beszélgetések neve](AGENTS.md).)
 
+## ⚠️ ELSŐ OLVASATRA: A #7/b JAVÍTÓ KÖR FÉLBEMARADT
+
+A #7 menet FŐ commitja (értesítési rendszer) után Geri élesben kipróbálta, és
+egy **13 pontos hibalistát** adott át. Ebből egy második commit **9 pontot
+elvégzett**, de a limit miatt **4 pont NEM készült el**. A kimaradtak
+pontosan, hogy a következő menet ne keresgéljen:
+
+1. **Az értesítés-panel ÁTÉPÍTÉSE teljes képernyősre.** Ma alulról felcsúszó
+   lap (`NotificationPanel.tsx`), Geri viszont teljes képernyős modált kért,
+   „Értesítések" fejléccel. A részletes kérés: fentről lefelé töltés,
+   legfeljebb 20 elem + „továbbiak betöltése", **swipe balra = olvasott**,
+   **swipe jobbra = törlés** (PC-n a kártya jobb 50%-ára húzva), a kártya
+   MÖGÖTT bal szélen kuka ikon és jobb szélen nyitott boríték ikon (swipe-ra
+   VAGY hover-re látszik), a fejléc jobb oldalán ikonos „összes törlése" és
+   „összes olvasottba" gomb, mellettük a jobb sarokban bezáró X.
+2. **Logócsere.** Geri két SVG-t adott át (`grundo_logo_v2.svg` sötét témára,
+   `grundo_logo_v2_light.svg` világosra) — ezeket a `C:\Users\Geri\Downloads`
+   mappából kell átvenni, mert a chatben lévő tartalmuk nem marad meg. A
+   mostani `GRUNDO` szöveges felirat ÉS a előtte álló színátmenetes hexagon
+   (`.home__mark`) helyére kerül a logó, nagyjából a felirat eddigi
+   méretében.
+3. **Időjárás-widget kibontása.** Kattintásra balra kicsúszva (animálva, akár
+   a felhasználónevet kitakarva) jelenjen meg négy adat ikonokkal:
+   hőmérséklet, csapadék esélye (%), páratartalom (%), szél (km/h).
+   ⚠️ **ADATFORRÁS-KORLÁT, amit meg kell oldani**: a jelenleg használt
+   OpenWeatherMap „current weather" végpont a páratartalmat
+   (`main.humidity`) és a szelet (`wind.speed`, m/s → km/h váltás kell) adja,
+   de a **csapadék ESÉLYÉT (%) NEM** — az csak az előrejelzés-végponton van
+   (`/data/2.5/forecast` → `pop` mező). Vagy egy MÁSODIK hívás kell (a
+   meglévő gyorsítótárba bekötve), vagy a csapadék-esély kimarad. Ezt Gerivel
+   egyeztetni kell, mert az ő kérése négy adatot sorolt fel.
+4. **A tiltás MÁSIK iránya a feedben.** A most elkészült szűrés csak azt
+   fedi, hogy ÉN kit tiltottam. Aki ENGEM tiltott le, annak az aktivitásai
+   továbbra is megjelennek a feedemben — a részletes indoklás a kódban van
+   (`server/src/routes/activities.ts`, a `blockedIds` fölött).
+
 ## ÁLLAPOT
 
 Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`.

@@ -105,6 +105,33 @@
   gap: var(--sp-3);
 }
 
+/*
+  Az ÉRTESÍTÉSRŐL megnyitott hozzászólás kiemelése.
+
+  Az animáció elhalványul: a kiemelés a MEGTALÁLÁST segíti, nem tartós
+  állapotot jelöl — pár másodperc után a sor visszaáll a normál kinézetre.
+*/
+.csheet__row--highlight .csheet__bubble {
+  animation: csheet-highlight 2.8s ease-out;
+}
+
+@keyframes csheet-highlight {
+  0%, 45% {
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 2px var(--accent-border);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .csheet__row--highlight .csheet__bubble {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent-border);
+  }
+}
+
 .csheet__row--mine {
   /* Messenger-szerű saját sor: a buborék balra, a profilkép jobbra kerül. */
   flex-direction: row-reverse;

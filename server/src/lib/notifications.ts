@@ -32,6 +32,7 @@ export type NotificationType =
   | 'modifier_started'
   | 'badge_awarded'
   | 'followed_activity'
+  | 'new_follower'
   | 'territory_stolen'
   | 'territory_defended';
 
@@ -55,8 +56,9 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; defau
   modifier_started: { label: 'Aktív akció indul', defaultOn: true },
   badge_awarded: { label: 'Új jelvény', defaultOn: true },
   followed_activity: { label: 'Követett felhasználó aktivitása', defaultOn: true },
-  territory_stolen: { label: 'Elvették a területed', defaultOn: true },
-  territory_defended: { label: 'Sikeresen megvédted a területed', defaultOn: true },
+  new_follower: { label: 'Új követő', defaultOn: true },
+  territory_stolen: { label: 'Elvették a grundod', defaultOn: true },
+  territory_defended: { label: 'Sikeresen megvédted a grundod', defaultOn: true },
 };
 
 export interface CreateNotificationInput {
@@ -208,7 +210,7 @@ export function notifyTerritoryStolen(
   void createNotification({
     uid: victimId,
     type: 'territory_stolen',
-    title: 'Elvették a területed',
+    title: 'Elvették a grundod',
     body: `${actorUsername} ${Math.round(areaM2).toLocaleString('hu-HU')} m²-t vett el tőled.`,
     data: { screen: 'territory' },
   });
@@ -227,7 +229,7 @@ export async function notifyCommentPosted(input: {
   activityId: string;
   actorId: string;
   activityOwnerId: string;
-  replyTo: { userId: string; username: string } | null;
+  replyTo: { userId: string; username: string; commentId: string } | null;
   text: string;
 }): Promise<void> {
   const { activityId, actorId, activityOwnerId, replyTo, text } = input;
@@ -235,7 +237,22 @@ export async function notifyCommentPosted(input: {
   const actorUsername = String((actorDoc.data() as { username?: string })?.username ?? 'Valaki');
   const preview = text.length > 80 ? `${text.slice(0, 80)}…` : text;
 
-  if (activityOwnerId && activityOwnerId !== actorId) {
+  /**
+   * ⚠️ A VÁLASZ ELNYELI a szerzői értesítést, ha UGYANARRÓL AZ EMBERRŐL van szó.
+   *
+   * Mérve, éles használatban: a saját aktivitásodon a saját hozzászólásodra
+   * érkezett válasz KÉT értesítést adott ugyanannak a személynek („X
+   * hozzászólt az aktivitásodhoz" + „X válaszolt a hozzászólásodra"). A kettő
+   * közül a VÁLASZ a pontosabb — az mondja meg, mire kattintva találod meg a
+   * beszélgetést —, ezért az marad, a másik elmarad.
+   *
+   * Két KÜLÖNBÖZŐ embernél viszont továbbra is MINDKETTŐ megy: ha Anna
+   * aktivitásán Béla ír, és Cili Béla kommentjére válaszol, Anna és Béla is
+   * külön értesül, más-más szöveggel.
+   */
+  const replyCoversOwner = replyTo !== null && replyTo.userId === activityOwnerId;
+
+  if (activityOwnerId && activityOwnerId !== actorId && !replyCoversOwner) {
     void createNotification({
       uid: activityOwnerId,
       type: 'activity_commented',
@@ -250,7 +267,11 @@ export async function notifyCommentPosted(input: {
       type: 'comment_replied',
       title: `${actorUsername} válaszolt a hozzászólásodra`,
       body: preview,
-      data: { screen: 'activity', activityId },
+      /**
+       * A `commentId` a MÉLYHIVATKOZÁSHOZ kell: a kliens ebből tudja, hogy a
+       * hozzászólás-lapot is ki kell nyitnia, és melyik sort emelje ki.
+       */
+      data: { screen: 'activity', activityId, commentId: replyTo.commentId },
     });
   }
 }
@@ -287,7 +308,7 @@ export function notifyGpDaily(uid: string, holdGp: number): void {
     uid,
     type: 'gp_daily',
     title: 'Napi pont-összegzés',
-    body: `+${Math.round(holdGp)} GP a tartott területért.`,
+    body: `+${Math.round(holdGp)} GP a tartott grundodért.`,
     data: { screen: 'profile' },
   });
 }
@@ -322,6 +343,27 @@ export function notifyFollowedActivity(
   });
 }
 
+/**
+ * Új követő — NEM ugyanaz, mint a `followed_activity`.
+ *
+ * Ez akkor szól, ha valaki BEKÖVET téged; a másik akkor, ha valaki, AKIT
+ * KÖVETSZ, feltesz egy aktivitást. A kettő két külön kapcsoló, mert két
+ * teljesen más gyakoriságú esemény.
+ */
+export function notifyNewFollower(
+  targetUid: string,
+  actorUsername: string,
+  actorUsernameLower: string,
+): void {
+  void createNotification({
+    uid: targetUid,
+    type: 'new_follower',
+    title: 'Új követő',
+    body: `${actorUsername} követni kezdett téged.`,
+    data: { screen: 'profile', username: actorUsernameLower },
+  });
+}
+
 export function notifyTerritoryDefended(victimId: string, cellCount: number): void {
   void createNotification({
     uid: victimId,
@@ -329,8 +371,8 @@ export function notifyTerritoryDefended(victimId: string, cellCount: number): vo
     title: 'Sikertelen támadás ellened',
     body:
       cellCount === 1
-        ? '1 cellád védelme 1-gyel csökkent, de tartottad a területet.'
-        : `${cellCount} cellád védelme 1-gyel csökkent, de tartottad a területet.`,
+        ? '1 cellád védelme 1-gyel csökkent, de megtartottad a grundod.'
+        : `${cellCount} cellád védelme 1-gyel csökkent, de megtartottad a grundod.`,
     data: { screen: 'territory' },
   });
 }

@@ -27,10 +27,13 @@ const EMOJI = [
 
 export function CommentSheet({
   activityId,
+  highlightCommentId = null,
   onClose,
   onCountChange,
 }: {
   activityId: string;
+  /** Egy értesítésről érkezve: erre a sorra görgetünk és kiemeljük. */
+  highlightCommentId?: string | null;
   onClose: () => void;
   onCountChange?: (count: number) => void;
 }) {
@@ -64,11 +67,25 @@ export function CommentSheet({
     };
   }, [activityId]);
 
-  // Új hozzászólásnál a lista aljára görgetünk — oda érkezett az új sor.
+  /**
+   * Görgetés: alapból az aljára (oda érkezett az új sor), DE ha értesítésről
+   * jöttünk, a KIEMELT hozzászóláshoz.
+   *
+   * A kiemelt sorhoz görgetés nyer, mert a felhasználó épp azt kereste — az
+   * aljára ugrás elvinné róla a szemét.
+   */
   useEffect(() => {
     const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, [comments]);
+    if (!list || comments === null) return;
+    if (highlightCommentId) {
+      const target = list.querySelector(`[data-comment-id="${CSS.escape(highlightCommentId)}"]`);
+      if (target) {
+        target.scrollIntoView({ block: 'center' });
+        return;
+      }
+    }
+    list.scrollTop = list.scrollHeight;
+  }, [comments, highlightCommentId]);
 
   // Escape zárja a lapot, és alatta ne görögjön az oldal.
   useEffect(() => {
@@ -178,7 +195,14 @@ export function CommentSheet({
             comments.map((comment) => (
               <div
                 key={comment.id}
-                className={`csheet__row${comment.mine ? ' csheet__row--mine' : ''}`}
+                data-comment-id={comment.id}
+                className={[
+                  'csheet__row',
+                  comment.mine ? 'csheet__row--mine' : '',
+                  comment.id === highlightCommentId ? 'csheet__row--highlight' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
                 <Avatar url={comment.author.photoURL} name={comment.author.username} size={32} />
                 <div

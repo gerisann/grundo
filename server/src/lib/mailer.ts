@@ -226,6 +226,73 @@ export function newAccountEmail(
   };
 }
 
+export interface UserReportInfo {
+  reporterUsername: string;
+  reporterEmail: string;
+  reporterUid: string;
+  targetUsername: string;
+  targetUid: string;
+  /** A `reports.category` gépi kulcsa. */
+  category: string;
+  /** Ugyanaz magyarul, ahogy a felhasználó látta a bejelentő lapon. */
+  categoryLabel: string;
+  branch: string;
+  note: string;
+  reportId: string;
+  createdAt: Date;
+}
+
+/**
+ * Bejelentés-értesítő — BELSŐ levél a moderációnak.
+ *
+ * MIÉRT E-MAIL, és nem admin felület? Mert a `reports` kollekcióhoz még
+ * nincs admin felület (docs/06 → 3. Moderáció, még nem megírva), és egy
+ * bejelentés, amit senki nem lát, semmit nem ér. Az e-mail a legrövidebb út
+ * odáig, hogy a bejelentés EMBERHEZ jusson. A Firestore-dokumentum
+ * változatlanul megmarad — amikor az admin felület elkészül, az ugyanabból
+ * dolgozik majd, és ez a levél kiegészítés marad, nem pótlás.
+ *
+ * ⚠️ A BEJELENTŐ KILÉTE benne van. Ez belső levél; a bejelentett felé a
+ * `firestore.rules` továbbra sem engedi ki (a `reports` olvasása
+ * `isAdmin()`-hoz kötött).
+ */
+export function userReportEmail(
+  info: UserReportInfo,
+): Pick<Mail, 'subject' | 'text' | 'html'> {
+  const when = new Intl.DateTimeFormat('hu-HU', {
+    timeZone: 'Europe/Budapest',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(info.createdAt);
+
+  const rows: [string, string][] = [
+    ['Bejelentett felhasználó', `${info.targetUsername} (${info.targetUid})`],
+    ['Bejelentő', `${info.reporterUsername} (${info.reporterUid})`],
+    ['Bejelentő e-mail', info.reporterEmail || '—'],
+    ['Ok', `${info.categoryLabel} (${info.category})`],
+    ['Moderációs ág', info.branch],
+    ['Leírás', info.note || '— (nem adott meg leírást)'],
+    ['Beérkezett', when],
+    ['Bejelentés azonosítója', info.reportId],
+  ];
+
+  return {
+    subject: `GRUNDO bejelentés: ${info.targetUsername} — ${info.categoryLabel}`,
+    text: rows.map(([label, value]) => `${label}: ${value}`).join('\n'),
+    html:
+      `<p><strong>Új felhasználói bejelentés érkezett.</strong></p>` +
+      `<table cellpadding="6" style="border-collapse:collapse;font-family:system-ui,sans-serif">` +
+      rows
+        .map(
+          ([label, value]) =>
+            `<tr><td style="color:#666;vertical-align:top">${label}</td>` +
+            `<td><strong>${escapeHtml(value)}</strong></td></tr>`,
+        )
+        .join('') +
+      `</table>`,
+  };
+}
+
 /** A felhasználónév és az e-mail a felhasználótól jön — nem mehet nyersen HTML-be. */
 function escapeHtml(value: string): string {
   return value

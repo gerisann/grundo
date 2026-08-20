@@ -21,6 +21,14 @@
   opacity: 0.6;
 }
 
+/*
+  A jel CERUZA, nem „+": ez a gomb a MEGLÉVŐ profilkép cseréjére való, nem
+  hozzáadásra. A `+` azt sugallta, hogy egy második képet lehet feltölteni.
+
+  A `line-height: 0` és az SVG `display: block` együtt kell: a sorközi
+  (inline) SVG alatt a betűalapvonalhoz tartozó néhány képpontnyi hely miatt
+  az ikon a kör közepe ALATT ült volna.
+*/
 .prof__avatar-badge {
   position: absolute;
   right: -2px;
@@ -33,9 +41,11 @@
   border: 2px solid var(--bg-primary);
   background: linear-gradient(135deg, var(--accent), var(--territory-rival));
   color: var(--accent-on);
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1;
+  line-height: 0;
+}
+
+.prof__avatar-badge svg {
+  display: block;
 }
 
 .prof__avatar-input {
@@ -129,6 +139,16 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-2);
+}
+
+/*
+  2×2 változat — a négy fő saját szám. A felső sor a GRUNDRÓL szól (mérete,
+  mezőszám), az alsó a MOZGÁSRÓL (táv, sorozat). A `--grid` külön osztály,
+  mert a képernyőn a hármas elrendezés is használatban marad (aktivitás /
+  követő / követett a fejlécben).
+*/
+.prof__stats--grid {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .prof__stat {
