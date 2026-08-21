@@ -225,11 +225,21 @@ function Splash() {
         background: 'var(--bg-primary)',
       }}
     >
-      <span
-        style={{ fontSize: 40, fontWeight: 800, color: 'var(--accent)', letterSpacing: '-0.02em' }}
-      >
-        GRUNDO
-      </span>
+      {/*
+        A logó a szöveges „GRUNDO" felirat helyén — ugyanaz a két PNG, mint a
+        Home fejlécében (`HomeScreen.tsx`), a `.splash__logo` szabályok pedig
+        a `global.css`-ben élnek, mert ez a komponens azelőtt is renderelhet,
+        hogy bármelyik képernyő saját CSS-e betöltődne.
+      */}
+      {/* Az `alt` csak a világos változaton van kitöltve — ugyanaz a minta,
+          mint a Home fejlécében: kétszer felolvasva „GRUNDO GRUNDO" hangzana. */}
+      <img className="splash__logo splash__logo--light" src="/grundo-logo-light.png" alt="GRUNDO" />
+      <img
+        className="splash__logo splash__logo--dark"
+        src="/grundo-logo-dark.png"
+        alt=""
+        aria-hidden="true"
+      />
     </main>
   );
 }

@@ -60,3 +60,30 @@ a {
   font-weight: 700;
   margin: 0;
 }
+
+/*
+  Preload/splash logó — a `Splash` komponens (App.tsx) ide tölti be a
+  PNG-t, témánként két fájllal (indoklás: `HomeScreen.tsx` fejléce).
+
+  A `data-theme` attribútumot az `index.html` fejlécében futó inline
+  szkript ÍRJA KI, még a React betöltése ELŐTT (lásd `index.html`) — a
+  Splash tehát SOHA nem villantja fel a rossz témájú logót, a CSS-váltás
+  már az első képkockán a jó állapotban van.
+*/
+.splash__logo {
+  display: block;
+  width: 220px;
+  height: auto;
+}
+
+.splash__logo--dark {
+  display: none;
+}
+
+[data-theme='dark'] .splash__logo--light {
+  display: none;
+}
+
+[data-theme='dark'] .splash__logo--dark {
+  display: block;
+}
