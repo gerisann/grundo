@@ -46,13 +46,18 @@ export function HomeScreen() {
     <>
       <header className="screen-header home__header">
         {/*
-          A LOGÓ két fájlból jön, témánként — a szöveges „GRUNDO" felirat és
-          az előtte állt színátmenetes hexagon helyére.
+          A LOGÓ két PNG-ből jön, témánként — a szöveges „GRUNDO" felirat és
+          az előtte álló színátmenetes hexagon helyére.
 
-          Miért KÉT fájl egy `currentColor`-os inline SVG helyett? Mert a két
-          változat nem csak színben tér el: a betűk belső üregei (a G és a d
-          „lyukai") máshogy vannak kivágva bennük. Egyetlen fájl átszínezése
-          tehát nem adná vissza pontosan azt, amit a tervező készített.
+          Miért PNG, és miért NEM SVG? A logót Geri exportálta mindkét
+          formában, és a PNG-ben a hexagon színátmenete simább — az SVG
+          verzió a hexagon feltöltéséhez sávozó (banding) színátmenetet
+          adott, a PNG-ét a tervezőprogram már rásterelte, ott ez nem
+          jelenik meg. Emiatt itt kivételesen a raszteres kép a hitelesebb.
+
+          Miért KÉT fájl, nem egy átszínezhető? Mert a két változat nem csak
+          színben tér el: a betűk belső üregei (a G és a d „lyukai") máshogy
+          vannak kivágva bennük — egy fájl átszínezése ezt nem adná vissza.
 
           Az `alt` CSAK a világos változaton van kitöltve: a kettő ugyanazt a
           szót jelenti, és képernyőolvasóval kétszer felolvasva „GRUNDO
@@ -61,14 +66,14 @@ export function HomeScreen() {
         <h1 className="screen-header__title home__brand">
           <img
             className="home__logo home__logo--light"
-            src="/grundo-logo-light.svg"
+            src="/grundo-logo-light.png"
             alt="GRUNDO"
             width={80}
             height={24}
           />
           <img
             className="home__logo home__logo--dark"
-            src="/grundo-logo-dark.svg"
+            src="/grundo-logo-dark.png"
             alt=""
             aria-hidden="true"
             width={80}
