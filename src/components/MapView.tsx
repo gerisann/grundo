@@ -34,6 +34,15 @@ import './mapview.css';
 
 export interface MapViewProps {
   track?: readonly { lat: number; lng: number }[];
+  /**
+   * A kiválasztott küldetés útvonala — szaggatott vezetővonal.
+   *
+   * Nem a valódi nyomvonal (azt a `track` adja), hanem egy AJÁNLOTT út: a
+   * felhasználó ehhez tud igazodni rögzítés közben. Külön forrás és réteg a
+   * `track`-től, hogy a kettő stílusban is megkülönböztethető maradjon, és a
+   * valódi nyom mindig a szaggatott vonal FÖLÉ rajzolódjon.
+   */
+  ghostTrack?: readonly { lat: number; lng: number }[];
   layers?: { role: HexRole; cells: Iterable<CellId | MapHexCell> }[];
   /** A jelenlegi pozíció. Külön a nyomvonaltól: szünet alatt is mutatjuk. */
   position?: { lat: number; lng: number } | null;
@@ -80,6 +89,7 @@ export interface MapViewProps {
 
 
 const TRACK_SOURCE = 'grundo-track';
+const GHOST_SOURCE = 'grundo-ghost';
 const CELL_SOURCE = 'grundo-cells';
 
 /**
@@ -101,6 +111,7 @@ const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 
 export function MapView({
   track,
+  ghostTrack,
   layers,
   position,
   follow = true,
@@ -123,9 +134,11 @@ export function MapView({
   const fitted = useRef(false);
   /** A Mapbox `load` később fut le, ezért mindig a legfrissebb propokat olvassa. */
   const trackRef = useRef(track);
+  const ghostTrackRef = useRef(ghostTrack);
   const layersRef = useRef(layers);
   const fitTrackRef = useRef(fitTrack);
   trackRef.current = track;
+  ghostTrackRef.current = ghostTrack;
   layersRef.current = layers;
   fitTrackRef.current = fitTrack;
   /** Refben, hogy a térkép ne épüljön újra, ha a hívó új függvényt ad. */
@@ -180,7 +193,7 @@ export function MapView({
     instance.on('load', () => {
       ready.current = true;
       addLayers(instance);
-      syncData(instance, trackRef.current, layersRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current);
       fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
       report(instance);
     });
@@ -292,7 +305,7 @@ export function MapView({
      */
     const restore = () => {
       addLayers(instance);
-      syncData(instance, trackRef.current, layersRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current);
     };
     instance.once('style.load', restore);
     instance.setStyle(mapStyleFor(theme));
@@ -304,7 +317,7 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncData(instance, track, layers);
+    syncData(instance, track, ghostTrack, layers);
 
     /**
      * Egyszer igazítunk, az első valódi nyomvonalnál.
@@ -314,7 +327,7 @@ export function MapView({
      * nézetre.
      */
     fitTrackOnce(instance, track, fitTrack, fitted);
-  }, [track, layers, fitTrack]);
+  }, [track, ghostTrack, layers, fitTrack]);
 
   /* ── Pozíció és követés ────────────────────────────────────────── */
 
@@ -511,6 +524,24 @@ function addLayers(instance: mapboxgl.Map): void {
     });
   }
 
+  if (!instance.getSource(GHOST_SOURCE)) {
+    instance.addSource(GHOST_SOURCE, { type: 'geojson', data: emptyCollection() });
+    // A TRACK_SOURCE réteg előtt adjuk hozzá, hogy a valódi nyom mindig a
+    // szaggatott ajánlás fölé rajzolódjon — a kettő könnyen egy vonalon fut.
+    instance.addLayer({
+      id: `${GHOST_SOURCE}-line`,
+      type: 'line',
+      source: GHOST_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': cssColor('var(--info)'),
+        'line-width': 4,
+        'line-dasharray': [0.6, 1.6],
+        'line-opacity': 0.85,
+      },
+    });
+  }
+
   if (!instance.getSource(TRACK_SOURCE)) {
     instance.addSource(TRACK_SOURCE, { type: 'geojson', data: emptyCollection() });
     instance.addLayer({
@@ -526,6 +557,7 @@ function addLayers(instance: mapboxgl.Map): void {
 function syncData(
   instance: mapboxgl.Map,
   track: MapViewProps['track'],
+  ghostTrack: MapViewProps['ghostTrack'],
   layers: MapViewProps['layers'],
 ): void {
   const cellSource = instance.getSource(CELL_SOURCE) as mapboxgl.GeoJSONSource | undefined;
@@ -584,6 +616,24 @@ function syncData(
   if (trackSource) {
     const coordinates = (track ?? []).map((p) => [p.lng, p.lat]);
     trackSource.setData({
+      type: 'FeatureCollection',
+      features:
+        coordinates.length >= 2
+          ? [
+              {
+                type: 'Feature',
+                properties: {},
+                geometry: { type: 'LineString', coordinates },
+              },
+            ]
+          : [],
+    });
+  }
+
+  const ghostSource = instance.getSource(GHOST_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+  if (ghostSource) {
+    const coordinates = (ghostTrack ?? []).map((p) => [p.lng, p.lat]);
+    ghostSource.setData({
       type: 'FeatureCollection',
       features:
         coordinates.length >= 2

@@ -6,6 +6,7 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { routeImageUrl } from '@/lib/staticMap';
 import { rememberDailyMission } from '@/lib/dailyMission';
+import { rememberGhostRoute } from '@/lib/ghostRoute';
 import { formatArea, formatDistance, formatNumber } from '@/lib/format';
 import { api, ApiError, apiConfigured, type Mission, type MissionResult } from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
@@ -263,13 +264,29 @@ export function MissionsScreen() {
           ) : null}
         </section>
 
-        {result ? <Results result={result} onStart={() => navigate('/rogzites')} /> : null}
+        {result ? (
+          <Results
+            result={result}
+            onStart={(mission) => {
+              // A vonal a rögzítés térképén „szellemvonalként" jelenik meg —
+              // a küldetés ígér egy útvonalat, ez viszi el oda a rajzot.
+              rememberGhostRoute(mission);
+              navigate('/rogzites');
+            }}
+          />
+        ) : null}
       </div>
     </>
   );
 }
 
-function Results({ result, onStart }: { result: MissionResult; onStart: () => void }) {
+function Results({
+  result,
+  onStart,
+}: {
+  result: MissionResult;
+  onStart: (mission: Mission) => void;
+}) {
   if (result.missions.length === 0) {
     return (
       <section className="card">
@@ -285,7 +302,7 @@ function Results({ result, onStart }: { result: MissionResult; onStart: () => vo
         számolva.
       </p>
       {result.missions.map((mission) => (
-        <MissionCard key={mission.kind} mission={mission} onStart={onStart} />
+        <MissionCard key={mission.kind} mission={mission} onStart={() => onStart(mission)} />
       ))}
     </>
   );

@@ -12,8 +12,10 @@ import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { layerOf, traceToCellPath } from '@/game/cells';
+import { decodePolyline } from '@/game/polyline';
 import { processActivity } from '@/game';
 import { api, apiConfigured, type TilesResult } from '@/lib/api';
+import { readGhostRoute } from '@/lib/ghostRoute';
 import {
   currentSpeedMps,
   lapDistances,
@@ -67,6 +69,18 @@ export function TrackingScreen() {
    */
   const displayType = remoteState?.type ?? (state.status === 'idle' ? type : state.type);
   const displayDistanceM = remoteState?.distanceM ?? state.distanceM;
+  /**
+   * A szellemvonal — a Küldetések képernyőn kiválasztott ajánlat útvonala.
+   *
+   * Egyszer olvassuk be, a képernyő megnyitásakor: ha közben egy másik
+   * küldetést generálnának egy másik lapon, ez a rögzítés a sajátjához
+   * ragaszkodik, nem cserél alattunk útvonalat félúton.
+   */
+  const [ghostRoute] = useState(() => readGhostRoute());
+  const ghostTrack = useMemo(
+    () => (ghostRoute ? decodePolyline(ghostRoute.polyline) : []),
+    [ghostRoute],
+  );
   const distanceBucket = Math.floor(displayDistanceM / 25);
   /**
    * A mozgásforma a RÖGZÍTŐBEN él, nem itt.
@@ -342,6 +356,7 @@ export function TrackingScreen() {
                 { role: 'trail', cells },
               ]}
               track={displayPoints}
+              ghostTrack={ghostTrack}
               position={mapPosition}
               follow={running || remoteState?.status === 'recording'}
               onViewport={setNearbyView}

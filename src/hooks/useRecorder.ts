@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityType } from '@/types';
+import { clearGhostRoute } from '@/lib/ghostRoute';
 import { BrowserPositionSource } from '@/tracking/browserSource';
 import {
   applySample,
@@ -270,6 +271,9 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     setHasFix(false);
     setError(null);
     setUpload({ status: 'idle' });
+    // A szellemvonal EGYETLEN rögzítésre szólt — a következő induljon nélküle,
+    // különben egy már mentett vagy eldobott küldetés vonala kísértene tovább.
+    clearGhostRoute();
   }, [persister, positionSource, releaseWakeLock]);
 
   const restore = useCallback(async () => {
