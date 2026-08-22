@@ -455,6 +455,7 @@ async function closeBooks(
     tx.set(dailyGpRef, { userId: uid, day: today, total: earnedToday + gp.total, updatedAt: now });
 
     const gainedCells = total.counts.free + total.counts.stolen;
+    const gainedAreaM2 = gainedCells * GAMEPLAY.CELL_AREA_M2;
     const gpAfter = Number(user.gpTotal ?? 0) + gp.total;
     tx.set(
       userRef,
@@ -463,8 +464,12 @@ async function closeBooks(
         gpWeek: FieldValue.increment(gp.total),
         gpMonth: FieldValue.increment(gp.total),
         level: levelFor(gpAfter),
-        territoryM2: { [layer]: FieldValue.increment(gainedCells * GAMEPLAY.CELL_AREA_M2) },
+        territoryM2: { [layer]: FieldValue.increment(gainedAreaM2) },
         cellCount: { [layer]: FieldValue.increment(gainedCells) },
+        // Lásd `activityCommit.ts` — ugyanaz a bruttó szerzés-számláló.
+        areaDay: { [layer]: FieldValue.increment(gainedAreaM2) },
+        areaWeek: { [layer]: FieldValue.increment(gainedAreaM2) },
+        areaMonth: { [layer]: FieldValue.increment(gainedAreaM2) },
         counters: {
           activities: FieldValue.increment(1),
           distanceKm: { [type]: FieldValue.increment(plan.distanceM / 1000) },

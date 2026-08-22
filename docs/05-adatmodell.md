@@ -46,6 +46,13 @@
   cellCount:    { foot: number, bike: number }   // a tárolt igazság
   zoneCount:    { foot: number, bike: number }   // összefüggő foltok száma
 
+  // Időablakos SZERZÉS (bruttó, a gpWeek/gpMonth mintájára) — a napi/heti/
+  // havi ranglistához, NEM a jelenlegi állományt mutatja. A dailyRollover
+  // nullázza (nap: minden fordulónál; hét/hónap: csak zárásnál).
+  areaDay:      { foot: number, bike: number }   // helyi éjfélkor nullázva
+  areaWeek:     { foot: number, bike: number }   // hétfőn nullázva
+  areaMonth:    { foot: number, bike: number }
+
   trust: { level: 'new'|'established'|'trusted'|'watched',
            cleanActivities: number, upheldReports: number, watchedUntil?: Timestamp }
 

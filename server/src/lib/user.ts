@@ -100,6 +100,18 @@ export function newUserDoc(input: NewUserInput, now: Date) {
     territoryM2: { foot: 0, bike: 0 },
     cellCount: { foot: 0, bike: 0 },
     zoneCount: { foot: 0, bike: 0 },
+    /**
+     * Időablakos SZERZÉS (bruttó, nem a jelenlegi állomány) a napi/heti/havi
+     * ranglistához — a `gpWeek`/`gpMonth` mintájára, csak területre és napi
+     * bontással is. A `dailyRollover` nullázza a határokon (nap minden
+     * fordulónál, hét/hónap csak zárásnál), a claim növeli
+     * (`activityCommit.ts`/`activityChunked.ts`). Eleve itt, alapértékkel,
+     * hogy a ranglista összetett rendezése (`territoryM2`-hez hasonlóan)
+     * minden felhasználót lásson, ne csak azt, aki már szerzett valamit.
+     */
+    areaDay: { foot: 0, bike: 0 },
+    areaWeek: { foot: 0, bike: 0 },
+    areaMonth: { foot: 0, bike: 0 },
 
     streak: {
       current: 0,

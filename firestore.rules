@@ -55,8 +55,9 @@ service cloud.firestore {
             || follows(request.auth.uid, uid));
 
       // A felhasználó SAJÁT MAGÁRÓL is csak a megjelenítési és beállítási
-      // mezőket írhatja. A játékállapot (level, gpTotal, territoryM2, trust,
-      // cellCount, zoneCount, counters, pro, status, username) szerveroldali.
+      // mezőket írhatja. A játékállapot (level, gpTotal, territoryM2,
+      // areaDay/areaWeek/areaMonth, trust, cellCount, zoneCount, counters,
+      // pro, status, username) szerveroldali.
       allow update: if isSelf(uid) && onlyChanges([
         'displayName', 'photoURL', 'bio', 'city', 'countryCode',
         'units', 'body', 'timezone', 'updatedAt'

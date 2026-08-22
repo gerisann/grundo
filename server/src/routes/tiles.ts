@@ -275,47 +275,75 @@ tilesRouter.get('/owner/:uid', async (req, res, next) => {
   }
 });
 
+/** A ranglista nézetei — melyik mező szerint rendezünk. */
+type LeaderboardWindow = 'day' | 'week' | 'month' | 'alltime';
+
+const WINDOW_FIELD: Record<LeaderboardWindow, string> = {
+  day: 'areaDay',
+  week: 'areaWeek',
+  month: 'areaMonth',
+  alltime: 'territoryM2',
+};
+
+function parseWindow(raw: unknown): LeaderboardWindow {
+  const value = String(raw ?? 'alltime');
+  if (value !== 'day' && value !== 'week' && value !== 'month' && value !== 'alltime') {
+    throw badRequest('invalid_window', 'Ismeretlen ranglista-nézet.');
+  }
+  return value;
+}
+
 /**
- * GET /api/tiles/leaderboard?layer=foot — a legnagyobb területek.
+ * GET /api/tiles/leaderboard?layer=foot&window=alltime — legnagyobb területek.
  *
- * MINDENKI RAJTA VAN, a nulla területűek is — Geri kifejezetten ezt kérte: a
+ * NÉGY NÉZET (`window`): `alltime` a jelenlegi állományt mutatja
+ * (`territoryM2`), `day`/`week`/`month` pedig az ADOTT IDŐSZAKBAN SZERZETT
+ * bruttó területet (`areaDay`/`areaWeek`/`areaMonth`) — ez a `gpWeek`/
+ * `gpMonth` mintája, NEM a nettó változás: ha valakitől időközben elvették a
+ * frissen szerzett cellákat, a heti számából az még nem vész ki. Geri
+ * döntése (2026-08-22): a bruttó egyszerűbb és elég erre a célra.
+ *
+ * MINDENKI RAJTA VAN, a nulla értékűek is — Geri kifejezetten ezt kérte: a
  * lista attól ranglista, hogy mindenki helyét mutatja, nem csak azokét, akik
- * épp vezetnek. Egy korábbi próbálkozás (`hasOwnedArea` jelző, csak az ÚJ
- * szerzéseknél írva) ÜRES listát adott éles adaton, mert a régi
+ * épp vezetnek/szereztek. Egy korábbi próbálkozás (`hasOwnedArea` jelző,
+ * csak az ÚJ szerzéseknél írva) ÜRES listát adott éles adaton, mert a régi
  * felhasználóknál nincs visszamenőleg kitöltve — ezért kikerült.
  *
- * A MÁSODLAGOS RENDEZÉS ábécésorrend (`usernameLower`): egyenlő terület
- * esetén (a leggyakoribb ilyen eset épp a nulla) ne a Firestore tetszőleges
+ * A MÁSODLAGOS RENDEZÉS ábécésorrend (`usernameLower`): egyenlő érték esetén
+ * (a leggyakoribb ilyen eset épp a nulla) ne a Firestore tetszőleges
  * dokumentum-sorrendje döntsön, hanem valami, ami a felhasználó számára is
  * értelmezhető. Ehhez összetett index kell (lásd `firestore.indexes.json`),
- * mert két mező szerint rendezünk.
+ * mert két mező szerint rendezünk — nézetenként és rétegenként külön, mert a
+ * Firestore indexe konkrét mezőútvonalra szól, nem paraméterezhető.
  */
 tilesRouter.get('/leaderboard', async (req, res, next) => {
   try {
     const layer = parseLayer(req.query.layer);
+    const window = parseWindow(req.query.window);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const field = WINDOW_FIELD[window];
 
     const snapshot = await db
       .collection(COLLECTIONS.users)
-      .orderBy(`territoryM2.${layer}`, 'desc')
+      .orderBy(`${field}.${layer}`, 'desc')
       .orderBy('usernameLower', 'asc')
       .limit(limit)
       .get();
 
     res.json({
       layer,
+      window,
       entries: snapshot.docs.map((doc) => {
         const data = doc.data() as {
           username?: string;
           photoURL?: string | null;
-          territoryM2?: Record<string, number>;
           cellCount?: Record<string, number>;
-        };
+        } & Record<string, Record<string, number> | undefined>;
         return {
           uid: doc.id,
           username: data.username ?? 'ismeretlen',
           photoURL: data.photoURL ?? null,
-          areaM2: data.territoryM2?.[layer] ?? 0,
+          areaM2: data[field]?.[layer] ?? 0,
           cellCount: data.cellCount?.[layer] ?? 0,
         };
       }),

@@ -12,14 +12,19 @@ beszélgetések neve](AGENTS.md).)
 Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. A pontos HEAD-et
 `git log -1`-gyel nézd meg — ez a menet TÖBB commitban ment fel `a8018ed`
 fölé: `d244d94` (az öt pont), `326ed8c` (első utólagos javítás), `caee5db`
-(napló), majd egy még nem commitolt utolsó javítás (ranglista — mindenki
-rajta van, ábécésorrend, összetett index).
+(napló), `3678c56` (ranglista — mindenki rajta van, ábécésorrend), majd egy
+még nem commitolt utolsó kör: **a napi/heti/havi ranglista-bontás**, Geri 6.
+pontja, amit az előző menet végén Opus-döntésre vártam — Geri a BRUTTÓ
+szerzést választotta (2026-08-22), ezért ez a menet is elkészítette.
 
 Tesztek, most mérve: gyökérből `npm test` → **333 teszt zöld** (24 fájl, 8
-emulátoros kihagyva, változatlan a menet eleji számhoz képest — ez a kör nem
-adott új tesztet). Typecheck (gyökér ÉS `server/`) hibamentes. Élőben
-ellenőrizve a helyi emulátoron, valódi bejelentkezéssel: pódium, értesítés-
-ikonok, időjárás-widget méret, ranglista (nulla terület + ábécésorrend).
+emulátoros kihagyva). `npm run test:emulator` (Firestore-tranzakciót és
+sémát is érintett a kör) → **8 fájl, 100 teszt zöld**. Typecheck (gyökér ÉS
+`server/`) hibamentes. Élőben ellenőrizve a helyi emulátoron, valódi
+bejelentkezéssel: pódium, értesítés-ikonok, időjárás-widget méret, ranglista
+mind a négy nézetben (napi/heti/havi/mindenkori — a napinál mesterségesen
+beállított egy felhasználót a többi elé, hogy a sorrend valóban a nézetnek
+megfelelően változzon, ne csak véletlenül egyezzen az alltime-mal).
 
 **Amit ez a menet NEM tudott élőben kipróbálni**: az aktivitás-mentés utáni
 átirányítást (1. pont lent), mert ahhoz egy valódi, lezárt aktivitás kell —
@@ -30,11 +35,15 @@ ugyanerről). A kódot a szerkesztő-módban már bevált `onSaved` mintára ír
 ## ⚠️ ELSŐ OLVASATRA: MIT KELL TELEPÍTENI ÉS FUTTATNI
 
 1. **frontend + backend** telepítés kell (mindkét oldalt érintette a kör).
-2. Szabályok NEM változtak.
-3. Migráció NEM kell.
-4. **Indexek KELLENEK** — ez ELTÉR a menet elején jelzetthez képest: a
-   ranglista utolsó javítása két mező szerint rendez, ahhoz összetett index
-   kell (`firestore.indexes.json`). Ha kimarad, a ranglista élesben
+2. Szabályok NEM változtak érdemben (egy komment frissült, funkcionálisan
+   semmi — az `onlyChanges` allowlist eddig is kizárta az új mezőket).
+3. **MIGRÁCIÓ KELL, ÚJ** — lásd „TELEPÍTETLEN", ez a menet első számú
+   teendője telepítés UTÁN, a napi/heti/havi nézet előtt kötelező.
+4. **Indexek KELLENEK, NYOLC bejegyzés** — ez a menet a `territoryM2`
+   (2 réteg) mellé hármat vett fel (`areaDay`/`areaWeek`/`areaMonth`,
+   szintén 2-2 réteg) — összesen 8 összetett index a
+   `firestore.indexes.json`-ban. Ha kimarad, a napi/heti/havi (és az
+   előző menetben bevezetett alltime) ranglista élesben
    `FAILED_PRECONDITION` hibával elhasal.
 
 Ezen felül a #6 előtti menetek óta **még mindig várakozik** egy korábbi
@@ -42,9 +51,8 @@ teendő — lásd alul, „TELEPÍTETLEN".
 
 ## EBBEN A MENETBEN ELKÉSZÜLT
 
-Geri hat apró kérést adott át. Öt elkészült és élőben ellenőrizve az
-emulátoron; a hatodik (napi/heti/havi ranglista-bontás) NEM készült el —
-lásd „KÖVETKEZŐ MENET", ott a döntés miért maradt ki.
+Geri hat apró kérést adott át, plusz két kör visszajelzést az első
+átadás után. Mind a hat pont elkészült, élőben ellenőrizve az emulátoron.
 
 ### 1. Aktivitás-mentés — ragadt képernyő javítva
 
@@ -151,36 +159,56 @@ Az öt pont után Geri két hibát jelzett, még ebben a menetben javítva:
   (kerekítéssel).
 
 
+### Napi / heti / havi ranglista-bontás — Geri 6. pontja, ELKÉSZÜLT
+
+Geri döntése (2026-08-22, kérdésre válaszolva): **bruttó szerzés**, a
+`gpWeek`/`gpMonth` mintájára — NEM a nettó változás (szerzett mínusz
+elvesztett). Ha valakitől időközben elvették a frissen szerzett cellákat, a
+heti számából az még nem vész ki.
+
+- **Három új mező** a felhasználó dokumentumon: `areaDay`/`areaWeek`/
+  `areaMonth`, mindegyik `{foot, bike}` alakban (`lib/user.ts`, alapérték
+  `{0,0}` minden ÚJ regisztrációnál — `docs/05-adatmodell.md` is frissítve).
+- **Növelés a claim-nél**: `activityCommit.ts` és `activityChunked.ts`
+  mindhárom mezőt egyszerre növeli a szerzett cellák területével — ugyanaz a
+  `FieldValue.increment`, mint a `territoryM2`-nél, csak három helyre írva.
+- **Nullázás a `dailyRollover.ts`-ben**: az `areaDay` MINDIG nullázódik egy
+  `advance` fordulónál (minden futás egy naphatárt lép át), az `areaWeek`
+  csak `weekClosed`-nél, az `areaMonth` csak `monthClosed`-nél. Fontos
+  különbség a `gpWeek`/`gpMonth`-tól: azoknál a forduló ÍR IS (hold-bónusz),
+  a területnél a forduló CSAK nulláz — a szerzés kizárólag a claim-nél
+  történik, a rollovernek nincs saját területi jóváírása.
+- **`routes/tiles.ts` → GET /leaderboard**: új `window` paraméter
+  (`day`/`week`/`month`/`alltime`, alapértelmezett `alltime`). A lekérdezés
+  ugyanazt a két-mezős rendezést használja, mint az előző menet ranglista-
+  javítása (érték csökkenő + `usernameLower` növekvő), csak a mezőútvonal
+  változik nézetenként (`WINDOW_FIELD` map). A válasz `areaM2` mezője a
+  nézettől függően vagy a jelenlegi állományt, vagy az időszaki szerzést adja.
+- **Frontend**: `TerritoryScreen.tsx` → `Leaderboard` négy fület kapott a
+  fejléc alatt (Napi/Heti/Havi/Mindenkori — `terr__board-tabs`), a cím és az
+  üres-állapot szövege nézetenként más (`WINDOW_COPY`). Váltáskor a lista
+  nullázódik, amíg az új adat be nem jön, hogy ne látszódjon egy pillanatra
+  a régi nézet száma az új fejléc alatt.
+- ⚠️ **MIGRÁCIÓ KELL** — új szkript: `backfillAreaWindows.ts`
+  (`npm run backfill:area-windows`). Ugyanaz a hiba fordulhatna elő, mint az
+  előző menet `hasOwnedArea`-kudarcánál: a Firestore `orderBy` kihagyja azt a
+  dokumentumot, amelyiken a rendező mező EGYÁLTALÁN NEM LÉTEZIK, a régi
+  felhasználóknál pedig nem létezik `areaDay`/`areaWeek`/`areaMonth` —
+  enélkül a napi/heti/havi nézet gyakorlatilag üresen jönne vissza éles
+  adaton. A szkript nullára állítja a hiányzó mezőket (ez nem hamisít
+  történetet: a bevezetés pillanatában senkinek nincs mért időszaki
+  szerzése). Élőben, az emulátoron ELŐRE belefutottam ebbe — a hiba
+  ugyanúgy jelentkezett, mint várható volt éles adaton (csak az a
+  felhasználó jelent meg a napi nézetben, akinél kézzel beírtam a mezőt),
+  ezért a migráció innentől a telepítési lépések RÉSZE, nem utólagos
+  javítás.
+- `seedEmulator.ts` is kapott alapértelmezett `areaDay`/`areaWeek`/
+  `areaMonth: {0,0}`-t, ugyanezért.
+
 ## KÖVETKEZŐ MENET
 
-**Napi / heti / havi ranglista-bontás — Geri 6. pontja, NEM készült el.**
-
-Ez adatmodell-döntés, ezért ebben a menetben szándékosan megálltam nála a
-könnyebb pontok után, ahelyett hogy rögtönöztem volna. A helyzet:
-
-- A `territoryM2` csak a JELENLEGI állapotot tárolja, nincs időablakos
-  előzménye. A GP-nél már van minta erre (`gpWeek`/`gpMonth`, nullázás a
-  `dailyRollover.ts`-ben) — de a GP-nél nincs lopás, a területnél van, ami
-  mást jelent: „e heti GP" = e héten szerzett pont, de „e heti terület" nem
-  egyértelmű — a NETTÓ változást mérje (szerzett mínusz elvesztett), vagy a
-  szerzett bruttó mennyiséget?
-- Ha a NETTÓ változás a cél (valószínűbb — ez felel meg egy „ki nyert
-  legtöbbet EBBEN AZ IDŐSZAKBAN" kérdésnek), akkor napi pillanatkép
-  (snapshot) kell minden felhasználóhoz, és a heti/havi szám a mai és az
-  N nappal ezelőtti pillanatkép különbsége — ez új kollekciót és egy új
-  napi jobot (vagy a meglévő `dailyRollover` bővítését) igényel.
-- Ha a BRUTTÓ szerzés a cél (egyszerűbb, a `gpWeek`/`gpMonth` mintájára:
-  `areaWeek`/`areaMonth` számláló, ami az `activityCommit.ts`/
-  `activityChunked.ts` claim-jénél nő, és a `dailyRollover.ts` heti/havi
-  ablakzárásánál nullázódik), akkor NAPI bontás így nem megy, mert jelenleg
-  nincs `gpDay`/`areaDay` mező sem — azt is be kellene vezetni.
-- Mindkét irány valódi tervezési döntés, ami hat a Firestore írásmennyiségre
-  és a `dailyRollover` szerkezetére is — ezért Opus-szintű kérdés, nem
-  rögtönözhető.
-
-**Javaslat a menet elejére**: Geri döntse el, NETTÓ vagy BRUTTÓ változás
-legyen-e az időablakos ranglista alapja, utána a modell és az index
-megtervezhető.
+Geri mind a hat kérése elkészült ebben a menetben — nincs kötelező folytatás,
+a következő kör a „NYITOTT, KISEBB" listából vagy egy új kérésből indulhat.
 
 ## NYITOTT, KISEBB
 
@@ -211,12 +239,18 @@ Változatlan a #6 előtti menetek óta — ezt a kört nem érintették:
 ## TELEPÍTETLEN
 
 Több menet munkája együtt vár: a korábbi menetek (időjárás/tiltás/profil-link/
-értesítés-húzás) ÉS ez a menet. Frontend + backend, plusz a `blockedBy`
-migráció egy korábbi menetből, ha még nem futott le:
+értesítés-húzás) ÉS ez a menet. Frontend + backend + indexek (8 bejegyzés,
+lásd fent), és KÉT migráció:
 
 ```
 cd ~/grundo/server && git pull && npm run backfill:blocked-by -- --apply --allow-production
+cd ~/grundo/server && npm run backfill:area-windows -- --apply --allow-production
 ```
+
+**A sorrend számít**: index → backend telepítés → `backfill:area-windows` —
+a szkript a `lib/firebase`-en (tehát a telepített backend kódján) keresztül
+ír, és a napi/heti/havi ranglista csak a migráció lefutása UTÁN mutat majd
+mindenkit.
 
 ## Fejlesztői előnézet — hogyan látunk éles adatot a böngészőben
 
@@ -259,6 +293,9 @@ meg. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Opus, emelt mélységgel** — a napi/heti/havi ranglista-bontás nettó-vs-bruttó
-döntése és az ebből következő adatmodell (új mező vagy új kollekció, a
-`dailyRollover.ts` bővítése) valódi architektúra-kérdés, nem rutinmunka.
+**Sonnet, normál mélységgel** elég — az architektúra-döntést igénylő pont
+(napi/heti/havi ranglista) ebben a menetben lezárult. A „NYITOTT, KISEBB"
+listából a legtöbb tétel rutinjellegű; ha a következő kör mégis
+spec-ellentmondásba vagy adatmodell-döntésbe fut (pl. a `zones` kollekció
+bevezetése a területi hold-modifierhez), ott érdemes újra megállni és
+Opusra váltani.

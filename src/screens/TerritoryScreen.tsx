@@ -9,6 +9,7 @@ import {
   api,
   apiConfigured,
   type LeaderboardEntry,
+  type LeaderboardWindow,
   type TileOwner,
   type TilesResult,
 } from '@/lib/api';
@@ -61,6 +62,7 @@ export function TerritoryScreen() {
   }, [layer]);
   const [tiles, setTiles] = useState<TilesResult | null>(null);
   const [board, setBoard] = useState<LeaderboardEntry[] | null>(null);
+  const [boardWindow, setBoardWindow] = useState<LeaderboardWindow>('alltime');
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   /**
@@ -111,11 +113,14 @@ export function TerritoryScreen() {
 
   useEffect(() => {
     if (!apiConfigured) return;
+    // Nézetváltáskor a régi lista eltűnik, amíg az új be nem jön — különben
+    // egy pillanatra a MÁSIK ablak számai látszanának a friss fejléc alatt.
+    setBoard(null);
     void api
-      .leaderboard(layer)
+      .leaderboard(layer, boardWindow)
       .then((r) => setBoard(r.entries))
       .catch(() => setBoard([]));
-  }, [layer]);
+  }, [layer, boardWindow]);
 
   const loadTiles = useCallback(
     async (next: View) => {
@@ -348,7 +353,13 @@ export function TerritoryScreen() {
         </div>
 
         {boardOpen ? (
-          <Leaderboard entries={board} meUid={uid} onClose={() => setBoardOpen(false)} />
+          <Leaderboard
+            entries={board}
+            meUid={uid}
+            boardWindow={boardWindow}
+            onWindowChange={setBoardWindow}
+            onClose={() => setBoardOpen(false)}
+          />
         ) : null}
 
         {!mapboxConfigured ? (
@@ -457,21 +468,63 @@ function Swatch({ role, label, defense = 3 }: { role: HexRole; label: string; de
   );
 }
 
+/** Cím és üres-állapot szövege nézetenként — a `WINDOW_TABS` sorrendjét lásd lent. */
+const WINDOW_COPY: Record<LeaderboardWindow, { title: string; empty: string }> = {
+  alltime: { title: 'Legnagyobb területek', empty: 'Még senkinek nincs területe. Légy te az első.' },
+  day: { title: 'Ma szerzett terület', empty: 'Ma még senki nem szerzett területet.' },
+  week: { title: 'E héten szerzett terület', empty: 'Ezen a héten még senki nem szerzett területet.' },
+  month: { title: 'E hónapban szerzett terület', empty: 'Ebben a hónapban még senki nem szerzett területet.' },
+};
+
+const WINDOW_TABS: { key: LeaderboardWindow; label: string }[] = [
+  { key: 'day', label: 'Napi' },
+  { key: 'week', label: 'Heti' },
+  { key: 'month', label: 'Havi' },
+  { key: 'alltime', label: 'Mindenkori' },
+];
+
 function Leaderboard({
   entries,
   meUid,
+  boardWindow,
+  onWindowChange,
   onClose,
 }: {
   entries: LeaderboardEntry[] | null;
   meUid: string;
+  boardWindow: LeaderboardWindow;
+  onWindowChange: (window: LeaderboardWindow) => void;
   onClose: () => void;
 }) {
+  const copy = WINDOW_COPY[boardWindow];
   const head = (
     <div className="terr__board-head">
-      <h2 className="terr__board-title">Legnagyobb területek</h2>
+      <h2 className="terr__board-title">{copy.title}</h2>
       <button type="button" className="terr__board-close" aria-label="Bezárás" onClick={onClose}>
         ✕
       </button>
+    </div>
+  );
+
+  /*
+    A fülsor MINDIG látszik, betöltés és üres állapot alatt is — különben aki
+    egy üres napi nézeten landol, nem tudna átváltani anélkül, hogy bezárná
+    és újranyitná a lapot.
+  */
+  const tabs = (
+    <div className="terr__board-tabs" role="tablist" aria-label="Ranglista időszaka">
+      {WINDOW_TABS.map((tab) => (
+        <button
+          type="button"
+          key={tab.key}
+          role="tab"
+          aria-selected={tab.key === boardWindow}
+          className={`terr__board-tab${tab.key === boardWindow ? ' terr__board-tab--active' : ''}`}
+          onClick={() => onWindowChange(tab.key)}
+        >
+          {tab.label}
+        </button>
+      ))}
     </div>
   );
 
@@ -479,6 +532,7 @@ function Leaderboard({
     return (
       <div className="terr__board">
         {head}
+        {tabs}
         <p className="terr__board-message">Betöltés…</p>
       </div>
     );
@@ -488,7 +542,8 @@ function Leaderboard({
     return (
       <div className="terr__board">
         {head}
-        <p className="terr__board-message">Még senkinek nincs területe. Légy te az első.</p>
+        {tabs}
+        <p className="terr__board-message">{copy.empty}</p>
       </div>
     );
   }
@@ -499,6 +554,7 @@ function Leaderboard({
   return (
     <div className="terr__board">
       {head}
+      {tabs}
       {podium.length > 0 ? <Podium entries={podium} meUid={meUid} /> : null}
       {entries.map((entry, index) => (
         <button

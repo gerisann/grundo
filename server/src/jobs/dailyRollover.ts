@@ -471,6 +471,18 @@ async function rolloverUser(
     if (plan.monthClosed) update.gpMonth = plan.gpDelta;
     else if (plan.gpDelta > 0) update.gpMonth = FieldValue.increment(plan.gpDelta);
 
+    /**
+     * Az `areaDay`/`areaWeek`/`areaMonth` NEM kap jóváírást itt — azok
+     * kizárólag a claim-nél nőnek (`activityCommit.ts`/`activityChunked.ts`).
+     * A forduló dolga csak a nullázás a határon, a `gpWeek`/`gpMonth`
+     * mintájától eltérően nincs "átvitt" napi delta, amit meg kellene
+     * előznie: minden `advance` egy naphatárt lép át, tehát az `areaDay`
+     * MINDIG nullázódik; a hét/hónap csak a saját zárásánál.
+     */
+    update.areaDay = { foot: 0, bike: 0 };
+    if (plan.weekClosed) update.areaWeek = { foot: 0, bike: 0 };
+    if (plan.monthClosed) update.areaMonth = { foot: 0, bike: 0 };
+
     tx.set(userRef, update, { merge: true });
 
     /**

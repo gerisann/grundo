@@ -473,6 +473,11 @@ export async function commitActivity(
       level: levelFor(gpAfter),
       territoryM2: { [layer]: FieldValue.increment(gainedAreaM2) },
       cellCount: { [layer]: FieldValue.increment(gainedCells) },
+      // Bruttó szerzés a napi/heti/havi ranglistához — lásd `user.ts` a
+      // mezők indoklásáért. A `dailyRollover` nullázza a határokon.
+      areaDay: { [layer]: FieldValue.increment(gainedAreaM2) },
+      areaWeek: { [layer]: FieldValue.increment(gainedAreaM2) },
+      areaMonth: { [layer]: FieldValue.increment(gainedAreaM2) },
       counters: {
         activities: FieldValue.increment(1),
         distanceKm: { [type]: FieldValue.increment(serverDistanceM / 1000) },

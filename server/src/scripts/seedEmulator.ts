@@ -66,6 +66,11 @@ async function makeUser(uid: string, username: string, extra: Record<string, unk
       pro: { active: false },
       gpTotal: 120,
       territoryM2: { foot: 12_000, bike: 0 },
+      // A ranglista napi/heti/havi nézete ezekre rendez — a mezőnek léteznie
+      // kell, különben a Firestore `orderBy` kihagyja a felhasználót.
+      areaDay: { foot: 0, bike: 0 },
+      areaWeek: { foot: 0, bike: 0 },
+      areaMonth: { foot: 0, bike: 0 },
       cellCount: { foot: 39, bike: 0 },
       zoneCount: { foot: 1, bike: 0 },
       streak: { current: 1, longest: 4, weeks: 0 },

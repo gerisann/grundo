@@ -277,6 +277,34 @@
   color: var(--text-primary);
 }
 
+/* ── Időszak-fülek (napi/heti/havi/mindenkori) ──────────────────────── */
+
+.terr__board-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.terr__board-tab {
+  padding: var(--sp-2) 0;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.terr__board-tab:hover {
+  color: var(--text-primary);
+}
+
+.terr__board-tab--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /*
  * Sima szöveges üzenet a ranglistában.
  *

@@ -129,7 +129,7 @@
       ]
     },
     {
-      "//": "Ranglista (GET /api/tiles/leaderboard): terület szerint csökkenő, egyenlőségnél ábécésorrend. Réteganként külön index kell, mert a `territoryM2.foot`/`territoryM2.bike` két külön mezőútvonal.",
+      "//": "Ranglista (GET /api/tiles/leaderboard): a négy nézet (alltime/day/week/month) mindegyike külön mezőútvonal, réteganként is — a Firestore indexe nem paraméterezhető, ezért 4×2=8 bejegyzés kell. Mind ugyanaz az alak: az adott mező szerint csökkenő, egyenlőségnél ábécésorrend.",
       "collectionGroup": "users",
       "queryScope": "COLLECTION",
       "fields": [
@@ -142,6 +142,54 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "territoryM2.bike", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "areaDay.foot", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "areaDay.bike", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "areaWeek.foot", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "areaWeek.bike", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "areaMonth.foot", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "areaMonth.bike", "order": "DESCENDING" },
         { "fieldPath": "usernameLower", "order": "ASCENDING" }
       ]
     }

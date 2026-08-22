@@ -21,6 +21,7 @@
     "rollover:run": "tsx src/scripts/runRollover.ts",
     "clean:gp-ledger-junk": "tsx src/scripts/cleanGpLedgerJunk.ts",
     "backfill:blocked-by": "tsx src/scripts/backfillBlockedBy.ts",
+    "backfill:area-windows": "tsx src/scripts/backfillAreaWindows.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts"
   },
   "dependencies": {

@@ -352,9 +352,13 @@ export interface LeaderboardEntry {
   uid: string;
   username: string;
   photoURL: string | null;
+  /** `alltime` nézetben a jelenlegi terület, egyébként az időszaki bruttó szerzés. */
   areaM2: number;
   cellCount: number;
 }
+
+/** `alltime` a jelenlegi állomány, a többi az adott időszak bruttó szerzése. */
+export type LeaderboardWindow = 'day' | 'week' | 'month' | 'alltime';
 
 export interface OtpSendResult {
   sent?: boolean;
@@ -932,10 +936,14 @@ export const api = {
   tileOwner: (uid: string, layer: 'foot' | 'bike' = 'foot') =>
     request<{ owner: TileOwner }>(`/api/tiles/owner/${encodeURIComponent(uid)}?layer=${layer}`),
 
-  /** A legnagyobb területek. */
-  leaderboard: (layer: 'foot' | 'bike' = 'foot') =>
-    request<{ layer: string; entries: LeaderboardEntry[] }>(
-      `/api/tiles/leaderboard?layer=${layer}`,
+  /**
+   * A ranglista. `window` szerint négy nézet: `alltime` a jelenlegi
+   * területet mutatja, `day`/`week`/`month` a bruttó szerzést az adott
+   * időszakban (a `gpWeek`/`gpMonth` mintájára — nem a nettó változást).
+   */
+  leaderboard: (layer: 'foot' | 'bike' = 'foot', window: LeaderboardWindow = 'alltime') =>
+    request<{ layer: string; window: LeaderboardWindow; entries: LeaderboardEntry[] }>(
+      `/api/tiles/leaderboard?layer=${layer}&window=${window}`,
     ),
 
   otpSend: () => request<OtpSendResult>('/api/auth/otp/send', { method: 'POST' }),
