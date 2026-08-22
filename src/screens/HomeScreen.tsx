@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { OtpDialog } from '@/components/OtpDialog';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
@@ -17,6 +18,7 @@ import './home.css';
  * időjárás) · összegző kártya · napi küldetés · feed-váltó · feed.
  */
 export function HomeScreen() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { profile, reload } = useProfile();
   const [otpOpen, setOtpOpen] = useState(false);
@@ -82,12 +84,17 @@ export function HomeScreen() {
         </h1>
 
         {/*
-          Három művelet, EGYELŐRE INAKTÍVAN.
-          Szándékosan `disabled`, nem elrejtve: a helyük innentől foglalt, és
-          a fejléc nem fog átrendeződni, amikor megjön mögéjük a működés.
+          Az Üzenetek EGYELŐRE INAKTÍV. Szándékosan `disabled`, nem elrejtve:
+          a helye innentől foglalt, és a fejléc nem fog átrendeződni, amikor
+          megjön mögéje a működés. A Keresés ide tartozott, de már él.
         */}
         <div className="home__actions">
-          <button type="button" className="home__action" aria-label="Keresés" disabled>
+          <button
+            type="button"
+            className="home__action"
+            aria-label="Keresés"
+            onClick={() => navigate('/kereses')}
+          >
             <SearchIcon />
           </button>
           <button type="button" className="home__action" aria-label="Üzenetek" disabled>

@@ -13,6 +13,7 @@ import { CommunityScreen } from './screens/CommunityScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { PublicProfileScreen } from './screens/PublicProfileScreen';
 import { ActivityScreen } from './screens/ActivityScreen';
+import { SearchScreen } from './screens/SearchScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
 import { PrivacyScreen } from './screens/settings/PrivacyScreen';
@@ -147,6 +148,7 @@ function Router() {
           <Route path="/profil" element={<ProfileScreen />} />
           {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}
           <Route path="/felhasznalo/:username" element={<PublicProfileScreen />} />
+          <Route path="/kereses" element={<SearchScreen />} />
           <Route path="/aktivitas/:id" element={<ActivityScreen />} />
           <Route path="/beallitasok" element={<SettingsScreen />} />
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />

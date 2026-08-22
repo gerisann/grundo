@@ -765,6 +765,10 @@ export const api = {
   /** Kiket tiltottam le — a Beállítások → Tiltott felhasználók listája. */
   blockedUsers: () => request<{ items: Connection[] }>('/api/users/me/blocked'),
 
+  /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */
+  searchUsers: (q: string) =>
+    request<{ items: Connection[] }>(`/api/users/search?q=${encodeURIComponent(q)}`),
+
   /** Tiltás — a követés mindkét irányban megszűnik. */
   blockUser: (username: string) =>
     request<{ status: 'blocked' }>(`/api/users/${encodeURIComponent(username)}/block`, {

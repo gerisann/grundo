@@ -124,6 +124,73 @@ function millis(value: unknown): number | null {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   GET /api/users/search?q=… — felhasználónév-keresés
+   ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * ⚠️ EZ A ROUTE `/:username` ELŐTT VAN REGISZTRÁLVA.
+ *
+ * Az Express a regisztrálás sorrendjében próbálja a mintákat, és a
+ * `/:username` EGY szegmenst bármi illeszkedik rá — a `/search` szót is,
+ * `username: 'search'` értékkel. Ha ez a route lentebb lenne, sosem futna
+ * le, mert a profil-lekérdező kapná el előbb.
+ */
+usersRouter.get('/search', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const q = normalizeUsername(String(req.query.q ?? ''));
+    if (!q) {
+      res.json({ items: [] });
+      return;
+    }
+    const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 20));
+    const viewerUid = req.uid!;
+
+    /*
+      PREFIX-KERESÉS a `usernameLower` mezőn tartományos lekérdezéssel:
+      minden olyan nevet megfog, ami a keresett szöveggel KEZDŐDIK. A felső
+      határ a keresett szöveg plusz a Unicode magánhasználatú tartomány
+      legutolsó karaktere (U+F8FF) — az gyakorlatilag minden karakternél
+      "nagyobb", ezért zárja le felülről a tartományt.
+    */
+    const PREFIX_UPPER_BOUND = String.fromCharCode(0xf8ff);
+    const own = db.collection(COLLECTIONS.users).doc(viewerUid);
+    const [snapshot, blocked, blockedBy] = await Promise.all([
+      db
+        .collection(COLLECTIONS.users)
+        .orderBy('usernameLower')
+        .startAt(q)
+        .endAt(`${q}${PREFIX_UPPER_BOUND}`)
+        // A letiltottak és a saját magam kiszűrése UTÓLAG, memóriában
+        // történik — ezért kérünk a limitnél többet, hogy a szűrés után is
+        // maradjon elég találat.
+        .limit(limit + 20)
+        .get(),
+      own.collection('blocks').select().get(),
+      own.collection('blockedBy').select().get(),
+    ]);
+
+    const blockedIds = new Set([
+      ...blocked.docs.map((doc) => doc.id),
+      ...blockedBy.docs.map((doc) => doc.id),
+    ]);
+
+    const items: Connection[] = [];
+    for (const doc of snapshot.docs) {
+      if (doc.id === viewerUid || blockedIds.has(doc.id)) continue;
+      const data = doc.data() as Record<string, unknown>;
+      const username = String(data.username ?? '');
+      if (!username) continue;
+      items.push({ uid: doc.id, username, photoURL: (data.photoURL as string | null) ?? null });
+      if (items.length >= limit) break;
+    }
+
+    res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
    GET /api/users/:username — a nyilvános profil
    ═══════════════════════════════════════════════════════════════════ */
 
