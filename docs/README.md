@@ -38,7 +38,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | Konstans | Érték |
 |---|---|
 | **Rács** | H3 **res 12** hexagon — ~18,8 m átló, **307,09 m²/cella** |
-| Terület mértékegysége | **m²** (1 000 000 m² fölött km²) |
+| Terület mértékegysége | **km²**, 3 tizedessel — mindig, váltás nélkül |
 | Minimális aktivitás mentéshez | 100 m |
 | Legkisebb megszerezhető terület | **4 cella** ≈ 1 228 m² |
 | Bezárás | **bármely önmetszés** — nem kell visszaérni a rajthoz |
@@ -60,7 +60,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | 4 | E-mail-hitelesítés türelmi ideje | **7 nap**, utána csak a közösségi írás zárol | [02](02-funkcionalis-spec.md#regisztráció-és-hitelesítés) |
 | 5 | Területvesztés push | **minden támadásról**, plafon nélkül (1 támadás = 1 értesítés) | [02](02-funkcionalis-spec.md#értesítések) |
 | 6 | Lokális feed | **ingyenes**, nem Pro-funkció | [02](02-funkcionalis-spec.md#előfizetés-kép-25) |
-| 7 | Terület mértékegysége | **m²** | [03](03-jatekszabalyok.md#a-terület-megjelenítése) |
+| 7 | Terület mértékegysége | **km²**, 3 tizedessel *(a 08-15-i m²-döntést 2026-08-17 felülírta)* | [03](03-jatekszabalyok.md#a-terület-megjelenítése) |
 | 8 | Útvonalgenerátor | **küldetés-ajánló**: idő alapú bemenet, területi hozadék a kimenet | [02](02-funkcionalis-spec.md#útvonalak-fül--küldetés-ajánló) |
 | 9 | Anti-cheat | **Trust Score** (7 jelforrás); gyanús aktivitás látszik, de nem módosít birtokviszonyt | [03](03-jatekszabalyok.md#trust-score--aktivitás-hitelesség) |
 | 10 | Jelentés-kategóriák | GPS-manipuláció · jármű · hibás mérés · sértő · adatvédelem · egyéb | [02](02-funkcionalis-spec.md#jelentés) |

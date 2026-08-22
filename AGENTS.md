@@ -33,7 +33,7 @@ A `docs/` mappában van, magyarul. **Ez az igazság forrása.** Ha a kód és a 
 6. **A Trust Score sosem publikus.** Se a szám, se a részjelek nem kerülhetnek kliensre. Csak a verdikt (`trusted` / `pending_review` / `rejected`).
 7. **A gyanús aktivitás látszik, de nem módosít birtokviszonyt.** Nem tüntetjük el a felhasználó futását.
 8. **A Pro nem ad játékbeli előnyt.** Se több pontot, se erősebb védelmet. Csak kényelmi és közösségi funkciókat.
-9. **Terület mértékegysége m²**, 1 000 000 m² fölött km². Használd a `src/lib/format.ts` `formatArea()` függvényét — sehol ne formázz kézzel.
+9. **Terület mértékegysége mindig km²**, 3 tizedessel — nincs mértékegység-váltás. Használd a `src/lib/format.ts` `formatArea()` függvényét — sehol ne formázz kézzel.
 10. **Minden játékkonstans a `src/config/gameplay.ts`-ben van.** Soha ne írj be számot közvetlenül a logikába.
     A **hangolható** konstansokat élesben az `appConfig/gameplay` felülírhatja — a sémájuk a `src/config/tunables.ts`-ben van, magyar leírással, mert ugyanabból él az admin szerkesztő és a felhasználói szabálymagyarázó. A **szerkezeti** konstansok (H3 felbontás, cellaterület, `MAX_DEFENSE`, hurokküszöbök, szintlépcső) NEM hangolhatók: ne vedd fel őket a `TUNABLES` közé.
     A játékmotor a konfigurációt **paraméterként** kapja (`cfg`), nem importként. Egy aktivitás feldolgozása a legelején pillanatképet vesz, és végig azzal számol — egy futás soha ne számoljon félig a régi, félig az új szabállyal.

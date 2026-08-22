@@ -42,7 +42,7 @@
   gpWeek: number              // hétfőn nullázva
   gpMonth: number
 
-  territoryM2:  { foot: number, bike: number }   // megjelenítés: m² < 1e6, felette km²
+  territoryM2:  { foot: number, bike: number }   // tárolás m², megjelenítés mindig km² (formatArea)
   cellCount:    { foot: number, bike: number }   // a tárolt igazság
   zoneCount:    { foot: number, bike: number }   // összefüggő foltok száma
 

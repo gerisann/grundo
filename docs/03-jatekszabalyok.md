@@ -11,7 +11,7 @@ Ez a fejezet a GRUNDO magja. Minden szabály **szerveroldalon** kényszerül ki;
 | Fogalom | Jelentés |
 |---|---|
 | **Cella** | A világ H3 res 12 hexagonra van osztva. Egy cella ≈ **18,8 m hosszú átló**, ≈ **307 m²**. Ez a birtoklás legkisebb egysége. |
-| **Terület mértékegysége** | **m²** (lásd [Megjelenítés](#a-terület-megjelenítése)) |
+| **Terület mértékegysége** | **km²**, 3 tizedessel (lásd [Megjelenítés](#a-terület-megjelenítése)) |
 | **Réteg (layer)** | `foot` (futás + gyaloglás) vagy `bike`. Két teljesen külön rács: külön tulajdonlás, külön ranglista. |
 | **Nyom (trail)** | A rögzítés közben érintett cellák. **Ideiglenes** — magától nem ér semmit. |
 | **Bezárás** | A nyom önmagát metszi → a közrezárt cellák a tieid. |
@@ -40,16 +40,19 @@ A 10–20 m-es átló, amit ösztönösen megcéloztál, és az 1 000 m²-es min
 
 ### A terület megjelenítése
 
-**Alapegység: m²** *(döntés: 2026-08-15)*.
+**Alapegység: km²** *(döntés: 2026-08-15, felülírva: 2026-08-17)*.
+
+A terület **mindig km²**, három tizedesjeggyel. Nincs mértékegység-váltás.
 
 | Érték | Megjelenítés | Példa |
 |---|---|---|
-| < 1 000 000 m² | m², ezres tagolással | `9 421 m²` · `184 500 m²` |
-| ≥ 1 000 000 m² | km², 2 tizedessel | `1,84 km²` · `55,83 km²` |
+| bármekkora | km², 3 tizedessel | `0,001 km²` · `0,072 km²` · `1,845 km²` · `55,830 km²` |
 
-- Egy listán belül (ranglista, profil) **mindig egységes** a mértékegység: ha a legnagyobb elem ≥ 1 km², az egész lista km²-ben megy.
-- A választás oka: a felhasználók túlnyomó többsége hónapokig 1 km² alatt lesz. A `0,009 km²` semmitmondó, a `9 400 m²` viszont érzékelhető siker — és pont a kezdeti szakaszban kell a legerősebb visszajelzés.
-- A belső számítás és tárolás mindig **cellaszám**; a m²/km² csak formázás.
+- **Miért nem m²?** Az eredeti döntés (2026-08-15) 1 000 000 m² alatt m²-t írt elő, azzal az indokkal, hogy a `9 400 m²` érzékelhetőbb siker egy kezdőnek, mint a `0,009 km²`. Ezt 2026-08-17-én felülírtuk: a valós számok gyorsan hatjegyűek lesznek (`143 104 m²`), egy hatjegyű szám viszont nem mond semmit — nincs mihez viszonyítani. A km² a térképen is értelmezhető nagyságrend.
+- **Amit ez áldoz:** három tizedesjegy km²-ben ezer négyzetméteres felbontás, egy cella viszont 307 m². Néhány mezőnyi terület ezért `0,000 km²`-ként jelenik meg. Ez tudatos csere: a kezdő felhasználó pár mezője úgyis jelentéktelen, a nagyságrend viszont az első pillanattól olvasható.
+- Mivel nincs váltás, **egy listán belül automatikusan egységes** a mértékegység — a ranglista és a pódium sorai összehasonlíthatók maradnak.
+- A belső számítás és tárolás mindig **cellaszám**; a km² csak formázás.
+- Egyetlen forrás: `src/lib/format.ts` → `formatArea()` és `formatAreaDelta()`. A viselkedést a `src/lib/format.area.test.ts` rögzíti.
 
 > ⚠️ **A felbontás visszafordíthatatlan döntés.** Élő adattal res 12-ről res 11-re váltani teljes migrációt jelent. Ezt most kell jól eldönteni — de a fenti tábla alapján a res 12 nem közeli döntés.
 

@@ -7,8 +7,6 @@
 
 const hu = (opts?: Intl.NumberFormatOptions) => new Intl.NumberFormat('hu-HU', opts);
 
-/** 1 000 000 m² fölött váltunk km²-re. */
-
 /**
  * Terület MINDIG km²-ben, három tizedesjeggyel.
  *   0,001 km²  ·  0,072 km²  ·  1,845 km²  ·  55,830 km²
