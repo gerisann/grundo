@@ -22,6 +22,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { COLLECTIONS, adminApp, db } from './firebase';
+import { formatArea } from '../../../src/lib/format';
 
 export type NotificationType =
   | 'gp_activity'
@@ -201,17 +202,34 @@ export function notifyBadgesAwarded(
   }
 }
 
+/**
+ * „Elvették a grundod" — és ha a támadó RIVÁLIS, más hangnemben.
+ *
+ * ⚠️ A RIVÁLISTÓL ELSZENVEDETT TÁMADÁS KÜLÖN ESET (Geri, 2026-08-22). Nem új
+ * értesítés-TÍPUS lett belőle, mert a felhasználó szempontjából ugyanaz az
+ * esemény, és külön kapcsolót sem akarna hozzá — csak hangosabban kell
+ * kimondani, kitől jött. Ugyanaz a `territory_stolen` kapcsoló dönt róla.
+ *
+ * ⚠️ A TERÜLET km², NEM m². Korábban m²-ben ment ki, ami sérti az AGENTS.md
+ * 9. szabályát („a terület mértékegysége mindig km², 3 tizedessel"), és a
+ * felület minden más pontjától eltért. A mezőszám azért marad ott zárójelben,
+ * mert egy 234 mezős támadás súlya abból érthető meg igazán — a km² ekkora
+ * területnél önmagában kicsi számnak látszik.
+ */
 export function notifyTerritoryStolen(
   victimId: string,
   actorUsername: string,
   cellCount: number,
   areaM2: number,
+  isRival = false,
 ): void {
   void createNotification({
     uid: victimId,
     type: 'territory_stolen',
-    title: 'Elvették a grundod',
-    body: `${actorUsername} ${Math.round(areaM2).toLocaleString('hu-HU')} m²-t vett el tőled.`,
+    title: isRival ? 'Egy riválisod megtámadta a grundod!' : 'Elvették a grundod',
+    body:
+      `${actorUsername} elvett tőled ${formatArea(areaM2)} területet ` +
+      `(${cellCount.toLocaleString('hu-HU')} cellát).`,
     data: { screen: 'territory' },
   });
 }

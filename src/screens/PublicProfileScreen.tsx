@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { Avatar } from '@/components/ActivityCard';
 import { ActivityList } from '@/components/Feed';
 import { BadgeList } from '@/components/BadgeList';
@@ -163,6 +164,7 @@ export function PublicProfileScreen() {
             <div className="pprof__identity">
               <Avatar url={state.profile.photoURL} name={state.profile.username} size={88} />
               <span className="pprof__name">{state.profile.username}</span>
+              <RivalBadge uid={state.profile.uid} />
               <span className="pprof__handle">@{state.profile.usernameLower}</span>
               <span className="pprof__since">{memberSince(state.profile.memberSince)}</span>
               {state.profile.pro.active ? <Chip variant="accent">PRO</Chip> : null}

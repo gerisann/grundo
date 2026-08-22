@@ -199,6 +199,19 @@ export interface UploadActivityInput {
   movingMs: number;
 }
 
+/**
+ * Egy szerző neve és képe — a feedben, a részleteknél, a hozzászólásoknál.
+ *
+ * ⚠️ AZ `uid` KELL A „RIVÁLIS" CÍMKÉHEZ. A felület a rivális-halmazt
+ * azonosító szerint tartja (`RivalProvider`); névre illeszteni törékenyebb
+ * lenne, mert az átnevezés után némán rossz eredményt adna.
+ */
+export interface ActivityAuthor {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+}
+
 export type FeedScope = 'mine' | 'world' | 'local' | 'following' | 'user';
 
 export interface FeedActivity {
@@ -225,7 +238,7 @@ export interface FeedActivity {
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
-  author: { username: string; photoURL: string | null };
+  author: ActivityAuthor;
 }
 
 /** Egy feltöltött kép: a Storage-útvonal és a megjelenítéshez való cím. */
@@ -240,7 +253,7 @@ export interface ActivityComment {
   createdAt: number;
   /** A sajátom-e — ettől függ, törölhető-e. */
   mine: boolean;
-  author: { username: string; photoURL: string | null };
+  author: ActivityAuthor;
   /** Melyik kommentre válaszol — `null`, ha ez egy önálló hozzászólás. */
   replyToId: string | null;
   /** A megcélzott felhasználó neve, denormalizálva — lásd a szerver oldali megjegyzést. */
@@ -282,7 +295,7 @@ export interface ActivityDetail {
   commentCount: number;
   likedByMe: boolean;
   bounds: { north: number; south: number; east: number; west: number } | null;
-  author: { username: string; photoURL: string | null };
+  author: ActivityAuthor;
   /** Csak a saját aktivitásnál. Pontszám és diagnosztika soha nem jön le. */
   trustVerdict?: 'trusted' | 'pending_review' | 'rejected';
 }
@@ -721,6 +734,31 @@ export interface Connection {
   photoURL: string | null;
 }
 
+/**
+ * Egy rivális — akitől területet vettél el, vagy aki tőled.
+ *
+ * A FŐ SZÁM az `exchangedCells`: hány mező cserélt gazdát köztetek, mindkét
+ * irányban összesen. A `gainedCells`/`lostCells` a bontása — a felületen
+ * zölddel és pirossal, kisebb betűvel a fő szám után.
+ */
+export interface Rival extends Connection {
+  exchangedCells: number;
+  gainedCells: number;
+  lostCells: number;
+  gainedEvents: number;
+  lostEvents: number;
+  exchangedM2: number;
+  gainedM2: number;
+  lostM2: number;
+}
+
+export interface RivalList {
+  items: Rival[];
+  hasMore: boolean;
+  /** Hány rivális kerül kiemelten a profilra — a szerver mondja meg. */
+  top: number;
+}
+
 export interface ConnectionList {
   items: Connection[];
   /** Igaz, ha a listánál többen vannak — a felület ezt kiírja. */
@@ -801,6 +839,17 @@ export const api = {
 
   /** Kiket tiltottam le — a Beállítások → Tiltott felhasználók listája. */
   blockedUsers: () => request<{ items: Connection[] }>('/api/users/me/blocked'),
+
+  /**
+   * A saját rivális-listám, a kicserélt mezők szerint rangsorolva.
+   *
+   * ⚠️ NINCS `username` PARAMÉTER, és nem is lesz: más rivális-listája nem
+   * publikus — megmutatná, kitől szokott veszíteni.
+   */
+  rivals: () => request<RivalList>('/api/rivals'),
+
+  /** Csak az azonosítók — ebből lesz a név melletti „RIVÁLIS" címke. */
+  rivalIds: () => request<{ ids: string[] }>('/api/rivals/ids'),
 
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */
   searchUsers: (q: string) =>

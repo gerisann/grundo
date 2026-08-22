@@ -27,6 +27,7 @@ import { jobsRouter } from './src/routes/jobs';
 import { adminRouter } from './src/routes/admin';
 import { rulesRouter } from './src/routes/rules';
 import { usersRouter } from './src/routes/users';
+import { rivalsRouter } from './src/routes/rivals';
 import { weatherRouter } from './src/routes/weather';
 
 export { db, FIRESTORE_DATABASE_ID };
@@ -137,6 +138,7 @@ app.use('/api/rules', rulesRouter);
 app.use('/api/auth', authenticate, authRouter);
 app.use('/api/activities', authenticate, activitiesRouter);
 app.use('/api/users', authenticate, usersRouter);
+app.use('/api/rivals', authenticate, rivalsRouter);
 /**
  * Hitelesítés MÖGÖTT, pedig az időjárás nem személyes adat.
  *

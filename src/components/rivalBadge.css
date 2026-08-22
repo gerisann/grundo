@@ -1,0 +1,21 @@
+/* „RIVÁLIS" címke a név mellett.
+
+   A színpár témafüggetlen (lásd `tokens.css` → --rival-badge-*): a jelvény
+   felismerhetősége azon áll, hogy MINDIG ugyanaz. */
+
+.rival-badge {
+  display: inline-block;
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--rival-badge-bg);
+  color: var(--rival-badge-text);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+  /* A név mellett ül, de sosem tolja szét a sort: ha nincs hely, a NÉV
+     rövidül, nem a címke. */
+  white-space: nowrap;
+  vertical-align: middle;
+}

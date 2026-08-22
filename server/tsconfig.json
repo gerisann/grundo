@@ -28,7 +28,8 @@
     "src/**/*",
     "../src/game/**/*",
     "../src/config/**/*",
-    "../src/types/**/*"
+    "../src/types/**/*",
+    "../src/lib/format.ts"
   ],
   "exclude": [
     "node_modules",

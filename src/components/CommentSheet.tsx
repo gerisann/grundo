@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { Avatar } from '@/components/ActivityCard';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { api, apiConfigured, type ActivityComment } from '@/lib/api';
@@ -134,6 +135,7 @@ export function CommentSheet({
              * csak a kommentlap újranyitása után jelent meg a valódi név és kép.
              */
             author: {
+              uid: profile?.uid ?? '',
               username: profile?.username ?? 'ismeretlen',
               photoURL: profile?.photoURL ?? null,
             },
@@ -241,6 +243,7 @@ export function CommentSheet({
                     >
                       {comment.author.username}
                     </button>
+                    <RivalBadge uid={comment.author.uid} />
                     <span className="csheet__when">{formatRelativeDay(comment.createdAt)}</span>
                   </div>
                   {comment.replyToUsername ? (

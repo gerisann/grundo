@@ -37,6 +37,7 @@ import {
   notifyTerritoryDefended,
   notifyTerritoryStolen,
 } from '../lib/notifications';
+import { existingRivals, recordRivalry } from '../lib/rivals';
 
 export const activitiesRouter = Router();
 
@@ -52,6 +53,26 @@ const MAX_POINTS = 20_000;
 
 /** Ennél régebbi aktivitást nem fogadunk el — az óra elállítása gyanús. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Egy szerző a feedben, az aktivitás-részletekben és a hozzászólásoknál.
+ *
+ * ⚠️ AZ `uid` 2026-08-22 ÓTA VAN BENNE. Korábban csak a név és a kép ment
+ * ki, amivel a felület nem tudta AZONOSÍTANI a szerzőt — csak megjeleníteni.
+ * A „RIVÁLIS" címkéhez viszont pontosan erre van szükség: a kliens a saját
+ * rivális-halmazát uid szerint tartja. Névre illeszteni törékenyebb lett
+ * volna (átnevezés után némán rossz eredményt ad), az uid viszont állandó.
+ */
+interface Author {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+}
+
+/** Törölt vagy hiányzó felhasználó — a sor ettől még megjeleníthető. */
+function unknownAuthor(uid: string): Author {
+  return { uid, username: 'ismeretlen', photoURL: null };
+}
 
 
 interface UploadBody {
@@ -186,8 +207,33 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       if (stolenFrom.length > 0 || breakthroughFrom.length > 0) {
         const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
         const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
+
+        /*
+          A RIVALITÁS A LOPÁSBÓL KELETKEZIK, ÉS EZ AZ EGYETLEN FORRÁSA.
+
+          ⚠️ Az ÁTTÖRÉS (`breakthroughFrom`) NEM csinál riválist: az egy
+          MEGVÉDETT támadás, tehát egyetlen mező sem cserélt gazdát. Aki nem
+          vett el semmit, azzal nincs mit „kicserélni".
+
+          ⚠️ A SORREND KÖTÖTT: előbb megkérdezzük, ki volt MÁR EDDIG IS
+          rivális, és csak UTÁNA rögzítünk. Fordítva a kérdés értelmét
+          vesztené — a rögzítés után minden áldozat rivális, tehát mindenki a
+          rivális-hangnemű értesítést kapná, az első összecsapásnál is.
+        */
+        const alreadyRivals = await existingRivals(
+          uid,
+          stolenFrom.map(([victimId]) => victimId),
+        );
+        await recordRivalry(uid, Object.fromEntries(stolenFrom));
+
         for (const [victimId, count] of stolenFrom) {
-          notifyTerritoryStolen(victimId, username, count, count * GAMEPLAY.CELL_AREA_M2);
+          notifyTerritoryStolen(
+            victimId,
+            username,
+            count,
+            count * GAMEPLAY.CELL_AREA_M2,
+            alreadyRivals.has(victimId),
+          );
         }
         for (const [victimId, count] of breakthroughFrom) {
           notifyTerritoryDefended(victimId, count);
@@ -481,7 +527,7 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
  */
 async function withAuthors(rows: FeedRow[], viewerUid: string) {
   const ids = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
-  const authors = new Map<string, { username: string; photoURL: string | null }>();
+  const authors = new Map<string, Author>();
 
   if (ids.length > 0) {
     const refs = ids.map((id) => db.collection(COLLECTIONS.users).doc(id));
@@ -489,6 +535,7 @@ async function withAuthors(rows: FeedRow[], viewerUid: string) {
       if (!snapshot.exists) continue;
       const data = snapshot.data() as { username?: string; photoURL?: string | null };
       authors.set(snapshot.id, {
+        uid: snapshot.id,
         username: data.username ?? 'ismeretlen',
         photoURL: data.photoURL ?? null,
       });
@@ -517,7 +564,7 @@ async function withAuthors(rows: FeedRow[], viewerUid: string) {
     ...rest,
     center,
     likedByMe: liked.has(rest.id),
-    author: authors.get(userId) ?? { username: 'ismeretlen', photoURL: null },
+    author: authors.get(userId) ?? unknownAuthor(userId),
   }));
 }
 
@@ -931,12 +978,13 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
     });
 
     const authorIds = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
-    const authors = new Map<string, { username: string; photoURL: string | null }>();
+    const authors = new Map<string, Author>();
     if (authorIds.length > 0) {
       const refs = authorIds.map((id) => db.collection(COLLECTIONS.users).doc(id));
       for (const doc of await db.getAll(...refs)) {
         const user = doc.data() as { username?: string; photoURL?: string | null } | undefined;
         authors.set(doc.id, {
+          uid: doc.id,
           username: user?.username ?? 'ismeretlen',
           photoURL: user?.photoURL ?? null,
         });
@@ -947,7 +995,7 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
       comments: rows.map(({ userId, ...rest }) => ({
         ...rest,
         mine: userId === req.uid,
-        author: authors.get(userId) ?? { username: 'ismeretlen', photoURL: null },
+        author: authors.get(userId) ?? unknownAuthor(userId),
       })),
     });
   } catch (error) {
@@ -1156,11 +1204,11 @@ async function repairActivityRoute(
   return { ...data, ...patch };
 }
 
-async function loadAuthor(uid: string) {
-  if (!uid) return { username: 'ismeretlen', photoURL: null };
+async function loadAuthor(uid: string): Promise<Author> {
+  if (!uid) return unknownAuthor(uid);
   const snapshot = await db.collection(COLLECTIONS.users).doc(uid).get();
   const data = snapshot.data() as { username?: string; photoURL?: string | null } | undefined;
-  return { username: data?.username ?? 'ismeretlen', photoURL: data?.photoURL ?? null };
+  return { uid, username: data?.username ?? 'ismeretlen', photoURL: data?.photoURL ?? null };
 }
 
 function parsePoints(raw: unknown): TracePoint[] {

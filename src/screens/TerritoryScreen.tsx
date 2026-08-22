@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { cellToChildren } from 'h3-js';
 import type { HexRole } from '@/components/HexMap';
 import { Avatar } from '@/components/ActivityCard';
@@ -233,7 +234,9 @@ export function TerritoryScreen() {
               )}
             </div>
             <div className="terr__owner-body">
-              <strong className="terr__owner-name">{ownerCard.username}</strong>
+              <strong className="terr__owner-name">
+                {ownerCard.username} <RivalBadge uid={ownerCard.uid} />
+              </strong>
               <span className="terr__owner-rank">{ownerCard.rankName}</span>
               <span className="terr__owner-stats">
                 {formatArea(ownerCard.areaM2)} · {ownerCard.gpTotal.toLocaleString('hu-HU')} GP
@@ -586,6 +589,7 @@ function Leaderboard({
             <span className="terr__board-rank">{index + 1}.</span>
             <Avatar url={entry.photoURL} name={entry.username} size={28} />
             <span className="terr__board-name">{entry.username}</span>
+            <RivalBadge uid={entry.uid} />
             <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
           </button>
         ))}

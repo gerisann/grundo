@@ -101,6 +101,22 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Riválisok — kitől vettél el területet, és ki tőled.
+      //
+      // ⚠️ CSAK A TULAJDONOS OLVASHATJA, a `followers`/`following`-gal
+      // ellentétben. Egy idegen rivális-listája megmutatná, kitől szokott
+      // veszíteni — vagyis készen adna egy célpontlistát. Ez nem publikus
+      // közösségi gráf, hanem a saját összecsapás-történeted.
+      //
+      // Az írás szerveroldali: a számok növelése az aktivitás feldolgozásából
+      // jön (`lib/rivals.ts`), és a KLIENS SOSEM ÍR JÁTÉKADATOT (AGENTS.md
+      // 5. szabály) — egy kliens-írás itt tetszőleges rivalitást és
+      // tetszőleges mezőszámot hazudhatna.
+      match /rivals/{otherUid} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+
       // Mely rács-blokkokban van cellája? Szerveroldali mutató, rétegenként
       // egy dokumentum. A tulajdonos olvashatja (a saját területképernyője
       // ebből dolgozik), írni senki nem írhatja.

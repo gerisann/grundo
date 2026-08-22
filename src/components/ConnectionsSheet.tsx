@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { Avatar } from '@/components/ActivityCard';
 import { api, ApiError, type Connection } from '@/lib/api';
 import './connectionsSheet.css';
@@ -103,6 +104,7 @@ export function ConnectionsSheet({
               >
                 <Avatar url={item.photoURL} name={item.username} size={40} />
                 <span className="conn__name">{item.username}</span>
+                <RivalBadge uid={item.uid} />
                 <ChevronIcon />
               </button>
             ))}

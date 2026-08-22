@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { Avatar } from '@/components/ActivityCard';
 import { ScreenHeader } from '@/components/ui';
 import { api, ApiError, type Connection } from '@/lib/api';
@@ -107,6 +108,7 @@ export function SearchScreen() {
               >
                 <Avatar url={user.photoURL} name={user.username} size={40} />
                 <span className="search__name">{user.username}</span>
+                <RivalBadge uid={user.uid} />
               </button>
             ))}
           </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { routeImageUrl } from '@/lib/staticMap';
@@ -56,6 +57,7 @@ export function ActivityCard({
       <Avatar url={item.author.photoURL} name={item.author.username} />
       <span className="acard__who">
         <span className="acard__name">{showAuthor ? item.author.username : title}</span>
+        {showAuthor ? <RivalBadge uid={item.author.uid} /> : null}
         <span className="acard__when">
           <span aria-hidden="true">{ACTIVITY_ICON[item.type]}</span>{' '}
           {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}

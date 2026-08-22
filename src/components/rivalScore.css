@@ -1,0 +1,47 @@
+/* Egy rivális mérlege: nagy összeg, alatta a szerzett/vesztett bontás. */
+
+.rival-score {
+  flex: none;
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  /* A számok ne ugráljanak soronként — a lista így nyugodt marad. */
+  font-variant-numeric: tabular-nums;
+}
+
+.rival-score__total {
+  font-size: var(--fs-body);
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.rival-score__split {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.rival-score__gained {
+  color: var(--success);
+}
+
+.rival-score__lost {
+  color: var(--danger);
+}
+
+/* Csak a képernyőolvasónak — a `+12 −7` alak látványként egyértelmű, de
+   felolvasva nem mondja meg, melyik melyik. Ugyanaz a minta, mint a
+   `weatherWidget.css` rejtett címkéinél. */
+.rival-score__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

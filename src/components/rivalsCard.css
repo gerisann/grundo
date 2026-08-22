@@ -1,0 +1,65 @@
+/* A profil „Riválisok" szekciója — TOP 3 és a teljes listát nyitó gomb. */
+
+.rivals-card__label {
+  margin-bottom: var(--sp-3);
+}
+
+.rivals-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.rivals-card__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.rivals-card__row:hover {
+  border-color: var(--rival-badge-bg);
+}
+
+/* A helyezés száma — halvány, mert a NÉV a főszereplő, nem a sorszám. */
+.rivals-card__rank {
+  flex: none;
+  width: 16px;
+  font-size: var(--fs-small);
+  font-weight: 800;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rivals-card__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+
+.rivals-card__all {
+  width: 100%;
+  padding: var(--sp-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 700;
+}
+
+.rivals-card__all:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}

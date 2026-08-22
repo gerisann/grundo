@@ -5,6 +5,8 @@ import { ActivityList } from '@/components/Feed';
 import { BadgeList } from '@/components/BadgeList';
 import { Avatar } from '@/components/ActivityCard';
 import { ConnectionsSheet } from '@/components/ConnectionsSheet';
+import { RivalsCard } from '@/components/RivalsCard';
+import { RivalsSheet } from '@/components/RivalsSheet';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useAuth } from '@/hooks/AuthProvider';
@@ -42,6 +44,8 @@ export function ProfileScreen() {
   /** Melyik kapcsolat-lista van nyitva a számlálókról — vagy egyik sem. */
   const [connections, setConnections] = useState<'followers' | 'following' | null>(null);
   const [avatarError, setAvatarError] = useState('');
+  /** Nyitva van-e a teljes, kereshető rivális-lista. */
+  const [rivalsOpen, setRivalsOpen] = useState(false);
   const { result, loading, error, reload } = useActivities({ scope: 'mine', limit: HISTORY_LIMIT });
 
   const territoryM2 = (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0);
@@ -250,6 +254,10 @@ export function ProfileScreen() {
           <BadgeList badges={profile?.badges ?? []} />
         </div>
 
+        {/* Riválisok — a TOP 3, a teljes lista gomb mögött. A szekció
+            magától eltűnik, ha még nincs kivel összecsapni. */}
+        <RivalsCard onOpenAll={() => setRivalsOpen(true)} />
+
         {/* A saját aktivitások — fülek nélkül: ez a te oldalad. */}
         <div>
           <div className="label" style={{ marginBottom: 'var(--sp-3)' }}>
@@ -265,6 +273,8 @@ export function ProfileScreen() {
           />
         </div>
       </div>
+
+      {rivalsOpen ? <RivalsSheet onClose={() => setRivalsOpen(false)} /> : null}
 
       {connections && profile?.username ? (
         <ConnectionsSheet

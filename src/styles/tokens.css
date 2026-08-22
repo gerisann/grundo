@@ -136,6 +136,15 @@
   --territory-neutral:      #8e8a97;
   --territory-neutral-fill: rgba(142, 138, 151, 0.14);
 
+  /* ── „RIVÁLIS" címke ─────────────────────────────────────────────
+     A név mellett megjelenő jelvény háttere. Geri adta meg pontosan
+     (2026-08-22), a szövege FEKETE — ezért nem témafüggő: a címke
+     mindkét témában ugyanaz a színpár marad, különben a sötét témában
+     a fekete szöveg alá világosabb háttér kellene, és a jelvény
+     elveszítené a felismerhetőségét. A kontraszt így is 8,5:1. */
+  --rival-badge-bg:   #fc5f71;
+  --rival-badge-text: #000000;
+
   /* ── Időjárás-ikon kiemelt elemei ────────────────────────────────
      A felhő és a vonalak a felirattal együtt mozognak (currentColor); csak
      az égitest, a villám és a csapadék kap saját színt — ezek adják a

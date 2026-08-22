@@ -4,6 +4,7 @@ import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
 import { RecorderProvider, useRecorderContext } from './hooks/RecorderProvider';
+import { RivalProvider } from './hooks/RivalProvider';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
@@ -58,9 +59,14 @@ export function App() {
           <BrowserRouter
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
-            <RecorderProvider>
-              <Router />
-            </RecorderProvider>
+            {/* A rivális-halmaz a router ALATT nem lenne elég: a „RIVÁLIS"
+                címke minden képernyőn megjelenhet, tehát egyetlen közös
+                betöltésnek kell fölöttük állnia. */}
+            <RivalProvider>
+              <RecorderProvider>
+                <Router />
+              </RecorderProvider>
+            </RivalProvider>
           </BrowserRouter>
         </ThemeProvider>
       </ProfileProvider>

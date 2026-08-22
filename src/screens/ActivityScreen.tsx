@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { RivalBadge } from '@/components/RivalBadge';
 import { Button } from '@/components/ui';
 import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
@@ -187,6 +188,7 @@ export function ActivityScreen() {
               <Avatar url={activity.author.photoURL} name={activity.author.username} />
               <span className="act__who-text">
                 <span className="act__author">{activity.author.username}</span>
+                <RivalBadge uid={activity.author.uid} />
                 <span className="act__date">
                   {ACTIVITY_LABEL[activity.type]} · {formatDateTime(activity.startedAt)}
                 </span>
