@@ -146,14 +146,165 @@ A szerver tokenjén azért nincs korlátozás, mert az URL-korlát a böngésző
 `Referer` fejlécére épül — egy Cloud Run hívásnak nincs olyan. A védelme az,
 hogy sehol nem publikus: se a repóban, se a bundle-ben.
 
+## GERI VISSZAJELZÉSE (2026-08-22) — EZ A KÖVETKEZŐ MENET
+
+Hat bejelentés érkezett a #7 lezárása után, screenshotokkal. **Egyiket sem
+javítottam** — Geri kifejezetten kérte, hogy csak a HANDOFF-ba kerüljenek, és
+új beszélgetésben (#8) folytassuk. Mindegyikhez van egy induló nyom, kódból
+vagy mérésből — nem tippek.
+
+### A. A napi küldetés-kártya „üresbe" mutat — VALÓDI HIBA, megvan az oka
+
+A Home kártyája (`DailyMissionCard`, [HomeScreen.tsx:204](src/screens/HomeScreen.tsx))
+a `readDailyMission()`-nel a localStorage-ból olvassa ki a küldetést, és
+kiírja a szövegét/számait. A gombja viszont csak `navigate('/kuldetesek')`-et
+hív — **semmit nem visz magával**. A `MissionsScreen` pedig üres állapotból
+indul, nem tölti vissza a mentett napi küldetést. Eredmény: a Home mutat egy
+konkrét ajánlatot, a célképernyő meg nem tud róla.
+
+**Javítás iránya**: a `MissionsScreen` induláskor olvassa vissza
+`readDailyMission()`-nel, és jelenítse meg kártyaként (a `result.missions`
+állapotba téve, vagy egy külön „ma generált" ágban).
+
+### B. Hol a Küldetések fül? / Hová kerülnek a mentett útvonalak?
+
+Megmérve: a `/kuldetesek`-re **az egyetlen belépő a Home-kártya** — nincs a
+dokkban, nincs a profilon, sehol máshol. A `docs/01-kepernyoterkep.md` viszont
+már eldöntötte, hova valók:
+
+```
+Profil
+├── Profil · Statisztikák
+├── Útvonalak (generálás + mentettek)   ← ide tartozik mindkettő
+├── Edzés · Jelvények · Beállítások
+```
+
+⚠️ A `ProfileScreen.tsx` (355 sor) **ma egyetlen folyó nézet, nincs
+fül-szerkezet**. Ez tehát nem „még egy fül hozzáadása", hanem a
+fül-szerkezet BEVEZETÉSE — érdemes úgy megépíteni, hogy a spec többi öt füle
+(Statisztikák, Edzés, Jelvények, Beállítások már megvan külön útvonalon) is
+beleférjen később.
+
+A rögzítés képernyő „Mentett útvonalak" gombja (a #7-ben épült) MARADHAT —
+azt a `docs/02` kép #27 külön kéri, indítás előtt van értelme.
+
+### C. A célhossz-bemenet bővítése
+
+Ma: `célhossz = perc × 60 ÷ tempó`, ahol a tempó a **saját utolsó 10
+aktivitás** átlaga típusonként (`recentPaceSamples` +
+`averagePaceSecPerKm`, [missions.ts:84](src/game/missions.ts)), alapérték
+ha nincs elég minta: futás 360 mp/km, séta 780 mp/km, bringa 165 mp/km
+(`src/config/gameplay.ts` → `MISSION_DEFAULT_PACE_S_PER_KM`).
+
+Geri három javaslata:
+1. **Kézi tempó-felülírás** — ma nincs, csak mérésből jön. Új felhasználónak
+   (nincs 10 aktivitása) ez számítana a legtöbbet.
+2. **Km-ben is megadható legyen az idő helyett** — a szerver úgyis
+   `targetKm`-mel dolgozik ([missions.ts:65](src/game/missions.ts) →
+   `targetDistanceKm`), a percet csak erre számolja át. Olcsó váltás.
+3. **Prioritás/irány** — ⚠️ pontosítás: a négy karakter (hódítás/rablás/
+   erősítés/felfedezés) **már ma is mind legenerálódik**, kártyánként külön.
+   Ami TÉNYLEG hiányzik, az az IRÁNY (a rendszer nyolc égtájban keres,
+   `missionBearings`) és a szűrők (kevés kereszteződés · zöldterület · lapos
+   terep — a felület már kéri, a Directions API támogatja, csak nincs
+   bekötve).
+
+### D. Home-kártya — bezárhatóság + látható gomb
+
+`DailyMissionCard` ma egy sima `<button>`, se X, se nyíl-ikon. A
+`NotificationPanel`-nél már van bezárható-kártya minta, azt érdemes követni.
+
+### E. A küldetés-tervező „lábakat" rajzol mellékutcákba (screenshot)
+
+Geri három screenshotot küldött: a szaggatott javasolt útvonal több helyen
+egy rövid, semmi értelmű **kitérőt** tesz egy mellékutcába és vissza —
+mintha U-fordulót csinálna egy zsákutcában.
+
+**Erős gyanú, MÉRVE NEM, csak kódból**: a Mapbox Directions hívás
+([directions.ts:64](server/src/lib/directions.ts)) `continue_straight=false`-szal
+megy. Ez a Mapbox dokumentációja szerint pontosan ezt engedi meg: a
+köztes pontoknál (waypoints) a route bármelyik irányból érkezhet, U-fordulóval
+is. A mi köztes pontjaink (`loopWaypoints`, [missions.ts:133](src/game/missions.ts))
+tisztán geometriai helyek — ha egy pont egy mellékutca közelébe esik, a
+Directions odaszalad, megfordul, és visszajön, mert ELÉG közel van hozzá, és
+a `continue_straight=false` ezt nem tiltja.
+
+**A következő menet első dolga legyen ennek MÉRÉSE**: egyetlen `planLoop`
+hívás `continue_straight=true`-val ugyanazokra a koordinátákra, és a
+polyline-ok összevetése. Ha eltűnnek a lábak, ez volt az ok — de a
+`continue_straight=true` mellékhatása lehet, hogy néhány jelölt onnantól NEM
+zár be kört (mert a route nem tud visszafordulni ott, ahol kellene), ezt is
+mérni kell, nem feltételezni.
+
+### F. Vizuális kérések a térképen
+
+1. **A szellemvonal színe** `#FA5F73` legyen, nem kék. Ma `var(--info)`
+   (`#3b82f6`, téma-független — lásd `src/styles/tokens.css` 34. sor) a
+   `GHOST_SOURCE` réteg színe ([MapView.tsx](src/components/MapView.tsx) →
+   `addLayers`). Egyszerű csere, de **új tokent érdemes bevezetni**
+   (pl. `--route-ghost`), ne szám szerint írjuk be — a `#FA5F73` amúgy is
+   majdnem pontosan a sötét téma `--territory-rival`-ja (`#ff5f6d`), érdemes
+   megkérdezni Gerit, szándékosan ilyen közeli színt akar-e, vagy legyen
+   attól is megkülönböztethető.
+
+2. **Hexagon be/ki kapcsoló ikon a rögzítés térképén.** Van már precedens: a
+   Terület képernyőn a szem-ikon (`overlayVisible`,
+   [TerritoryScreen.tsx:85](src/screens/TerritoryScreen.tsx)) — DE az a
+   teljes rátétet (panelek is) kapcsolja, nem csak a hexagonokat. Itt egy
+   szűkebb kapcsoló kell: csak azt dönti el, mely `layers` mennek át a
+   `MapView`-nak, a `track`/pozíció/gombok maradnak.
+
+3. **Az elfoglalt cella színe a FATE szerint, nem egységesen lila.**
+   Itt van a legtöbb meglepetés kódolvasásból:
+   - A motor MÁR SZÁMOL cellánkénti sorsot: `resolveClaim`
+     ([claim.ts:25](src/game/claim.ts)) egy `fates: Map<CellId, CellFate>`-et
+     ad vissza, ahol `CellFate = 'free' | 'reclaimed' | 'stolen' |
+     'breakthrough'`. A `'stolen'` pontosan az, amit Geri „elrabolt
+     terület"-nek hív.
+   - ⚠️ **Ez a per-cella infó ELVÉSZIK, mielőtt a felületre érne.** A
+     `processActivity` ([game/index.ts:76](src/game/index.ts)) több
+     bezárást összevon, és az eredmény egy lapos `Set<CellId>`
+     (`claimedCells`) — a fate-eket eldobja. A TrackingScreen élő előnézete
+     ([TrackingScreen.tsx:142](src/screens/TrackingScreen.tsx) → `preview`)
+     ebből a Setből építi a `MapView` rétegeit, tehát a színnek és a
+     szintszámnak sincs honnan jönnie.
+   - **A javítás iránya**: a `ProcessResult` bővítése egy
+     `Map<CellId, CellFate>`-tel (vagy legalább `Map<CellId, {fate, defense}>`),
+     a TrackingScreen preview ezt adja tovább a `MapView`-nak `{cell, defense,
+     owner}` helyett `{cell, defense, fate}` alakban, a `MapView` pedig a
+     `stolen` fate-re `#FA5F73`-at (vagy az új `--route-ghost`-tól független,
+     de hasonló hangnemű tokent) használ, egyébként marad a lila
+     `--territory-own`. Az átlátszóság-lépcső (`--defense-alpha-1..5`)
+     MÁR MEGVAN és MŰKÖDIK ([MapView.tsx](src/components/MapView.tsx) →
+     `syncData`, `cssNumber('--defense-alpha-' + defense, …)`) — ezt nem kell
+     újraépíteni, csak a színválasztást kell a fate-hez kötni.
+
+4. **A védelmi szám (1–5) MOST NEM látszik élő rögzítés közben.** Megtaláltam,
+   miért: `MapView.tsx` `syncData`-jában a `defenseLabel` kifejezetten
+   `territory && !preview` esetén jelenik meg — **a `preview: true` cellákon
+   szándékosan el van rejtve** ([MapView.tsx](src/components/MapView.tsx),
+   a `defenseLabel:` sor). Ez a #3-mal ugyanaz a gyökér: amíg a preview-cellák
+   nem hordoznak valódi `defense` értéket (ma mind alapból 1-esként rajzolódik,
+   mert az `entry.defense` nincs kitöltve a TrackingScreen preview-jában),
+   nincs mit kiírni. A #3 javítása (fate + defense átadása) ezt is megoldja —
+   utána már csak a `!preview` feltételt kell levenni vagy módosítani.
+
 ## KÖVETKEZŐ MENET — JAVASLAT
 
-1. **A bringás küldetés lezárása** (fent) — ez a legrégebbi nyitott szál, és
-   most már van diagnosztika hozzá.
-2. **A küldetés-szűrők bekötése** (kevés kereszteződés · zöldterület · lapos
-   terep) — a Directions támogat kizárásokat, a felület már kéri.
-3. **F3 közösség**: üzenetek, klubok, kihívások — ez a legnagyobb hiányzó
-   blokk az ütemtervben.
+1. **E. pont: a küldetés-tervező "lábai"** — MÉRÉSSEL kezdj (`continue_straight`
+   összevetés), utána dönts. Ez zavarja a legjobban a küldetés-élményt.
+2. **A. pont: a napi küldetés-kártya hibája** — kicsi, gyors, és most rontja
+   el a legfontosabb visszahívó elemet.
+3. **F. pont: a színek és a fate-adat átvezetése** (3–4. alpont együtt, mert
+   ugyanaz az adatfolyam-hiány áll mögöttük) + a hexagon-kapcsoló (2.) és a
+   szellemvonal-szín (1., triviális).
+4. **B. pont: Profil → Útvonalak fül** — a fül-szerkezet bevezetése nagyobb
+   falat, érdemes külön nekifutni.
+5. **C. pont: a bemenet bővítése** (km, kézi tempó, irány/szűrők) — az irány
+   és a szűrők a küldetés-generáló magját érintik, a másik kettő felületi.
+6. **D. pont: Home-kártya bezárhatósága** — kicsi, bármikor beszúrható.
+7. **A régebbi bringás küldetés kérdés és az F3 közösség** — változatlanul
+   nyitva, lásd lent.
 
 **Amit NEM javaslok**: valódi, kanyaronkénti hangnavigáció. Az a Mapbox
 Navigation SDK terepe, webes verzióban korlátos, és jóval nagyobb falat.
@@ -256,9 +407,16 @@ Index-státusz: `gcloud.cmd firestore indexes composite list --project=grundo
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Opus, emelt mélységgel**, ha a bringás küldetéssel kezdesz: az egy mért
-anomália hibakeresése (a válasz `reason` mezőjéből kell visszafejteni, hol
-törik a lánc), és az AGENTS.md szerint ez Opus-feladat.
+**Opus, emelt mélységgel** az 1–3. ponthoz (E, A, F): az E. pont mért
+anomália hibakeresése (a `continue_straight` gyanú megerősítése vagy cáfolata
+mérésen múlik), az F. pont pedig adatmodell-döntés (a `ProcessResult` új
+mezője, ami a szerveres aktivitás-feldolgozást is érintheti, ha egyszer a
+végleges eredményen is meg kell jeleníteni a fate-et, nem csak az élő
+előnézeten).
 
-**Sonnet, normál mélységgel** a küldetés-szűrők bekötéséhez és az F3 közösségi
-képernyőkhöz — mindkettő meglévő minta kiterjesztése.
+**Sonnet, normál mélységgel** a 4–6. ponthoz (B fül-szerkezet, C bemenet
+bővítése, D Home-kártya) — mind meglévő minta kiterjesztése.
+
+Ha a bringás küldetéssel folytatod (7. pont) az is **Opus**: mért anomália
+hibakeresése, a válasz `reason` mezőjéből kell visszafejteni, hol törik a
+lánc.
