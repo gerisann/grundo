@@ -10,14 +10,16 @@ beszélgetések neve](AGENTS.md).)
 ## ÁLLAPOT
 
 Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. A pontos HEAD-et
-`git log -1`-gyel nézd meg — ez a menet KÉT commitban ment fel, `a8018ed`
-fölé: `d244d94` (az öt pont) és `326ed8c` (két utólagos javítás, lásd lent).
+`git log -1`-gyel nézd meg — ez a menet TÖBB commitban ment fel `a8018ed`
+fölé: `d244d94` (az öt pont), `326ed8c` (első utólagos javítás), `caee5db`
+(napló), majd egy még nem commitolt utolsó javítás (ranglista — mindenki
+rajta van, ábécésorrend, összetett index).
 
 Tesztek, most mérve: gyökérből `npm test` → **333 teszt zöld** (24 fájl, 8
 emulátoros kihagyva, változatlan a menet eleji számhoz képest — ez a kör nem
 adott új tesztet). Typecheck (gyökér ÉS `server/`) hibamentes. Élőben
 ellenőrizve a helyi emulátoron, valódi bejelentkezéssel: pódium, értesítés-
-ikonok, időjárás-widget méret.
+ikonok, időjárás-widget méret, ranglista (nulla terület + ábécésorrend).
 
 **Amit ez a menet NEM tudott élőben kipróbálni**: az aktivitás-mentés utáni
 átirányítást (1. pont lent), mert ahhoz egy valódi, lezárt aktivitás kell —
@@ -30,7 +32,10 @@ ugyanerről). A kódot a szerkesztő-módban már bevált `onSaved` mintára ír
 1. **frontend + backend** telepítés kell (mindkét oldalt érintette a kör).
 2. Szabályok NEM változtak.
 3. Migráció NEM kell.
-4. Indexek NEM kellenek.
+4. **Indexek KELLENEK** — ez ELTÉR a menet elején jelzetthez képest: a
+   ranglista utolsó javítása két mező szerint rendez, ahhoz összetett index
+   kell (`firestore.indexes.json`). Ha kimarad, a ranglista élesben
+   `FAILED_PRECONDITION` hibával elhasal.
 
 Ezen felül a #6 előtti menetek óta **még mindig várakozik** egy korábbi
 teendő — lásd alul, „TELEPÍTETLEN".
@@ -73,15 +78,10 @@ megafon), a színük a **meglévő tokenkészletből** jön (nincs új CSS-vált
 
 ### 4. Ranglista — a korábban területet szerzők nem esnek ki
 
-Eddig a `GET /api/tiles/leaderboard` egyszerűen kiszűrte a nulla területű
-felhasználókat (`areaM2 > 0`) — ez viszont azt is kiszűrte, akitől időközben
-mindent elvettek. Új, egyszer igazra állított, soha vissza nem állított jelző:
-`hasOwnedArea.{layer}` a felhasználó dokumentumon, beírva ott, ahol a
-`territoryM2` nő (`activityCommit.ts`, `activityChunked.ts`, csak ha
-`gainedAreaM2/gainedCells > 0`). A végpont mostantól erre szűr az `areaM2`
-helyett — `routes/tiles.ts`. `seedEmulator.ts` is kapott egy alapértelmezett
-`hasOwnedArea: { foot: true, bike: false }`-t, különben a teszt-fiókok nem
-jelentek volna meg (élőben derült ki, üres listával).
+⚠️ **Ez a pont KÉTSZER változott ebben a menetben** — az itt leírt első
+próbálkozás (egy `hasOwnedArea` jelző) élesben üres listát adott volna, a
+végleges megoldás (mindenki rajta van, ábécésorrenddel) pedig lent, a
+„Második utólagos javítás" szakaszban van. Ha telepítesz, AZ a mérvadó.
 
 ### 5. Top 3 pódium grafika
 
@@ -99,7 +99,36 @@ sávmagasság, a korona és a szín-hozzárendelés mind helyesen jelent meg
 (JS-sel mérve, screenshot nem volt elérhető ebben a munkamenetben — a Browser
 pane nem volt megjeleníthető).
 
-### Utólagos javítás (`326ed8c`) — Geri visszajelzése alapján
+### Második utólagos javítás — ranglista, mindenki rajta van
+
+Geri jelezte, hogy a nulla területű felhasználók MÉGSEM jelennek meg, és
+azt kérte, hogy ők és minden egyenlő területű felhasználó ábécésorrendben
+listázódjon. Ez felülírta az előző kör `hasOwnedArea`-alapú megoldását:
+
+- **A `hasOwnedArea` jelző teljesen kikerült** (`activityCommit.ts`,
+  `activityChunked.ts`, `seedEmulator.ts`) — a helyette bevezetett
+  megoldás nem igényel jelzőt, se migrációt, ezért egyszerűbb és nincs
+  a régi felhasználóknál hiányzó adat problémája.
+- **`routes/tiles.ts` → GET /leaderboard**: a lekérdezés most KÉT mező
+  szerint rendez — `territoryM2.{layer}` csökkenő, `usernameLower` növekvő
+  —, szűrés nélkül, tehát mindenki rajta van, a nulla területűek is. Az
+  ábécésorrend a másodlagos rendezés, ami egyenlő terület esetén dönt
+  (a leggyakoribb ilyen eset épp a nulla).
+- **Ehhez összetett index kell** — felvéve a `firestore.indexes.json`-ba,
+  réteganként külön bejegyzés (`territoryM2.foot`/`territoryM2.bike` két
+  külön mezőútvonal). **Ez a menet első alkalommal érint indexet** — a
+  telepítésnél NE csak a „szabalyok" parancsot futtasd, hanem az
+  „indexek"-et is, különben a ranglista élesben `FAILED_PRECONDITION`
+  hibával elhasal.
+- Minden felhasználónál eleve létezik `territoryM2.{foot,bike}` ÉS
+  `usernameLower` (a `user.ts`-ben regisztrációkor mindkettő alapértéket
+  kap) — tehát nincs olyan felhasználó, akit a Firestore a hiányzó mező
+  miatt kihagyna a rendezésből.
+- Élőben ellenőrizve az emulátoron: két felhasználó nullára állítva, kettő
+  egyenlő (0,012 km²) — mindkét csoport megjelent, ábécésorrendben
+  (Kata_fut < MarkOnBike; Peti < ZsofiWalks).
+
+### Első utólagos javítás (`326ed8c`) — Geri visszajelzése alapján
 
 Az öt pont után Geri két hibát jelzett, még ebben a menetben javítva:
 
@@ -121,13 +150,6 @@ Az öt pont után Geri két hibát jelzett, még ebben a menetben javítva:
   a keret és a fokjel között. Mérve: `pillRect.right - tempRect.right` = 18
   (kerekítéssel).
 
-⚠️ **Nincs migrálva a `hasOwnedArea` visszamenőleg** — ez azt jelenti, hogy
-azok a felhasználók, akik MÁR A MEZŐ BEVEZETÉSE ELŐTT nullára estek vissza
-(mindent elvettek tőlük korábban), egyelőre NEM jelennek meg a listán, csak
-attól kezdve, hogy legközelebb szereznek valamennyi területet. Ez ismert,
-elfogadott korlát — a retroaktív eset (ki birtokolt valaha bármit) nincs
-tárolva sehol, visszamenőleges migrációval sem lenne rekonstruálható
-hiteles adatból.
 
 ## KÖVETKEZŐ MENET
 

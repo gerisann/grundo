@@ -465,8 +465,6 @@ async function closeBooks(
         level: levelFor(gpAfter),
         territoryM2: { [layer]: FieldValue.increment(gainedCells * GAMEPLAY.CELL_AREA_M2) },
         cellCount: { [layer]: FieldValue.increment(gainedCells) },
-        // Lásd `activityCommit.ts` — ugyanaz a jelző, ugyanazért.
-        ...(gainedCells > 0 ? { hasOwnedArea: { [layer]: true } } : {}),
         counters: {
           activities: FieldValue.increment(1),
           distanceKm: { [type]: FieldValue.increment(plan.distanceM / 1000) },

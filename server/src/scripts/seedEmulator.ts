@@ -66,9 +66,6 @@ async function makeUser(uid: string, username: string, extra: Record<string, unk
       pro: { active: false },
       gpTotal: 120,
       territoryM2: { foot: 12_000, bike: 0 },
-      // A ranglista ezt kéri, nem a nyers `territoryM2`-t — lásd
-      // `routes/tiles.ts` → GET /leaderboard.
-      hasOwnedArea: { foot: true, bike: false },
       cellCount: { foot: 39, bike: 0 },
       zoneCount: { foot: 1, bike: 0 },
       streak: { current: 1, longest: 4, weeks: 0 },

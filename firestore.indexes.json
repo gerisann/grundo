@@ -127,6 +127,23 @@
         { "fieldPath": "visibility", "order": "ASCENDING" },
         { "fieldPath": "memberCount", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "Ranglista (GET /api/tiles/leaderboard): terület szerint csökkenő, egyenlőségnél ábécésorrend. Réteganként külön index kell, mert a `territoryM2.foot`/`territoryM2.bike` két külön mezőútvonal.",
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "territoryM2.foot", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "territoryM2.bike", "order": "DESCENDING" },
+        { "fieldPath": "usernameLower", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

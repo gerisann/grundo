@@ -278,8 +278,17 @@ tilesRouter.get('/owner/:uid', async (req, res, next) => {
 /**
  * GET /api/tiles/leaderboard?layer=foot — a legnagyobb területek.
  *
- * Egyetlen mező szerinti rendezés, ezért NEM kell összetett index: a Firestore
- * minden mezőt magától indexel, a beágyazottakat is.
+ * MINDENKI RAJTA VAN, a nulla területűek is — Geri kifejezetten ezt kérte: a
+ * lista attól ranglista, hogy mindenki helyét mutatja, nem csak azokét, akik
+ * épp vezetnek. Egy korábbi próbálkozás (`hasOwnedArea` jelző, csak az ÚJ
+ * szerzéseknél írva) ÜRES listát adott éles adaton, mert a régi
+ * felhasználóknál nincs visszamenőleg kitöltve — ezért kikerült.
+ *
+ * A MÁSODLAGOS RENDEZÉS ábécésorrend (`usernameLower`): egyenlő terület
+ * esetén (a leggyakoribb ilyen eset épp a nulla) ne a Firestore tetszőleges
+ * dokumentum-sorrendje döntsön, hanem valami, ami a felhasználó számára is
+ * értelmezhető. Ehhez összetett index kell (lásd `firestore.indexes.json`),
+ * mert két mező szerint rendezünk.
  */
 tilesRouter.get('/leaderboard', async (req, res, next) => {
   try {
@@ -289,50 +298,27 @@ tilesRouter.get('/leaderboard', async (req, res, next) => {
     const snapshot = await db
       .collection(COLLECTIONS.users)
       .orderBy(`territoryM2.${layer}`, 'desc')
+      .orderBy('usernameLower', 'asc')
       .limit(limit)
       .get();
 
     res.json({
       layer,
-      entries: snapshot.docs
-        .map((doc) => {
-          const data = doc.data() as {
-            username?: string;
-            photoURL?: string | null;
-            territoryM2?: Record<string, number>;
-            cellCount?: Record<string, number>;
-            hasOwnedArea?: Record<string, boolean>;
-          };
-          return {
-            uid: doc.id,
-            username: data.username ?? 'ismeretlen',
-            photoURL: data.photoURL ?? null,
-            areaM2: data.territoryM2?.[layer] ?? 0,
-            cellCount: data.cellCount?.[layer] ?? 0,
-            hasOwnedArea: data.hasOwnedArea?.[layer] === true,
-          };
-        })
-        /*
-          Aki már SZERZETT területet, az a listán marad akkor is, ha épp
-          nulla — elvették tőle. Csak azt szűrjük ki, aki még soha nem
-          birtokolt egyetlen cellát sem: a `hasOwnedArea` erre külön jelző
-          (`activityCommit.ts`/`activityChunked.ts`), mert a jelenlegi
-          `territoryM2` önmagában nem tudja megkülönböztetni a kettőt.
-          Szűrni a lekérdezésben is lehetne, de az már összetett indexet
-          igényelne.
-
-          ⚠️ A `hasOwnedArea` ÚJ mező, a régi felhasználóknál nincs
-          visszamenőlegesen kitöltve (nincs migráció rá) — enélkül az OR-ág
-          nélkül a teljes éles ranglista üresen jönne vissza, hiába van
-          mindenkinek területe. Az `areaM2 > 0` ág ezért marad: fedezi a
-          jelenleg pozitív terveletűeket migráció nélkül is, a jelző pedig
-          mostantól minden ÚJ szerzésnél kitöltődik. Csak azt a régi esetet
-          nem fogja el, aki már A JELZŐ BEVEZETÉSE ELŐTT nullára esett
-          vissza — az visszamenőleges migráció nélkül nem is lenne
-          eldönthető (nincs történeti adat, ki birtokolt valaha bármit).
-        */
-        .filter((entry) => entry.hasOwnedArea || entry.areaM2 > 0)
-        .map(({ hasOwnedArea: _hasOwnedArea, ...entry }) => entry),
+      entries: snapshot.docs.map((doc) => {
+        const data = doc.data() as {
+          username?: string;
+          photoURL?: string | null;
+          territoryM2?: Record<string, number>;
+          cellCount?: Record<string, number>;
+        };
+        return {
+          uid: doc.id,
+          username: data.username ?? 'ismeretlen',
+          photoURL: data.photoURL ?? null,
+          areaM2: data.territoryM2?.[layer] ?? 0,
+          cellCount: data.cellCount?.[layer] ?? 0,
+        };
+      }),
     });
   } catch (error) {
     next(error);
