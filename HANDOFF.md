@@ -10,7 +10,8 @@ beszélgetések neve](AGENTS.md).)
 ## ÁLLAPOT
 
 Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. A pontos HEAD-et
-`git log -1`-gyel nézd meg — ez a menet egy commitban ment fel, `a8018ed` fölé.
+`git log -1`-gyel nézd meg — ez a menet KÉT commitban ment fel, `a8018ed`
+fölé: `d244d94` (az öt pont) és `326ed8c` (két utólagos javítás, lásd lent).
 
 Tesztek, most mérve: gyökérből `npm test` → **333 teszt zöld** (24 fájl, 8
 emulátoros kihagyva, változatlan a menet eleji számhoz képest — ez a kör nem
@@ -97,6 +98,36 @@ meglévő `--tier-gold/silver/bronze` tokenekből kapnak halvány
 sávmagasság, a korona és a szín-hozzárendelés mind helyesen jelent meg
 (JS-sel mérve, screenshot nem volt elérhető ebben a munkamenetben — a Browser
 pane nem volt megjeleníthető).
+
+### Utólagos javítás (`326ed8c`) — Geri visszajelzése alapján
+
+Az öt pont után Geri két hibát jelzett, még ebben a menetben javítva:
+
+- **A ranglista üresen jött.** A `hasOwnedArea` új mező a régi felhasználóknál
+  nincs kitöltve — se migráció, se semmi nem tölti visszamenőleg —, a
+  szigorú `.filter((entry) => entry.hasOwnedArea)` ezért MINDENKIT kizárt,
+  nem csak a soha nem birtoklókat. Javítás: `.filter((entry) =>
+  entry.hasOwnedArea || entry.areaM2 > 0)` — az `areaM2 > 0` ág migráció
+  nélkül fedezi a jelenleg pozitív területűeket (ahogy régen), a
+  `hasOwnedArea` pedig mostantól minden ÚJ szerzésnél kitöltődik. Élőben
+  ellenőrizve: az emulátoron egy felhasználóról admin SDK-val letöröltem a
+  mezőt (a régi, migráció előtti állapot szimulálva), és a ranglistán
+  ennek ellenére megjelent.
+- **Az időjárás jobb széli térköze rossz helyre került.** Az eredeti kérés a
+  hőmérséklet ÉS A MODUL KERETE közti gap-re vonatkozott, én tévesen a
+  mérőszám-csoport és a hőmérséklet közé tettem az extra 5 px-et. Javítva:
+  `margin-right: 5px` a `.weather__temp`-en, ez mindig érvényesül (nyitva és
+  csukva is), és a pill saját `padding-right`-jával (12 px) összeadva 17 px
+  a keret és a fokjel között. Mérve: `pillRect.right - tempRect.right` = 18
+  (kerekítéssel).
+
+⚠️ **Nincs migrálva a `hasOwnedArea` visszamenőleg** — ez azt jelenti, hogy
+azok a felhasználók, akik MÁR A MEZŐ BEVEZETÉSE ELŐTT nullára estek vissza
+(mindent elvettek tőlük korábban), egyelőre NEM jelennek meg a listán, csak
+attól kezdve, hogy legközelebb szereznek valamennyi területet. Ez ismert,
+elfogadott korlát — a retroaktív eset (ki birtokolt valaha bármit) nincs
+tárolva sehol, visszamenőleges migrációval sem lenne rekonstruálható
+hiteles adatból.
 
 ## KÖVETKEZŐ MENET
 
