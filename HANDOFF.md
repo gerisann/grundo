@@ -9,148 +9,158 @@ beszélgetések neve](AGENTS.md).)
 
 ## ÁLLAPOT
 
-Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. HEAD: `2f1050b`.
+Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. HEAD: `526ddb5`.
 
 Tesztek, most mérve: `npm test` → **356 zöld** (25 fájl). `npm run
 test:emulator` → **107 zöld** (9 fájl). Typecheck (gyökér ÉS `server/`)
-hibamentes. A menet 23 unit és 7 emulátoros tesztet adott hozzá.
+hibamentes.
+
+⚠️ **Két commit KÍVÜLRŐL jött** ebben a menetben (`06f6198`, `5017cfd` —
+„Update cloudbuild.yaml", Geritől, a GitHub felületéről). Ezek tették be a
+Mapbox-tokent a fájlba; az azt követő `1144f84` vette ki. A friss HEAD-ből
+indulj, ne egy korábbi baseline-ból (AGENTS.md → 8. pont).
 
 ## ⚠️ ELSŐ OLVASATRA: MI KELL A TELEPÍTÉSHEZ
 
-Két dolog vár telepítésre: az előző menet KERESÉS funkciója (`e21a49c`) és
-ez a menet, az **F2.5 küldetés-ajánló** (`2f1050b`).
+**frontend + backend.** Index, szabály, migráció NEM kell.
 
-1. **⚠️ ELŐSZÖR: `MAPBOX_TOKEN` a szervernek.** Ez az egyetlen ÚJ
-   konfiguráció, és nélküle a küldetés-ajánló nem működik (érthető 503-at
-   ad, nem omlik össze). Nyisd meg a `cloudbuild.yaml`-t, és a
-   `_MAPBOX_TOKEN: ''` sorba írd be UGYANAZT a tokent, ami a frontend
-   `.env.local`-jában a `VITE_MAPBOX_TOKEN`. **NEM titok** — ugyanez a
-   token benne van minden kiszolgált kliens-bundle-ben, ezért nem Secret
-   Manager. Alternatíva a fájl szerkesztése helyett:
-   `gcloud builds submit --config cloudbuild.yaml --substitutions=_MAPBOX_TOKEN=pk.xxx`
-2. **frontend + backend** telepítés.
-3. Szabályok NEM kellenek.
-4. Indexek NEM kellenek.
-5. Migráció NEM kell.
+A backend-parancsnak KÖTELEZŐEN tartalmaznia kell a Mapbox-tokent, mert a
+`cloudbuild.yaml`-ban szándékosan üres:
 
-## EBBEN A MENETBEN ELKÉSZÜLT: F2.5 — KÜLDETÉS-AJÁNLÓ
+```
+cd ~/grundo && gcloud builds submit --config cloudbuild.yaml --substitutions=_MAPBOX_TOKEN=<grundo-server-directions>
+```
 
-A docs `06` ütemterve ezt a fázist emeli ki a legkritikusabbnak („az
-onboarding és a visszatérés szempontjából kritikus — nem szabad az F4-be
-csúsztatni"), és eddig el sem indult. Most kész.
+⚠️ **A sima `gcloud builds submit --config cloudbuild.yaml` ÜRES tokennel
+telepít**, és onnantól a küldetés-generálás 503-at ad. Ez már megtörtént
+egyszer ebben a menetben.
 
-### Miért nem útvonaltervező
+## MAPBOX-TOKENEK — HÁROM VAN, NE KEVEREDJENEK
 
-A bemenet IDŐ, nem távolság: „van 45 perced?". A célhosszt a szerver
-számolja a felhasználó SAJÁT átlagtempójából (a legutóbbi 10 azonos típusú
-aktivitásból; ha nincs elég, a típus szerinti alapérték). Így nem kell fejben
-átváltania, hogy nála 45 perc hány kilométer.
-
-### A menet
-
-1. **Kör-jelöltek nyolc irányban.** Minden irányhoz egy kör, ami ÁTMEGY a
-   kiinduló ponton (a középpont az adott irányban van, sugárnyi távolságra).
-   A sugarat a `MISSION_DETOUR_FACTOR` (1,25) korrigálja: a valódi útvonal
-   negyedével hosszabb a mértani körnél, mert utcákon megy.
-2. **Valódi úthálózat** — Mapbox Directions, irányonként egy hívás,
-   párhuzamosan (`server/src/lib/directions.ts`). Egy elhasalt jelölt nem
-   viszi el a generálást, csak kimarad.
-3. **Tűrés**: a célhossztól ±15 %-nál távolabbi jelölt kiesik (docs/02).
-4. **Kiértékelés a VALÓDI motorral** — `processActivity`, ugyanaz a
-   függvény, ami a mentésnél a területet adja. ⚠️ **Nincs külön becslő
-   algoritmus**, ami elcsúszhatna az élestől: amit a küldetés ígér, azt a
-   felhasználó meg is kapja, ha végigmegy rajta.
-5. **Válogatás** karakterenként (lásd lent).
-
-### A négy karakter
-
-| Karakter | Mit mér | Kártyaszöveg |
+| Token | Hol él | URL-korlátozás |
 |---|---|---|
-| Hódítás | szabad mezők | „…új területet szerezhetsz" |
-| Rajtaütés | elvehető mezők | „elvehetsz X-t Y grundjából" |
-| Erősítés | saját mezők (védelem nő) | „N mező védelme nő" |
-| Felfedezés | ismeretlen körzetek | „N körzet, ahol még egyetlen meződ sincs" |
+| `Default public token` | sehol (kiváltva) | nem is lehet ráállítani |
+| `grundo-web` | Cloud Shell `~/grundo/.env` → bundle | `https://grundo.web.app` |
+| `grundo-server-directions` | csak a deploy `--substitutions`-ben | **nincs, és nem is szabad** |
 
-**A kiosztás SORREND-FÜGGETLEN.** Nem egyszerűen végigmegyünk a
-karaktereken (akkor az első mindig előnyt élvezne): minden (jelölt,
-karakter) párt a SAJÁT karakterén belül normalizálunk, és a globálisan
-legerősebb pár nyer. Unit teszt rögzíti.
+**Miért nincs a szerverén korlátozás?** Az URL-korlátozás a böngésző
+`Referer` fejlécére épül — egy Cloud Run hívásnak nincs olyan. Ha
+korlátoznánk, a küldetés-generálás 401-et kapna. Ezért a szerver tokenjének
+a védelme az, hogy **sehol nem publikus**: se a repóban, se a bundle-ben.
 
-**Nem ajánlunk fel ugyanolyat kétszer**: ha két jelölt cellahalmaza
-Jaccard > 0,6 arányban fedi egymást, a gyengébbik kiesik — különben a
-felhasználó ugyanazt a kört látná két címkével.
+⚠️ A GitHub secret scanning jogosan blokkolt egy pusht, amikor a token a
+`cloudbuild.yaml`-be került. A `pk.` előtag miatt ez publikus token (nem
+`sk.`), tehát nem klasszikus kulcsszivárgás volt — de a repóban akkor sincs
+helye. A frontend `.env`-je Cloud Shellben él, **nincs verziókövetve**, tehát
+`git pull` nem írja felül.
 
-### Adatvédelem (docs/02 → Adatvédelmi korlát)
+## EBBEN A MENETBEN ELKÉSZÜLT
 
-Mindhárom szabály SZERVEROLDALON dől el (`resolveVictimNames`):
+### 1. Aktivitás-mentés — az ablak most tényleg bezárul
 
-- név csak **publikus** fióknál; privát fióknál „egy helyi játékostól";
-- a **tiltás mindkét iránya** kizár (`blocks` és `blockedBy`);
-- **ugyanaz a személy naponta legfeljebb egyszer** lehet célpont — a napi
-  lista a `users/{uid}/private/missionTargets` dokumentumban.
+Az előző kör átirányítást adott hozzá, de **takarítást nem**: a `recorder`
+állapota `done` maradt, ezért a Rögzítés fülre visszalépve ugyanaz a
+mentés-ablak fogadott. Mostantól a mentés `discard()`-ot is hív (az
+azonosítót ELŐTTE menti ki, mert utána a `state.id` üres).
 
-### Kvóta
+### 2–4. Ranglista — iOS-en használhatatlan volt
 
-Ingyenes heti 5 (`FREE_ROUTE_GENERATIONS_PER_WEEK`), Pro korlátlan. A
-számláló a `users/{uid}.missionQuota` mezőben, hetente nullázódik.
+A dobogó bevezetése után a fejléc + fülsor + dobogó annyit vitt el, hogy a
+számozott tabellából semmi nem látszott, és görgetni sem lehetett.
 
-### Home — „A mai küldetésed"
+- **Nyitott ranglistánál eltűnik** a rétegváltó, a statisztika-panel és a
+  jelmagyarázat; a panel a maradék magasságot kapja, a dokk mögé nem lóg be.
+- **A számozott lista külön görget** (`.terr__board-list`), a fejléc, a
+  fülsor és a dobogó helyben marad. A `min-height: 0` nem elhagyható: flex
+  gyerek nélküle nem megy a tartalmánál kisebbre, tehát a görgetés el sem
+  indulna.
+- **A pozíció-gomb is elrejtőzik** — új `hideRecenter` prop a `MapView`-n.
+- **A szem ikon MÁR NEM rejti el a ranglistát.** Az a térkép RÁTÉTEIRE való;
+  a ranglista nem rátét, hanem külön nézet. Saját ágra került, ezért nem
+  függ az `overlayVisible`-től.
 
-⚠️ **A Home SOSEM generál küldetést.** A generálás kvótás és API-t fogyaszt;
-ha minden Home-betöltés kérne egyet, két nap alatt elégetné a heti keretet
-anélkül, hogy a felhasználó bármit kért volna. Ehelyett a Küldetések
-képernyőn már legenerált legjobb ajánlatot mutatja (`src/lib/dailyMission.ts`,
-localStorage), és **a tegnapit sosem hozza vissza** — egy elavult ajánlat
-olyan területet ígérne, ami közben már gazdát cserélt. Ha nincs mai
-ajánlat, a kártya odahív.
+Mérve mobilban (375×812): panel 581 px, alja 678 px, lista görgethető,
+rétegváltó/statisztika/jelmagyarázat/pozíció-gomb mind rejtve.
 
-### Amit egy teszt fogott meg
+### 5. Értesítés-swipe — Gmail-mintára
 
-A **Felfedezés** karakter végig VÉDETT idegen zónára is ajánlatot gyártott.
-Ott minden cella áttörés, egyetlen mező sem cserél gazdát — a kártyán „3 új
-körzet" állt volna, a Terület rovatban meg nulla. Csapda lett volna.
-Javítva: felfedezéshez szerezni is kell valamit (`kindScore` → `explore`).
-Emulátoros teszt rögzíti (`missionEvaluate.emulator.test.ts`).
+- A kártya **legfeljebb 60 px-ig** mozdul.
+- ⚠️ **A küszöböt is át kellett szabni.** Eddig a kártyaszélesség fele volt
+  (~160 px) — a 60-as plafon mellett ez SOHA nem teljesülne, tehát húzással
+  se törölni, se olvasottra állítani nem lehetne. Fix **42 px** lett
+  (gyors pöccintésnél 24).
+- A **teljes háttér** színeződik gradienssel, a mozdulat mértékével
+  fokozatosan (30 px → `opacity: 0.5`). Piros balról jobbra (törlés), zöld
+  jobbról balra (olvasott).
+- Az **ikon az alap háttérszín** (`--bg-primary`), mintha ki lenne vágva a
+  színes felületből.
+- A sorok **összeérnek**: nincs rés, lekerekítés és körbefutó szegély, csak
+  vízszintes elválasztó vonal.
 
-Ugyanez a logika az **Erősítés** kártyán is előjött, de ott a nulla HELYES —
-ott nem szerzés történik. A kártya emiatt karakterenként mást mér: erősítésnél
-„Megerősített terület", máshol „Új terület".
+### 6. Küldetés-ajánló — hangolás
 
-## ⚠️ AMIT EZ A MENET NEM TUDOTT ÉLŐBEN KIPRÓBÁLNI
+**A bringa nem adott semmit.** Megmérve NEM a geometria hibás: egy 16 km-es
+kör simán átmegy (52 000 cella, 239 ms; 24 km → 116 000 cella). A baj a
+hossz-tűrés volt — hosszabb távon a kerülő-szorzó becslése nagyobbat téved,
+és mind a nyolc jelölt kiesett.
 
-**A valódi Mapbox Directions hívást.** Ebben a fejlesztői környezetben
-NINCS Mapbox-token (a `.env.local` csak `VITE_API_BASE_URL`-t és VAPID-kulcsot
-tartalmaz; a Grund képernyő térképe is emiatt írja, hogy „a térképhez
-Mapbox-token kell"). Amit ellenőriztem helyette:
+- **KÉTMENETES ÖNKALIBRÁLÁS**: az első menet megméri a tényleges hosszt, a
+  második `cél / tényleges` aránnyal skálázott sugárral kérdez újra. A
+  `MISSION_DETOUR_FACTOR` így már csak kiindulópont, nem sorsdöntő.
+- **A tűréshatár előny lett, nem kizáró ok**: ha semmi nem fér bele, a
+  legközelebbieket ajánljuk fel 45 %-ig. Egy 9 km-es ajánlat a kért 7,5
+  helyett többet ér, mint az „itt nincs kör" — a kártya kiírja a valós hosszt.
+- **Az üres válasz OKA szétválasztva**: `no_routes` / `no_loops` / `no_fit`.
+  Korábban mindhárom ugyanazt írta, ezért nem lehetett megmondani, mi a baj.
+  A válasz `diagnostics` mezőt is ad (hány útvonal jött, hányban volt hurok).
+- **Admin nem fogyaszt kvótát** (`owner`/`admin`/`moderator`) — a hangoláshoz
+  sokszor kell egymás után generálni.
+- **Célhossz-plafon 50 km**: a bezárt terület a kerület NÉGYZETÉVEL nő, a
+  nyolcórás bringa több millió cellát jelentene jelöltenként.
+- **90 perc helyett EGYEDI idő**: szabadon megadható érték perc vagy óra
+  mértékegységgel, 5 perc és 8 óra között. A `minutes` a hálózaton továbbra
+  is percben megy — az óra/perc váltás tisztán megjelenítési kérdés.
 
-- a lánc drága fele — vonallánc → cellák → hurkok → birtokviszony → GP →
-  válogatás — **emulátoron, valódi Firestore ellen**, szintetikus hurokkal
-  (7 teszt: szabad terep, védtelen idegen, védett idegen, saját, felfedezés,
-  blokk-plafon);
-- a geometria és a válogatás **23 unit teszttel**;
-- a **503-as ág élőben** (token nélkül tiszta, érthető hibaüzenet);
-- a **felület élőben**, mind a négy kártyatípussal, a Home-kártyával, a
-  navigációval és a sötét témával.
+## ⚠️ AMIT MÉG MINDIG NEM TUDTUNK ÉLŐBEN MÉRNI
 
-**Telepítés után ezt kell megnézni**: hogy a Directions valóban ad-e
-bezáródó köröket a valódi utcahálózaton, és hogy a `MISSION_DETOUR_FACTOR`
-(1,25) eltalálja-e a célhosszt. Ha sok jelölt esik ki a ±15 %-os tűrésen,
-ez a szorzó a hangolandó érték.
+**A valódi Mapbox Directions hívást.** A fejlesztői környezetben nincs
+Mapbox-token, tehát a kétmenetes önkalibrálás hatását CSAK élesben lehet
+megnézni. Amit ellenőriztem helyette: a geometria mérve (fenti cellaszámok),
+a felület élőben, a hibaágak élőben.
+
+**Telepítés után ezt nézd meg**: működik-e a bringa. Ha még mindig nem, a
+válasz `reason` mezője most már megmondja, miért — `no_routes` (a Mapbox nem
+ad kerékpáros útvonalat innen), `no_loops` (ad, de nem záródik) vagy
+`no_fit` (záródik, de rossz hosszú). Ez a három teljesen más teendőt jelent.
+
+## KÖVETKEZŐ MENET — JAVASLAT
+
+**A küldetés-ajánló jelenleg féllábon áll**, és ezt Geri jogosan szóvá tette:
+a kártya ígér egy útvonalat, az „Indítás most" viszont a rögzítésre dob, ahol
+az útvonalnak nyoma sincs. Navigáció nélkül a generálás önmagában kevés.
+
+A hiányzó darab kicsi, mert a `polyline` már megvan a kártyán:
+
+1. **Az útvonal átadása a rögzítésnek** — a kiválasztott küldetés vonala
+   „szellemvonalként" a térképre, végig látszik rögzítés közben. Ez önmagában
+   használhatóvá teszi a funkciót.
+2. **2D/3D nézetváltó** (Geri kérése) — bedöntött kamera menetirányba
+   forgatva, ahogy a navigációs appok csinálják. A Mapbox GL natívan tudja
+   (`pitch`, `bearing`), nem kell külső függőség.
+3. **Mentett útvonalak** — a docs/02 kéri, és a küldetés mentése logikusan
+   ide tartozik.
+
+**Amit NEM javaslok most**: valódi, kanyaronkénti hangnavigáció. Az a Mapbox
+Navigation SDK terepe, webes verzióban korlátos, és jóval nagyobb falat.
 
 ## NYITOTT, KISEBB
 
-- ⚠️ **`formatArea` mindig km²-t ír**, pedig a spec (docs/README
-  alapkonstansok, AGENTS.md 9. szabály) 1 000 000 m² alatt m²-t kér —
-  „12 000 m²" helyett „0,012 km²" jelenik meg mindenütt. Nem ebben a
-  menetben keletkezett, és app-szintű megjelenítési változás lenne
-  (ranglista, pódium, profil, aktivitás, küldetés), ezért nem nyúltam
-  hozzá. Külön háttérfeladatként jelezve.
-- A küldetés **„Indítás most" gombja a rögzítés képernyőre visz, de az
-  útvonalat még nem viszi magával** navigációként a térképre (docs/02 ezt
-  is kéri). A `polyline` a kártyán megvan, tehát a rávezetés kis munka.
-- **Mentett útvonalak** (docs/02) — a küldetés mentése még nincs meg.
-- **Szűrők** (kevés útkereszteződés · zöldterület · lapos terep) — a
-  Directions API támogat kizárásokat, de ez még nincs bekötve.
+- ⚠️ **`formatArea` mindig km²-t ír**, pedig a spec (docs/README, AGENTS.md
+  9. szabály) 1 000 000 m² alatt m²-t kér. App-szintű megjelenítési változás
+  lenne, ezért nem nyúltam hozzá. **Geri külön háttérfeladatként elindította**
+  — ellenőrizd, landolt-e, mielőtt hozzáérsz.
+- A küldetés **szűrői** (kevés kereszteződés · zöldterület · lapos terep) —
+  a Directions támogat kizárásokat, de nincs bekötve.
 - A követő-lista nem lapoz (max 100, `hasMore` jelzéssel).
 - A harang olvasatlan-száma a betöltött ablakból számol (20 elem).
 - A `modifier_started` broadcast szűrés nélkül megy mindenkihez.
@@ -170,63 +180,57 @@ ez a szorzó a hangolandó érték.
 | F0 — Alapozás | ✅ kész |
 | F1 — Tracking és aktivitás | ✅ kész |
 | F2 — A játék | ✅ kész, sőt túlteljesítve (modifierek, időablakos ranglista) |
-| **F2.5 — Küldetés-ajánló** | ✅ **ebben a menetben elkészült** |
+| F2.5 — Küldetés-ajánló | ✅ kész, de **navigáció nélkül féllábon** (lásd fent) |
 | F3 — Közösség | 🟡 félkész: követés/tiltás/like/komment/értesítés/jelentés/keresés megvan; **üzenetek, klubok, kihívások, felfedezés, útlevél** nincs |
-| F4 — Mélység és bevétel | 🟡 csak a jelvények; statisztikák, útvonalak, edzés, Pro/paywall nincs |
+| F4 — Mélység és bevétel | 🟡 csak a jelvények |
 | F5 — Konnektorok | ❌ nincs elkezdve |
-| F6 — Éles indulás | 🟡 élesben fut, de a formális checklist (terheléspróba, audit, store) nincs |
-
-**A következő logikus lépés F3**, és azon belül Geri korábbi választása
-szerint a közösségi rész folytatása. A legkisebb önálló darab az
-**Üzenetek** (1:1 chat, a profil „Üzenet" gombja már odamutat); a legnagyobb
-a **Klubok** (tagság, szerepek, meghívókód, klub-feed, klub-ranglista).
+| F6 — Éles indulás | 🟡 élesben fut, a formális checklist nincs |
 
 ## ÉLESBEN FUT
 
 - Napi forduló, admin felület, futásidejű konfiguráció (`appConfig/gameplay`
   v1, „Gazdagrét Rush" akció — ellenőrizd, nem járt-e le), jelvény-katalógus.
-- Az előző menet 1–6. pontja (mentés-átirányítás, időjárás, flat ikonok,
-  ranglista + pódium + napi/heti/havi bontás), a 8 ranglista-index és
-  mindkét migráció (`backfill:blocked-by`, `backfill:area-windows`) —
-  mind lefutott, az indexek READY állapotban.
+- A korábbi menetek: mentés-átirányítás, időjárás, flat ikonok, ranglista +
+  pódium + napi/heti/havi bontás, keresés, F2.5 küldetés-ajánló.
+- 8 ranglista-index READY, mindkét migráció lefutott
+  (`backfill:blocked-by`, `backfill:area-windows`).
 
 ## TELEPÍTETLEN
 
-- `e21a49c` — felhasználónév-keresés (frontend + backend, semmi más)
-- `2f1050b` — F2.5 küldetés-ajánló (frontend + backend + `MAPBOX_TOKEN`)
+`526ddb5` — az öt sürgős javítás + a küldetés-hangolás. Frontend + backend.
 
 ## Fejlesztői előnézet
-
-**Írás nélküli, csak-olvasó ellenőrzéshez** (éles adaton):
-
-1. `.claude/launch.json` a `G:\Saját meghajtó\WORK\CLAUDE` gyökérben —
-   `grundo-dev` (éles API) vagy `grundo-emulator` (helyi emulátor).
-2. `server/`-ből `GOOGLE_CLOUD_PROJECT=grundo PORT=8080 npx tsx watch server.ts`.
-3. `grundo/.env.local`-ban `VITE_API_BASE_URL=http://localhost:8080`.
 
 **ÍRÓ funkcióhoz a helyi emulátor**:
 
 1. `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`
    (Git Bash-ben mindig kell, a Java PATH-ja nélküle nem látszik).
 2. `firebase emulators:start --only auth,firestore --project demo-grundo`
-   (Bash-ben `firebase`, `.cmd` nélkül — a globális npm-bin a PATH-on van).
+   (Bash-ben `firebase`, `.cmd` nélkül).
 3. `server/`-ből `npm run seed:emulator`, majd `npm run dev:emulator`.
 4. Gyökérből `npm run dev:emulator` (vagy a `grundo-emulator` launch-konfig).
 5. Böngészőben: `await __grundoDevSignIn()`.
 
 ⚠️ **Port-ütközés**: az `npm run test:emulator` saját `emulators:exec`-et
-indít — ha közben kézzel is fut egy példány, a portok ütköznek. Előbb állítsd
-le a kézit (`Get-NetTCPConnection -LocalPort 8081,9099 | Stop-Process`).
+indít — előbb állítsd le a kézit
+(`Get-NetTCPConnection -LocalPort 8081,9099 | Stop-Process`).
 
-⚠️ A Browser pane **screenshotja ebben a munkamenetben sem volt elérhető** —
-a vizuális ellenőrzés `read_page`, `get_page_text` és `javascript_tool`
-(számított stílusok, DOM-tartalom) kombinációjával ment. Ez az út működik:
-a `getComputedStyle`-lal a témák is ellenőrizhetők.
+💡 **Mérési fogások, amik ebben a menetben beváltak** (a Browser pane
+screenshotja továbbra sem érhető el):
 
-💡 **Mapbox-token nélküli felület-ellenőrzés**: a küldetés-kártyák
-megjelenítését `window.fetch` kiváltásával néztem meg (szintetikus válasz a
-`/api/missions/generate`-re) — így a négy kártyatípus, a szövegek és a
-Home-kártya token nélkül is végigkattintható.
+- **UI-állapot mérése** `javascript_tool`-lal: `getComputedStyle`,
+  `getBoundingClientRect`, `scrollHeight > clientHeight` — ezekkel a
+  ranglista magassága, a görgethetőség és a témák is ellenőrizhetők.
+- **Swipe szimulálása**: `card.dispatchEvent(new PointerEvent(...))`
+  `pointerdown` → `pointermove` → `pointerup` sorrendben. ⚠️ A React
+  állapotfrissítés ASZINKRON — a mérés előtt várni kell egy tickre
+  (`setTimeout(r, 60)`), különben a régi értéket olvasod.
+- **Mapbox-token nélküli felület-ellenőrzés**: `window.fetch` kiváltása
+  szintetikus válasszal a `/api/missions/generate`-re.
+- **Éles állapot ellenőrzése kívülről**: `gcloud run services describe`
+  (env-változók), és a kiszolgált bundle letöltése curl-lel (`curl -s
+  https://grundo.web.app/assets/index-*.js | grep -c 'pk\.ey'`) — így
+  ellenőrizhető, MI van tényleg élesben, találgatás nélkül.
 
 ## Infrastruktúra: éles, csak olvasó Firestore-hozzáférés
 
@@ -234,13 +238,12 @@ Változatlan. `grundo-reader@grundo.iam.gserviceaccount.com`
 (`roles/datastore.viewer`), Geri (`gergely.marthon@gmail.com`) személyesíti
 meg. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
 
-Index-státusz ellenőrzésére is jó:
-`gcloud.cmd firestore indexes composite list --project=grundo --database=grundo-db`
+Index-státusz: `gcloud.cmd firestore indexes composite list --project=grundo
+--database=grundo-db` — a `CREATING`/`READY` oszlop megmondja, felépült-e már.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Sonnet, normál mélységgel** — az F3 hátralévő darabjai (üzenetek, klubok,
-kihívások) meglévő mintákra épülnek: alkollekció + végpont + képernyő,
-ugyanaz a szerkezet, mint a követés/tiltás/komment. Opusra akkor váltsunk,
-ha a klubok jogosultsági modellje (tulajdonos > admin > tag, átruházás)
-vagy a kihívások automatikus haladás-követése tervezési döntésbe fut.
+**Sonnet, normál mélységgel** a szellemvonal és a mentett útvonalak
+(meglévő minták kiterjesztése). **A 2D/3D nézetváltónál** érdemes megállni:
+a Mapbox kamera (`pitch`, `bearing`) és a menetirány-számítás a GPS-zajból
+valódi tervezési kérdés — ha ott elakadás van, Opusra váltani.
