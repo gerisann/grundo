@@ -320,8 +320,18 @@ tilesRouter.get('/leaderboard', async (req, res, next) => {
           `territoryM2` önmagában nem tudja megkülönböztetni a kettőt.
           Szűrni a lekérdezésben is lehetne, de az már összetett indexet
           igényelne.
+
+          ⚠️ A `hasOwnedArea` ÚJ mező, a régi felhasználóknál nincs
+          visszamenőlegesen kitöltve (nincs migráció rá) — enélkül az OR-ág
+          nélkül a teljes éles ranglista üresen jönne vissza, hiába van
+          mindenkinek területe. Az `areaM2 > 0` ág ezért marad: fedezi a
+          jelenleg pozitív terveletűeket migráció nélkül is, a jelző pedig
+          mostantól minden ÚJ szerzésnél kitöltődik. Csak azt a régi esetet
+          nem fogja el, aki már A JELZŐ BEVEZETÉSE ELŐTT nullára esett
+          vissza — az visszamenőleges migráció nélkül nem is lenne
+          eldönthető (nincs történeti adat, ki birtokolt valaha bármit).
         */
-        .filter((entry) => entry.hasOwnedArea)
+        .filter((entry) => entry.hasOwnedArea || entry.areaM2 > 0)
         .map(({ hasOwnedArea: _hasOwnedArea, ...entry }) => entry),
     });
   } catch (error) {

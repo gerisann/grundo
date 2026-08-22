@@ -31,6 +31,10 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* A modul jobb szélétől külön +5px — Geri jelezte, hogy a pill saját
+     `padding` (var(--sp-3), 12px) önmagában még mindig szűknek látszott a
+     fokjel és a keret között. */
+  margin-right: 5px;
 }
 
 /* ── Az ikon kiemelt elemei ─────────────────────────────────────── */
@@ -132,9 +136,6 @@
 .weather--open .weather__detail {
   max-width: 260px;
   opacity: 1;
-  /* A panel jobb szélén álló hőmérséklettől/égképtől külön térköz — +5px
-     Geri kérésére, csak nyitva számít, hiszen csukva a sáv nulla széles. */
-  margin-right: 5px;
 }
 
 /*
