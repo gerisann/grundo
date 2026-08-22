@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cellToChildren } from 'h3-js';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
@@ -914,6 +915,7 @@ function SignalIcon() {
  * szerver számolja újra a nyers nyomvonalból, és eltérés esetén az számít.
  */
 function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) {
+  const navigate = useNavigate();
   const { upload } = recorder;
 
   if (upload.status === 'sending') {
@@ -978,7 +980,11 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
           felülcsapná őket.
         */}
         {!duplicate && uid && recorder.state.id ? (
-          <SaveActivityForm activityId={recorder.state.id} uid={uid} />
+          <SaveActivityForm
+            activityId={recorder.state.id}
+            uid={uid}
+            onSaved={() => navigate(`/aktivitas/${recorder.state.id}`)}
+          />
         ) : null}
         <div className="track__new-recording">
           <Button block variant="secondary" onClick={() => void recorder.discard()}>

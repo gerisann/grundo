@@ -3,183 +3,135 @@
 Ez a fájl az AKTUÁLIS állapotot mutatja, nem a történetet — minden menet végén
 felülíródik, nem bővül. A történet a git logban van.
 
-**Következő menet neve: GRUNDO #6.** (A számozás a BESZÉLGETÉSEKÉ, nem a
+**Következő menet neve: GRUNDO #7.** (A számozás a BESZÉLGETÉSEKÉ, nem a
 munkameneteké: azt kell nézni, hány chat van. Lásd [AGENTS.md → 7. A
 beszélgetések neve](AGENTS.md).)
 
 ## ÁLLAPOT
 
 Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. A pontos HEAD-et
-`git log -1`-gyel nézd meg. Ez a menet négy commitban ment fel
-(`46a6cc8`…`e6b0382`).
-
-⚠️ **A HEAD azóta három további commitot kapott KÍVÜLRŐL** (`67fcd8c`,
-`5a4ef15`, `2459608` — mind `gerisann`-tól, ezen a munkameneten kívülről):
-új logó (PNG, SVG helyett) és egy preload/splash-képernyő. Csak
-frontend-fájlokat érintenek (`public/`, `src/App.tsx`, `src/styles/
-global.css`), a session munkájával nem ütköznek. **A friss HEAD-ből
-induljunk**, ne ebből a napló-verzióból — lásd AGENTS.md → 8. pont.
+`git log -1`-gyel nézd meg — ez a menet egy commitban ment fel, `a8018ed` fölé.
 
 Tesztek, most mérve: gyökérből `npm test` → **333 teszt zöld** (24 fájl, 8
-emulátoros kihagyva). Emulátoros (`npm.cmd run test:emulator`) → **8 fájl,
-100 teszt zöld**. Typecheck (gyökér ÉS `server/`) és mindkét production
-build hibamentes.
+emulátoros kihagyva, változatlan a menet eleji számhoz képest — ez a kör nem
+adott új tesztet). Typecheck (gyökér ÉS `server/`) hibamentes. Élőben
+ellenőrizve a helyi emulátoron, valódi bejelentkezéssel: pódium, értesítés-
+ikonok, időjárás-widget méret.
 
-**Új ebben a menetben: helyi Firestore-emulátoros fejlesztői környezet.**
-Innentől a felületek valódi bejelentkezéssel, kármentesen tesztelhetők, nem
-csak méréssel — ez a menet nagy része élő böngészőben lett kipróbálva, nem
-csak kódolvasással. Lásd „Fejlesztői előnézet" alul.
+**Amit ez a menet NEM tudott élőben kipróbálni**: az aktivitás-mentés utáni
+átirányítást (1. pont lent), mert ahhoz egy valódi, lezárt aktivitás kell —
+az emulátoron nincs seedelt GPS-nyomvonal (lásd korábbi menetek jegyzetét
+ugyanerről). A kódot a szerkesztő-módban már bevált `onSaved` mintára írtam
+(`ActivityScreen.tsx` ugyanígy csinálja), típusellenőrzéssel igazolva.
 
 ## ⚠️ ELSŐ OLVASATRA: MIT KELL TELEPÍTENI ÉS FUTTATNI
 
-1. **frontend + backend** telepítés kell.
-2. **szabalyok** telepítés is kell (a `firestore.rules` egy korábbi menetben
-   változott: az értesítés törölhető, a tiltás írása szerveroldalra került,
-   van egy `blockedBy` alkollekció).
-3. **Egyszeri migráció**, a szabályok után — ha még nem futott le egy korábbi
-   menet óta: a régi tiltásokhoz meg kell írni a `blockedBy` tükröt. Cloud
-   Shellben:
-
-   `cd ~/grundo/server && git pull && npm run backfill:blocked-by -- --apply --allow-production`
-
-   (`--apply` nélkül csak jelentést ír. Amíg nem futott le, a RÉGI
-   tiltásoknál a „ki tiltott engem" irány nem szűr a feedben — az újaknál
-   igen, mert a szerver már mindkettőt írja.)
+1. **frontend + backend** telepítés kell (mindkét oldalt érintette a kör).
+2. Szabályok NEM változtak.
+3. Migráció NEM kell.
 4. Indexek NEM kellenek.
-5. **Az `OPENWEATHER_API_KEY` titok törölhető** a Secret Managerből, ha
-   véglegesen nem kell — a widget az Open-Meteo-ra váltott, kulcs nélkül.
+
+Ezen felül a #6 előtti menetek óta **még mindig várakozik** egy korábbi
+teendő — lásd alul, „TELEPÍTETLEN".
 
 ## EBBEN A MENETBEN ELKÉSZÜLT
 
-Geri egy nagy kérés-listát adott át, két körben (időjárás-finomítás előbb,
-utána egy második kör hat ponttal). **Mindegyik elkészült és élőben
-ellenőrizve**, a helyi emulátoron, valódi bejelentkezéssel.
+Geri hat apró kérést adott át. Öt elkészült és élőben ellenőrizve az
+emulátoron; a hatodik (napi/heti/havi ranglista-bontás) NEM készült el —
+lásd „KÖVETKEZŐ MENET", ott a döntés miért maradt ki.
 
-### 1. Időjárás-widget — egybefüggő, kibontható panel
+### 1. Aktivitás-mentés — ragadt képernyő javítva
 
-`WeatherWidget.tsx` + `weatherWidget.css` átdolgozva.
+`TrackingScreen.tsx`: a feltöltés utáni névadó/leíró űrlap (`SaveActivityForm`)
+eddig nem kapott `onSaved` callback-et ezen a képernyőn (szerkesztéskor, az
+`ActivityScreen`-en már régóta megvolt). Mentés után most bezárja magát és a
+frissen mentett aktivitás részletképernyőjére navigál
+(`navigate('/aktivitas/' + recorder.state.id)`), ugyanúgy, ahogy a
+szerkesztő-mód is teszi.
 
-- **Egy panel nő meg**, nem külön doboz nyílik a pill mellett: a bal szélen
-  egy nyílhegy (`ChevronIcon`) jelzi, hogy kinyitható, és koppintásra a
-  MEGLÉVŐ pill szélesedik ki balra.
-- **A hőmérséklet és az égkép NEM ismétlődik meg** a kibontott sávban — az
-  ott van a panel jobb szélén. Csak három ÚJ adat jön elő: csapadék esélye,
-  páratartalom, szél.
-- **Az ikonok 20%-kal nagyobbak** (26 px a 22 px-es alaphoz képest), és
-  **színkódoltak**: csapadék vízkék (`--weather-precip`), páratartalom
-  napsárga (`--weather-sun`), szél türkizzöld (új token: `--weather-wind`).
-  Élőben mérve: `rgb(96,165,250)` / `rgb(251,191,36)` / `rgb(45,212,191)`.
-- **Nyitva a „Szia, <név>" felirat eltűnik** (`home.css`, `:has()`
-  szelektorral) — a sáv úgyis eltakarná, a hely inkább neki jusson.
-- ⚠️ **Több körben mért és javított vízszintes-túlcsordulási hiba**: a
-  képernyőolvasónak szánt, abszolút pozíciójú címkék a panel saját
-  klippelését kell hogy kapják (nem a lap gyökeréét), és a rácsos szülőknek
-  (`.home__hero`, `.home__greet-row`) `min-width: 0` kell, különben egy
-  széles gyerek kitolja a dobozt a képernyőn túlra. Élőben mérve 360 és 390
-  px-es nézetben is: `document.documentElement.scrollWidth === viewport`.
+### 2. Időjárás-widget — méret és térköz finomítás
 
-### 2. Tiltott felhasználók — új képernyő
+`WeatherWidget.tsx` + `weatherWidget.css`: a kibontott sáv három
+mérőszám-ikonja 26→**20 px**. A mérőszámok közti térköz +5 px (4→9 px,
+`.weather__detail` gap). A panel jobb szélén álló hőmérséklettől/égképtől
+külön +5 px margó, de **csak nyitva** (`.weather--open .weather__detail`
+kapta a `margin-right`-ot, nem az alap állapot — csukva a sáv úgyis nulla
+széles, felesleges lett volna ott is hozzáadni).
 
-Geri talált egy zsákutcát: a letiltott felhasználó eltűnik mindenhonnan
-(feed, keresés, profil), tehát nem volt mód rá, hogy valaki UTÓLAG feloldja
-a tiltást — nem volt felület, ahonnan a `blocks` alkollekció egyáltalán
-elérhető lett volna.
+### 3. Értesítés-ikonok — emoji helyett flat SVG
 
-- Új végpont: `GET /api/users/me/blocked` (`server/src/routes/users.ts`) —
-  `/me/` előtaggal, hogy ne ütközzön az `/:username` mintával, és mert ez
-  eleve nem publikus adat (más felhasználó tiltás-listáját nem lehet lekérni).
-- Új képernyő: `src/screens/settings/BlockedUsersScreen.tsx`
-  (`/beallitasok/tiltottak`) — profilkép, név, „Feloldás" gomb soronként. A
-  névre/képre koppintva a nyilvános profil nyílik.
-- Bekötve a Beállítások menübe, „Tiltott felhasználók" néven.
-- **Élőben végigvíve**: Peti letiltva → megjelent a listában → „Feloldás" →
-  eltűnt, `Nincs letiltott felhasználód` üzenet jött.
+`notificationTypes.ts`-ből kikerült az `iconFor`/`typeIcon` (emoji-lista),
+átköltözött `NotificationPanel.tsx`-be flat, egyszínű SVG-ként (a
+`WeatherWidget`/`NotificationPanel` meglévő ikon-mintájára: `stroke:
+currentColor`, `fill: none`). Kilenc típus, kilenc forma (pajzs-figyelmeztetés,
+pajzs-pipa, villám, jelvény, szív, buborék, futó alak, személy+plusz,
+megafon), a színük a **meglévő tokenkészletből** jön (nincs új CSS-változó):
+`--danger`, `--success`, `--weather-sun`, `--tier-gold`, `--player-4`,
+`--info`, `--accent`, `--weather-wind` — `notificationPanel.css` →
+`.nrow__icon--*`. Élőben ellenőrizve mind a kilenc típuson.
 
-### 3. Konzisztencia — profil-link mindenhol
+### 4. Ranglista — a korábban területet szerzők nem esnek ki
 
-Geri jelezte, hogy a profilkép/név nem mindenhol kattintható, holott ez volt
-a minta (feed-kártya, követő-lista). Két helyen pótolva:
+Eddig a `GET /api/tiles/leaderboard` egyszerűen kiszűrte a nulla területű
+felhasználókat (`areaM2 > 0`) — ez viszont azt is kiszűrte, akitől időközben
+mindent elvettek. Új, egyszer igazra állított, soha vissza nem állított jelző:
+`hasOwnedArea.{layer}` a felhasználó dokumentumon, beírva ott, ahol a
+`territoryM2` nő (`activityCommit.ts`, `activityChunked.ts`, csak ha
+`gainedAreaM2/gainedCells > 0`). A végpont mostantól erre szűr az `areaM2`
+helyett — `routes/tiles.ts`. `seedEmulator.ts` is kapott egy alapértelmezett
+`hasOwnedArea: { foot: true, bike: false }`-t, különben a teszt-fiókok nem
+jelentek volna meg (élőben derült ki, üres listával).
 
-- **Hozzászólások** (`CommentSheet.tsx`): a profilkép ÉS a név is önálló
-  gomb lett, ami bezárja a lapot és a nyilvános profilra navigál — ugyanaz a
-  minta, mint a `ConnectionsSheet`-nél.
-- **Ranglista** (`TerritoryScreen.tsx` → `Leaderboard`): eddig csak a név
-  látszott, kép nélkül, és a sor nem volt kattintható. Most a sor GOMB
-  (4 oszlopos rács: helyezés · kép · név · terület), és megjelenik a
-  profilkép is (`LeaderboardEntry.photoURL` már eddig is jött a szerverről,
-  csak nem volt kirajzolva). **Élőben ellenőrizve**: a ranglista-sorra
-  kattintva `/felhasznalo/ZsofiWalks`-ra navigált, a fejléc a nevet mutatta.
+### 5. Top 3 pódium grafika
 
-### 4. Értesítés-lista — két javítás
+Új `Podium` komponens a `TerritoryScreen.tsx`-ben, a ranglista teteje fölött
+(a teljes, számozott lista alatta változatlanul megmarad, a top 3-at is
+tartalmazza — nem hiányzik belőle semmi). Ezüst-arany-bronz sorrendben balról
+jobbra (a hagyományos dobogó, nem a helyezés sorrendje), korona csak az
+1. helyen, a sávok magassága a legjobbhoz viszonyított, arányos terület
+(min. 28 px, max. 88 px). **Szándékosan visszafogott szín** — Geri kifejezetten
+kérte, hogy ne legyen olyan élénk, mint a csatolt referenciakép: a sávok a
+meglévő `--tier-gold/silver/bronze` tokenekből kapnak halvány
+(`color-mix … 16%`) tónust, nem új, telített hátteret. `territory.css` →
+`.terr__podium*`. Élőben ellenőrizve: 5 szereplős emulátoros ranglistán a
+sávmagasság, a korona és a szín-hozzárendelés mind helyesen jelent meg
+(JS-sel mérve, screenshot nem volt elérhető ebben a munkamenetben — a Browser
+pane nem volt megjeleníthető).
 
-- ⚠️ **Csak a jobbra húzás (törlés) működött, a balra húzás (olvasottá
-  jelölés) nem.** Valódi hiba volt, nem félreértés: a `pointerup` kezelő a
-  `dx` állapotot olvasta, ami egy gyors mozdulatnál (vagy egy automatizált
-  ellenőrzésnél) még a RÉGI, nullás értéket tartalmazta — a React a
-  `pointerup`-ig nem feltétlenül rajzolt újra. Javítás: a döntés egy
-  szinkron reffel történik (`dxNow`), a megjelenítés marad state-alapú.
-  Emellett a `setPointerCapture` hívás kivételt dobott bizonyos
-  pointer-forrásoknál, és megszakította a húzást — most `try/catch`-csel
-  védve. **Mindkét irány élőben tesztelve** az emulátoron: jobbra húzás
-  törölt egy sort, balra húzás egy olvasatlant olvasottra állított
-  (6 → 5 olvasatlan).
-- **A kártya mögötti „rejtett" réteg elvesztette a saját hátterét.**
-  Korábban egy `--surface-2` színű doboz állt az ikon mögött, ami húzás
-  közben egy MÁSODIK kártyának nézett ki (Geri screenshotot is küldött róla).
-  Most `background: transparent` — az ikon az alkalmazás alap hátterén
-  (`--bg-primary`, a `.npanel` gyökér színe) lebeg. Élőben mérve:
-  `getComputedStyle(...).backgroundColor === "rgba(0, 0, 0, 0)"`.
+## KÖVETKEZŐ MENET
 
-## FEJLESZTŐI ELŐNÉZET — helyi emulátor (ÚJ ebben a menetben)
+**Napi / heti / havi ranglista-bontás — Geri 6. pontja, NEM készült el.**
 
-Mostantól a felületek **valódi bejelentkezéssel, kármentesen** tesztelhetők,
-nem csak statikus CSS-méréssel. Három új darab:
+Ez adatmodell-döntés, ezért ebben a menetben szándékosan megálltam nála a
+könnyebb pontok után, ahelyett hogy rögtönöztem volna. A helyzet:
 
-- `.env.emulator` (repo gyökér) — kulcs nélküli, `demo-` előtagú Firebase
-  konfiguráció. A `demo-` előtag miatt a Firebase eszközei SOHA nem érnek
-  hozzá az éles projekthez.
-- `npm run dev:emulator` (repo gyökér) — Vite dev szerver emulátoros módban
-  (`.claude/launch.json`-ban is felvéve, `grundo-emulator` néven).
-- `server/npm run dev:emulator` — a backend az emulátorhoz kötve (Firestore
-  8081, Auth 9099), `server/npm run seed:emulator` pedig egy bejelentkezhető
-  teszt-fiókot (`geri@grundo.local` / `grundo-emulator`) tölt fel négy másik
-  felhasználóval, követésekkel mindkét irányban és 25 értesítéssel (a
-  lapozás kipróbálásához).
-- Böngészőből: `await __grundoDevSignIn()` — csak emulátoros build
-  tartalmazza, éles buildből kiesik (a `VITE_USE_EMULATORS` feltétel ott
-  hamis, a kód a csomagolóból is kimarad).
+- A `territoryM2` csak a JELENLEGI állapotot tárolja, nincs időablakos
+  előzménye. A GP-nél már van minta erre (`gpWeek`/`gpMonth`, nullázás a
+  `dailyRollover.ts`-ben) — de a GP-nél nincs lopás, a területnél van, ami
+  mást jelent: „e heti GP" = e héten szerzett pont, de „e heti terület" nem
+  egyértelmű — a NETTÓ változást mérje (szerzett mínusz elvesztett), vagy a
+  szerzett bruttó mennyiséget?
+- Ha a NETTÓ változás a cél (valószínűbb — ez felel meg egy „ki nyert
+  legtöbbet EBBEN AZ IDŐSZAKBAN" kérdésnek), akkor napi pillanatkép
+  (snapshot) kell minden felhasználóhoz, és a heti/havi szám a mai és az
+  N nappal ezelőtti pillanatkép különbsége — ez új kollekciót és egy új
+  napi jobot (vagy a meglévő `dailyRollover` bővítését) igényel.
+- Ha a BRUTTÓ szerzés a cél (egyszerűbb, a `gpWeek`/`gpMonth` mintájára:
+  `areaWeek`/`areaMonth` számláló, ami az `activityCommit.ts`/
+  `activityChunked.ts` claim-jénél nő, és a `dailyRollover.ts` heti/havi
+  ablakzárásánál nullázódik), akkor NAPI bontás így nem megy, mert jelenleg
+  nincs `gpDay`/`areaDay` mező sem — azt is be kellene vezetni.
+- Mindkét irány valódi tervezési döntés, ami hat a Firestore írásmennyiségre
+  és a `dailyRollover` szerkezetére is — ezért Opus-szintű kérdés, nem
+  rögtönözhető.
 
-**Amit ez a menet NEM tudott ezzel kipróbálni**: nincs seedelt aktivitás
-(a `src/game` motor bonyolult geometriai adatot várna), ezért a
-hozzászólás-lap éles kattintását nem sikerült böngészőben megnézni — a
-kódot a feed-kártyával és a `ConnectionsSheet`-tel azonos, bevált mintára
-írtam, és típusellenőrzéssel/build-del igazoltam.
-
-## ÉLESBEN FUT
-
-- **Napi forduló**, **admin felület**, **futásidejű konfiguráció**
-  (`appConfig/gameplay` v1, „Gazdagrét Rush" akció — ellenőrizd, nem járt-e
-  le), **jelvény-katalógus** — mind változatlan egy korábbi menet óta.
-
-## TELEPÍTETLEN
-
-Több menet munkája együtt vár: a korábbi (#4–#7 régi számozás) ÉS ez a menet.
-Frontend + backend + szabályok, plusz a `blockedBy` migráció (lásd fent),
-ha még nem futott le.
-
-## KÖVETKEZŐ: 6. MENET
-
-- **Aktív akciók a térképen** — ez korábbról áthúzódó tétel, még mindig nem
-  készült el. A modifier `areaCells` mezője (`src/game/modifiers.ts`)
-  H3-cellalista `MODIFIER_AREA_RES` felbontáson — ebből rajzolható
-  határvonal a Grund-térképen. ⚠️ Csak `scope: 'area'` modifierekre van
-  geometria; a most futó globális akciónak NINCS térképi kiterjedése.
-- **A push-küldés és a `NotificationPanel` élő ellenőrzése** telepítés után,
-  valódi eszközön.
-- Geri korábbi 7 pontos jelvény/profil-listájából: **keresés** és
-  **rivális rendszer**.
+**Javaslat a menet elejére**: Geri döntse el, NETTÓ vagy BRUTTÓ változás
+legyen-e az időablakos ranglista alapja, utána a modell és az index
+megtervezhető.
 
 ## NYITOTT, KISEBB
+
+Változatlan a #6 előtti menetek óta — ezt a kört nem érintették:
 
 - **A követő-lista nem lapoz** — legfeljebb 100 megy ki, `hasMore` jelzéssel.
 - **A harang olvasatlan-száma a betöltött ablakból számol** (20 elem).
@@ -189,6 +141,29 @@ ha még nem futott le.
   (`server/src/scripts/cleanGpLedgerJunk.ts`).
 - **A követési KÉRÉSEK elbírálására még nincs felület.**
 - Területi hatókörű hold-modifier nem hat: a `zones` kollekció még nincs meg.
+- **Aktív akciók a térképen** — korábbról áthúzódó tétel, még mindig nem
+  készült el (`src/game/modifiers.ts` → `areaCells`, csak `scope: 'area'`-nál
+  van geometria).
+- **A push-küldés és a `NotificationPanel` élő ellenőrzése** telepítés után,
+  valódi eszközön.
+- Geri korábbi 7 pontos jelvény/profil-listájából: **keresés** és
+  **rivális rendszer**.
+
+## ÉLESBEN FUT
+
+- **Napi forduló**, **admin felület**, **futásidejű konfiguráció**
+  (`appConfig/gameplay` v1, „Gazdagrét Rush" akció — ellenőrizd, nem járt-e
+  le), **jelvény-katalógus** — mind változatlan egy korábbi menet óta.
+
+## TELEPÍTETLEN
+
+Több menet munkája együtt vár: a korábbi menetek (időjárás/tiltás/profil-link/
+értesítés-húzás) ÉS ez a menet. Frontend + backend, plusz a `blockedBy`
+migráció egy korábbi menetből, ha még nem futott le:
+
+```
+cd ~/grundo/server && git pull && npm run backfill:blocked-by -- --apply --allow-production
+```
 
 ## Fejlesztői előnézet — hogyan látunk éles adatot a böngészőben
 
@@ -201,12 +176,12 @@ képernyőkhöz):
    `GOOGLE_CLOUD_PROJECT=grundo PORT=8080 npx tsx watch server.ts`.
 3. `grundo/.env.local`-ban `VITE_API_BASE_URL=http://localhost:8080`.
 
-**ÍRÓ funkcióhoz a helyi emulátor** — lásd fent, „Fejlesztői előnézet —
-helyi emulátor". Rövid összefoglaló:
+**ÍRÓ funkcióhoz a helyi emulátor**:
 
 1. `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`
    (Git Bash-ben ez mindig kell, a Java PATH-ja nélküle nem látszik).
-2. `firebase.cmd emulators:start --only auth,firestore --project demo-grundo`.
+2. `firebase.cmd emulators:start --only auth,firestore --project demo-grundo`
+   (Bash-ben `firebase`, `.cmd` nélkül — a globális npm-bin már a PATH-on van).
 3. `server/`-ből `npm run seed:emulator`, majd `npm run dev:emulator`.
 4. Gyökérből `npm run dev:emulator` (vagy a `grundo-emulator` launch-konfig).
 5. Böngészőben: `await __grundoDevSignIn()`.
@@ -217,6 +192,12 @@ emulators:exec`-et indít — ha közben kézzel is fut egy emulátor-példány
 (`Get-NetTCPConnection -LocalPort 8081,9099 | Stop-Process`), utána fusson a
 teszt-parancs.
 
+⚠️ **Ebben a menetben a Browser pane screenshotja nem volt elérhető** („the
+Browser pane is not displayed" hiba) — a vizuális ellenőrzés `read_page`,
+`get_page_text` és `javascript_tool` (számított stílusok, DOM-tartalom)
+kombinációjával ment, screenshot nélkül. Ha legközelebb is így lesz, ugyanez
+az út működik.
+
 ## Infrastruktúra: éles, csak olvasó Firestore-hozzáférés
 
 Változatlan. `grundo-reader@grundo.iam.gserviceaccount.com`
@@ -225,9 +206,6 @@ meg. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Opus, emelt mélységgel**, ha a **térkép-vizualizációval** folytatjuk: a
-`scope: 'area'` vs `'global'` megkülönböztetés és az új GeoJSON-réteg a
-meglévő Mapbox-rétegek közé valódi tervezési döntés. **Sonnet** elég, ha a
-telepítés utáni élő ellenőrzésekkel (push, feliratkozás) vagy a keresés
-felülettel kezdünk — ott a minta már megvan, és most már emulátoron is
-tesztelhető, nem csak méréssel.
+**Opus, emelt mélységgel** — a napi/heti/havi ranglista-bontás nettó-vs-bruttó
+döntése és az ebből következő adatmodell (új mező vagy új kollekció, a
+`dailyRollover.ts` bővítése) valódi architektúra-kérdés, nem rutinmunka.

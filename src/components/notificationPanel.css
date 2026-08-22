@@ -258,7 +258,41 @@
   height: 34px;
   border-radius: 50%;
   background: var(--surface-2);
-  font-size: 17px;
+  color: var(--text-secondary);
+}
+
+/* Típusonkénti szín — visszafogott, a meglévő tokenkészletből, hogy a
+   lista egyetlen pillantással szét tudja válogatni a bejegyzéseket. */
+.nrow__icon--stolen {
+  color: var(--danger);
+}
+
+.nrow__icon--defended {
+  color: var(--success);
+}
+
+.nrow__icon--gp {
+  color: var(--weather-sun);
+}
+
+.nrow__icon--badge {
+  color: var(--tier-gold);
+}
+
+.nrow__icon--like {
+  color: var(--player-4);
+}
+
+.nrow__icon--comment {
+  color: var(--info);
+}
+
+.nrow__icon--social {
+  color: var(--accent);
+}
+
+.nrow__icon--modifier {
+  color: var(--weather-wind);
 }
 
 .nrow__text {

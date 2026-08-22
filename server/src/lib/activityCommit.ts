@@ -473,6 +473,13 @@ export async function commitActivity(
       level: levelFor(gpAfter),
       territoryM2: { [layer]: FieldValue.increment(gainedAreaM2) },
       cellCount: { [layer]: FieldValue.increment(gainedCells) },
+      /**
+       * Egyszer igazra állítva, aztán soha vissza — a ranglista ebből tudja
+       * megjeleníteni azokat is, akiktől azóta mindent elvettek: az aktuális
+       * `territoryM2` önmagában nem különbözteti meg őket egy vadonatúj
+       * felhasználótól, aki még soha nem szerzett cellát.
+       */
+      ...(gainedAreaM2 > 0 ? { hasOwnedArea: { [layer]: true } } : {}),
       counters: {
         activities: FieldValue.increment(1),
         distanceKm: { [type]: FieldValue.increment(serverDistanceM / 1000) },

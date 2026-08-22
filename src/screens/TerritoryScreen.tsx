@@ -494,10 +494,12 @@ function Leaderboard({
   }
 
   const navigate = useNavigate();
+  const podium = entries.slice(0, 3);
 
   return (
     <div className="terr__board">
       {head}
+      {podium.length > 0 ? <Podium entries={podium} meUid={meUid} /> : null}
       {entries.map((entry, index) => (
         <button
           type="button"
@@ -513,6 +515,73 @@ function Leaderboard({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * Top 3 — pódium.
+ *
+ * A megjelenítési sorrend BALRÓL JOBBRA ezüst-arany-bronz, a hagyományos
+ * dobogó szerint, nem a helyezés szerint. A sávok magassága a legjobb
+ * helyezetthez viszonyított, arányos terület — így egy szoros mezőnyben a
+ * sávok is közel egyformák, egy nagy előnynél pedig azonnal látszik a
+ * különbség. Visszafogott, egyszínű jelmagyarázat (Geri kérésére): a
+ * sávok a meglévő `--tier-*` tokenekből kapnak halvány tónust, nem a
+ * referenciakép élénk zöld/lila/kék hátterét másoljuk.
+ */
+function Podium({ entries, meUid }: { entries: LeaderboardEntry[]; meUid: string }) {
+  const navigate = useNavigate();
+  const top = entries[0]?.areaM2 || 1;
+  const order = [entries[1], entries[0], entries[2]] as const;
+  const tone = ['silver', 'gold', 'bronze'] as const;
+  /** Legmagasabb sáv 88 px (arany), legalacsonyabb sose 28 px alá — üres
+      terület mellett is látszódjon, hogy ott áll valaki. */
+  const MAX_BAR_PX = 88;
+  const MIN_BAR_PX = 28;
+
+  return (
+    <div className="terr__podium">
+      {order.map((entry, slot) => {
+        if (!entry) return <div key={`empty-${slot}`} className="terr__podium-col" aria-hidden="true" />;
+        const rank = entries.indexOf(entry) + 1;
+        const heightPx = Math.max(MIN_BAR_PX, Math.round((entry.areaM2 / top) * MAX_BAR_PX));
+        return (
+          <button
+            type="button"
+            key={entry.uid}
+            className={`terr__podium-col${entry.uid === meUid ? ' terr__podium-col--me' : ''}`}
+            onClick={() => navigate(`/felhasznalo/${encodeURIComponent(entry.username)}`)}
+            aria-label={`${rank}. hely: ${entry.username}, ${formatArea(entry.areaM2)}`}
+          >
+            {rank === 1 ? <CrownIcon /> : null}
+            <Avatar url={entry.photoURL} name={entry.username} size={rank === 1 ? 44 : 36} />
+            <span className="terr__podium-name">{entry.username}</span>
+            <span className="terr__podium-area">{formatArea(entry.areaM2)}</span>
+            <span
+              className={`terr__podium-bar terr__podium-bar--${tone[slot]}`}
+              style={{ height: `${heightPx}px` }}
+            >
+              <span className="terr__podium-rank">{rank}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CrownIcon() {
+  return (
+    <svg
+      className="terr__podium-crown"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5 7.5 12 12 5l4.5 7L21 8.5 19.5 18h-15L3 8.5Z" />
+    </svg>
   );
 }
 

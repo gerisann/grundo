@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
-import { iconFor, screenFor, type StoredNotification } from '@/lib/notificationTypes';
+import { screenFor, type NotificationType, type StoredNotification } from '@/lib/notificationTypes';
 import { formatRelativeDay } from '@/lib/format';
 import './notificationPanel.css';
 
@@ -319,8 +319,8 @@ function NotificationRow({
           onOpen(item);
         }}
       >
-        <span className="nrow__icon" aria-hidden="true">
-          {iconFor(item.type)}
+        <span className={`nrow__icon nrow__icon--${toneFor(item.type)}`} aria-hidden="true">
+          {typeIcon(item.type)}
         </span>
         <span className="nrow__text">
           <span className="nrow__title">{item.title}</span>
@@ -330,6 +330,156 @@ function NotificationRow({
         {!item.read ? <span className="nrow__dot" aria-hidden="true" /> : null}
       </button>
     </div>
+  );
+}
+
+/* ── Típusikonok ──────────────────────────────────────────────────────── */
+
+/**
+ * Egyszínű flat ikon + szín típusonként — az emoji-kavalkád helyett.
+ *
+ * A színek a meglévő tokenkészletből jönnek (nincs új CSS-változó): a
+ * jelentéshez illő, de visszafogott árnyalatok, ugyanazok a `--tier-*`,
+ * `--weather-*`, `--danger`/`--success` értékek, amiket a jelvények és az
+ * időjárás-widget is használ — így a lista nem hoz be egy harmadik palettát.
+ */
+function toneFor(type: NotificationType): string {
+  switch (type) {
+    case 'territory_stolen':
+      return 'stolen';
+    case 'territory_defended':
+      return 'defended';
+    case 'gp_activity':
+    case 'gp_daily':
+      return 'gp';
+    case 'badge_awarded':
+      return 'badge';
+    case 'activity_liked':
+      return 'like';
+    case 'activity_commented':
+    case 'comment_replied':
+      return 'comment';
+    case 'followed_activity':
+    case 'new_follower':
+      return 'social';
+    case 'modifier_started':
+      return 'modifier';
+  }
+}
+
+function typeIcon(type: NotificationType) {
+  switch (type) {
+    case 'territory_stolen':
+      return <ShieldAlertIcon />;
+    case 'territory_defended':
+      return <ShieldCheckIcon />;
+    case 'gp_activity':
+    case 'gp_daily':
+      return <BoltIcon />;
+    case 'badge_awarded':
+      return <BadgeIcon />;
+    case 'activity_liked':
+      return <HeartIcon />;
+    case 'activity_commented':
+    case 'comment_replied':
+      return <ChatIcon />;
+    case 'followed_activity':
+      return <RunnerIcon />;
+    case 'new_follower':
+      return <PersonAddIcon />;
+    case 'modifier_started':
+      return <MegaphoneIcon />;
+  }
+}
+
+const typeIconProps = {
+  width: 18,
+  height: 18,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.9,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+} as const;
+
+function ShieldAlertIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <path d="M12 3.5 5 6.2v5.3c0 4.8 3 7.9 7 9 4-1.1 7-4.2 7-9V6.2L12 3.5Z" />
+      <path d="M12 8.5v4.2M12 16v.01" />
+    </svg>
+  );
+}
+
+function ShieldCheckIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <path d="M12 3.5 5 6.2v5.3c0 4.8 3 7.9 7 9 4-1.1 7-4.2 7-9V6.2L12 3.5Z" />
+      <path d="M9 12.3l2 2 4-4.3" />
+    </svg>
+  );
+}
+
+function BoltIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <path d="M12.5 3 5 13.5h5.5L11 21l7.5-10.5H13L12.5 3Z" />
+    </svg>
+  );
+}
+
+function BadgeIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <circle cx="12" cy="9" r="5.5" />
+      <path d="M9 13.5 7.5 21l4.5-2.3 4.5 2.3-1.5-7.5" />
+    </svg>
+  );
+}
+
+function HeartIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <path d="M12 20s-7.5-4.7-9.5-9.4C1 6.9 3 4 6.3 4c1.9 0 3.4 1 5.7 3.3C14.3 5 15.8 4 17.7 4 21 4 23 6.9 21.5 10.6 19.5 15.3 12 20 12 20Z" />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <path d="M4 5.5h16v10.5H9l-4 3.5V16H4V5.5Z" />
+    </svg>
+  );
+}
+
+function RunnerIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <circle cx="14.5" cy="4.5" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M9 21l2.4-4.8-2-2 1.4-4.4 3 2.4 3.6 1M6 13.5l3-2.5 2 1.8" />
+    </svg>
+  );
+}
+
+function PersonAddIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <circle cx="10" cy="8" r="3.5" />
+      <path d="M3.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
+      <path d="M18 8v5M15.5 10.5h5" />
+    </svg>
+  );
+}
+
+function MegaphoneIcon() {
+  return (
+    <svg {...typeIconProps}>
+      <path d="M3 10.5v3l4 1v4.5a1.5 1.5 0 0 0 3 0v-3.7l8 2.7v-11l-8 2.7-4 1H3Z" />
+      <path d="M18 8.5a4 4 0 0 1 0 7" />
+    </svg>
   );
 }
 

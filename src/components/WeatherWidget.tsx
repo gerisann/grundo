@@ -246,14 +246,9 @@ function Metric({
 
 /* ── Ikonok ───────────────────────────────────────────────────────── */
 
-/*
-  A mérőszám-ikonok 20%-kal nagyobbak az égkép ikonjánál (22 px az alap):
-  ezek hordozzák a jelentést a kibontott sávban, a szám mellettük már csak
-  megerősítés.
-*/
 const metricIcon = {
-  width: 26,
-  height: 26,
+  width: 20,
+  height: 20,
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',

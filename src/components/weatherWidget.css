@@ -118,8 +118,8 @@
   display: flex;
   align-items: center;
   /* Szűk térköz: három mérőszámnak KELL elférnie egy 360 pixeles telefonon
-     is, a panel saját ikonja és a fok mellett. */
-  gap: var(--sp-1);
+     is, a panel saját ikonja és a fok mellett. Alap (4px) + 5px Geri kérésére. */
+  gap: 9px;
   min-width: 0;
   /* Zárva nulla széles és láthatatlan — a nyitás ezt a két értéket animálja,
      ezért nő ki a panel balra, ahelyett hogy ugrana. */
@@ -132,6 +132,9 @@
 .weather--open .weather__detail {
   max-width: 260px;
   opacity: 1;
+  /* A panel jobb szélén álló hőmérséklettől/égképtől külön térköz — +5px
+     Geri kérésére, csak nyitva számít, hiszen csukva a sáv nulla széles. */
+  margin-right: 5px;
 }
 
 /*

@@ -69,35 +69,6 @@ export interface StoredNotification {
   createdAt: number;
 }
 
-function typeIcon(type: NotificationType): string {
-  switch (type) {
-    case 'territory_stolen':
-      return '⚔️';
-    case 'territory_defended':
-      return '🛡️';
-    case 'gp_activity':
-    case 'gp_daily':
-      return '⚡';
-    case 'badge_awarded':
-      return '🏅';
-    case 'activity_liked':
-      return '❤️';
-    case 'activity_commented':
-    case 'comment_replied':
-      return '💬';
-    case 'followed_activity':
-      return '🏃';
-    case 'new_follower':
-      return '👤';
-    case 'modifier_started':
-      return '📣';
-  }
-}
-
-export function iconFor(type: NotificationType): string {
-  return typeIcon(type);
-}
-
 /**
  * Hova visz az értesítésre koppintás.
  *

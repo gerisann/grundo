@@ -301,6 +301,7 @@ tilesRouter.get('/leaderboard', async (req, res, next) => {
             photoURL?: string | null;
             territoryM2?: Record<string, number>;
             cellCount?: Record<string, number>;
+            hasOwnedArea?: Record<string, boolean>;
           };
           return {
             uid: doc.id,
@@ -308,12 +309,20 @@ tilesRouter.get('/leaderboard', async (req, res, next) => {
             photoURL: data.photoURL ?? null,
             areaM2: data.territoryM2?.[layer] ?? 0,
             cellCount: data.cellCount?.[layer] ?? 0,
+            hasOwnedArea: data.hasOwnedArea?.[layer] === true,
           };
         })
-        // A nulla területűeket nem soroljuk fel: az nem ranglista, hanem
-        // névsor. Szűrni a lekérdezésben is lehetne, de az már összetett
-        // indexet igényelne.
-        .filter((entry) => entry.areaM2 > 0),
+        /*
+          Aki már SZERZETT területet, az a listán marad akkor is, ha épp
+          nulla — elvették tőle. Csak azt szűrjük ki, aki még soha nem
+          birtokolt egyetlen cellát sem: a `hasOwnedArea` erre külön jelző
+          (`activityCommit.ts`/`activityChunked.ts`), mert a jelenlegi
+          `territoryM2` önmagában nem tudja megkülönböztetni a kettőt.
+          Szűrni a lekérdezésben is lehetne, de az már összetett indexet
+          igényelne.
+        */
+        .filter((entry) => entry.hasOwnedArea)
+        .map(({ hasOwnedArea: _hasOwnedArea, ...entry }) => entry),
     });
   } catch (error) {
     next(error);
