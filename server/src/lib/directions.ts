@@ -59,6 +59,23 @@ export async function planLoop(
   const path = [origin, ...waypoints, origin];
   const coordinates = path.map((point) => `${round6(point.lng)},${round6(point.lat)}`).join(';');
 
+  /*
+    ⚠️ A `continue_straight=false` SZÁNDÉKOS, ÉS MÉRVE VAN.
+
+    Ez engedi meg, hogy az útvonal egy köztes pontnál visszaforduljon. Ettől
+    kerül néha egy-egy fölösleges „láb" a tervbe (beszalad egy mellékutcába,
+    megfordul, visszajön) — Geri jelentette 2026-08-22-én, screenshottal.
+
+    A kézenfekvő javítás a `true` lenne, és tényleg segít is a látványon:
+    3 kiindulás × 8 irányon a visszafordulások 65-ről 38-ra estek. DE ugyanez
+    a bezárt BELSŐ területet 1,900 km²-ről 1,425-re vitte — a negyede elveszik,
+    márpedig a játék arról szól. Ezért maradt a `false`.
+
+    A lábakat máshol kezeljük: a válogatás (`pickMissions`) döntetlennél a
+    kevesebb visszafordulású jelöltet választja, ami mérve ~1% területbe kerül.
+    Lásd `src/game/routeShape.ts` — ott van a teljes mérés és az is, mi bukott
+    el rajta (a `radiuses` paraméternek például SEMMI hatása nem volt).
+  */
   const url =
     `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinates}` +
     `?geometries=polyline&overview=full&continue_straight=false` +

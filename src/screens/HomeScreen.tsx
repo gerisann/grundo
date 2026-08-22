@@ -4,7 +4,11 @@ import { OtpDialog } from '@/components/OtpDialog';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea, formatCellCount, formatDistance, formatNumber } from '@/lib/format';
-import { readDailyMission } from '@/lib/dailyMission';
+import {
+  dismissDailyMissionCard,
+  isDailyMissionCardDismissed,
+  readDailyMission,
+} from '@/lib/dailyMission';
 import type { Mission } from '@/lib/api';
 import { Feed } from '@/components/Feed';
 import { WeatherWidget } from '@/components/WeatherWidget';
@@ -204,31 +208,97 @@ export function HomeScreen() {
 function DailyMissionCard() {
   const navigate = useNavigate();
   const [mission, setMission] = useState<Mission | null>(null);
+  /*
+    ALAPBÓL REJTVE, amíg a tár meg nem szólal. Fordítva — alapból látszóból
+    indulva — a kártya minden betöltéskor felvillanna, majd eltűnne annak is,
+    aki tegnap… illetve ma már bezárta.
+  */
+  const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
     setMission(readDailyMission());
+    setDismissed(isDailyMissionCardDismissed());
   }, []);
 
+  if (dismissed) return null;
+
   return (
-    <button
-      type="button"
-      className="home__mission"
-      onClick={() => navigate('/kuldetesek')}
-      aria-label={mission ? 'A mai küldetésed megnyitása' : 'Küldetés kérése'}
-    >
-      <span className="home__mission-label">A mai küldetésed</span>
-      <span className="home__mission-text">
-        {mission
-          ? missionSummary(mission)
-          : 'Van fél órád? Mutatunk egy kört, aminek tétje van.'}
-      </span>
-      {mission ? (
-        <span className="home__mission-meta">
-          {formatDistance(mission.distanceKm * 1000)} · {formatArea(mission.areaM2)} ·{' '}
-          {formatNumber(mission.estimatedGp)} GP
+    /*
+      ⚠️ A BEZÁRÓ GOMB NEM LEHET A NAGY GOMBON BELÜL — egymásba ágyazott
+      interaktív elem érvénytelen HTML, és a képernyőolvasó sem tudná
+      szétválasztani a két műveletet. Ezért burkoló elem, benne két gomb.
+    */
+    <div className="home__mission-wrap">
+      <button
+        type="button"
+        className="home__mission"
+        onClick={() => navigate('/kuldetesek')}
+        aria-label={mission ? 'A mai küldetésed megnyitása' : 'Küldetés kérése'}
+      >
+        <span className="home__mission-label">A mai küldetésed</span>
+        <span className="home__mission-text">
+          {mission
+            ? missionSummary(mission)
+            : 'Van fél órád? Mutatunk egy kört, aminek tétje van.'}
         </span>
-      ) : null}
-    </button>
+        {mission ? (
+          <span className="home__mission-meta">
+            {formatDistance(mission.distanceKm * 1000)} · {formatArea(mission.areaM2)} ·{' '}
+            {formatNumber(mission.estimatedGp)} GP
+          </span>
+        ) : null}
+        <ChevronRightIcon />
+      </button>
+
+      <button
+        type="button"
+        className="home__mission-close"
+        aria-label="A mai küldetés kártyájának bezárása"
+        onClick={() => {
+          dismissDailyMissionCard();
+          setDismissed(true);
+        }}
+      >
+        <CloseIcon />
+      </button>
+    </div>
+  );
+}
+
+/** A „tovább" jelzés — eddig semmi nem mutatta, hogy a kártya kattintható. */
+function ChevronRightIcon() {
+  return (
+    <svg
+      className="home__mission-chevron"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M6 6 18 18M18 6 6 18" />
+    </svg>
   );
 }
 

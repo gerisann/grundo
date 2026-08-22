@@ -313,14 +313,27 @@ export const GAMEPLAY = {
    * Az ideális kör kerülete és a VALÓDI úthálózaton megtett táv aránya.
    *
    * Egy tökéletes kört nem lehet végigfutni: az utcák derékszögben állnak, a
-   * folyók és a vasút kerülőt kényszerítenek. Városban a tényleges útvonal
-   * nagyjából negyedével hosszabb a mértani körnél, ezért a sugarat ennyivel
+   * folyók és a vasút kerülőt kényszerítenek. A sugarat ezért ennyivel
    * KISEBBRE vesszük — különben minden ajánlat túllőné a kért időt.
    *
-   * Ez becslés, nem garancia: a tényleges hosszt a Directions válasza adja
-   * meg, és a `MISSION_DISTANCE_TOLERANCE` szűri ki, ami így is mellément.
+   * ⚠️ MÉRT ÉRTÉK, nem becslés (2026-08-22, 3 budapesti kiindulás × 8 irány,
+   * éles Directions-válaszokkal, `walking` profil, 7,50 km-es célhossz):
+   *
+   *   tényező | tényleges átlaghossz | tűrésen belül
+   *   --------|----------------------|---------------
+   *     1,25  |      8,55 km         |    15/24
+   *     1,35  |      7,97 km         |    19/24
+   *     1,40  |      7,50 km         |    22/24
+   *     1,45  |      7,16 km         |    22/24
+   *
+   * A korábbi 1,25 tizennégy százalékkal HOSSZABB kört adott a kértnél: aki 45
+   * percre kért ajánlatot, 51 percnyit kapott — és a jelöltek több mint
+   * harmada emiatt esett ki a tűréshatáron.
+   *
+   * A tényleges hosszt továbbra is a Directions válasza adja meg, és a
+   * `MISSION_DISTANCE_TOLERANCE` szűri ki, ami így is mellément.
    */
-  MISSION_DETOUR_FACTOR: 1.25,
+  MISSION_DETOUR_FACTOR: 1.4,
   /** A célhossztól ennyivel térhet el egy ajánlat (docs/02: „±15 %"). */
   MISSION_DISTANCE_TOLERANCE: 0.15,
   /**
@@ -330,6 +343,11 @@ export const GAMEPLAY = {
    * ugyanazon az úton — abból nincs bezárás. Több pont: minden kanyar
    * kötöttebb, és a tervező nem tud valódi úthoz igazodni. Öt köztes pont
    * elég ahhoz, hogy a kör körbeérjen, és elég laza, hogy utcákat kövessen.
+   *
+   * ⚠️ AZ ÖTÖT MEGMÉRTEM, NE VIDD LEJJEBB (2026-08-22, 24 jelölt/változat).
+   * Három ponttal az útvonalon tényleg kevesebb a fölösleges kitérő — de a
+   * bezárt terület 2,015 km²-ről 1,147-re esik, mert egy háromszög-alakú kör
+   * egyszerűen kevesebbet fog közre. A hatos és a nyolcas se hozott többet.
    */
   MISSION_WAYPOINTS: 5,
   /**

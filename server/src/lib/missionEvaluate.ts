@@ -30,6 +30,8 @@ export interface ShapedCandidate {
   points: TracePoint[];
   /** A bezárások összes cellája — a birtokviszony-betöltés ebből dolgozik. */
   cells: Set<CellId>;
+  /** Fölösleges visszafordulások az útvonalon — a válogatás döntetlenjéhez. */
+  uTurns: number;
 }
 
 export interface EvaluateContext {
@@ -95,6 +97,7 @@ export function evaluateCandidate(
       estimatedGp: result.gp.total,
       newBlocks,
       cells: result.claimedCells,
+      uTurns: shaped.uTurns,
     };
   } catch {
     return null;

@@ -5,7 +5,7 @@ import { useProfile } from '@/hooks/ProfileProvider';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { routeImageUrl } from '@/lib/staticMap';
-import { rememberDailyMission } from '@/lib/dailyMission';
+import { readDailyMissionResult, rememberDailyMission } from '@/lib/dailyMission';
 import { rememberGhostRoute } from '@/lib/ghostRoute';
 import { MISSION_KIND_META, missionAreaStat } from '@/lib/missionMeta';
 import { isRouteSaved, saveRoute } from '@/lib/savedRoutes';
@@ -52,6 +52,22 @@ const UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
  * a felhasználó azonnal visszajelzést kapjon — de a szerver is ellenőrzi,
  * mert a kliens ellenőrzése sosem elég.
  */
+/**
+ * Hány percre szólt egy visszatöltött eredmény?
+ *
+ * Nem tároljuk külön: a válasz `targetKm`-je és `paceSecPerKm`-je pontosan
+ * ebből számolódott (`targetDistanceKm`), tehát visszafelé is megvan. Így az
+ * űrlap ugyanazt az időt mutatja, amiből a kártyák készültek — különben az
+ * „Újragenerálás" csendben másik időkerettel indulna.
+ */
+function minutesOf(result: MissionResult | null): number | null {
+  if (!result || !(result.targetKm > 0) || !(result.paceSecPerKm > 0)) return null;
+  const minutes = Math.round((result.targetKm * result.paceSecPerKm) / 60);
+  return minutes >= GAMEPLAY.MISSION_MIN_MINUTES && minutes <= GAMEPLAY.MISSION_MAX_MINUTES
+    ? minutes
+    : null;
+}
+
 function resolveMinutes(
   customOpen: boolean,
   preset: number,
@@ -73,15 +89,40 @@ export function MissionsScreen() {
   const { profile } = useProfile();
   const shared = useSharedPosition(profile?.uid);
 
-  const [minutes, setMinutes] = useState<number>(45);
-  const [customOpen, setCustomOpen] = useState(false);
-  const [customValue, setCustomValue] = useState('90');
+  /*
+    A MAI GENERÁLÁS VISSZATÖLTVE — nem új hívás, nem fogyaszt kvótát.
+
+    A Home kártyája eddig egy konkrét ajánlatot mutatott, a gombja viszont ide,
+    egy ÜRES képernyőre vitt: a felhasználó azt látta, hogy amit az előbb
+    olvasott, itt nyoma sincs. A tár amúgy is naponta ürül, tehát ami
+    visszajön, az mindig a mai birtokviszonyra épült.
+
+    A `useState` LUSTA alakja fontos: a tár olvasása és a JSON értelmezése így
+    egyszer fut le, nem minden rendernél.
+  */
+  const [restored] = useState(() => {
+    const result = readDailyMissionResult();
+    const minutes = minutesOf(result);
+    const preset =
+      minutes !== null && (GAMEPLAY.MISSION_MINUTE_OPTIONS as readonly number[]).includes(minutes);
+    return { result, minutes, preset };
+  });
+
+  const [minutes, setMinutes] = useState<number>(
+    restored.preset && restored.minutes !== null ? restored.minutes : 45,
+  );
+  const [customOpen, setCustomOpen] = useState(restored.minutes !== null && !restored.preset);
+  const [customValue, setCustomValue] = useState(
+    restored.minutes !== null && !restored.preset ? String(restored.minutes) : '90',
+  );
   const [customUnit, setCustomUnit] = useState<TimeUnit>('minute');
   const [type, setType] = useState<ActivityType>(() => readType());
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const [result, setResult] = useState<MissionResult | null>(null);
+  const [result, setResult] = useState<MissionResult | null>(restored.result);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  /** Igaz, amíg a képernyőn a visszatöltött, nem a most kért eredmény áll. */
+  const [fromToday, setFromToday] = useState(restored.result !== null);
 
   useEffect(() => {
     if (shared) setPosition({ lat: shared.lat, lng: shared.lng });
@@ -150,10 +191,13 @@ export function MissionsScreen() {
 
       const generated = await api.generateMissions({ ...where, minutes: wanted, type });
       setResult(generated);
-      // A legjobb ajánlat átkerül a Home „mai küldetés" kártyájára is.
-      rememberDailyMission(generated.missions[0]);
+      setFromToday(false);
+      // Az eredmény átkerül a Home „mai küldetés" kártyájára, és ide is
+      // visszatölthető marad, ha a felhasználó közben elnavigál.
+      rememberDailyMission(generated);
     } catch (problem: unknown) {
       setResult(null);
+      setFromToday(false);
       setError(
         problem instanceof ApiError ? problem.message : 'A küldetés-generálás most nem működik.',
       );
@@ -257,6 +301,10 @@ export function MissionsScreen() {
             </p>
           ) : null}
         </section>
+
+        {result && fromToday && result.missions.length > 0 ? (
+          <p className="mission__restored">A ma generált küldetéseid.</p>
+        ) : null}
 
         {result ? (
           <Results

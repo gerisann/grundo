@@ -90,6 +90,14 @@
   color: var(--text-tertiary);
 }
 
+/* Jelzés, hogy a lenti kártyák visszatöltöttek, nem az imént kértek. */
+.mission__restored {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
+
 .mission__target {
   margin: 0;
   font-size: var(--fs-small);

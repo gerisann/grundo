@@ -15,6 +15,7 @@ import {
 import { decodePolyline } from '../../../src/game/polyline';
 import { layerOf, traceToCellPath } from '../../../src/game/cells';
 import { detectLoopsDetailed, loopCells } from '../../../src/game/loops';
+import { countUTurns } from '../../../src/game/routeShape';
 import {
   averagePaceSecPerKm,
   directionsProfile,
@@ -227,6 +228,9 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           polyline: entry.route.polyline,
           points,
           cells,
+          // Az útvonal ALAKJA — ezzel bontja fel a válogatás a döntetlent, hogy
+          // ne egy mellékutcákba beszaladgáló kör kerüljön a kártyára.
+          uTurns: countUTurns(coordinates),
           error: relativeError(distanceKm),
         });
       } catch {

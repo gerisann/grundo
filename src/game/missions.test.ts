@@ -49,6 +49,7 @@ function candidate(over: Partial<MissionCandidate> = {}): MissionCandidate {
     estimatedGp: 100,
     newBlocks: 0,
     cells: new Set(['a']),
+    uTurns: 0,
     ...over,
   };
 }

@@ -199,6 +199,13 @@ export interface MissionCandidate {
   estimatedGp: number;
   /** Hány olyan blokkot érint, ahol a felhasználónak MOST semmije nincs. */
   newBlocks: number;
+  /**
+   * Hány fölösleges visszafordulás van az útvonalon (`countUTurns`).
+   *
+   * NEM játékérték: két azonos tétű kör közül ez dönti el, melyiken kellemesebb
+   * végigmenni. Lásd `routeShape.ts` — ott áll, mit mértem és mit vetettem el.
+   */
+  uTurns: number;
   /** Az összes érintett (fal + belső) cella — az átfedés-vizsgálathoz. */
   cells: ReadonlySet<string>;
 }
@@ -268,6 +275,23 @@ export function cellOverlap(a: ReadonlySet<string>, b: ReadonlySet<string>): num
 const MAX_MISSION_OVERLAP = 0.6;
 
 /**
+ * Ekkora normalizált különbségen belül két jelölt DÖNTETLEN.
+ *
+ * A döntetlent az útvonal tisztasága bontja fel (kevesebb visszafordulás nyer).
+ * A lépcső azért kell, mert a nyers pontszámok szinte sosem egyeznek pontosan —
+ * tisztán utolsó szempontként a tisztaság gyakorlatilag soha nem érvényesülne.
+ *
+ * ⚠️ A JÁTÉKÉRTÉKET NEM ÍRJA FELÜL. Öt százalék az a sáv, amin belül a két
+ * ajánlat tétje a felhasználó szemében úgyis egyforma; ennél nagyobb
+ * különbségnél mindig az erősebb küldetés nyer, akármilyen kacskaringós.
+ *
+ * Mérve (2026-08-22, 3 kiindulás × 8 irány): a tisztaság előnyben részesítése
+ * a bezárt területből ~1%-ot vitt el, míg a Directions `continue_straight=true`
+ * beállítása 25%-ot. Ezért választás, nem paraméter.
+ */
+const SCORE_TIE_BAND = 0.05;
+
+/**
  * A végső válogatás: karakterenként a legjobb, egymástól érdemben eltérő.
  *
  * A KIOSZTÁS SORREND-FÜGGETLEN. Ha egyszerűen végigmennénk a karaktereken és
@@ -306,10 +330,19 @@ export function pickMissions(candidates: readonly MissionCandidate[]): Mission[]
     }
   }
 
-  // A legerősebb pár nyer; azonos normalizált értéknél a nagyobb nyers szám,
-  // végül a több GP dönt — hogy a sorrend determinisztikus legyen.
+  /*
+    A legerősebb pár nyer — de a normalizált értéket SÁVOKBAN nézzük.
+
+    Egy sávon belül a jelöltek tétje gyakorlatilag egyforma, és ilyenkor az
+    útvonal minősége dönt: a kevesebb fölösleges visszafordulású nyer. Utána
+    a nagyobb nyers szám, végül a több GP — hogy a sorrend determinisztikus
+    maradjon.
+  */
+  const band = (value: number) => Math.round(value / SCORE_TIE_BAND);
   pairs.sort(
     (a, b) =>
+      band(b.normalized) - band(a.normalized) ||
+      a.candidate.uTurns - b.candidate.uTurns ||
       b.normalized - a.normalized ||
       b.raw - a.raw ||
       b.candidate.estimatedGp - a.candidate.estimatedGp,

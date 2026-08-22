@@ -266,11 +266,25 @@
    helyi, mérhető tét. Kártyaként viselkedik, de GOMB — az egész felület
    koppintható, nem csak egy link a végén. */
 
+/* A burkoló csak azért van, hogy a bezáró gomb a nagy gombon KÍVÜL,
+   mégis a kártya sarkában legyen — egymásba ágyazott gomb érvénytelen. */
+.home__mission-wrap {
+  position: relative;
+}
+
 .home__mission {
+  position: relative;
   display: grid;
   gap: 4px;
   width: 100%;
+  /* A küldetés nélküli állapotban csak két sor van, és a jobb alsó nyíl
+     ilyenkor felcsúszna a bezáró gombra. Mérve: enélkül 2 px-en átfednek. */
+  min-height: 80px;
+  align-content: center;
   padding: var(--sp-3);
+  /* Jobbra több hely: a bezáró gomb és a nyíl is ide kerül, a szöveg ne
+     fusson alájuk. */
+  padding-right: calc(var(--sp-3) + var(--sp-4) + var(--sp-2));
   text-align: left;
   border-radius: var(--r-md);
   border: 1px solid var(--accent-border);
@@ -280,9 +294,42 @@
   font: inherit;
 }
 
+/* A nyíl a jobb alsó sarokban, a bezáró gomb a jobb felsőben.
+   ⚠️ ABSZOLÚT, NEM RÁCSCELLA. Rácsban `grid-row: 1 / -1`-gyel próbáltam
+   végigfuttatni a jobb oszlopon — de a `-1` az IMPLICIT rácsban az első
+   vonalra esik, tehát a nyíl a néhány pixel magas első sorban ragadt, és
+   ráült a bezáró gombra. Mérés fogta meg, nem szemrevételezés. */
+.home__mission-chevron {
+  position: absolute;
+  right: var(--sp-2);
+  bottom: var(--sp-3);
+  color: var(--accent);
+}
+
 .home__mission:hover {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+}
+
+.home__mission-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  /* 32 px-es koppintási felület 16 px-es ikonnal — a sarok így is elérhető marad. */
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.home__mission-close:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-primary);
 }
 
 .home__mission-label {
