@@ -294,6 +294,52 @@ export const GAMEPLAY = {
   PRIVACY_DEFAULT_RADIUS_M: 200,
   PRIVACY_DEFAULT_ON: true,
 
+  // ── Küldetés-ajánló ─────────────────────────────────────────────────────
+  /**
+   * A felajánlható időkeretek percben. A bemenet IDŐ, nem távolság — a
+   * felhasználónak nem kell fejben átváltania, hogy nála 45 perc hány km.
+   */
+  MISSION_MINUTE_OPTIONS: [15, 30, 45, 60, 90] as const,
+  /**
+   * Ennyi irányban keresünk kört a jelenlegi pozíció körül (docs/02: „8
+   * irányban"). Minden irány EGY Directions-hívás, tehát ez egyben a
+   * generálás API-költsége is.
+   */
+  MISSION_BEARINGS: 8,
+  /**
+   * Az ideális kör kerülete és a VALÓDI úthálózaton megtett táv aránya.
+   *
+   * Egy tökéletes kört nem lehet végigfutni: az utcák derékszögben állnak, a
+   * folyók és a vasút kerülőt kényszerítenek. Városban a tényleges útvonal
+   * nagyjából negyedével hosszabb a mértani körnél, ezért a sugarat ennyivel
+   * KISEBBRE vesszük — különben minden ajánlat túllőné a kért időt.
+   *
+   * Ez becslés, nem garancia: a tényleges hosszt a Directions válasza adja
+   * meg, és a `MISSION_DISTANCE_TOLERANCE` szűri ki, ami így is mellément.
+   */
+  MISSION_DETOUR_FACTOR: 1.25,
+  /** A célhossztól ennyivel térhet el egy ajánlat (docs/02: „±15 %"). */
+  MISSION_DISTANCE_TOLERANCE: 0.15,
+  /**
+   * Hány pontot adunk át a útvonaltervezőnek egy körhöz.
+   *
+   * Kevesebb pont: a tervező „lerövidíti" a kört, és inkább oda-vissza megy
+   * ugyanazon az úton — abból nincs bezárás. Több pont: minden kanyar
+   * kötöttebb, és a tervező nem tud valódi úthoz igazodni. Öt köztes pont
+   * elég ahhoz, hogy a kör körbeérjen, és elég laza, hogy utcákat kövessen.
+   */
+  MISSION_WAYPOINTS: 5,
+  /**
+   * Alapértelmezett tempó (másodperc/km) típusonként, ha a felhasználónak
+   * még nincs elég mért aktivitása.
+   *
+   * Szándékosan óvatos (lassabb) értékek: aki az elsőt kapja, inkább érezze
+   * könnyűnek a küldetést, mint hogy ne érjen vissza a vállalt időben.
+   */
+  MISSION_DEFAULT_PACE_S_PER_KM: { run: 360, walk: 780, ride: 165 } as const,
+  /** Ennyi korábbi aktivitásból számolunk átlagtempót. */
+  MISSION_PACE_SAMPLE_ACTIVITIES: 10,
+
   // ── Ingyenes korlátok (a Pro ezeket oldja fel — játékbeli előnyt SOHA) ──
   FREE_ROUTE_GENERATIONS_PER_WEEK: 5,
   FREE_ACTIVE_EQUIPMENT: 3,

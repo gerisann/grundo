@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import type { ActivityType } from '@/types';
 
 /**
  * A GRUNDO backend kliense.
@@ -359,6 +360,42 @@ export interface LeaderboardEntry {
 
 /** `alltime` a jelenlegi állomány, a többi az adott időszak bruttó szerzése. */
 export type LeaderboardWindow = 'day' | 'week' | 'month' | 'alltime';
+
+/**
+ * A küldetés négy karaktere — mindegyik MÁS motivációt szolgál ki, nem
+ * ugyanannak a fokozatai. docs/02 → Küldetés-ajánló.
+ */
+export type MissionKind = 'conquest' | 'raid' | 'fortify' | 'explore';
+
+export interface Mission {
+  kind: MissionKind;
+  distanceKm: number;
+  /** Kódolt vonallánc — a Mapbox statikus térképképe közvetlenül érti. */
+  polyline: string;
+  /** A megszerezhető ÚJ terület (szabad + elvett). */
+  areaM2: number;
+  estimatedGp: number;
+  cellCount: number;
+  counts: { free: number; reclaimed: number; stolen: number; breakthrough: number } | null;
+  newBlocks: number;
+  /**
+   * A célpont neve — CSAK publikus fióknál, és naponta legfeljebb egyszer
+   * ugyanaz a személy. A szerver dönti el; `null` esetén a felület
+   * „egy helyi játékostól" alakot ír.
+   */
+  victimName: string | null;
+  victimAreaM2: number;
+}
+
+export interface MissionResult {
+  /** A vállalt időre számolt célhossz — a felület ezt is kiírja. */
+  targetKm: number;
+  paceSecPerKm: number;
+  quota?: { unlimited: true } | { unlimited: false; used: number; limit: number };
+  missions: Mission[];
+  /** `no_loops`, ha egyetlen jelölt sem zárt kört a környéken. */
+  reason?: string;
+}
 
 export interface OtpSendResult {
   sent?: boolean;
@@ -949,6 +986,21 @@ export const api = {
     request<{ layer: string; window: LeaderboardWindow; entries: LeaderboardEntry[] }>(
       `/api/tiles/leaderboard?layer=${layer}&window=${window}`,
     ),
+
+  /**
+   * Küldetés-ajánló. A bemenet IDŐ, nem távolság — a célhosszt a szerver
+   * számolja a felhasználó saját átlagtempójából.
+   */
+  generateMissions: (input: {
+    lat: number;
+    lng: number;
+    minutes: number;
+    type: ActivityType;
+  }) =>
+    request<MissionResult>('/api/missions/generate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   otpSend: () => request<OtpSendResult>('/api/auth/otp/send', { method: 'POST' }),
 

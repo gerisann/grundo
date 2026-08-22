@@ -1,0 +1,174 @@
+/* Küldetés-ajánló */
+
+.mission__form {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.mission__question {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+/* ── Időkeret-választó ───────────────────────────────────────────── */
+
+.mission__minutes {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--sp-2);
+}
+
+.mission__minute {
+  display: grid;
+  gap: 1px;
+  padding: var(--sp-2) 0;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission__minute:hover {
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+.mission__minute--active {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+.mission__minute-unit {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.mission__quota {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
+
+.mission__target {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.mission__empty {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ── A küldetés-kártya ───────────────────────────────────────────── */
+
+.mission__card {
+  display: grid;
+  gap: var(--sp-3);
+  /* A karakter színe a bal szélen fut végig — a kártya így egy pillantással
+     besorolható, anélkül hogy az egész doboz elszíneződne. */
+  border-left: 3px solid var(--border-default);
+}
+
+.mission__card--conquest { border-left-color: var(--territory-own); }
+.mission__card--raid     { border-left-color: var(--territory-rival); }
+.mission__card--fortify  { border-left-color: var(--info); }
+.mission__card--explore  { border-left-color: var(--success); }
+
+.mission__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.mission__badge {
+  padding: 3px var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Halvány tónus a saját színből — a felirat marad az olvasható, telített
+   árnyalat. Ugyanaz a minta, mint a pódium sávjainál. */
+.mission__badge--conquest {
+  color: var(--territory-own);
+  background: color-mix(in srgb, var(--territory-own) 15%, transparent);
+}
+
+.mission__badge--raid {
+  color: var(--territory-rival);
+  background: color-mix(in srgb, var(--territory-rival) 15%, transparent);
+}
+
+.mission__badge--fortify {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+.mission__badge--explore {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.mission__distance {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mission__headline {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.mission__map {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 64 / 26;
+  object-fit: cover;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.mission__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.mission__stat {
+  text-align: center;
+  padding: var(--sp-2) 4px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+.mission__stat-label {
+  font-size: var(--fs-label);
+  color: var(--text-tertiary);
+}
+
+.mission__stat-value {
+  margin: 2px 0 0;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}

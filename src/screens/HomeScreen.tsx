@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { OtpDialog } from '@/components/OtpDialog';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
-import { formatArea, formatCellCount, formatNumber } from '@/lib/format';
+import { formatArea, formatCellCount, formatDistance, formatNumber } from '@/lib/format';
+import { readDailyMission } from '@/lib/dailyMission';
+import type { Mission } from '@/lib/api';
 import { Feed } from '@/components/Feed';
 import { WeatherWidget } from '@/components/WeatherWidget';
 import { NotificationPanel } from '@/components/NotificationPanel';
@@ -168,6 +170,8 @@ export function HomeScreen() {
           </dl>
         </div>
 
+        <DailyMissionCard />
+
         <Feed />
       </div>
 
@@ -185,6 +189,65 @@ export function HomeScreen() {
       {notificationsOpen ? <NotificationPanel onClose={() => setNotificationsOpen(false)} /> : null}
     </>
   );
+}
+
+/**
+ * „A mai küldetésed" — a legerősebb visszahívó elem (docs/02).
+ *
+ * Nem általános biztatás, hanem konkrét, helyi, mérhető tét. Ha ma már volt
+ * generálás, a legjobb ajánlat itt is megjelenik, egy koppintással
+ * indíthatóan; ha nem, a kártya odahív a Küldetések képernyőre.
+ *
+ * ⚠️ EZ A KÁRTYA SOSEM GENERÁL. Lásd `src/lib/dailyMission.ts` — a generálás
+ * kvótás, és egy Home-betöltés nem égetheti el a felhasználó heti keretét.
+ */
+function DailyMissionCard() {
+  const navigate = useNavigate();
+  const [mission, setMission] = useState<Mission | null>(null);
+
+  useEffect(() => {
+    setMission(readDailyMission());
+  }, []);
+
+  return (
+    <button
+      type="button"
+      className="home__mission"
+      onClick={() => navigate('/kuldetesek')}
+      aria-label={mission ? 'A mai küldetésed megnyitása' : 'Küldetés kérése'}
+    >
+      <span className="home__mission-label">A mai küldetésed</span>
+      <span className="home__mission-text">
+        {mission
+          ? missionSummary(mission)
+          : 'Van fél órád? Mutatunk egy kört, aminek tétje van.'}
+      </span>
+      {mission ? (
+        <span className="home__mission-meta">
+          {formatDistance(mission.distanceKm * 1000)} · {formatArea(mission.areaM2)} ·{' '}
+          {formatNumber(mission.estimatedGp)} GP
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function missionSummary(mission: Mission): string {
+  switch (mission.kind) {
+    case 'raid':
+      return mission.victimName
+        ? `Elvehetsz ${formatArea(mission.victimAreaM2)}-t ${mission.victimName} grundjából.`
+        : `Elvehetsz ${formatArea(mission.victimAreaM2)}-t egy helyi játékostól.`;
+    case 'fortify':
+      return `Megerősítheted a meglévő grundodat — ${formatNumber(
+        mission.counts?.reclaimed ?? 0,
+      )} mező védelme nő.`;
+    case 'explore':
+      return `${formatNumber(mission.newBlocks)} körzet, ahol még egyetlen meződ sincs.`;
+    case 'conquest':
+    default:
+      return `Megszerezhetsz ${formatArea(mission.areaM2)} új területet.`;
+  }
 }
 
 function HomeMetric({

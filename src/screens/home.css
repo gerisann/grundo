@@ -260,3 +260,48 @@
   opacity: 0.38;
   cursor: default;
 }
+
+/* ── „A mai küldetésed" ──────────────────────────────────────────────
+   A legerősebb visszahívó elem: nem általános biztatás, hanem konkrét,
+   helyi, mérhető tét. Kártyaként viselkedik, de GOMB — az egész felület
+   koppintható, nem csak egy link a végén. */
+
+.home__mission {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: var(--sp-3);
+  text-align: left;
+  border-radius: var(--r-md);
+  border: 1px solid var(--accent-border);
+  /* Halvány márkatónus: kiemelkedik a feed fölül, de nem kiabál. */
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+  color: inherit;
+  font: inherit;
+}
+
+.home__mission:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+}
+
+.home__mission-label {
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.home__mission-text {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.home__mission-meta {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
