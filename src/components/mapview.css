@@ -94,3 +94,38 @@
   color: var(--text-primary);
   z-index: 2;
 }
+
+/* ── 2D / 3D nézetváltó ──────────────────────────────────────────────
+   A „vissza a pozíciómra" gomb FÖLÖTT, ugyanabban az oszlopban: a két
+   térkép-vezérlő így egy csoportot alkot, és a hüvelykujj mindkettőt eléri.
+   A 48 px eltolás a gomb magassága (40) plusz a köztük hagyott rés. */
+
+.mapview__tilt {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3) + 48px
+  );
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  z-index: 2;
+}
+
+/* Bekapcsolt állapotban kiemelt. A felirat ilyenkor a KIKAPCSOLÁST ígéri
+   („2D"), tehát a szín mondja meg, hogy most a 3D az aktív — a felirat
+   egyedül félreérthető lenne. */
+.mapview__tilt--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on);
+}

@@ -370,6 +370,7 @@ export function TrackingScreen() {
               track={displayPoints}
               ghostTrack={ghostTrack}
               position={mapPosition}
+              allowTilt
               follow={running || remoteState?.status === 'recording'}
               onViewport={setNearbyView}
               fill

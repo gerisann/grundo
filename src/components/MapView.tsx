@@ -6,6 +6,7 @@ import type { CellId } from '@/types';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
+import { smoothBearing, trackBearing } from '@/lib/heading';
 import type { HexRole } from './HexMap';
 import {
   RIVAL_MAX_COLOR,
@@ -55,6 +56,15 @@ export interface MapViewProps {
    * sem kezelhető, tehát a gomb csak takarna.
    */
   hideRecenter?: boolean;
+  /**
+   * Megjeleníti a 2D/3D nézetváltót.
+   *
+   * CSAK a rögzítésnek van értelme: a bedöntött, menetirányba forgatott
+   * kamera akkor segít, ha a felhasználó ténylegesen HALAD — a Grund
+   * képernyőn a saját területét nézi felülnézetből, ott a döntés csak
+   * torzítana a hexagonokon.
+   */
+  allowTilt?: boolean;
   /**
    * Igazítsa a nézetet a nyomvonalra, amint az megérkezik.
    *
@@ -109,6 +119,34 @@ const CELL_SOURCE = 'grundo-cells';
  */
 const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 
+/**
+ * A bedöntött kamera szöge.
+ *
+ * 55° a Mapbox 60 fokos alapmaximumához közel van, de nem tapad rá: érezhetően
+ * térbeli, és még látszik előre az útból. Ennél meredekebben a horizont
+ * kitakarná a lényeget, laposabban pedig nem érné meg a váltás.
+ */
+const TILTED_PITCH = 55;
+
+const TILT_KEY = 'grundo.mapTilt';
+
+function readTiltPreference(): boolean {
+  try {
+    return localStorage.getItem(TILT_KEY) === '3d';
+  } catch {
+    // Privát böngészés: a 2D az alapértelmezés, ez működő nézet.
+    return false;
+  }
+}
+
+function writeTiltPreference(tilted: boolean): void {
+  try {
+    localStorage.setItem(TILT_KEY, tilted ? '3d' : '2d');
+  } catch {
+    /* nem baj — a nézet ettől még átvált, csak nem marad meg */
+  }
+}
+
 export function MapView({
   track,
   ghostTrack,
@@ -116,6 +154,7 @@ export function MapView({
   position,
   follow = true,
   hideRecenter = false,
+  allowTilt = false,
   fitTrack = false,
   height = 320,
   fill = false,
@@ -162,6 +201,17 @@ export function MapView({
    */
   const followPaused = useRef(false);
   const [showRecenter, setShowRecenter] = useState(false);
+  /**
+   * 2D vagy 3D nézet.
+   *
+   * A választást megjegyezzük: aki egyszer bekapcsolta a bedöntött nézetet,
+   * jellemzően minden rögzítésnél azt akarja — ugyanaz a megfontolás, mint a
+   * mozgásforma megjegyzésénél. Alapértelmezés a 2D: a 3D kevesebb területet
+   * mutat, tehát opt-in kell legyen.
+   */
+  const [tilted, setTilted] = useState(() => readTiltPreference());
+  /** Az utoljára beállított kamerairány — a simítás kiindulópontja. */
+  const bearingRef = useRef<number | null>(null);
 
   /* ── A térkép létrehozása, egyszer ─────────────────────────────── */
 
@@ -359,9 +409,64 @@ export function MapView({
     }
 
     if (follow && !followPaused.current) {
-      instance.easeTo({ center: [position.lng, position.lat], duration: 600 });
+      /**
+       * 3D-ben a kamera a MENETIRÁNYBA fordul — ez a navigációs appok
+       * viselkedése, és ettől lesz a bedöntött nézet hasznos: ami a
+       * képernyő tetején van, az van előtted.
+       *
+       * A nyers irány városi GPS-zajban 10–25 fokot ugrál mintánként (a
+       * mért táblázat a `heading.ts`-ben), ezért SIMÍTVA követjük. A 0,2-es
+       * tényező nagyjából öt minta alatt fordul rá az új irányra: elég
+       * gyors ahhoz, hogy egy kanyar átjöjjön, és elég lassú ahhoz, hogy a
+       * zaj ne remegtesse a képet.
+       *
+       * Ha nincs megbízható irány (áll, vagy még túl rövid a nyom), a
+       * `trackBearing` `null`-t ad, és MEGTARTJUK az utolsó ismert irányt.
+       * Északra visszaugrani rosszabb lenne, mint kicsit elavult irányt
+       * mutatni.
+       */
+      if (tilted) {
+        const measured = trackBearing(trackRef.current ?? []);
+        if (measured !== null) {
+          bearingRef.current =
+            bearingRef.current === null
+              ? measured
+              : smoothBearing(bearingRef.current, measured, 0.2);
+        }
+      }
+
+      const bearing = tilted ? bearingRef.current : null;
+      instance.easeTo({
+        center: [position.lng, position.lat],
+        duration: 600,
+        // Csak akkor adjuk át, ha van mit: `bearing: undefined` a Mapboxnál
+        // nem „hagyd békén", hanem nullát jelentene — vagyis északra rántaná.
+        ...(bearing !== null ? { bearing } : {}),
+      });
     }
-  }, [position, follow]);
+  }, [position, follow, tilted]);
+
+  /* ── 2D / 3D váltás ────────────────────────────────────────────────── */
+
+  /**
+   * A döntés és a visszaállítás.
+   *
+   * ⚠️ A 2D-re váltásnak KÖTELEZŐEN vissza kell forgatnia északra. A térkép
+   * `dragRotate: false` mellett jött létre, tehát a felhasználónak nincs
+   * gesztusa, amivel egy elforgatva maradt térképet visszaigazítson — ha itt
+   * csak a `pitch`-et nullázzuk, örökre ferdén ragadna a világ.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+
+    if (tilted) {
+      instance.easeTo({ pitch: TILTED_PITCH, duration: 400 });
+    } else {
+      bearingRef.current = null;
+      instance.easeTo({ pitch: 0, bearing: 0, duration: 400 });
+    }
+  }, [tilted]);
 
   /*
     Ha a hívó abbahagyja a KÖVETÉST, a szüneteltetés jelzőjét nullázzuk — de a
@@ -412,6 +517,22 @@ export function MapView({
         style={fill ? { height: '100%' } : { height }}
       />
       {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
+      {allowTilt ? (
+        <button
+          type="button"
+          className={`mapview__tilt${tilted ? ' mapview__tilt--on' : ''}`}
+          aria-pressed={tilted}
+          aria-label={tilted ? 'Felülnézet (2D)' : 'Bedöntött nézet (3D)'}
+          title={tilted ? 'Felülnézet' : 'Bedöntött nézet'}
+          onClick={() => {
+            const next = !tilted;
+            setTilted(next);
+            writeTiltPreference(next);
+          }}
+        >
+          {tilted ? '2D' : '3D'}
+        </button>
+      ) : null}
       {showRecenter && position && !hideRecenter ? (
         <button
           type="button"
