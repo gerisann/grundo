@@ -7,6 +7,8 @@ import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { routeImageUrl } from '@/lib/staticMap';
 import { rememberDailyMission } from '@/lib/dailyMission';
 import { rememberGhostRoute } from '@/lib/ghostRoute';
+import { MISSION_KIND_META, missionAreaStat } from '@/lib/missionMeta';
+import { isRouteSaved, saveRoute } from '@/lib/savedRoutes';
 import { formatArea, formatDistance, formatNumber } from '@/lib/format';
 import { api, ApiError, apiConfigured, type Mission, type MissionResult } from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
@@ -65,14 +67,6 @@ function resolveMinutes(
   }
   return asMinutes;
 }
-
-/** A kártya fejléce karakterenként — szín, ikon, felirat. */
-const KIND_META: Record<Mission['kind'], { label: string; tone: string }> = {
-  conquest: { label: 'Hódítás', tone: 'conquest' },
-  raid: { label: 'Rajtaütés', tone: 'raid' },
-  fortify: { label: 'Erősítés', tone: 'fortify' },
-  explore: { label: 'Felfedezés', tone: 'explore' },
-};
 
 export function MissionsScreen() {
   const navigate = useNavigate();
@@ -331,7 +325,8 @@ function emptyMessage(reason: string | undefined): string {
 function MissionCard({ mission, onStart }: { mission: Mission; onStart: () => void }) {
   const { theme } = useThemeContext();
   const [mapFailed, setMapFailed] = useState(false);
-  const meta = KIND_META[mission.kind];
+  const [saved, setSaved] = useState(() => isRouteSaved(mission));
+  const meta = MISSION_KIND_META[mission.kind];
   const mapUrl = mapFailed ? null : routeImageUrl(mission.polyline, { theme });
 
   return (
@@ -354,32 +349,28 @@ function MissionCard({ mission, onStart }: { mission: Mission; onStart: () => vo
       ) : null}
 
       <dl className="mission__stats">
-        <MissionStat label={areaStat(mission).label} value={areaStat(mission).value} />
+        <MissionStat label={missionAreaStat(mission).label} value={missionAreaStat(mission).value} />
         <MissionStat label="Becsült GP" value={formatNumber(mission.estimatedGp)} />
         <MissionStat label="Mező" value={formatNumber(mission.cellCount)} />
       </dl>
 
-      <Button block variant="secondary" onClick={onStart}>
-        Indítás most
-      </Button>
+      <div className="mission__actions">
+        <Button variant="secondary" onClick={onStart}>
+          Indítás most
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={saved}
+          onClick={() => {
+            saveRoute(mission);
+            setSaved(true);
+          }}
+        >
+          {saved ? 'Mentve' : 'Mentés'}
+        </Button>
+      </div>
     </section>
   );
-}
-
-/**
- * A terület-rovat KARAKTERENKÉNT MÁST mér.
- *
- * Az erősítésnél a szerzett terület per definíció NULLA — a cellák már a
- * tieid, csak a védelmük nő. „Terület: 0,000 km²" ott hibásnak látszana,
- * pedig a küldetésnek épp az a lényege, hogy a MEGLÉVŐ grundodat erősíted.
- * Ezért ott a megerősített területet mutatjuk, saját felirattal.
- */
-function areaStat(mission: Mission): { label: string; value: string } {
-  if (mission.kind === 'fortify') {
-    const cells = mission.counts?.reclaimed ?? 0;
-    return { label: 'Megerősített', value: formatArea(cells * GAMEPLAY.CELL_AREA_M2) };
-  }
-  return { label: 'Új terület', value: formatArea(mission.areaM2) };
 }
 
 function MissionStat({ label, value }: { label: string; value: string }) {

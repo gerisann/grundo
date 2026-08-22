@@ -1,0 +1,158 @@
+/* Mentett útvonalak — teljes képernyős lista */
+
+.saved {
+  position: fixed;
+  inset: 0;
+  /* A lapok szintje: a Dock 40-en, a feed lebegő eleme 30-on ül — lásd
+     connectionsSheet.css ugyanezt az indoklást. */
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  animation: saved-in 160ms ease-out;
+}
+
+@keyframes saved-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saved { animation: none; }
+}
+
+.saved__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-3) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.saved__title {
+  flex: 1;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.saved__close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.saved__close:hover {
+  background: var(--surface-2);
+}
+
+.saved__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) calc(var(--safe-bottom) + var(--sp-6));
+}
+
+.saved__list > * {
+  flex: none;
+}
+
+.saved__note {
+  margin: var(--sp-6) 0;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--fs-small);
+}
+
+.saved__row {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+}
+
+.saved__map {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.saved__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.saved__row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+/* Ugyanaz a halvány-tónus minta, mint a küldetés-kártyák jelvényén
+   (missions.css) — a két helyen ugyanaz a négy karakter jelenik meg. */
+.saved__badge {
+  padding: 3px var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.saved__badge--conquest {
+  color: var(--territory-own);
+  background: color-mix(in srgb, var(--territory-own) 15%, transparent);
+}
+
+.saved__badge--raid {
+  color: var(--territory-rival);
+  background: color-mix(in srgb, var(--territory-rival) 15%, transparent);
+}
+
+.saved__badge--fortify {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+.saved__badge--explore {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.saved__distance {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.saved__stats {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.saved__actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: auto;
+}

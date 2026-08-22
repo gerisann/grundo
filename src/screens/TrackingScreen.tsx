@@ -4,6 +4,7 @@ import { cellToChildren } from 'h3-js';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
+import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
@@ -14,8 +15,8 @@ import { GAMEPLAY } from '@/config/gameplay';
 import { layerOf, traceToCellPath } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
 import { processActivity } from '@/game';
-import { api, apiConfigured, type TilesResult } from '@/lib/api';
-import { readGhostRoute } from '@/lib/ghostRoute';
+import { api, apiConfigured, type Mission, type TilesResult } from '@/lib/api';
+import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import {
   currentSpeedMps,
   lapDistances,
@@ -76,11 +77,22 @@ export function TrackingScreen() {
    * küldetést generálnának egy másik lapon, ez a rögzítés a sajátjához
    * ragaszkodik, nem cserél alattunk útvonalat félúton.
    */
-  const [ghostRoute] = useState(() => readGhostRoute());
+  const [ghostRoute, setGhostRoute] = useState(() => readGhostRoute());
   const ghostTrack = useMemo(
     () => (ghostRoute ? decodePolyline(ghostRoute.polyline) : []),
     [ghostRoute],
   );
+  const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
+
+  /**
+   * Egy mentett útvonal kiválasztása — MÁR a rögzítés képernyőn állunk, tehát
+   * nincs navigáció, csak a szellemvonal cseréje élőben.
+   */
+  function selectSavedRoute(mission: Mission) {
+    rememberGhostRoute(mission);
+    setGhostRoute({ polyline: mission.polyline, kind: mission.kind });
+    setSavedRoutesOpen(false);
+  }
   const distanceBucket = Math.floor(displayDistanceM / 25);
   /**
    * A mozgásforma a RÖGZÍTŐBEN él, nem itt.
@@ -479,6 +491,11 @@ export function TrackingScreen() {
                 { value: 'ride', label: 'Bringa' },
               ]}
             />
+            <div style={{ marginTop: 'var(--sp-3)' }}>
+              <Button block variant="ghost" size="sm" onClick={() => setSavedRoutesOpen(true)}>
+                Mentett útvonalak
+              </Button>
+            </div>
           </div>
         ) : null}
 
@@ -538,6 +555,13 @@ export function TrackingScreen() {
             <path d="M14 38l-9-13h18z" fill="currentColor" />
           </svg>
         </div>
+      ) : null}
+
+      {savedRoutesOpen ? (
+        <SavedRoutesSheet
+          onSelect={selectSavedRoute}
+          onClose={() => setSavedRoutesOpen(false)}
+        />
       ) : null}
     </div>
   );

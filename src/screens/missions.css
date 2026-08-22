@@ -206,3 +206,12 @@
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
+
+.mission__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.mission__actions > * {
+  flex: 1;
+}
