@@ -13,6 +13,13 @@ Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. A pontos HEAD-et
 `git log -1`-gyel nézd meg. Ez a menet négy commitban ment fel
 (`46a6cc8`…`e6b0382`).
 
+⚠️ **A HEAD azóta három további commitot kapott KÍVÜLRŐL** (`67fcd8c`,
+`5a4ef15`, `2459608` — mind `gerisann`-tól, ezen a munkameneten kívülről):
+új logó (PNG, SVG helyett) és egy preload/splash-képernyő. Csak
+frontend-fájlokat érintenek (`public/`, `src/App.tsx`, `src/styles/
+global.css`), a session munkájával nem ütköznek. **A friss HEAD-ből
+induljunk**, ne ebből a napló-verzióból — lásd AGENTS.md → 8. pont.
+
 Tesztek, most mérve: gyökérből `npm test` → **333 teszt zöld** (24 fájl, 8
 emulátoros kihagyva). Emulátoros (`npm.cmd run test:emulator`) → **8 fájl,
 100 teszt zöld**. Typecheck (gyökér ÉS `server/`) és mindkét production
