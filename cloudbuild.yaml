@@ -35,7 +35,7 @@ substitutions:
   # 503-at ("az útvonaltervező nincs beállítva"). Töltsd ki ugyanazzal az
   # értékkel, ami a frontend .env.local-jában van, VAGY add át a
   # telepítésnél: --substitutions=_MAPBOX_TOKEN=pk.xxx
-  _MAPBOX_TOKEN: 'pk.eyJ1IjoiZ2VyaXZhZ3lvayIsImEiOiJjbXN1YmR1ZmMwczdzMnpyMWI4ejhvcW0xIn0.fY5XShTyY8Y94h_794WiUw'
+  _MAPBOX_TOKEN: ''
 
 steps:
   # FIGYELEM: a címke $BUILD_ID, NEM $SHORT_SHA.
