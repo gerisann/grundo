@@ -9,221 +9,224 @@ beszélgetések neve](AGENTS.md).)
 
 ## ÁLLAPOT
 
-Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. HEAD: `e21a49c`.
-Ez a menet HAT commitban ment fel `a8018ed` fölé:
+Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`. HEAD: `2f1050b`.
 
-1. `d244d94` — Geri hat kérése közül öt (mentés-átirányítás, időjárás-térköz,
-   flat értesítés-ikonok, ranglista-szűrés v1, pódium)
-2. `326ed8c` — az öt pontra Geri két hibát jelzett, javítva (ranglista üres
-   volt, időjárás-térköz rossz helyen)
-3. `caee5db` — napló
-4. `3678c56` — Geri harmadik visszajelzése: a ranglista MÉGSEM mutatta a
-   nulla területűeket → új, egyszerűbb megoldás (lásd lent)
-5. `2a8b37e` — napi/heti/havi ranglista-bontás (Geri 6. pontja)
-6. `e21a49c` — felhasználónév-keresés (a „NYITOTT, KISEBB" listáról, Geri
-   kérésére: „jöhet a kereső")
+Tesztek, most mérve: `npm test` → **356 zöld** (25 fájl). `npm run
+test:emulator` → **107 zöld** (9 fájl). Typecheck (gyökér ÉS `server/`)
+hibamentes. A menet 23 unit és 7 emulátoros tesztet adott hozzá.
 
-Tesztek, most mérve: gyökérből `npm test` → **333 zöld**. `npm run
-test:emulator` → **100 zöld**. Typecheck (gyökér ÉS `server/`) hibamentes.
-Élőben ellenőrizve a helyi emulátoron: pódium, értesítés-ikonok, időjárás-
-térköz, ranglista mind a négy nézetben, keresés (prefix-találat, nincs
-találat, törlés, profilra navigálás).
+## ⚠️ ELSŐ OLVASATRA: MI KELL A TELEPÍTÉSHEZ
 
-**Amit ez a menet NEM tudott élőben kipróbálni**: az aktivitás-mentés utáni
-átirányítást (1. pont), mert ahhoz egy valódi, lezárt aktivitás kell — az
-emulátoron nincs seedelt GPS-nyomvonal. A kódot a szerkesztő-módban már
-bevált `onSaved` mintára írtam, típusellenőrzéssel igazolva.
+Két dolog vár telepítésre: az előző menet KERESÉS funkciója (`e21a49c`) és
+ez a menet, az **F2.5 küldetés-ajánló** (`2f1050b`).
 
-## ⚠️ ÉLESBEN MÁR MEGTÖRTÉNT EBBEN A MENETBEN
+1. **⚠️ ELŐSZÖR: `MAPBOX_TOKEN` a szervernek.** Ez az egyetlen ÚJ
+   konfiguráció, és nélküle a küldetés-ajánló nem működik (érthető 503-at
+   ad, nem omlik össze). Nyisd meg a `cloudbuild.yaml`-t, és a
+   `_MAPBOX_TOKEN: ''` sorba írd be UGYANAZT a tokent, ami a frontend
+   `.env.local`-jában a `VITE_MAPBOX_TOKEN`. **NEM titok** — ugyanez a
+   token benne van minden kiszolgált kliens-bundle-ben, ezért nem Secret
+   Manager. Alternatíva a fájl szerkesztése helyett:
+   `gcloud builds submit --config cloudbuild.yaml --substitutions=_MAPBOX_TOKEN=pk.xxx`
+2. **frontend + backend** telepítés.
+3. Szabályok NEM kellenek.
+4. Indexek NEM kellenek.
+5. Migráció NEM kell.
 
-Geri a menet KÖZBEN telepített és futtatott migrációt — ez nem a következő
-menet teendője, hanem MÁR MEGVAN:
+## EBBEN A MENETBEN ELKÉSZÜLT: F2.5 — KÜLDETÉS-AJÁNLÓ
 
-- **frontend + backend telepítve** (`d244d94`…`2a8b37e` állapotában — az
-  `e21a49c`, a keresés, MÉG NINCS kint, lásd lent).
-- **A 8 ranglista-index deployolva és READY** (`firebase deploy --only
-  firestore:indexes`) — élőben ellenőriztem `gcloud firestore indexes
-  composite list`-tel, végigvárva, amíg mind a nyolc `CREATING`-ből
-  `READY`-be lépett.
-- **Mindkét migráció lefutott** (`backfill:blocked-by`,
-  `backfill:area-windows`) — mindkettő „0 hiányzó”-t jelentett, mert az éles
-  `grundo` projektben jelenleg **csak 4 felhasználó** van, és mindegyik friss.
+A docs `06` ütemterve ezt a fázist emeli ki a legkritikusabbnak („az
+onboarding és a visszatérés szempontjából kritikus — nem szabad az F4-be
+csúsztatni"), és eddig el sem indult. Most kész.
 
-## ⚠️ MOST TELEPÍTENDŐ: A KERESÉS (`e21a49c`)
+### Miért nem útvonaltervező
 
-1. **frontend + backend** — új route (`/kereses`) és új végpont
-   (`GET /api/users/search`).
-2. Szabályok NEM kellenek.
-3. Migráció NEM kell.
-4. Index NEM kell — a keresés egyetlen mezőn (`usernameLower`) tartományos
-   lekérdezés, azt a Firestore magától indexeli.
+A bemenet IDŐ, nem távolság: „van 45 perced?". A célhosszt a szerver
+számolja a felhasználó SAJÁT átlagtempójából (a legutóbbi 10 azonos típusú
+aktivitásból; ha nincs elég, a típus szerinti alapérték). Így nem kell fejben
+átváltania, hogy nála 45 perc hány kilométer.
 
-## EBBEN A MENETBEN ELKÉSZÜLT
+### A menet
 
-### 1. Aktivitás-mentés — ragadt képernyő javítva
+1. **Kör-jelöltek nyolc irányban.** Minden irányhoz egy kör, ami ÁTMEGY a
+   kiinduló ponton (a középpont az adott irányban van, sugárnyi távolságra).
+   A sugarat a `MISSION_DETOUR_FACTOR` (1,25) korrigálja: a valódi útvonal
+   negyedével hosszabb a mértani körnél, mert utcákon megy.
+2. **Valódi úthálózat** — Mapbox Directions, irányonként egy hívás,
+   párhuzamosan (`server/src/lib/directions.ts`). Egy elhasalt jelölt nem
+   viszi el a generálást, csak kimarad.
+3. **Tűrés**: a célhossztól ±15 %-nál távolabbi jelölt kiesik (docs/02).
+4. **Kiértékelés a VALÓDI motorral** — `processActivity`, ugyanaz a
+   függvény, ami a mentésnél a területet adja. ⚠️ **Nincs külön becslő
+   algoritmus**, ami elcsúszhatna az élestől: amit a küldetés ígér, azt a
+   felhasználó meg is kapja, ha végigmegy rajta.
+5. **Válogatás** karakterenként (lásd lent).
 
-`TrackingScreen.tsx`: a feltöltés utáni névadó/leíró űrlap (`SaveActivityForm`)
-eddig nem kapott `onSaved` callback-et ezen a képernyőn (szerkesztéskor, az
-`ActivityScreen`-en már régóta megvolt). Mentés után most bezárja magát és a
-frissen mentett aktivitás részletképernyőjére navigál.
+### A négy karakter
 
-### 2. Időjárás-widget — méret és térköz finomítás
+| Karakter | Mit mér | Kártyaszöveg |
+|---|---|---|
+| Hódítás | szabad mezők | „…új területet szerezhetsz" |
+| Rajtaütés | elvehető mezők | „elvehetsz X-t Y grundjából" |
+| Erősítés | saját mezők (védelem nő) | „N mező védelme nő" |
+| Felfedezés | ismeretlen körzetek | „N körzet, ahol még egyetlen meződ sincs" |
 
-`WeatherWidget.tsx` + `weatherWidget.css`: a kibontott sáv mérőszám-ikonjai
-26→**20 px**. A mérőszámok közti térköz +5 px (4→9 px). A hőmérséklet és a
-modul jobb szegélye közti térköz +5 px — ez elsőre rossz helyre került
-(a mérőszám-csoport és a hőmérséklet közé), Geri jelezte, javítva:
-`margin-right: 5px` a `.weather__temp`-en, ez mindig érvényesül.
+**A kiosztás SORREND-FÜGGETLEN.** Nem egyszerűen végigmegyünk a
+karaktereken (akkor az első mindig előnyt élvezne): minden (jelölt,
+karakter) párt a SAJÁT karakterén belül normalizálunk, és a globálisan
+legerősebb pár nyer. Unit teszt rögzíti.
 
-### 3. Értesítés-ikonok — emoji helyett flat SVG
+**Nem ajánlunk fel ugyanolyat kétszer**: ha két jelölt cellahalmaza
+Jaccard > 0,6 arányban fedi egymást, a gyengébbik kiesik — különben a
+felhasználó ugyanazt a kört látná két címkével.
 
-`notificationTypes.ts`-ből kikerült az emoji-lista, átköltözött
-`NotificationPanel.tsx`-be flat, egyszínű SVG-ként. Kilenc típus, kilenc
-forma, a színük a **meglévő tokenkészletből** jön (nincs új CSS-változó):
-`--danger`, `--success`, `--weather-sun`, `--tier-gold`, `--player-4`,
-`--info`, `--accent`, `--weather-wind` — `notificationPanel.css` →
-`.nrow__icon--*`.
+### Adatvédelem (docs/02 → Adatvédelmi korlát)
 
-### 4. Ranglista — mindenki rajta van, ábécésorrendben az egyenlők
+Mindhárom szabály SZERVEROLDALON dől el (`resolveVictimNames`):
 
-⚠️ **Ez a pont HÁROMSZOR változott** ebben a menetben — csak a VÉGSŐ állapot
-számít, az van élesben:
+- név csak **publikus** fióknál; privát fióknál „egy helyi játékostól";
+- a **tiltás mindkét iránya** kizár (`blocks` és `blockedBy`);
+- **ugyanaz a személy naponta legfeljebb egyszer** lehet célpont — a napi
+  lista a `users/{uid}/private/missionTargets` dokumentumban.
 
-1. Első próbálkozás: `hasOwnedArea` jelző, ami megkülönbözteti a soha nem
-   birtoklót attól, akitől mindent elvettek. **Élesben üres listát adott
-   volna** — a jelző új mező, a régi felhasználóknál nincs kitöltve, a
-   Firestore `orderBy` pedig kihagyja azt a dokumentumot, amin a rendező
-   mező egyáltalán nem létezik.
-2. Javítás: OR-feltétel (`hasOwnedArea || areaM2 > 0`) — működött, de Geri
-   ekkor jelezte, hogy a nulla területűeknek MINDIG látszaniuk kell, nem
-   csak annak, aki valaha birtokolt valamit.
-3. **Végleges megoldás**: a `hasOwnedArea` jelző teljesen kikerült
-   (`activityCommit.ts`, `activityChunked.ts`, `seedEmulator.ts`). A
-   `routes/tiles.ts` → GET /leaderboard két mező szerint rendez —
-   `territoryM2.{layer}` csökkenő, `usernameLower` növekvő —, szűrés
-   nélkül: mindenki rajta van, a nulla területűek is, az ábécésorrend
-   dönt egyenlőségnél. Minden felhasználónál eleve létezik mindkét mező
-   (regisztrációkor alapértéket kap), tehát senkit nem hagy ki a Firestore.
-   Ehhez **összetett index kell** (`territoryM2.foot`/`.bike` +
-   `usernameLower`, 2 bejegyzés) — ez már ÉLESBEN VAN, lásd fent.
+### Kvóta
 
-### 5. Top 3 pódium grafika
+Ingyenes heti 5 (`FREE_ROUTE_GENERATIONS_PER_WEEK`), Pro korlátlan. A
+számláló a `users/{uid}.missionQuota` mezőben, hetente nullázódik.
 
-Új `Podium` komponens a `TerritoryScreen.tsx`-ben, a ranglista teteje fölött.
-Ezüst-arany-bronz sorrendben balról jobbra, korona csak az 1. helyen, a
-sávok magassága a legjobbhoz viszonyított, arányos terület (min. 28 px, max.
-88 px). **Szándékosan visszafogott szín** — Geri kérte, hogy ne legyen olyan
-élénk, mint a csatolt referenciakép: a sávok a meglévő
-`--tier-gold/silver/bronze` tokenekből kapnak halvány (`color-mix … 16%`)
-tónust. `territory.css` → `.terr__podium*`.
+### Home — „A mai küldetésed"
 
-### 6. Napi / heti / havi ranglista-bontás — Geri 6. pontja
+⚠️ **A Home SOSEM generál küldetést.** A generálás kvótás és API-t fogyaszt;
+ha minden Home-betöltés kérne egyet, két nap alatt elégetné a heti keretet
+anélkül, hogy a felhasználó bármit kért volna. Ehelyett a Küldetések
+képernyőn már legenerált legjobb ajánlatot mutatja (`src/lib/dailyMission.ts`,
+localStorage), és **a tegnapit sosem hozza vissza** — egy elavult ajánlat
+olyan területet ígérne, ami közben már gazdát cserélt. Ha nincs mai
+ajánlat, a kártya odahív.
 
-Geri döntése (kérdésre válaszolva): **bruttó szerzés**, a `gpWeek`/
-`gpMonth` mintájára — NEM a nettó változás. Ha valakitől időközben elvették
-a frissen szerzett cellákat, a heti számából az még nem vész ki.
+### Amit egy teszt fogott meg
 
-- **Három új mező** a felhasználó dokumentumon: `areaDay`/`areaWeek`/
-  `areaMonth`, mindegyik `{foot, bike}` (`lib/user.ts`, alapérték `{0,0}`
-  minden ÚJ regisztrációnál — `docs/05-adatmodell.md` is frissítve).
-- **Növelés a claim-nél**: `activityCommit.ts` és `activityChunked.ts`
-  mindhárom mezőt egyszerre növeli a szerzett cellák területével.
-- **Nullázás a `dailyRollover.ts`-ben**: az `areaDay` MINDIG nullázódik egy
-  `advance` fordulónál, az `areaWeek` csak `weekClosed`-nél, az `areaMonth`
-  csak `monthClosed`-nél. A forduló itt CSAK nulláz, nem ír jóvá — a szerzés
-  kizárólag a claim-nél történik.
-- **`routes/tiles.ts` → GET /leaderboard**: új `window` paraméter
-  (`day`/`week`/`month`/`alltime`). Ugyanaz a két-mezős rendezés, csak a
-  mezőútvonal változik nézetenként (`WINDOW_FIELD` map).
-- **Frontend**: `TerritoryScreen.tsx` → `Leaderboard` négy fület kapott a
-  fejléc alatt (Napi/Heti/Havi/Mindenkori). Váltáskor a lista nullázódik,
-  amíg az új adat be nem jön.
-- **Migráció**: `backfillAreaWindows.ts` (`npm run backfill:area-windows`)
-  — ugyanazért kellett, mint a 4. pontnál: a régi felhasználóknál a mező
-  hiánya miatt a Firestore `orderBy` kihagyta volna őket. **Már lefutott
-  élesben**, lásd fent.
+A **Felfedezés** karakter végig VÉDETT idegen zónára is ajánlatot gyártott.
+Ott minden cella áttörés, egyetlen mező sem cserél gazdát — a kártyán „3 új
+körzet" állt volna, a Terület rovatban meg nulla. Csapda lett volna.
+Javítva: felfedezéshez szerezni is kell valamit (`kindScore` → `explore`).
+Emulátoros teszt rögzíti (`missionEvaluate.emulator.test.ts`).
 
-### 7. Felhasználónév-keresés
+Ugyanez a logika az **Erősítés** kártyán is előjött, de ott a nulla HELYES —
+ott nem szerzés történik. A kártya emiatt karakterenként mást mér: erősítésnél
+„Megerősített terület", máshol „Új terület".
 
-A Home fejléc korábban inaktív Keresés gombja most él (`/kereses`).
+## ⚠️ AMIT EZ A MENET NEM TUDOTT ÉLŐBEN KIPRÓBÁLNI
 
-- **`GET /api/users/search?q=…`** — prefix-illeszkedés a `usernameLower`
-  mezőn (`startAt`/`endAt` tartományos lekérdezés, felső határ a keresett
-  szöveg + U+F8FF). A saját magam és a letiltottak (mindkét irány:
-  `blocks`/`blockedBy`) kiszűrve memóriában, a `feedScopes` mintájára.
-  ⚠️ **A route regisztrálási sorrendje számít**: `/search` a `/:username`
-  ELŐTT van, különben az Express a profil-lekérdezőt hívná meg
-  `username: 'search'` értékkel.
-- **`SearchScreen.tsx`**: 300 ms debounce, autofókusz, üres/betöltés/nincs
-  találat állapotok, találatra koppintva a profilra navigál.
-- Nem kell hozzá index (egymezős tartomány, a Firestore magától indexeli)
-  és migráció sem.
+**A valódi Mapbox Directions hívást.** Ebben a fejlesztői környezetben
+NINCS Mapbox-token (a `.env.local` csak `VITE_API_BASE_URL`-t és VAPID-kulcsot
+tartalmaz; a Grund képernyő térképe is emiatt írja, hogy „a térképhez
+Mapbox-token kell"). Amit ellenőriztem helyette:
+
+- a lánc drága fele — vonallánc → cellák → hurkok → birtokviszony → GP →
+  válogatás — **emulátoron, valódi Firestore ellen**, szintetikus hurokkal
+  (7 teszt: szabad terep, védtelen idegen, védett idegen, saját, felfedezés,
+  blokk-plafon);
+- a geometria és a válogatás **23 unit teszttel**;
+- a **503-as ág élőben** (token nélkül tiszta, érthető hibaüzenet);
+- a **felület élőben**, mind a négy kártyatípussal, a Home-kártyával, a
+  navigációval és a sötét témával.
+
+**Telepítés után ezt kell megnézni**: hogy a Directions valóban ad-e
+bezáródó köröket a valódi utcahálózaton, és hogy a `MISSION_DETOUR_FACTOR`
+(1,25) eltalálja-e a célhosszt. Ha sok jelölt esik ki a ±15 %-os tűrésen,
+ez a szorzó a hangolandó érték.
 
 ## NYITOTT, KISEBB
 
-- **A követő-lista nem lapoz** — legfeljebb 100 megy ki, `hasMore` jelzéssel.
-- **A harang olvasatlan-száma a betöltött ablakból számol** (20 elem).
+- ⚠️ **`formatArea` mindig km²-t ír**, pedig a spec (docs/README
+  alapkonstansok, AGENTS.md 9. szabály) 1 000 000 m² alatt m²-t kér —
+  „12 000 m²" helyett „0,012 km²" jelenik meg mindenütt. Nem ebben a
+  menetben keletkezett, és app-szintű megjelenítési változás lenne
+  (ranglista, pódium, profil, aktivitás, küldetés), ezért nem nyúltam
+  hozzá. Külön háttérfeladatként jelezve.
+- A küldetés **„Indítás most" gombja a rögzítés képernyőre visz, de az
+  útvonalat még nem viszi magával** navigációként a térképre (docs/02 ezt
+  is kéri). A `polyline` a kártyán megvan, tehát a rávezetés kis munka.
+- **Mentett útvonalak** (docs/02) — a küldetés mentése még nincs meg.
+- **Szűrők** (kevés útkereszteződés · zöldterület · lapos terep) — a
+  Directions API támogat kizárásokat, de ez még nincs bekötve.
+- A követő-lista nem lapoz (max 100, `hasMore` jelzéssel).
+- A harang olvasatlan-száma a betöltött ablakból számol (20 elem).
 - A `modifier_started` broadcast szűrés nélkül megy mindenkihez.
-- **Az időjárás csak akkor jelenik meg magától, ha van tárolt pozíció.**
-- **gpLedger-takarítás** — előkészítve, futtatásra vár
+- Az időjárás csak akkor jelenik meg magától, ha van tárolt pozíció.
+- gpLedger-takarítás — előkészítve, futtatásra vár
   (`server/src/scripts/cleanGpLedgerJunk.ts`).
-- **A követési KÉRÉSEK elbírálására még nincs felület.**
+- A követési KÉRÉSEK elbírálására még nincs felület.
 - Területi hatókörű hold-modifier nem hat: a `zones` kollekció még nincs meg.
-- **Aktív akciók a térképen** — korábbról áthúzódó tétel, még mindig nem
-  készült el (`src/game/modifiers.ts` → `areaCells`, csak `scope: 'area'`-nál
-  van geometria).
-- **A push-küldés és a `NotificationPanel` élő ellenőrzése** telepítés után,
-  valódi eszközön.
-- Geri korábbi 7 pontos jelvény/profil-listájából: **rivális rendszer**
-  (a keresés ebben a menetben elkészült).
-- **A keresés a Közösség → Felfedezés bővebb „emberek/klubok keresése"
-  funkciótól KÜLÖNÁLLÓ** (`docs/01-kepernyoterkep.md` szerint két külön
-  képernyő) — ha legközelebb az utóbbi kerül sorra, ez a mostani a Home
-  fejléc egyszerű névkeresője marad, nem kell összevonni.
+- **Aktív akciók a térképen** — korábbról áthúzódó (`src/game/modifiers.ts`
+  → `areaCells`, csak `scope: 'area'`-nál van geometria).
+- A push-küldés és a `NotificationPanel` élő ellenőrzése valódi eszközön.
+
+## HOL TARTUNK AZ ÜTEMTERVBEN (docs/06)
+
+| Fázis | Állapot |
+|---|---|
+| F0 — Alapozás | ✅ kész |
+| F1 — Tracking és aktivitás | ✅ kész |
+| F2 — A játék | ✅ kész, sőt túlteljesítve (modifierek, időablakos ranglista) |
+| **F2.5 — Küldetés-ajánló** | ✅ **ebben a menetben elkészült** |
+| F3 — Közösség | 🟡 félkész: követés/tiltás/like/komment/értesítés/jelentés/keresés megvan; **üzenetek, klubok, kihívások, felfedezés, útlevél** nincs |
+| F4 — Mélység és bevétel | 🟡 csak a jelvények; statisztikák, útvonalak, edzés, Pro/paywall nincs |
+| F5 — Konnektorok | ❌ nincs elkezdve |
+| F6 — Éles indulás | 🟡 élesben fut, de a formális checklist (terheléspróba, audit, store) nincs |
+
+**A következő logikus lépés F3**, és azon belül Geri korábbi választása
+szerint a közösségi rész folytatása. A legkisebb önálló darab az
+**Üzenetek** (1:1 chat, a profil „Üzenet" gombja már odamutat); a legnagyobb
+a **Klubok** (tagság, szerepek, meghívókód, klub-feed, klub-ranglista).
 
 ## ÉLESBEN FUT
 
-- **Napi forduló**, **admin felület**, **futásidejű konfiguráció**
-  (`appConfig/gameplay` v1, „Gazdagrét Rush" akció — ellenőrizd, nem járt-e
-  le), **jelvény-katalógus** — mind változatlan egy korábbi menet óta.
-- Ez a menet öt pontja (1–6.) + a hozzá tartozó index és migráció — lásd
-  fent, „ÉLESBEN MÁR MEGTÖRTÉNT".
+- Napi forduló, admin felület, futásidejű konfiguráció (`appConfig/gameplay`
+  v1, „Gazdagrét Rush" akció — ellenőrizd, nem járt-e le), jelvény-katalógus.
+- Az előző menet 1–6. pontja (mentés-átirányítás, időjárás, flat ikonok,
+  ranglista + pódium + napi/heti/havi bontás), a 8 ranglista-index és
+  mindkét migráció (`backfill:blocked-by`, `backfill:area-windows`) —
+  mind lefutott, az indexek READY állapotban.
 
 ## TELEPÍTETLEN
 
-Csak a 7. pont (keresés, `e21a49c`) — frontend + backend, lásd fent. Minden
-korábbi menet és e menet 1–6. pontja már élesben fut.
+- `e21a49c` — felhasználónév-keresés (frontend + backend, semmi más)
+- `2f1050b` — F2.5 küldetés-ajánló (frontend + backend + `MAPBOX_TOKEN`)
 
-## Fejlesztői előnézet — hogyan látunk éles adatot a böngészőben
+## Fejlesztői előnézet
 
-**Írás nélküli, csak-olvasó ellenőrzéshez** (éles adaton, nem-író
-képernyőkhöz):
+**Írás nélküli, csak-olvasó ellenőrzéshez** (éles adaton):
 
 1. `.claude/launch.json` a `G:\Saját meghajtó\WORK\CLAUDE` gyökérben —
-   `grundo-dev` (éles API) vagy `grundo-emulator` (helyi emulátor) konfig.
-2. Éles, csak-olvasó szerver: `server/`-ből
-   `GOOGLE_CLOUD_PROJECT=grundo PORT=8080 npx tsx watch server.ts`.
+   `grundo-dev` (éles API) vagy `grundo-emulator` (helyi emulátor).
+2. `server/`-ből `GOOGLE_CLOUD_PROJECT=grundo PORT=8080 npx tsx watch server.ts`.
 3. `grundo/.env.local`-ban `VITE_API_BASE_URL=http://localhost:8080`.
 
 **ÍRÓ funkcióhoz a helyi emulátor**:
 
 1. `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`
-   (Git Bash-ben ez mindig kell, a Java PATH-ja nélküle nem látszik).
+   (Git Bash-ben mindig kell, a Java PATH-ja nélküle nem látszik).
 2. `firebase emulators:start --only auth,firestore --project demo-grundo`
-   (Bash-ben `firebase`, `.cmd` nélkül — a globális npm-bin már a PATH-on van).
+   (Bash-ben `firebase`, `.cmd` nélkül — a globális npm-bin a PATH-on van).
 3. `server/`-ből `npm run seed:emulator`, majd `npm run dev:emulator`.
 4. Gyökérből `npm run dev:emulator` (vagy a `grundo-emulator` launch-konfig).
 5. Böngészőben: `await __grundoDevSignIn()`.
 
-⚠️ **Port-ütközés**: az `npm run test:emulator` saját `firebase
-emulators:exec`-et indít — ha közben kézzel is fut egy emulátor-példány,
-a portok ütköznek. Előbb állítsd le a kézit
-(`Get-NetTCPConnection -LocalPort 8081,9099 | Stop-Process`), utána fusson a
-teszt-parancs.
+⚠️ **Port-ütközés**: az `npm run test:emulator` saját `emulators:exec`-et
+indít — ha közben kézzel is fut egy példány, a portok ütköznek. Előbb állítsd
+le a kézit (`Get-NetTCPConnection -LocalPort 8081,9099 | Stop-Process`).
 
-⚠️ **Ebben a menetben a Browser pane screenshotja nem volt elérhető** — a
-vizuális ellenőrzés `read_page`, `get_page_text` és `javascript_tool`
-(számított stílusok, DOM-tartalom) kombinációjával ment.
+⚠️ A Browser pane **screenshotja ebben a munkamenetben sem volt elérhető** —
+a vizuális ellenőrzés `read_page`, `get_page_text` és `javascript_tool`
+(számított stílusok, DOM-tartalom) kombinációjával ment. Ez az út működik:
+a `getComputedStyle`-lal a témák is ellenőrizhetők.
+
+💡 **Mapbox-token nélküli felület-ellenőrzés**: a küldetés-kártyák
+megjelenítését `window.fetch` kiváltásával néztem meg (szintetikus válasz a
+`/api/missions/generate`-re) — így a négy kártyatípus, a szövegek és a
+Home-kártya token nélkül is végigkattintható.
 
 ## Infrastruktúra: éles, csak olvasó Firestore-hozzáférés
 
@@ -231,15 +234,13 @@ Változatlan. `grundo-reader@grundo.iam.gserviceaccount.com`
 (`roles/datastore.viewer`), Geri (`gergely.marthon@gmail.com`) személyesíti
 meg. Nincs kulcsfájl. PowerShellben `gcloud.cmd`, nem `gcloud`.
 
-Ebben a menetben ezt a hozzáférést a Firestore-index build státuszának
-ellenőrzésére is használtam (`gcloud firestore indexes composite list`) —
-így derült ki élőben, hogy a ranglista üressége nem a migráció hiánya volt,
-hanem az, hogy az indexek még `CREATING` állapotban voltak.
+Index-státusz ellenőrzésére is jó:
+`gcloud.cmd firestore indexes composite list --project=grundo --database=grundo-db`
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**Sonnet, normál mélységgel** elég — nincs nyitott architektúra-döntés. Ha a
-következő kör spec-ellentmondásba vagy adatmodell-döntésbe fut (pl. a
-`zones` kollekció bevezetése a területi hold-modifierhez, vagy a Közösség →
-Felfedezés bővebb keresés/klub-funkciója), ott érdemes megállni és Opusra
-váltani.
+**Sonnet, normál mélységgel** — az F3 hátralévő darabjai (üzenetek, klubok,
+kihívások) meglévő mintákra épülnek: alkollekció + végpont + képernyő,
+ugyanaz a szerkezet, mint a követés/tiltás/komment. Opusra akkor váltsunk,
+ha a klubok jogosultsági modellje (tulajdonos > admin > tag, átruházás)
+vagy a kihívások automatikus haladás-követése tervezési döntésbe fut.
