@@ -15,13 +15,47 @@
 
 .mission__minutes {
   display: grid;
+  /* Négy fix érték + az „egyedi" gomb. */
   grid-template-columns: repeat(5, 1fr);
   gap: var(--sp-2);
 }
 
+/* ── Egyedi időmegadás ───────────────────────────────────────────── */
+
+.mission__custom {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.mission__custom-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission__custom-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .mission__minute {
   display: grid;
+  /* Középre igazítva, mert az „egyedi" gombban ikon áll a szám helyén. */
+  justify-items: center;
+  align-content: center;
   gap: 1px;
+  min-height: 52px;
   padding: var(--sp-2) 0;
   border-radius: var(--r-md);
   border: 1px solid var(--border-subtle);

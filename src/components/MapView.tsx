@@ -40,6 +40,13 @@ export interface MapViewProps {
   /** Kövesse-e a térkép a pozíciót. */
   follow?: boolean;
   /**
+   * Elrejti a „vissza a pozíciómra" gombot.
+   *
+   * A Grund képernyőn a nyitott ranglista elé lógna be — ott a térkép amúgy
+   * sem kezelhető, tehát a gomb csak takarna.
+   */
+  hideRecenter?: boolean;
+  /**
    * Igazítsa a nézetet a nyomvonalra, amint az megérkezik.
    *
    * A rögzítésnél NEM ezt akarjuk (ott a mozgó pozíciót követjük), egy kész
@@ -97,6 +104,7 @@ export function MapView({
   layers,
   position,
   follow = true,
+  hideRecenter = false,
   fitTrack = false,
   height = 320,
   fill = false,
@@ -391,7 +399,7 @@ export function MapView({
         style={fill ? { height: '100%' } : { height }}
       />
       {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
-      {showRecenter && position ? (
+      {showRecenter && position && !hideRecenter ? (
         <button
           type="button"
           className="mapview__recenter"

@@ -128,23 +128,29 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-3) calc(var(--safe-bottom) + var(--sp-6));
+  /* NINCS RÉS és nincs oldalsó bélés: a lista egyetlen összefüggő felület,
+     amit a sorok alsó vonala tagol — a színes húzás-háttér így a teljes
+     sávot kitölti, nem csak egy lebegő kártya alatt jelenik meg. */
+  gap: 0;
+  padding: 0 0 calc(var(--safe-bottom) + var(--sp-6));
 }
 
 .npanel__list > * {
   flex: none;
 }
 
+/* A lista már nem ad oldalsó bélést (a sorok teljes szélességűek), ezért a
+   szöveges elemek a sajátjukat hozzák. */
 .npanel__note {
   margin: var(--sp-6) 0;
+  padding: 0 var(--sp-3);
   text-align: center;
   color: var(--text-tertiary);
   font-size: var(--fs-small);
 }
 
 .npanel__more {
-  margin-top: var(--sp-2);
+  margin: var(--sp-3);
   padding: var(--sp-3);
   border-radius: var(--r-md);
   border: 1px dashed var(--border-default);
@@ -161,9 +167,16 @@
 
 /* ── Egy sor ─────────────────────────────────────────────────────── */
 
+/*
+ * A SOROK ÖSSZEÉRNEK — nincs rés, lekerekítés és körbefutó szegély.
+ *
+ * Geri kérése (2026-08-22), és a Gmail is így csinálja: az értesítéslista
+ * egyetlen összefüggő felület, amit vízszintes vonalak tagolnak. A korábbi
+ * lebegő, lekerekített kártyák a húzásnál is rosszabbul néztek ki — a
+ * színes háttér csak a kártya alatt jelent meg, nem a sor teljes sávjában.
+ */
 .nrow {
   position: relative;
-  border-radius: var(--r-md);
   /* A kártya kicsúszása nem lóghat ki a sorból. */
   overflow: hidden;
 }
@@ -188,31 +201,53 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--sp-4);
-  background: transparent;
   opacity: 0;
-  transition: opacity 120ms ease-out;
 }
 
-.nrow:hover .nrow__behind,
-.nrow__behind--open {
-  opacity: 1;
+/*
+ * A SZÍNÁTMENET abból a szélből indul, amerről a mozdulat jön.
+ *
+ * Jobbra húzva a törlés bal oldalról bukkan elő, ezért a piros ott a
+ * legtelítettebb és jobbra halványul. A zöld ennek a tükörképe.
+ *
+ * ⚠️ Az `opacity`-t a KOMPONENS állítja, a húzás mértékéből — nem itt
+ * kapcsoljuk be. Így a szín fokozatosan telítődik, ahogy a felhasználó húz,
+ * és nem ugrik be egyben.
+ */
+.nrow__behind--delete {
+  background: linear-gradient(
+    to right,
+    var(--danger) 0%,
+    color-mix(in srgb, var(--danger) 45%, transparent) 100%
+  );
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .nrow__behind { transition: none; }
+.nrow__behind--read {
+  background: linear-gradient(
+    to left,
+    var(--success) 0%,
+    color-mix(in srgb, var(--success) 45%, transparent) 100%
+  );
 }
 
 .nrow__behind-icon {
   display: grid;
   place-items: center;
+  /*
+    AZ IKON AZ ALAP HÁTTÉRSZÍN — nem piros, nem fehér.
+    Így úgy néz ki, mintha ki lenne vágva a színes felületből; ez a Gmail
+    törlés/archiválás animációjának a jellegzetessége.
+  */
+  color: var(--bg-primary);
 }
 
-.nrow__behind-icon--delete {
-  color: var(--danger);
+/* Csak az az ikon látszik, amelyik művelet épp készül. */
+.nrow__behind--delete .nrow__behind-icon--read,
+.nrow__behind--read .nrow__behind-icon--delete {
+  opacity: 0;
 }
 
 .nrow__behind-icon--read {
-  color: var(--accent);
   /* Ha a sor már olvasott, ez az ikon meg sem jelenik (lásd a komponenst) —
      a `margin-left: auto` tartja a jobb szélen akkor is, ha egyedül maradt. */
   margin-left: auto;
@@ -226,8 +261,10 @@
   width: 100%;
   padding: var(--sp-3);
   text-align: left;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-md);
+  /* Csak VÍZSZINTES elválasztó, se körbefutó szegély, se lekerekítés. */
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
   background: var(--bg-elevated);
   color: var(--text-primary);
   /* A FÜGGŐLEGES húzás a listáé (görgetés), a vízszintes a miénk. Enélkül a
@@ -235,8 +272,9 @@
   touch-action: pan-y;
 }
 
+/* Az olvasatlan sort a HÁTTÉR és a pötty jelöli — szegély nincs, amit
+   kiemelhetnénk, mert a kártya már csak alsó vonalat visel. */
 .nrow__card--unread {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
   background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
 }
 

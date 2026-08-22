@@ -198,6 +198,48 @@
   overflow: hidden;
 }
 
+/*
+ * NYITOTT RANGLISTA — a panel kitölti a maradék magasságot.
+ *
+ * ⚠️ EZ EGY iOS-EN JELENTKEZŐ HIBA JAVÍTÁSA. A dobogó bevezetése után a
+ * fejléc + fülsor + dobogó együtt annyi helyet vitt el, hogy a számozott
+ * tabellából semmi nem látszott — és görgetni sem lehetett, mert a panel
+ * a tartalmához igazodott, nem a képernyőhöz.
+ *
+ * A `min-height: 0` NEM ELHAGYHATÓ: flex gyerek alapból nem mehet a
+ * tartalmánál kisebbre, tehát nélküle a belső görgetés sosem indul el —
+ * a doboz egyszerűen túlnyúlna a képernyőn, ahogy iOS-en tette is.
+ */
+.terr__content--board {
+  /* A dokk mögé nem lóghat be: a `terr__overlay` alsó bélése ezt már
+     tartalmazza, itt csak a maradékot töltjük ki. */
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terr__content--board .terr__board {
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * A SZÁMOZOTT LISTA a ranglistán belül külön görget.
+ *
+ * A fejléc, a fülsor és a dobogó helyben marad — csak a sorok mozognak.
+ * A `gap: 1px` a szülőtől jön (az adja az elválasztó vonalakat), ezért a
+ * lista is ugyanígy épül, hogy a sorok közti vonal ne törjön meg.
+ */
+.terr__board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+  /* A lista széléig érve ne a mögötte lévő térkép kezdjen mozogni. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .terr__board-title {
   padding: var(--sp-3);
   background: var(--bg-elevated);

@@ -32,6 +32,36 @@ import type { AuthedRequest } from '../../server';
 export const missionsRouter = Router();
 
 /**
+ * Ha a tűréshatáron belül nincs jelölt, EDDIG a hosszeltérésig még
+ * felajánljuk a legközelebbieket.
+ *
+ * 45 % egy 45 perces kérésnél nagyjából 20 perc csúszás — ennél többet már
+ * nem szabad „küldetésnek" nevezni, mert a felhasználó nem érne vissza.
+ */
+const MAX_FALLBACK_ERROR = 0.45;
+
+/** A tűréshatáron kívülről legfeljebb ennyi ajánlat jöhet. */
+const FALLBACK_LIMIT = 4;
+
+/** Ezek a szerepkörök nem fogyasztanak generálási kvótát. */
+const ADMIN_ROLES = new Set(['owner', 'admin', 'moderator']);
+
+/**
+ * A célhossz felső korlátja kilométerben.
+ *
+ * ⚠️ EZ TELJESÍTMÉNYI VÉDŐKORLÁT, nem játékszabály. A bezárt terület a
+ * kerület NÉGYZETÉVEL nő: mérve egy 16 km-es kör 52 000 cellát zár be, egy
+ * 24 km-es már 116 000-et. Bringával a nyolcórás felső időkeret 170 km
+ * fölötti kört jelentene — az több millió cella, jelöltenként, nyolcszor.
+ * A `LoopTooLargeError` ezt elkapná, de csak azután, hogy elpazaroltuk rá a
+ * memóriát és a másodperceket.
+ *
+ * 50 km egy hosszú, de valós bringakör; gyalog elérhetetlen, tehát futásra
+ * és sétára ez a korlát sosem aktiválódik.
+ */
+const MAX_TARGET_KM = 50;
+
+/**
  * POST /api/missions/generate
  *
  * A küldetés-ajánló. NEM útvonaltervező: a bemenet IDŐ, nem távolság, a
@@ -86,7 +116,17 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
 
     /* ── Kvóta: ingyenes heti 5, Pro korlátlan ──────────────────────── */
 
-    const isPro = user.pro?.active === true;
+    /*
+      ADMIN NEM FOGYASZT KVÓTÁT.
+
+      Nem kedvezmény, hanem üzemeltetési szükséglet: a küldetés-ajánlót
+      hangolni kell (kerülő-szorzó, tűréshatár, mozgásformák), és ahhoz
+      sokszor egymás után kell generálni. Öt hetit elfogyasztva a saját
+      funkciónkat nem tudnánk kipróbálni. A szerepkör a Firebase
+      egyéni igényéből jön, ugyanaz, amit az admin felület is használ.
+    */
+    const isAdmin = ADMIN_ROLES.has(req.role ?? '');
+    const isPro = user.pro?.active === true || isAdmin;
     const week = weekOf(today);
     const usedThisWeek = user.missionQuota?.week === week ? Number(user.missionQuota.used ?? 0) : 0;
     if (!isPro && usedThisWeek >= cfg.FREE_ROUTE_GENERATIONS_PER_WEEK) {
@@ -102,29 +142,73 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
     const paceSamples = await recentPaceSamples(uid, input.type, cfg.MISSION_PACE_SAMPLE_ACTIVITIES);
     const measuredPace = averagePaceSecPerKm(paceSamples);
     const pace = measuredPace ?? cfg.MISSION_DEFAULT_PACE_S_PER_KM[input.type];
-    const targetKm = targetDistanceKm(input.minutes, pace, cfg);
+    // A plafon teljesítményi védelem — lásd `MAX_TARGET_KM`. A felület a
+    // ténylegesen használt célhosszt írja ki, tehát a vágás nem néma.
+    const targetKm = Math.min(targetDistanceKm(input.minutes, pace, cfg), MAX_TARGET_KM);
 
     /* ── 2. Kör-jelöltek nyolc irányban ─────────────────────────────── */
 
     const origin = { lat: input.lat, lng: input.lng };
     const profile = directionsProfile(input.type);
-    const routes = await Promise.all(
-      missionBearings(cfg).map(async (bearing) => {
-        const waypoints = loopWaypoints(origin, bearing, targetKm, cfg);
-        const route = await planLoop(origin, waypoints, profile);
-        return route ? { bearing, route } : null;
+    const bearings = missionBearings(cfg);
+
+    const planAt = async (bearing: number, wantedKm: number) => {
+      const waypoints = loopWaypoints(origin, bearing, wantedKm, cfg);
+      const route = await planLoop(origin, waypoints, profile);
+      return route ? { bearing, route } : null;
+    };
+
+    /*
+      KÉT MENET — a második ÖNKALIBRÁL.
+
+      Az első menet a `MISSION_DETOUR_FACTOR` becslésével indul: mennyivel
+      hosszabb a valódi útvonal a mértani körnél. Ez a becslés VÁROSFÜGGŐ —
+      egy sűrű belvárosi rácsban más, mint egy folyóparti, kevés átkötésű
+      környéken. Ha egyetlen fix számra hagyatkozunk, rossz helyen minden
+      jelölt kilóg a tűréshatáron, és a felhasználó azt kapja, hogy „nincs
+      kör" — pedig van, csak rossz méretűt kértünk.
+
+      A második menet ezt méréssel javítja: tudjuk a TÉNYLEGES hosszt, tehát
+      a sugarat a `cél / tényleges` aránnyal skálázzuk, és újrakérjük. Így a
+      kerülő-szorzó becslése már csak kiindulópont, nem sorsdöntő.
+    */
+    const firstPass = await Promise.all(bearings.map((bearing) => planAt(bearing, targetKm)));
+
+    const secondPass = await Promise.all(
+      firstPass.map(async (entry, index) => {
+        if (!entry) return null;
+        const km = entry.route.distanceM / 1000;
+        if (!(km > 0) || withinTolerance(km, targetKm, cfg)) return null;
+        // A sugár lineárisan hat a kerületre, tehát ez az arány közvetlenül
+        // a korrigált célhossz.
+        return planAt(bearings[index]!, targetKm * (targetKm / km));
       }),
     );
 
+    /** Irányonként a célhosszhoz KÖZELEBBI változat nyer. */
+    const relativeError = (km: number) => Math.abs(km - targetKm) / targetKm;
+    const best = bearings.map((_, index) => {
+      const a = firstPass[index];
+      const b = secondPass[index];
+      if (!a) return b ?? null;
+      if (!b) return a;
+      return relativeError(b.route.distanceM / 1000) < relativeError(a.route.distanceM / 1000)
+        ? b
+        : a;
+    });
+
     /* ── 3. Geometria: melyik jelölt mely cellákat zárja be? ────────── */
 
-    const shaped: ShapedCandidate[] = [];
-    for (const entry of routes) {
-      if (!entry) continue;
-      const distanceKm = entry.route.distanceM / 1000;
-      // A célhossztól túl messze eső ajánlat nem az, amit a felhasználó kért.
-      if (!withinTolerance(distanceKm, targetKm, cfg)) continue;
+    /** Diagnosztika: az üres válasz OKA — enélkül nem lehet hangolni. */
+    let routesReturned = 0;
+    let closedLoops = 0;
 
+    const withLoops: (ShapedCandidate & { error: number })[] = [];
+    for (const entry of best) {
+      if (!entry) continue;
+      routesReturned += 1;
+
+      const distanceKm = entry.route.distanceM / 1000;
       const coordinates = decodePolyline(entry.route.polyline);
       if (coordinates.length < 2) continue;
       const points = routeToTracePoints(entry.route, coordinates);
@@ -133,18 +217,57 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
         const { path } = traceToCellPath(points);
         const loops = detectLoopsDetailed(path).loops;
         if (loops.length === 0) continue; // nem zár kört: nincs mit ajánlani
+        closedLoops += 1;
 
         const cells = new Set<CellId>();
         for (const loop of loops) for (const cell of loopCells(loop)) cells.add(cell);
-        shaped.push({ bearing: entry.bearing, distanceKm, polyline: entry.route.polyline, points, cells });
+        withLoops.push({
+          bearing: entry.bearing,
+          distanceKm,
+          polyline: entry.route.polyline,
+          points,
+          cells,
+          error: relativeError(distanceKm),
+        });
       } catch {
         // Túl nagy hurok (`LoopTooLargeError`) vagy hibás geometria: kimarad.
         continue;
       }
     }
 
+    /*
+      A TŰRÉSHATÁR ELŐNY, NEM KIZÁRÓ OK.
+
+      Korábban a határon kívüli jelölt egyszerűen kiesett, és ha mind kiesett,
+      a felhasználó semmit nem kapott. Márpedig egy 9 km-es ajánlat a kért
+      7,5 helyett még mindig sokkal többet ér, mint az „ezen a környéken nincs
+      kör" üzenet — főleg, hogy a kártya kiírja a tényleges hosszt, tehát a
+      felhasználó dönthet. Ha van a tűrésen belüli, azok nyernek; ha nincs,
+      a legközelebbieket kínáljuk fel, egy józan felső határig.
+    */
+    const inTolerance = withLoops.filter((candidate) => candidate.error <= cfg.MISSION_DISTANCE_TOLERANCE);
+    const usable = inTolerance.length > 0
+      ? inTolerance
+      : withLoops
+          .filter((candidate) => candidate.error <= MAX_FALLBACK_ERROR)
+          .sort((a, b) => a.error - b.error)
+          .slice(0, FALLBACK_LIMIT);
+
+    const shaped: ShapedCandidate[] = usable.map(({ error: _error, ...candidate }) => candidate);
+
     if (shaped.length === 0) {
-      res.json({ missions: [], targetKm: round2(targetKm), paceSecPerKm: Math.round(pace), reason: 'no_loops' });
+      res.json({
+        missions: [],
+        targetKm: round2(targetKm),
+        paceSecPerKm: Math.round(pace),
+        /*
+          A KÉT OK KÜLÖNVÁLASZTVA. Korábban mindkettő `no_loops` volt, és
+          emiatt nem lehetett megmondani, hogy az úthálózat nem ad kört,
+          vagy csak rossz méretűt kértünk — ez a hangolást lehetetlenné tette.
+        */
+        reason: routesReturned === 0 ? 'no_routes' : closedLoops === 0 ? 'no_loops' : 'no_fit',
+        diagnostics: { routesReturned, closedLoops, bearings: bearings.length },
+      });
       return;
     }
 
@@ -234,9 +357,21 @@ function parseInput(body: unknown): MissionInput {
     throw badRequest('invalid_position', 'Hiányzik vagy hibás a hosszúsági fok.');
   }
 
-  const minutes = Number(raw.minutes);
-  if (!GAMEPLAY_MINUTES.includes(minutes)) {
-    throw badRequest('invalid_minutes', 'Ismeretlen időkeret.');
+  /*
+    SZABADON MEGADHATÓ IDŐ, nem rögzített lista.
+
+    Korábban csak az öt előre megadott érték közül lehetett választani. A
+    felület azóta egyedi megadást is enged (perc vagy óra), ezért itt
+    TARTOMÁNYT ellenőrzünk, nem felsorolást. A korlátok a józan ész
+    határai: öt percnél rövidebb kör nem zár be semmit, nyolc óránál
+    hosszabbra pedig nem tervezünk útvonalat (a Directions is elhasalna).
+  */
+  const minutes = Math.round(Number(raw.minutes));
+  if (!Number.isFinite(minutes) || minutes < MIN_MINUTES || minutes > MAX_MINUTES) {
+    throw badRequest(
+      'invalid_minutes',
+      `Az időkeret ${MIN_MINUTES} és ${MAX_MINUTES} perc között lehet.`,
+    );
   }
 
   const type = String(raw.type ?? 'run');
@@ -248,12 +383,14 @@ function parseInput(body: unknown): MissionInput {
 }
 
 /**
- * A választható időkeretek — a bemenet ellenőrzéséhez.
+ * Az elfogadható időkeret határai percben.
  *
- * Az ALAPÉRTÉKBŐL jön, nem a futásidejű pillanatképből: a kérés érvényessége
- * nem függhet attól, hogy közben átállított-e valaki egy konfigurációt.
+ * Az ALAPÉRTÉKBŐL jönnek, nem a futásidejű pillanatképből: a kérés
+ * érvényessége nem függhet attól, hogy közben átállított-e valaki egy
+ * konfigurációt.
  */
-const GAMEPLAY_MINUTES: readonly number[] = [15, 30, 45, 60, 90];
+const MIN_MINUTES = 5;
+const MAX_MINUTES = 8 * 60;
 
 /** A legutóbbi aktivitások táv/idő párjai — ebből jön az átlagtempó. */
 async function recentPaceSamples(

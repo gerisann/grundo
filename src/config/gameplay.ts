@@ -299,7 +299,10 @@ export const GAMEPLAY = {
    * A felajánlható időkeretek percben. A bemenet IDŐ, nem távolság — a
    * felhasználónak nem kell fejben átváltania, hogy nála 45 perc hány km.
    */
-  MISSION_MINUTE_OPTIONS: [15, 30, 45, 60, 90] as const,
+  MISSION_MINUTE_OPTIONS: [15, 30, 45, 60] as const,
+  /** Az egyedi időmegadás határai percben — a szerver ugyanezt ellenőrzi. */
+  MISSION_MIN_MINUTES: 5,
+  MISSION_MAX_MINUTES: 480,
   /**
    * Ennyi irányban keresünk kört a jelenlegi pozíció körül (docs/02: „8
    * irányban"). Minden irány EGY Directions-hívás, tehát ez egyben a

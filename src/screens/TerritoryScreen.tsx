@@ -279,6 +279,8 @@ export function TerritoryScreen() {
               }
               position={position}
               follow={false}
+              /* Nyitott ranglistánál a pozíció-gomb a lista elé lógna. */
+              hideRecenter={boardOpen}
               onViewport={onViewport}
               onCellPress={onCellPress}
               cellPopup={ownerPopup}
@@ -327,7 +329,28 @@ export function TerritoryScreen() {
           </div>
         </header>
 
-        {overlayVisible ? (
+        {/*
+          A RANGLISTA SAJÁT ÁG, és NEM függ a szem ikontól.
+
+          Két oka van. (1) A szem ikon a térkép ADATRÁTÉTEIT rejti el — a
+          ranglista nem rátét, hanem külön nézet; aki tiszta térképet kért,
+          attól még ne tűnjön el a lista, amit épp megnyitott. (2) Nyitott
+          ranglistánál a rétegváltó és a statisztika-panel csak elveszi a
+          helyet: iOS-en a dobogóval együtt annyi maradt, hogy a tabella
+          egyáltalán nem fért ki. Nyitva tehát CSAK a lista látszik, és az
+          kapja a teljes maradék magasságot.
+        */}
+        {boardOpen ? (
+          <div className="terr__content terr__content--board">
+            <Leaderboard
+              entries={board}
+              meUid={uid}
+              boardWindow={boardWindow}
+              onWindowChange={setBoardWindow}
+              onClose={() => setBoardOpen(false)}
+            />
+          </div>
+        ) : overlayVisible ? (
         <div className="terr__content">
 
         <LayerSwitch value={layer} onChange={setLayer} />
@@ -351,16 +374,6 @@ export function TerritoryScreen() {
             <span className="terr__stat-label">másoké</span>
           </div>
         </div>
-
-        {boardOpen ? (
-          <Leaderboard
-            entries={board}
-            meUid={uid}
-            boardWindow={boardWindow}
-            onWindowChange={setBoardWindow}
-            onClose={() => setBoardOpen(false)}
-          />
-        ) : null}
 
         {!mapboxConfigured ? (
           <div className="card">
@@ -556,20 +569,27 @@ function Leaderboard({
       {head}
       {tabs}
       {podium.length > 0 ? <Podium entries={podium} meUid={meUid} /> : null}
-      {entries.map((entry, index) => (
-        <button
-          type="button"
-          key={entry.uid}
-          className={`terr__board-row${entry.uid === meUid ? ' terr__board-row--me' : ''}`}
-          onClick={() => navigate(`/felhasznalo/${encodeURIComponent(entry.username)}`)}
-          aria-label={`${entry.username} profiljának megnyitása`}
-        >
-          <span className="terr__board-rank">{index + 1}.</span>
-          <Avatar url={entry.photoURL} name={entry.username} size={28} />
-          <span className="terr__board-name">{entry.username}</span>
-          <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
-        </button>
-      ))}
+      {/*
+        A SZÁMOZOTT LISTA KÜLÖN GÖRGET, a fejléc, a fülsor és a dobogó marad.
+        Így a felhasználó akkor is végig tudja nézni a mezőnyt, ha a dobogó
+        elvitte a képernyő felét — és mindig látja, melyik nézetben van.
+      */}
+      <div className="terr__board-list">
+        {entries.map((entry, index) => (
+          <button
+            type="button"
+            key={entry.uid}
+            className={`terr__board-row${entry.uid === meUid ? ' terr__board-row--me' : ''}`}
+            onClick={() => navigate(`/felhasznalo/${encodeURIComponent(entry.username)}`)}
+            aria-label={`${entry.username} profiljának megnyitása`}
+          >
+            <span className="terr__board-rank">{index + 1}.</span>
+            <Avatar url={entry.photoURL} name={entry.username} size={28} />
+            <span className="terr__board-name">{entry.username}</span>
+            <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

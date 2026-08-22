@@ -153,10 +153,26 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
 
 /** Eddig még koppintás, nem húzás — enélkül nyitás közben elcsúszna a kártya. */
 const DRAG_START_PX = 8;
-/** A művelet a kártya szélességének felénél kap el. */
-const COMMIT_RATIO = 0.5;
+/**
+ * A kártya ENNYIT mozdulhat el, se többet.
+ *
+ * A Gmail is így viselkedik: a kártya csak megbillen, a színes háttér pedig
+ * a mozdulat mértékével erősödik. Korábban a kártya az ujjat követte a
+ * képernyő széléig, ami két bajjal járt — a sor alatti tartalom kilátszott,
+ * és a művelet küszöbe a kártya szélességéhez volt kötve.
+ */
+const MAX_DRAG_PX = 60;
+/**
+ * Elengedéskor ennél nagyobb elmozdulás indítja a műveletet.
+ *
+ * ⚠️ EZ NEM LEHET A KÁRTYA SZÉLESSÉGÉHEZ KÖTVE. Korábban a felénél kapott
+ * el (`width * 0.5`), ami egy 320 pixeles kártyánál 160 px — a 60 pixeles
+ * plafon mellett ez SOHA nem teljesülne, tehát se törölni, se olvasottra
+ * állítani nem lehetne húzással. A küszöb ezért a plafonhoz igazodik.
+ */
+const COMMIT_PX = 42;
 /** Gyors pöccintésnél ennyi is elég… */
-const FLICK_RATIO = 0.25;
+const FLICK_PX = 24;
 /** …ha a mozdulat ennél rövidebb ideig tartott. */
 const FLICK_MS = 300;
 /** A kicsúszó kártya animációja — ennyi után hívjuk a törlést. */
@@ -255,7 +271,9 @@ function NotificationRow({
     if (g.axis !== 'x') return;
 
     // Olvasott sornál a balra húzásnak nincs értelme: nem is enged elmozdulni.
-    const next = item.read ? Math.max(0, moveX) : moveX;
+    const raw = item.read ? Math.max(0, moveX) : moveX;
+    // A plafon a Gmail-érzés lényege: a kártya megbillen, nem elúszik.
+    const next = Math.max(-MAX_DRAG_PX, Math.min(MAX_DRAG_PX, raw));
     dxNow.current = next;
     setDx(next);
   }
@@ -266,7 +284,7 @@ function NotificationRow({
     if (!g || g.id !== event.pointerId || g.axis !== 'x') return;
 
     const flick = Date.now() - g.at < FLICK_MS;
-    const needed = g.width * (flick ? FLICK_RATIO : COMMIT_RATIO);
+    const needed = flick ? FLICK_PX : COMMIT_PX;
     const moved = dxNow.current;
 
     if (moved >= needed) {
@@ -281,17 +299,32 @@ function NotificationRow({
     setDx(0);
   }
 
-  const revealing = dx !== 0 || leaving;
+  /**
+   * A SZÍN ERŐSSÉGE a mozdulat mértékéből jön — ez a Gmail-érzés lényege.
+   *
+   * Nem ki-be kapcsol: ahogy húzod, úgy telítődik a háttér. Elengedve
+   * visszahalványul, mert a `dx` nullázódik.
+   */
+  const progress = Math.min(1, Math.abs(dx) / MAX_DRAG_PX);
+  /** Jobbra húzva törlés (piros), balra olvasott (zöld). */
+  const direction = leaving ? 'delete' : dx > 0 ? 'delete' : dx < 0 ? 'read' : null;
 
   return (
     <div className={`nrow${leaving ? ' nrow--leaving' : ''}`}>
       {/*
-        A HÁTTÉR-IKONOK a kártya MÖGÖTT ülnek: a bal szélen a kuka (jobbra
-        húzva ez lesz), a jobb szélen a nyitott boríték (balra húzva ez).
-        Egérrel a sor fölé érve is előbukkannak — PC-n enélkül semmi nem
-        árulná el, hogy a kártya húzható.
+        A HÁTTÉR a kártya mögött, TELJES felületen — nem egy ikon mögötti
+        folt. A színátmenet abból a szélből indul, amelyik felől a mozdulat
+        érkezik: jobbra húzva balról pirosodik, balra húzva jobbról zöldül.
+
+        Az ikon színe SZÁNDÉKOSAN az alkalmazás alap háttérszíne: így úgy
+        néz ki, mintha ki lenne vágva a színes felületből — pontosan úgy,
+        ahogy a Gmail csinálja.
       */}
-      <div className={`nrow__behind${revealing ? ' nrow__behind--open' : ''}`} aria-hidden="true">
+      <div
+        className={`nrow__behind${direction ? ` nrow__behind--${direction}` : ''}`}
+        style={{ opacity: leaving ? 1 : progress }}
+        aria-hidden="true"
+      >
         <span className="nrow__behind-icon nrow__behind-icon--delete">
           <TrashIcon />
         </span>

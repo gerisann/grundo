@@ -34,6 +34,37 @@ const TYPE_OPTIONS: { value: ActivityType; label: string }[] = [
 
 const LAST_TYPE_KEY = 'grundo.lastActivityType';
 
+type TimeUnit = 'minute' | 'hour';
+
+const UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
+  { value: 'minute', label: 'perc' },
+  { value: 'hour', label: 'óra' },
+];
+
+/**
+ * A ténylegesen elküldendő időkeret PERCBEN.
+ *
+ * A szerver mindig percet vár, tehát az óra/perc választás itt oldódik fel.
+ * A határokat a kliens is ismeri (`GAMEPLAY.MISSION_MIN/MAX_MINUTES`), hogy
+ * a felhasználó azonnal visszajelzést kapjon — de a szerver is ellenőrzi,
+ * mert a kliens ellenőrzése sosem elég.
+ */
+function resolveMinutes(
+  customOpen: boolean,
+  preset: number,
+  raw: string,
+  unit: TimeUnit,
+): number | null {
+  if (!customOpen) return preset;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const asMinutes = Math.round(unit === 'hour' ? value * 60 : value);
+  if (asMinutes < GAMEPLAY.MISSION_MIN_MINUTES || asMinutes > GAMEPLAY.MISSION_MAX_MINUTES) {
+    return null;
+  }
+  return asMinutes;
+}
+
 /** A kártya fejléce karakterenként — szín, ikon, felirat. */
 const KIND_META: Record<Mission['kind'], { label: string; tone: string }> = {
   conquest: { label: 'Hódítás', tone: 'conquest' },
@@ -48,6 +79,9 @@ export function MissionsScreen() {
   const shared = useSharedPosition(profile?.uid);
 
   const [minutes, setMinutes] = useState<number>(45);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customValue, setCustomValue] = useState('90');
+  const [customUnit, setCustomUnit] = useState<TimeUnit>('minute');
   const [type, setType] = useState<ActivityType>(() => readType());
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [result, setResult] = useState<MissionResult | null>(null);
@@ -101,6 +135,15 @@ export function MissionsScreen() {
       return;
     }
 
+    const wanted = resolveMinutes(customOpen, minutes, customValue, customUnit);
+    if (wanted === null) {
+      const maxHours = Math.round(GAMEPLAY.MISSION_MAX_MINUTES / 60);
+      setError(
+        `Az időkeret ${GAMEPLAY.MISSION_MIN_MINUTES} perc és ${maxHours} óra között lehet.`,
+      );
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -110,7 +153,7 @@ export function MissionsScreen() {
         return;
       }
 
-      const generated = await api.generateMissions({ ...where, minutes, type });
+      const generated = await api.generateMissions({ ...where, minutes: wanted, type });
       setResult(generated);
       // A legjobb ajánlat átkerül a Home „mai küldetés" kártyájára is.
       rememberDailyMission(generated.missions[0]);
@@ -142,15 +185,58 @@ export function MissionsScreen() {
               <button
                 type="button"
                 key={option}
-                className={`mission__minute${option === minutes ? ' mission__minute--active' : ''}`}
-                aria-pressed={option === minutes}
-                onClick={() => setMinutes(option)}
+                className={`mission__minute${
+                  !customOpen && option === minutes ? ' mission__minute--active' : ''
+                }`}
+                aria-pressed={!customOpen && option === minutes}
+                onClick={() => {
+                  setCustomOpen(false);
+                  setMinutes(option);
+                }}
               >
                 {option}
                 <span className="mission__minute-unit">perc</span>
               </button>
             ))}
+            <button
+              type="button"
+              className={`mission__minute${customOpen ? ' mission__minute--active' : ''}`}
+              aria-pressed={customOpen}
+              onClick={() => setCustomOpen(true)}
+            >
+              <PencilIcon />
+              <span className="mission__minute-unit">egyedi</span>
+            </button>
           </div>
+
+          {/*
+            EGYEDI IDŐ — a fix gombok nem fedik le mindenki napját.
+
+            Az érték a beírt szám ÉS a mértékegység szorzata; a `minutes`
+            állapot mindig percben marad, mert a szerver azt várja. Így az
+            óra/perc váltás tisztán megjelenítési kérdés, nem kerül át a
+            hálózati szerződésbe.
+          */}
+          {customOpen ? (
+            <div className="mission__custom">
+              <input
+                type="number"
+                className="mission__custom-input"
+                inputMode="numeric"
+                min={1}
+                value={customValue}
+                aria-label={customUnit === 'hour' ? 'Óra' : 'Perc'}
+                onChange={(event) => setCustomValue(event.target.value)}
+              />
+              <SegmentedControl
+                options={UNIT_OPTIONS}
+                value={customUnit}
+                onChange={setCustomUnit}
+                label="Mértékegység"
+                size="sm"
+              />
+            </div>
+          ) : null}
 
           <SegmentedControl
             options={TYPE_OPTIONS}
@@ -187,11 +273,7 @@ function Results({ result, onStart }: { result: MissionResult; onStart: () => vo
   if (result.missions.length === 0) {
     return (
       <section className="card">
-        <p className="mission__empty">
-          {result.reason === 'no_loops'
-            ? 'Ezen a környéken most nem találtunk bezárható kört ennyi időre. Próbáld hosszabb időkerettel, vagy indulj el egy másik pontról.'
-            : 'Most nincs ajánlható küldetés.'}
-        </p>
+        <p className="mission__empty">{emptyMessage(result.reason)}</p>
       </section>
     );
   }
@@ -207,6 +289,26 @@ function Results({ result, onStart }: { result: MissionResult; onStart: () => vo
       ))}
     </>
   );
+}
+
+/**
+ * Az üres válasz OKA — háromféle, és mindegyikre MÁS a teendő.
+ *
+ * Korábban mindhárom ugyanazt az üzenetet kapta („nincs bezárható kör"),
+ * ami félrevezető volt: ha az útvonaltervező adott is kört, csak rossz
+ * méretűt, a felhasználó hiába indult el máshonnan.
+ */
+function emptyMessage(reason: string | undefined): string {
+  switch (reason) {
+    case 'no_routes':
+      return 'Az útvonaltervező most nem adott vissza útvonalat erről a pontról. Próbáld újra, vagy indulj el egy közeli utcáról.';
+    case 'no_loops':
+      return 'Innen most nem jött ki bezárható kör — errefelé kevés az átkötő utca. Próbáld másik mozgásformával, vagy indulj el egy másik pontról.';
+    case 'no_fit':
+      return 'Találtunk köröket, de egyik sem fért bele ebbe az időkeretbe. Próbáld hosszabb idővel.';
+    default:
+      return 'Most nincs ajánlható küldetés.';
+  }
 }
 
 function MissionCard({ mission, onStart }: { mission: Mission; onStart: () => void }) {
@@ -298,6 +400,25 @@ function headlineOf(mission: Mission): string {
     case 'explore':
       return `${formatNumber(mission.newBlocks)} olyan körzet, ahol még egyetlen meződ sincs.`;
   }
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+      <path d="M14.5 7.5 16.5 9.5" />
+    </svg>
+  );
 }
 
 function readType(): ActivityType {

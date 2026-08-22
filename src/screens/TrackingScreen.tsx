@@ -983,7 +983,23 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
           <SaveActivityForm
             activityId={recorder.state.id}
             uid={uid}
-            onSaved={() => navigate(`/aktivitas/${recorder.state.id}`)}
+            /*
+              ⚠️ A MENTÉS UTÁN EL IS DOBJUK A RÖGZÍTÉST, nem csak elnavigálunk.
+
+              Enélkül az elnavigálás csak elrejti a panelt: a `recorder`
+              állapota `done` marad, és a Rögzítés fülre visszalépve ugyanaz
+              a mentés-ablak fogadja a felhasználót, mintha semmi nem történt
+              volna. Ez volt a „ragadt képernyő" hiba maradéka — az első
+              javítás csak az átirányítást tette hozzá, a takarítást nem.
+
+              Az azonosítót a `discard()` ELŐTT kell kimenteni, mert utána a
+              `recorder.state.id` már üres.
+            */
+            onSaved={() => {
+              const activityId = recorder.state.id;
+              void recorder.discard();
+              navigate(`/aktivitas/${activityId}`);
+            }}
           />
         ) : null}
         <div className="track__new-recording">
