@@ -29,6 +29,18 @@
   küldések platformját és hibakódját.
 - A specifikáció ezekkel a döntésekkel frissült.
 
+### UI-IGAZÍTÁSOK (2026-08-23)
+
+- A rivális-lista kártyái széles, két tónusú mérleghátteret és erősebb vizuális
+  hierarchiát kaptak; a rivális címke kisebb, de jobban olvasható lett.
+- A legalább egy kedvelést kapott aktivitások szíve korall (`#FB5F73`), az
+  értesítés olvasottra húzásának küszöbe kétszeresére nőtt.
+- A Küldetések képernyő alapból egyszerű időkeret-választót mutat; a további
+  cél-, irány-, tempó- és mozgásforma-beállítások a „Részletes keresés” alatt
+  nyithatók meg.
+- Ezek kizárólag frontend/UI módosítások; backend- vagy adatbázis-deploy nem
+  szükséges hozzájuk.
+
 ## TELEPÍTÉSI SORREND
 
 1. Push.

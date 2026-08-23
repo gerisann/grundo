@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { RivalScore } from '@/components/RivalScore';
@@ -105,11 +106,15 @@ export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => voi
           <p className="conn__note">Nincs ilyen nevű riválisod.</p>
         ) : (
           <>
-            {(filtered ?? []).map((rival) => (
+            {(filtered ?? []).map((rival) => {
+              const total = Math.max(1, rival.gainedCells + rival.lostCells);
+              const gained = Math.round((rival.gainedCells / total) * 100);
+              return (
               <button
                 key={rival.uid}
                 type="button"
-                className="conn__row"
+                className="conn__row rival-row"
+                style={{ '--rival-gained': `${gained}%` } as CSSProperties}
                 onClick={() => {
                   onClose?.();
                   navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`);
@@ -119,7 +124,8 @@ export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => voi
                 <span className="conn__name">{rival.username}</span>
                 <RivalScore rival={rival} />
               </button>
-            ))}
+              );
+            })}
 
             {hasMore && !query ? (
               <p className="conn__note">

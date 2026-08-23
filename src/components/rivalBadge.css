@@ -8,12 +8,12 @@
   flex: none;
   width: max-content;
   justify-self: start;
-  padding: 1px 4px;
+  padding: 2px 6px;
   border-radius: var(--r-sm);
   background: var(--rival-badge-bg);
   color: var(--rival-badge-text);
-  font-size: 9px;
-  font-weight: 400;
+  font-size: 8px;
+  font-weight: 600;
   letter-spacing: 0.03em;
   line-height: 1.35;
   /* A név mellett ül, de sosem tolja szét a sort: ha nincs hely, a NÉV

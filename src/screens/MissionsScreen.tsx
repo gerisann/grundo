@@ -126,6 +126,7 @@ export function MissionsScreen() {
   const [priority, setPriority] = useState<MissionPriority>('balanced');
   const [preferredBearing, setPreferredBearing] = useState('');
   const [savedOpen, setSavedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [result, setResult] = useState<MissionResult | null>(restored.result);
   const [loading, setLoading] = useState(false);
@@ -245,6 +246,10 @@ export function MissionsScreen() {
 
       <div className="screen-body stack">
         <section className="card mission__form">
+          <button type="button" className="mission__advanced-toggle" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
+            {advancedOpen ? 'Egyszerű keresés' : 'Részletes keresés'}
+          </button>
+          <div className="mission__advanced" hidden={!advancedOpen}>
           <SegmentedControl
             options={[{ value: 'time', label: 'Idő' }, { value: 'distance', label: 'Távolság' }]}
             value={targetMode}
@@ -332,6 +337,7 @@ export function MissionsScreen() {
             </label>
           )}
 
+
           <SegmentedControl
             options={TYPE_OPTIONS}
             value={type}
@@ -372,6 +378,7 @@ export function MissionsScreen() {
                 <option value="270">Nyugat</option><option value="315">Északnyugat</option>
               </select>
             </label>
+          </div>
           </div>
 
           <Button block onClick={() => void generate()} loading={loading}>

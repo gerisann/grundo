@@ -85,6 +85,26 @@
   border-color: var(--accent);
 }
 
+.rival-row {
+  position: relative;
+  min-height: 82px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #8F5CF2 0 var(--rival-gained, 50%), #FB5F73 var(--rival-gained, 50%) 100%);
+  border-color: transparent;
+}
+
+.rival-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(20,16,30,.84), rgba(20,16,30,.72));
+}
+
+.rival-row > * { position: relative; z-index: 1; }
+.rival-row .avatar { flex: none; border: 2px solid #8F5CF2; }
+.rival-row .conn__name { color: #fff; }
+
 .conn__identity {
   display: flex;
   align-items: center;

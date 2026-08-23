@@ -170,9 +170,9 @@ const MAX_DRAG_PX = 60;
  * plafon mellett ez SOHA nem teljesülne, tehát se törölni, se olvasottra
  * állítani nem lehetne húzással. A küszöb ezért a plafonhoz igazodik.
  */
-const COMMIT_PX = 42;
+const COMMIT_PX = 84;
 /** Gyors pöccintésnél ennyi is elég… */
-const FLICK_PX = 24;
+const FLICK_PX = 48;
 /** …ha a mozdulat ennél rövidebb ideig tartott. */
 const FLICK_MS = 300;
 /** A kicsúszó kártya animációja — ennyi után hívjuk a törlést. */

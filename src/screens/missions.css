@@ -5,6 +5,19 @@
   gap: var(--sp-3);
 }
 
+.mission__advanced-toggle {
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mission__advanced { display: grid; gap: var(--sp-4); }
+
 .mission__question {
   font-size: var(--fs-heading);
   font-weight: 800;

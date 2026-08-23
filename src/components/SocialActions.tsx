@@ -55,7 +55,7 @@ export function LikeButton({
       aria-label={state.liked ? 'Kedvelés visszavonása' : 'Kedvelem'}
       onClick={() => void toggle()}
     >
-      <HeartIcon filled={state.liked} gradientId={gradientId} />
+      <HeartIcon filled={state.liked} hasLikes={state.count > 0} gradientId={gradientId} />
       <span className="social__count">{state.count}</span>
     </button>
   );
@@ -75,8 +75,8 @@ export function CommentButton({ count, onOpen }: { count: number; onOpen: () => 
   );
 }
 
-function HeartIcon({ filled, gradientId }: { filled: boolean; gradientId: string }) {
-  const color = filled ? `url(#${gradientId})` : 'currentColor';
+function HeartIcon({ filled, hasLikes, gradientId }: { filled: boolean; hasLikes: boolean; gradientId: string }) {
+  const color = filled ? (hasLikes ? 'var(--territory-rival)' : `url(#${gradientId})`) : 'currentColor';
   return (
     <svg
       width="20"
@@ -89,12 +89,12 @@ function HeartIcon({ filled, gradientId }: { filled: boolean; gradientId: string
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <defs>
+      {filled && !hasLikes ? <defs>
         <linearGradient id={gradientId} x1="3" y1="4" x2="21" y2="21">
           <stop stopColor="var(--accent)" />
           <stop offset="1" stopColor="var(--territory-rival)" />
         </linearGradient>
-      </defs>
+      </defs> : null}
       <path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21.2l7.7-7.7 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
     </svg>
   );
