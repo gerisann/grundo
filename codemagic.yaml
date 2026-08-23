@@ -20,7 +20,9 @@ workflows:
 
     scripts:
       - name: JavaScript-függőségek telepítése
-        script: npm ci
+        script: |
+          npm ci
+          npm ci --prefix server
 
       - name: Unit tesztek
         script: npm run test
