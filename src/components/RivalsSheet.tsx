@@ -120,8 +120,10 @@ export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => voi
                   navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`);
                 }}
               >
-                <Avatar url={rival.photoURL} name={rival.username} size={40} />
-                <span className="conn__name">{rival.username}</span>
+                <span className="rival-row__identity">
+                  <Avatar url={rival.photoURL} name={rival.username} size={44} />
+                  <span className="conn__name">{rival.username}</span>
+                </span>
                 <RivalScore rival={rival} />
               </button>
               );

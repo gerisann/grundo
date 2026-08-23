@@ -177,6 +177,7 @@ const FLICK_PX = 48;
 const FLICK_MS = 300;
 /** A kicsúszó kártya animációja — ennyi után hívjuk a törlést. */
 const LEAVE_MS = 180;
+const READ_MS = 180;
 
 interface Gesture {
   id: number;
@@ -217,12 +218,19 @@ function NotificationRow({
   const dxNow = useRef(0);
   const [snapping, setSnapping] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [reading, setReading] = useState(false);
 
   useEffect(() => {
     if (!leaving) return;
     const timer = window.setTimeout(() => onDelete(item.id), LEAVE_MS);
     return () => window.clearTimeout(timer);
   }, [leaving, item.id, onDelete]);
+
+  useEffect(() => {
+    if (!reading) return;
+    const timer = window.setTimeout(() => onRead(item.id), READ_MS);
+    return () => window.clearTimeout(timer);
+  }, [reading, item.id, onRead]);
 
   function down(event: React.PointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
@@ -292,7 +300,7 @@ function NotificationRow({
       return;
     }
     if (moved <= -needed && !item.read) {
-      onRead(item.id);
+      setReading(true);
     }
     setSnapping(true);
     dxNow.current = 0;
@@ -307,10 +315,10 @@ function NotificationRow({
    */
   const progress = Math.min(1, Math.abs(dx) / MAX_DRAG_PX);
   /** Jobbra húzva törlés (piros), balra olvasott (zöld). */
-  const direction = leaving ? 'delete' : dx > 0 ? 'delete' : dx < 0 ? 'read' : null;
+  const direction = leaving ? 'delete' : reading ? 'read' : dx > 0 ? 'delete' : dx < 0 ? 'read' : null;
 
   return (
-    <div className={`nrow${leaving ? ' nrow--leaving' : ''}`}>
+    <div className={`nrow${leaving ? ' nrow--leaving' : ''}${reading ? ' nrow--reading' : ''}`}>
       {/*
         A HÁTTÉR a kártya mögött, TELJES felületen — nem egy ikon mögötti
         folt. A színátmenet abból a szélből indul, amelyik felől a mozdulat
@@ -322,7 +330,7 @@ function NotificationRow({
       */}
       <div
         className={`nrow__behind${direction ? ` nrow__behind--${direction}` : ''}`}
-        style={{ opacity: leaving ? 1 : progress }}
+        style={{ opacity: leaving || reading ? 1 : progress }}
         aria-hidden="true"
       >
         <span className="nrow__behind-icon nrow__behind-icon--delete">
@@ -341,7 +349,7 @@ function NotificationRow({
         className={`nrow__card${item.read ? '' : ' nrow__card--unread'}${
           snapping ? ' nrow__card--snap' : ''
         }`}
-        style={{ transform: leaving ? 'translateX(110%)' : `translateX(${dx}px)` }}
+        style={{ transform: leaving ? 'translateX(110%)' : reading ? 'translateX(-110%)' : `translateX(${dx}px)` }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}

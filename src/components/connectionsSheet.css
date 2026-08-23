@@ -104,6 +104,8 @@
 .rival-row > * { position: relative; z-index: 1; }
 .rival-row .avatar { flex: none; border: 2px solid #8F5CF2; }
 .rival-row .conn__name { color: #fff; }
+.rival-row__identity { position: absolute; left: var(--rival-gained, 50%); top: 50%; transform: translate(-50%, -50%); z-index: 2; display: grid; justify-items: center; gap: 0; }
+.rival-row__identity .conn__name { margin-top: -4px; padding: 2px 8px; border-radius: 5px; background: #8F5CF2; font-size: var(--fs-small); }
 
 .conn__identity {
   display: flex;
