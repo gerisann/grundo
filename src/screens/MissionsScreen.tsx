@@ -246,9 +246,6 @@ export function MissionsScreen() {
 
       <div className="screen-body stack">
         <section className="card mission__form">
-          <button type="button" className="mission__advanced-toggle" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
-            {advancedOpen ? 'Egyszerű keresés' : 'Részletes keresés'}
-          </button>
           <div>
           <SegmentedControl
             options={[{ value: 'time', label: 'Idő' }, { value: 'distance', label: 'Távolság' }]}
@@ -351,13 +348,7 @@ export function MissionsScreen() {
           {advancedOpen ? <div className="mission__advanced">
           <label className="mission__field">
             <span>{type === 'ride' ? 'Tervezett átlagsebesség (opcionális)' : 'Tervezett átlagtempó (opcionális)'}</span>
-            <input
-              value={paceValue}
-              inputMode={type === 'ride' ? 'decimal' : 'numeric'}
-              placeholder={type === 'ride' ? 'pl. 22 km/h' : 'pl. 6:15 perc/km'}
-              onChange={(event) => setPaceValue(event.target.value)}
-            />
-            <small>Üresen hagyva a korábbi aktivitásaid átlaga számít.</small>
+            <PaceStepper type={type} value={paceValue} onChange={setPaceValue} />
           </label>
 
           <div className="mission__select-grid">
@@ -387,9 +378,12 @@ export function MissionsScreen() {
           <Button block onClick={() => void generate()} loading={loading}>
             {result ? 'Újragenerálás' : 'Küldetéseket kérek'}
           </Button>
-          <Button block variant="ghost" onClick={() => setSavedOpen(true)}>
-            Mentett küldetések
-          </Button>
+          <div className="mission__utilities">
+            <Button variant="ghost" onClick={() => setSavedOpen(true)}>Mentett küldetések</Button>
+            <Button variant="secondary" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
+              {advancedOpen ? 'Egyszerű keresés' : 'Részletes keresés'}
+            </Button>
+          </div>
 
           {error ? (
             <p className="field__error" role="alert">
@@ -431,6 +425,26 @@ export function MissionsScreen() {
       ) : null}
     </>
   );
+}
+
+function PaceStepper({ type, value, onChange }: { type: ActivityType; value: string; onChange: (value: string) => void }) {
+  const ride = type === 'ride';
+  const current = ride
+    ? Number(value.replace(',', '.')) || 22
+    : resolvePace(type, value) ?? 360;
+  const step = ride ? 1 : 15;
+  const min = ride ? 3 : 120;
+  const max = ride ? 60 : 3600;
+  const set = (next: number) => {
+    const clamped = Math.max(min, Math.min(max, next));
+    onChange(ride ? String(clamped) : `${Math.floor(clamped / 60)}:${String(clamped % 60).padStart(2, '0')}`);
+  };
+  const label = ride ? `${current} km/h` : `${Math.floor(current / 60)}:${String(current % 60).padStart(2, '0')} perc/km`;
+  return <div className="mission__stepper" role="group" aria-label="Tervezett átlag">
+    <button type="button" aria-label="Csökkentés" onClick={() => set(current - step)}>−</button>
+    <output className="mission__stepper-value">{label}</output>
+    <button type="button" aria-label="Növelés" onClick={() => set(current + step)}>+</button>
+  </div>;
 }
 
 function resolvePace(type: ActivityType, raw: string): number | null {

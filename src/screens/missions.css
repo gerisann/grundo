@@ -5,19 +5,13 @@
   gap: var(--sp-3);
 }
 
-.mission__advanced-toggle {
-  align-self: center;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-size: var(--fs-small);
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .mission__advanced { display: grid; gap: var(--sp-4); }
 .mission__type { margin-top: var(--sp-3); }
+.mission__field > span { margin-top: var(--sp-2); }
+.mission__utilities { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.mission__stepper { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.mission__stepper button { width: 44px; height: 44px; border: 1px solid var(--accent-border); border-radius: var(--r-sm); background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 22px; font-weight: 700; }
+.mission__stepper-value { min-height: 44px; display: grid; place-items: center; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--input-bg); color: var(--text-primary); font-weight: 700; }
 
 .mission__question {
   margin: var(--sp-3) 0 var(--sp-2);
