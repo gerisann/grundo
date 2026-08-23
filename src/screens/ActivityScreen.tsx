@@ -19,6 +19,8 @@ import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
+import { latLngToCell } from 'h3-js';
+import { GAMEPLAY } from '@/config/gameplay';
 import { api, type ActivityPhoto } from '@/lib/api';
 import {
   activityTitle,
@@ -59,6 +61,7 @@ export function ActivityScreen() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [hexesVisible, setHexesVisible] = useState(false);
 
   /**
    * A hozzászólás-lap ÁLLAPOTA a cÍMBEN van, nem a komponensben.
@@ -133,6 +136,10 @@ export function ActivityScreen() {
 
   const effort = formatEffort(activity.type, activity.distanceM, activity.movingS);
   const hasRoute = points.length >= 2;
+  const activityCells = useMemo(
+    () => [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))] ,
+    [points],
+  );
   const fastest = fastestSplit(splits);
 
   return (
@@ -141,7 +148,15 @@ export function ActivityScreen() {
       <div className="act__map">
         {mapboxConfigured && hasRoute ? (
           <Suspense fallback={null}>
-            <MapView track={points} follow={false} fitTrack fill />
+            <MapView
+              track={points}
+              follow={false}
+              fitTrack
+              fill
+              hexesVisible={hexesVisible}
+              onToggleHexes={() => setHexesVisible((visible) => !visible)}
+              layers={hexesVisible ? [{ role: 'interior', cells: activityCells }] : []}
+            />
           </Suspense>
         ) : (
           <div className="act__map-empty">
