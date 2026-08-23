@@ -15,6 +15,7 @@ import {
 } from '@/lib/format';
 import type { FeedActivity } from '@/lib/api';
 import './activityCard.css';
+import { HexMap } from '@/components/HexMap';
 
 /**
  * Egy aktivitás a feedben.
@@ -42,6 +43,7 @@ export function ActivityCard({
    * ikonja jelenne meg a kártyán — ami rosszabb, mint egy tisztes felirat.
    */
   const [mapFailed, setMapFailed] = useState(false);
+  const [hexesVisible, setHexesVisible] = useState(false);
   const mapUrl = mapFailed ? null : routeImageUrl(item.route, { theme });
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
   const title = item.title ?? activityTitle(item.type, item.startedAt);
@@ -94,6 +96,7 @@ export function ActivityCard({
 
         <div className="acard__media">
           {mapUrl ? (
+            <>
             <img
               className="acard__map"
               src={mapUrl}
@@ -103,6 +106,11 @@ export function ActivityCard({
               decoding="async"
               onError={() => setMapFailed(true)}
             />
+            {hexesVisible && item.activityCells.length > 0 ? <HexMap layers={[{ role: 'interior', cells: item.activityCells }]} track={[]} height={180} /> : null}
+            <span role="button" tabIndex={0} className="acard__hex-toggle" aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'} aria-pressed={hexesVisible} onClick={(event) => { event.stopPropagation(); setHexesVisible((visible) => !visible); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setHexesVisible((visible) => !visible); } }}>
+              <HexagonIcon />
+            </span>
+            </>
           ) : (
             <div className="acard__map acard__map--empty">
               {item.routeHidden
@@ -168,6 +176,10 @@ function CameraIcon() {
       <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
+}
+
+function HexagonIcon() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><path d="m12 2.5 8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5L12 2.5Z" /></svg>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

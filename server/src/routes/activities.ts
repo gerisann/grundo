@@ -493,6 +493,7 @@ interface FeedRow {
   photos: ActivityPhoto[];
   likeCount: number;
   commentCount: number;
+  activityCells: string[];
 }
 
 export interface ActivityPhoto {
@@ -524,6 +525,7 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     photos: parseStoredPhotos(data.photos),
     likeCount: Number(data.likeCount ?? 0),
     commentCount: Number(data.commentCount ?? 0),
+    activityCells: Array.isArray(data.activityCells) ? data.activityCells.map(String).slice(0, 5000) : [],
     center: bounds
       ? { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 }
       : null,
@@ -653,6 +655,7 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
         photos: parseStoredPhotos(data.photos),
         likeCount: Number(data.likeCount ?? 0),
         commentCount: Number(data.commentCount ?? 0),
+        activityCells: Array.isArray(data.activityCells) ? data.activityCells.map(String).slice(0, 5000) : [],
         likedByMe: await hasLiked(snapshot.id, req.uid!),
         startedAt: toMillis(data.startedAt),
         endedAt: toMillis(data.endedAt),

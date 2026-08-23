@@ -238,6 +238,7 @@ export interface FeedActivity {
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
+  activityCells: string[];
   author: ActivityAuthor;
 }
 
@@ -294,6 +295,7 @@ export interface ActivityDetail {
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
+  activityCells: string[];
   bounds: { north: number; south: number; east: number; west: number } | null;
   author: ActivityAuthor;
   /** Csak a saját aktivitásnál. Pontszám és diagnosztika soha nem jön le. */

@@ -394,6 +394,7 @@ export async function commitActivity(
     areaGainedM2: result.areaGainedM2,
     gp: result.gp,
     cellCount: result.cellPath.length,
+    activityCells: plan.candidateCells,
     pointCount: points.length,
     summary,
     bounds: publicBounds(publicPoints),

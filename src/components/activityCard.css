@@ -76,6 +76,16 @@
   margin-top: var(--sp-3);
 }
 
+.acard__media > .hexmap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: .72;
+}
+.acard__hex-toggle { position: absolute; right: var(--sp-2); bottom: var(--sp-2); z-index: 2; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(20,16,28,.82); color: #8F5CF2; display: grid; place-items: center; }
+
 .acard__map {
   display: block;
   width: 100%;
