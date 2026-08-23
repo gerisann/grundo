@@ -114,7 +114,7 @@ export function MissionsScreen() {
   const [minutes, setMinutes] = useState<number>(
     restored.preset && restored.minutes !== null ? restored.minutes : 45,
   );
-  const [customOpen, setCustomOpen] = useState(restored.minutes !== null && !restored.preset);
+  const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState(
     restored.minutes !== null && !restored.preset ? String(restored.minutes) : '90',
   );

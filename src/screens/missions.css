@@ -19,6 +19,7 @@
 .mission__advanced { display: grid; gap: var(--sp-4); }
 
 .mission__question {
+  margin: var(--sp-3) 0 var(--sp-2);
   font-size: var(--fs-heading);
   font-weight: 800;
   color: var(--text-primary);
@@ -78,6 +79,8 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  margin-bottom: var(--sp-3);
 }
 
 .mission__custom-input {

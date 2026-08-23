@@ -98,7 +98,7 @@ export function ActivityScreen() {
   );
   const elevation = useMemo(() => elevationProfile(points), [points]);
   const hasRoute = points.length >= 2;
-  const activityCells = useMemo(
+  const pathCells = useMemo(
     () => [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))] ,
     [points],
   );
@@ -155,7 +155,7 @@ export function ActivityScreen() {
               fill
               hexesVisible={hexesVisible}
               onToggleHexes={() => setHexesVisible((visible) => !visible)}
-              layers={hexesVisible ? [{ role: 'interior', cells: activityCells }] : []}
+              layers={hexesVisible ? [{ role: 'interior', cells: activity.activityCells?.length ? activity.activityCells : pathCells }] : []}
             />
           </Suspense>
         ) : (

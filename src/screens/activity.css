@@ -14,6 +14,11 @@
   background: var(--map-bg);
 }
 
+.act__map .mapview__hex-toggle {
+  right: var(--sp-3);
+  bottom: var(--sp-3);
+}
+
 .act__map .mapview {
   border-radius: 0;
 }
