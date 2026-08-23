@@ -1,7 +1,14 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, type Auth } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  connectAuthEmulator,
+  getAuth,
+  initializeAuth,
+  type Auth,
+} from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, type Firestore } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from 'firebase/storage';
+import { isNativeApp } from './platform';
 
 /**
  * A GRUNDO NEM az alapértelmezett Firestore adatbázist használja, hanem egy
@@ -49,7 +56,17 @@ function buildApp(): FirebaseApp | null {
 }
 
 export const app: FirebaseApp | null = buildApp();
-export const auth: Auth | null = app ? getAuth(app) : null;
+/**
+ * A Firebase alapértelmezett IndexedDB-perzisztenciája egyes iOS WKWebView
+ * környezetekben nem oldja fel a kezdeti auth-állapotot. A Capacitor appban
+ * ezért a tartós, de egyszerűbb localStorage-t kényszerítjük. Weben marad a
+ * Firebase alapértelmezett (IndexedDB-t preferáló) viselkedése.
+ */
+export const auth: Auth | null = app
+  ? (isNativeApp()
+    ? initializeAuth(app, { persistence: browserLocalPersistence })
+    : getAuth(app))
+  : null;
 export const db: Firestore | null = app ? getFirestore(app, FIRESTORE_DATABASE_ID) : null;
 export const storage: FirebaseStorage | null = app ? getStorage(app) : null;
 

@@ -64,6 +64,33 @@ export class GoogleAccountError extends Error {
   }
 }
 
+class AuthTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthTimeoutError';
+  }
+}
+
+const INITIAL_AUTH_TIMEOUT_MS = 4_000;
+const AUTH_ACTION_TIMEOUT_MS = 15_000;
+
+async function withAuthTimeout<T>(operation: Promise<T>, operationName: string): Promise<T> {
+  let timeout: number | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timeout = window.setTimeout(
+          () => reject(new AuthTimeoutError(`${operationName} nem válaszol. Ellenőrizd az internetkapcsolatot, majd próbáld újra.`)),
+          AUTH_ACTION_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  }
+}
+
 const AuthContext = createContext<AuthApi | null>(null);
 
 export function useAuth(): AuthApi {
@@ -128,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('[GRUNDO] A Firebase Auth 12 másodpercen belül nem adta vissza a kezdeti állapotot.');
         setStatus('signed-out');
       }
-    }, 12_000);
+    }, INITIAL_AUTH_TIMEOUT_MS);
 
     return () => {
       window.clearTimeout(timeout);
@@ -156,7 +183,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signInWithEmail(email, password) {
-        await signInWithEmailAndPassword(requireAuth(), email, password);
+        await withAuthTimeout(
+          signInWithEmailAndPassword(requireAuth(), email, password),
+          'A Firebase-belépés',
+        );
       },
 
       /**
@@ -176,7 +206,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (value.includes('@')) {
           try {
-            await signInWithEmailAndPassword(instance, value, password);
+            await withAuthTimeout(
+              signInWithEmailAndPassword(instance, value, password),
+              'A Firebase-belépés',
+            );
           } catch (error) {
             /**
              * A GOOGLE-FIÓKOS FELHASZNÁLÓ ITT RAGADT MEG.
@@ -188,8 +221,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
              * megmondani, ezért kérdezzük meg — de CSAK a hiba után, hogy a
              * sikeres belépés ne kapjon fölösleges körbefordulót.
              */
-            if (apiConfigured) {
-              const { googleOnly } = await backend.signInMethod(value);
+            if (apiConfigured && !(error instanceof AuthTimeoutError)) {
+              const { googleOnly } = await withAuthTimeout(
+                backend.signInMethod(value),
+                'A belépési mód ellenőrzése',
+              );
               if (googleOnly) throw new GoogleAccountError();
             }
             throw error;
@@ -204,8 +240,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
 
-        const { customToken } = await backend.login(value, password);
-        await signInWithCustomToken(instance, customToken);
+        const { customToken } = await withAuthTimeout(
+          backend.login(value, password),
+          'A belépési szerver',
+        );
+        await withAuthTimeout(
+          signInWithCustomToken(instance, customToken),
+          'A Firebase-belépés',
+        );
       },
 
       async signInWithGoogle() {
