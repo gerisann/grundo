@@ -73,7 +73,7 @@ ez nem az App Store Connect `.p8` kulcsa.
 | `VITE_FIRESTORE_DATABASE_ID` | nem | `grundo-db` |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | nem | `.env.example` / Firebase Web app config |
 | `VITE_FIREBASE_APP_ID` | nem | `.env.example` / Firebase Web app config |
-| `VITE_FIREBASE_VAPID_KEY` | nem | `.env.example`; iOS-ben még nem használjuk, a közös buildkonfiguráció miatt marad |
+| `VITE_FIREBASE_VAPID_KEY` | nem | weben a verziókövetett `.env.production` garantálja; iOS-ben még nem használjuk, a közös buildkonfiguráció miatt marad |
 | `VITE_MAPBOX_TOKEN` | nem, `pk.` token | Mapbox → Tokens; natív originről is használható, minimális scope-ú publikus token |
 | `VITE_MAPBOX_STYLE_LIGHT` | nem | `mapbox://styles/mapbox/light-v11` |
 | `VITE_MAPBOX_STYLE_DARK` | nem | `mapbox://styles/mapbox/dark-v11` |

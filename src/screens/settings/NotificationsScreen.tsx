@@ -35,7 +35,7 @@ import './notifications.css';
  */
 const PUSH_ERROR: Record<PushFailure, string> = {
   no_vapid_key:
-    'A push-értesítés nincs beállítva ezen a kiszolgálón (hiányzó VAPID-kulcs). Ez a mi hibánk, nem a tiéd — szólj nekünk.',
+    'A push-értesítés nincs beállítva ebben a webes buildben (hiányzó VAPID-kulcs). Ez a mi hibánk, nem a tiéd — szólj nekünk.',
   unsupported: 'Ez a böngésző vagy eszköz nem támogatja a push-értesítést.',
   permission_denied:
     'A böngésző letiltotta az értesítést. A böngésző beállításaiban (a címsor melletti lakat ikonnál) engedélyezheted újra.',

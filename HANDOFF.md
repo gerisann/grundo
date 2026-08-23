@@ -6,12 +6,12 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`.
-- GitHubon jelenleg `740eba7 Stabilize Firebase auth in iOS WebView` van.
-- A következő lokális commitba két, még fel nem pusholt funkciócsomag kerül:
-  az előző `fe5821d Natív iOS helyengedély és buildazonosító`, valamint a
-  jelenlegi küldetés-, rögzítő-életciklus- és háttér-GPS változások.
+- GitHubon jelenleg `85802da Küldetés és iOS háttér-GPS javítása` van.
+- A lokális HEAD egy commit-tal a GitHub előtt jár: **Webes push production
+  konfiguráció**. A push a felhasználó következő lépése.
 - Teljes unit teszt: **399 zöld**, 112 célzott emulátoros teszt kihagyva.
-  Production Vite build sikeres 2026-08-23 16:20-kor.
+  Production Vite build sikeres 2026-08-23 17:05-kor; a generált bundle-ben
+  a production VAPID public key jelenléte külön ellenőrizve.
 
 ## MI VÁLTOZOTT EBBEN A MENETBEN
 
@@ -55,7 +55,9 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 - A webes FCM út már kódban kész: engedélykérés csak felhasználói kapcsolóra,
   service worker, VAPID token Firestore-ba, szerveroldali FCM-küldés és
-  érvénytelen token törlése. A helyi `.env.local` VAPID- és API-változója megvan.
+  érvénytelen token törlése. A VAPID public key most már a verziókövetett
+  `.env.production` része, ezért a Cloud Shellből készített webbuild sem veszti
+  el akkor, ha ott nincs helyi `.env.local`.
 - Natív iOS push még nincs: az Apple APNs-kulcs vagy Firebase iOS Messaging
   konfiguráció külső hitelesítőanyagot kíván. Ne generálj vagy helyettesíts
   ilyet; előbb Apple Developer/Firebase oldali döntés és kulcs kell.
