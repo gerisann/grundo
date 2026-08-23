@@ -382,8 +382,6 @@ export function MissionsScreen() {
           </div></div> : null}
           </div>
 
-          </div>
-
           <Button block onClick={() => void generate()} loading={loading}>
             {result ? 'Újragenerálás' : 'Küldetéseket kérek'}
           </Button>
