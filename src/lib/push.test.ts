@@ -9,6 +9,20 @@ const messaging = vi.hoisted(() => ({
   deleteToken: vi.fn(async () => {}),
   addListener: vi.fn(async () => ({ remove: vi.fn(async () => {}) })),
 }));
+const firestore = vi.hoisted(() => ({
+  setDoc: vi.fn(async () => {}),
+  deleteDoc: vi.fn(async () => {}),
+}));
+
+// A Codemagicben valódi Firebase environment változók vannak. A unit teszt
+// ettől még nem írhat hálózatra: a Firestore-határt teljesen leválasztjuk.
+vi.mock('./firebase', () => ({ app: {}, db: {} }));
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn((...segments: unknown[]) => segments.join('/')),
+  serverTimestamp: vi.fn(() => 'server-timestamp'),
+  setDoc: firestore.setDoc,
+  deleteDoc: firestore.deleteDoc,
+}));
 
 vi.mock('./platform', () => ({
   isNativeApp: () => platform.native,
@@ -73,10 +87,12 @@ describe('push eszközkapcsoló', () => {
     await expect(requestPermissionAndSubscribe('geri')).resolves.toEqual({ ok: true });
     expect(messaging.requestPermissions).toHaveBeenCalledOnce();
     expect(messaging.getToken).toHaveBeenCalledOnce();
+    expect(firestore.setDoc).toHaveBeenCalledOnce();
     expect(values.get('grundo.pushEnabled')).toBe('1');
     await expect(readPushPermission()).resolves.toBe('granted');
 
     await unsubscribe('geri');
+    expect(firestore.deleteDoc).toHaveBeenCalledOnce();
     expect(messaging.deleteToken).toHaveBeenCalledOnce();
     expect(values.has('grundo.pushEnabled')).toBe(false);
     await expect(readPushPermission()).resolves.toBe('default');
