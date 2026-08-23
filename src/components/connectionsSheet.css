@@ -89,7 +89,7 @@
   position: relative;
   min-height: 82px;
   overflow: hidden;
-  background: linear-gradient(90deg, #8F5CF2 0 var(--rival-gained, 50%), #FB5F73 var(--rival-gained, 50%) 100%);
+  background: linear-gradient(90deg, #8F5CF2 0%, color-mix(in srgb, #8F5CF2 72%, #FB5F73) var(--rival-gained, 50%), color-mix(in srgb, #FB5F73 72%, #8F5CF2) var(--rival-gained, 50%), #FB5F73 100%);
   border-left-color: #8F5CF2;
   border-right-color: #FB5F73;
 }
@@ -109,7 +109,7 @@
 .rival-row__identity .conn__name { margin-top: -4px; padding: 2px 8px; border-radius: 5px; background: #8F5CF2; font-size: var(--fs-small); }
 .rival-row .rival-score { position: absolute; inset: 0; z-index: 1; display: block; pointer-events: none; }
 .rival-row .rival-score__total { position: absolute; right: var(--sp-3); top: var(--sp-3); padding: 4px 8px; border-radius: 6px; background: rgb(20 16 30 / .72); color: #fff; font-size: 18px; }
-.rival-row .rival-score__area { position: absolute; right: var(--sp-3); top: 42px; color: #fff; }
+.rival-row .rival-score__area { display: none; }
 .rival-row .rival-score__split { position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: var(--sp-3); display: flex; justify-content: space-between; }
 .rival-row .rival-score__gained, .rival-row .rival-score__lost { padding: 3px 7px; border-radius: 5px; color: #fff; font-size: 12px; }
 .rival-row .rival-score__gained { background: #8F5CF2; }

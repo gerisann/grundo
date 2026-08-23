@@ -21,6 +21,7 @@ import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { latLngToCell } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
+import { processActivity } from '@/game';
 import { api, type ActivityPhoto } from '@/lib/api';
 import {
   activityTitle,
@@ -98,10 +99,22 @@ export function ActivityScreen() {
   );
   const elevation = useMemo(() => elevationProfile(points), [points]);
   const hasRoute = points.length >= 2;
-  const pathCells = useMemo(
-    () => [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))] ,
-    [points],
-  );
+  const pathCells = useMemo(() => {
+    if (!activity) return [];
+    try {
+      return [...processActivity({
+        points,
+        type: activity.type,
+        distanceKm: activity.distanceM / 1000,
+        actorId: activity.author.uid,
+        ownership: new Map(),
+        streakDays: 0,
+        gpEarnedToday: 0,
+      }).claimedCells];
+    } catch {
+      return [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))];
+    }
+  }, [activity, points]);
 
   if (loading) {
     return (

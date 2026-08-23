@@ -17,6 +17,7 @@
 }
 
 .mission__advanced { display: grid; gap: var(--sp-4); }
+.mission__type { margin-top: var(--sp-3); }
 
 .mission__question {
   margin: var(--sp-3) 0 var(--sp-2);

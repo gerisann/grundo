@@ -337,16 +337,18 @@ export function MissionsScreen() {
             </label>
           )}
 
+          <div className="mission__type">
+            <SegmentedControl
+              options={TYPE_OPTIONS}
+              value={type}
+              onChange={setType}
+              label="Mozgásforma"
+              block
+            />
+          </div>
+
 
           {advancedOpen ? <div className="mission__advanced">
-          <SegmentedControl
-            options={TYPE_OPTIONS}
-            value={type}
-            onChange={setType}
-            label="Mozgásforma"
-            block
-          />
-
           <label className="mission__field">
             <span>{type === 'ride' ? 'Tervezett átlagsebesség (opcionális)' : 'Tervezett átlagtempó (opcionális)'}</span>
             <input

@@ -16,7 +16,7 @@
 
 .act__map .mapview__hex-toggle {
   right: var(--sp-3);
-  bottom: var(--sp-3);
+  bottom: calc(var(--sp-3) + 18px);
 }
 
 .act__map .mapview {

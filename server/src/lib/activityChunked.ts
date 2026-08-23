@@ -189,6 +189,10 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
       areaGainedM2: 0,
       gp: { total: 0 },
       cellCount: 0,
+      // A feed és az aktivitás részletezője ebből rajzolja ki a KÖR teljes
+      // elfoglalt területét. Korábban csak a GPS-nyom cellái jutottak el a
+      // klienshez, ezért a hurok belseje üresen maradt.
+      activityCells: plan.candidateCells,
       pointCount: points.length,
       bounds: publicBounds(publicPoints),
       route: publicRoute,
