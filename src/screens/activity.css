@@ -27,7 +27,7 @@
    alsó információs sávjától feljebb, visszafogottabban ül. */
 .act__map .mapboxgl-ctrl-bottom-left,
 .act__map .mapboxgl-ctrl-bottom-right {
-  bottom: 56px !important;
+  bottom: 28px !important;
   opacity: 0.32 !important;
   transition: opacity 160ms ease;
 }
