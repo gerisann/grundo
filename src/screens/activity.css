@@ -27,14 +27,14 @@
    alsó információs sávjától feljebb, visszafogottabban ül. */
 .act__map .mapboxgl-ctrl-bottom-left,
 .act__map .mapboxgl-ctrl-bottom-right {
-  bottom: 28px;
-  opacity: 0.68;
+  bottom: 56px !important;
+  opacity: 0.32 !important;
   transition: opacity 160ms ease;
 }
 
 .act__map .mapboxgl-ctrl-bottom-left:hover,
 .act__map .mapboxgl-ctrl-bottom-right:hover {
-  opacity: 1;
+  opacity: 0.85 !important;
 }
 
 /* Teljes képernyős mód: a térkép mindent kitölt, a lap többi része eltűnik. */
