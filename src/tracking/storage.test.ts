@@ -12,10 +12,19 @@ import {
   createRunPersister,
   isResumable,
   memoryStore,
+  prepareForRestore,
   type PersistedRun,
   type RunStore,
 } from './storage';
-import { applySample, createRecorder, finish, start, type RecorderState } from './recorder';
+import {
+  applySample,
+  createRecorder,
+  finish,
+  movingMs,
+  resume,
+  start,
+  type RecorderState,
+} from './recorder';
 import type { PositionSample } from './types';
 
 const T0 = 1_800_000_000_000;
@@ -189,10 +198,11 @@ describe('visszaállíthatóság', () => {
     expect(isResumable(fresh(start(createRecorder('run'), T0), T0), T0 + 1000)).toBe(false);
   });
 
-  it('a tegnapi mentést nem ajánljuk fel', () => {
+  it('az egy óránál régebbi mentést nem ajánljuk fel', () => {
     // A köztes idő beleszámítana a mozgásidőbe, és a nyomvonal két távoli
     // pontja egyetlen egyenessel kötődne össze.
-    expect(isResumable(fresh(runWithPoints(), T0), T0 + 13 * 60 * 60 * 1000)).toBe(false);
+    expect(isResumable(fresh(runWithPoints(), T0), T0 + 60 * 60 * 1000)).toBe(true);
+    expect(isResumable(fresh(runWithPoints(), T0), T0 + 60 * 60 * 1000 + 1)).toBe(false);
   });
 
   it('a visszaállított állapot folytatható, és a távolság megmarad', async () => {
@@ -211,5 +221,17 @@ describe('visszaállíthatóság', () => {
     const uninterrupted = applySample(before, sample(200, 40));
     expect(continued.distanceM).toBeCloseTo(uninterrupted.distanceM, 6);
     expect(continued.points).toHaveLength(3);
+  });
+
+  it('a megszakítás óta eltelt időt szünetként kezeli', () => {
+    const before = runWithPoints();
+    const savedAt = T0 + 10_000;
+    const reopenedAt = savedAt + 30 * 60 * 1000;
+    const restored = prepareForRestore(fresh(before, savedAt));
+    const continued = resume(restored, reopenedAt);
+
+    expect(restored.status).toBe('paused');
+    expect(restored.pausedAt).toBe(savedAt);
+    expect(movingMs(continued, reopenedAt)).toBe(savedAt - T0);
   });
 });

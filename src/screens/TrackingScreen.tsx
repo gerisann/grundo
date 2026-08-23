@@ -61,7 +61,11 @@ export function TrackingScreen() {
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
   const { pendingType: type, setPendingType } = recorder;
-  const remoteState = state.status === 'idle' ? recorder.remoteState : null;
+  const candidateRemoteState = state.status === 'idle' ? recorder.remoteState : null;
+  const [dismissedRemoteId, setDismissedRemoteId] = useState<string | null>(null);
+  const remoteState = candidateRemoteState?.activityId === dismissedRemoteId
+    ? null
+    : candidateRemoteState;
   const displayPoints = remoteState?.points ?? state.points;
   /**
    * Indítás előtt a kiválasztott típust kell megjeleníteni, nem a még el sem
@@ -354,15 +358,6 @@ export function TrackingScreen() {
 
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
-  /**
-   * A másik eszköz állapotát jelző üzenet bezárható.
-   *
-   * SZÁNDÉKOSAN nem jegyezzük meg a döntést: ez nem tipp, hanem élő állapot.
-   * Ha holnap megint elindítasz valamit a telefonon, arról megint szólni kell
-   * — különben pont akkor hallgatna, amikor számít.
-   */
-  const [showSyncNote, setShowSyncNote] = useState(true);
-
   return (
     <div className={`track${done ? ' track--finished' : ''}`}>
       <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
@@ -413,13 +408,13 @@ export function TrackingScreen() {
       ) : null}
 
       <div className="track__overlay">
-        {remoteState !== null && showSyncNote ? (
+        {remoteState !== null ? (
           <div className="track__note track__note--sync track__note--closable">
             <button
               type="button"
               className="track__note-close"
               aria-label="Üzenet bezárása"
-              onClick={() => setShowSyncNote(false)}
+              onClick={() => setDismissedRemoteId(remoteState.activityId)}
             >
               ✕
             </button>

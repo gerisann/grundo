@@ -11,6 +11,10 @@ import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { decodePolyline, encodePolyline, simplifyTrace } from '@/game/polyline';
 import { db } from '@/lib/firebase';
 import { currentSpeedMps, movingMs, type RecorderState, type RecorderStatus } from './recorder';
+import {
+  BASIC_RESUME_WINDOW_MS,
+  isRemoteTrackingVisible,
+} from './resumePolicy';
 import type { ActivityType, TracePoint } from '@/types';
 
 const SYNC_INTERVAL_MS = 15_000;
@@ -70,15 +74,29 @@ export function useTrackingCloudSync(uid: string | undefined, state: RecorderSta
       setRemote(null);
       return;
     }
-    return onSnapshot(doc(db, 'users', uid, 'private', 'tracking'), (snapshot) => {
+    let expiryTimer: number | null = null;
+    const clearExpiry = () => {
+      if (expiryTimer !== null) window.clearTimeout(expiryTimer);
+      expiryTimer = null;
+    };
+    const unsubscribe = onSnapshot(doc(db, 'users', uid, 'private', 'tracking'), (snapshot) => {
+      clearExpiry();
       const value = snapshot.data() as Record<string, unknown> | undefined;
       if (!value || value.deviceId === deviceId.current || value.status === 'idle') {
         setRemote(null);
         return;
       }
       const status = value.status;
-      if (status !== 'recording' && status !== 'paused' && status !== 'finished') return;
+      if (status !== 'recording' && status !== 'paused' && status !== 'finished') {
+        setRemote(null);
+        return;
+      }
       const stamp = value.updatedAt as { toMillis?: () => number } | undefined;
+      const updatedAt = typeof stamp?.toMillis === 'function' ? stamp.toMillis() : 0;
+      if (!isRemoteTrackingVisible(status, updatedAt, Date.now())) {
+        setRemote(null);
+        return;
+      }
       setRemote({
         activityId: String(value.activityId ?? ''),
         deviceId: String(value.deviceId ?? ''),
@@ -89,9 +107,15 @@ export function useTrackingCloudSync(uid: string | undefined, state: RecorderSta
         movingMs: Number(value.movingMs ?? 0),
         speedMps: Number.isFinite(Number(value.speedMps)) ? Number(value.speedMps) : null,
         startedAt: Number.isFinite(Number(value.startedAt)) ? Number(value.startedAt) : null,
-        updatedAt: typeof stamp?.toMillis === 'function' ? stamp.toMillis() : 0,
+        updatedAt,
       });
+      const remaining = BASIC_RESUME_WINDOW_MS - Math.max(0, Date.now() - updatedAt);
+      expiryTimer = window.setTimeout(() => setRemote(null), remaining + 50);
     }, () => setRemote(null));
+    return () => {
+      clearExpiry();
+      unsubscribe();
+    };
   }, [uid]);
 
   // Indítás, szünet, folytatás és befejezés azonnal szinkronizálódik.

@@ -16,7 +16,8 @@
  * a lényeg. Ezek memóriatárral pontosan vizsgálhatók.
  */
 
-import type { RecorderState } from './recorder';
+import { pause, type RecorderState } from './recorder';
+import { isInsideBasicResumeWindow } from './resumePolicy';
 
 /** A tárolt alak. A `version` a későbbi sémaváltáshoz kell. */
 export interface PersistedRun {
@@ -35,18 +36,27 @@ export interface RunStore {
 /**
  * Ennél régebbi mentést nem ajánlunk fel folytatásra.
  *
- * Egy tegnapi félbehagyott futás folytatása értelmetlen: a köztes idő
- * beleszámítana a mozgásidőbe, és a nyomvonal két távoli pontja egyetlen
- * egyenessel kötődne össze. 12 óra bőven elég egy megszakadt futáshoz való
- * visszatéréshez, és rövid ahhoz, hogy másnap ne zavarjon.
+ * Egy régi félbehagyott futás folytatása értelmetlen: a nyomvonal két távoli
+ * pontja egyetlen egyenessel kötődne össze. Az alapcsomag egyórás ablaka a
+ * véletlen lapbezárást/appkilövést helyreállítja. A későbbi Pro tartós
+ * folytatás külön felhős adatformátum lesz (`resumePolicy.ts`).
  */
-export const MAX_RESUME_AGE_MS = 12 * 60 * 60 * 1000;
-
 export function isResumable(run: PersistedRun, now: number): boolean {
   if (run.version !== 1) return false;
   if (run.state.status === 'finished' || run.state.status === 'idle') return false;
   if (run.state.points.length === 0) return false;
-  return now - run.savedAt <= MAX_RESUME_AGE_MS;
+  return isInsideBasicResumeWindow(run.savedAt, now);
+}
+
+/**
+ * A megszakítás óta eltelt idő szünet, nem mozgás.
+ *
+ * Ha a böngésző rögzítés közben állt le, a tárolt állapot még `recording`.
+ * Nem a visszaállítás MOST-jával szüneteltetjük, hanem az utolsó checkpoint
+ * idejével; különben az app bezárva töltött idő beleszámítana a mozgásidőbe.
+ */
+export function prepareForRestore(run: PersistedRun): RecorderState {
+  return run.state.status === 'recording' ? pause(run.state, run.savedAt) : run.state;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

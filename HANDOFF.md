@@ -15,7 +15,7 @@ fordulás- és helyikerülő-felismerést kapott.
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`, az `origin/main` előtt 1 helyi committal.
-- Unit tesztek: **391 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
+- Unit tesztek: **394 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
 - Emulátoros készlet: **112 zöld** valódi Firestore/Auth emulátor ellen.
 - Típusellenőrzés: gyökér és `server/` hibamentes.
 - Production build: frontend és backend hibamentes. A Mapbox chunk ismert,
@@ -98,6 +98,19 @@ marad. Keskeny kijelzőn touch swipe és egérrel fogd‑és‑húzd is működi
 - Élő foglalás: új/megerősített mező lila, elrabolt mező `#FA5F73`.
 - Az élő előnézet már a közeli birtok-pillanatképpel fut, és a friss mezőkön
   is az 1–5 várható védelmi szintet, illetve annak telítettségét mutatja.
+- A félbehagyott utak két fogalma szétvált. Az alap, ugyanazon eszközös
+  IndexedDB-helyreállítás 1 óráig él. A Firestore `private/tracking` csak
+  ritkított, másik eszközös előnézet: `recording`/`paused` esetén legfeljebb
+  1 óráig látható, `finished` esetén soha; bezárása a nyomot és a statisztikát
+  is eltünteti. A későbbi Pro tartós folytatás külön felhős séma lesz.
+- A helyi restore a `recording` checkpointot az utolsó `savedAt` időponttól
+  szünetelteti, ezért az app bezárása és újranyitása közötti idő nem számít
+  bele utólag a mozgásidőbe.
+- Éles, csak olvasó audit az `agerivagyok@gmail.com` (`geri`) fiókon: egyetlen
+  `private/tracking` dokumentum volt, `finished`/`walk`, 173,87 m, 2:37,
+  32 eredeti pont, `updatedAt=2026-08-22T13:32:51.003Z`. Ez nem folytatható
+  félbehagyott út volt, hanem a régi kliens által korlátlan ideig kirajzolt
+  befejezett snapshot. Adatbázis-írás nem történt.
 
 ### Specifikáció
 

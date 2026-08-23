@@ -31,6 +31,7 @@ import {
   createRunPersister,
   defaultRunStore,
   isResumable,
+  prepareForRestore,
   type PersistedRun,
 } from '@/tracking/storage';
 import { TrackingError, type PositionSource } from '@/tracking/types';
@@ -94,6 +95,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   const [error, setError] = useState<TrackingError | null>(null);
   const [hasFix, setHasFix] = useState(false);
   const [resumable, setResumable] = useState<RecorderState | null>(null);
+  const resumableRun = useRef<PersistedRun | null>(null);
   const [pendingType, setPendingType] = useState<ActivityType>('run');
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
@@ -119,7 +121,10 @@ export function useRecorder(source?: PositionSource): RecorderApi {
       const store = defaultRunStore();
       const saved: PersistedRun | null = await store.read().catch(() => null);
       if (cancelled || saved === null) return;
-      if (isResumable(saved, Date.now())) setResumable(saved.state);
+      if (isResumable(saved, Date.now())) {
+        resumableRun.current = saved;
+        setResumable(saved.state);
+      }
       else await store.clear().catch(() => undefined);
     })();
     return () => {
@@ -277,12 +282,13 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   }, [persister, positionSource, releaseWakeLock]);
 
   const restore = useCallback(async () => {
-    const saved = resumable;
-    if (saved === null) return;
+    const saved = resumableRun.current;
+    if (saved === null || resumable === null) return;
+    resumableRun.current = null;
     setResumable(null);
     // Szüneteltetve vesszük át: a megszakítás óta eltelt idő nem mozgás volt,
     // és a felhasználónak kell eldöntenie, mikor folytatja.
-    stateRef.current = saved.status === 'recording' ? pauseRecorder(saved, Date.now()) : saved;
+    stateRef.current = prepareForRestore(saved);
     setState(stateRef.current);
     persister.save(stateRef.current);
     await acquireWakeLock();
@@ -290,6 +296,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   }, [acquireWakeLock, attach, persister, resumable]);
 
   const dismissResumable = useCallback(async () => {
+    resumableRun.current = null;
     setResumable(null);
     await persister.clear();
   }, [persister]);

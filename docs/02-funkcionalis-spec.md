@@ -200,6 +200,21 @@ A GRUNDO szíve (képek #49, #21).
 ### Szüneteltetve (kép #03)
 - Folytatás · stop · fotó. Az értesítés is jelzi: „Szüneteltetve — koppints a visszatéréshez".
 
+### Megszakadt rögzítés helyreállítása
+
+- **Alapcsomag:** a böngésző/app ugyanazon az eszközön, teljes pontossággal
+  megőrzi az aktív vagy szünetelő rögzítést. Az utolsó helyi mentéstől számított
+  legfeljebb **1 órán belül** folytatható; utána automatikusan eldobódik.
+- A `users/{uid}/private/tracking` dokumentum csak ritkított, másik eszközön
+  megjelenő **élő előnézet**, nem folytatható mentés. Csak `recording` vagy
+  `paused` állapotban és legfeljebb 1 óráig látható. A `finished` állapot
+  azonnal eltűnik; a bezárógomb a teljes távoli nyomvonalat és statisztikát
+  elrejti, nem csak az értesítést.
+- **Későbbi Pro funkció:** tartós, eszközök között is folytatható felhős
+  rögzítés, úgy, mintha a mérés nem szakadt volna meg. Ez külön, teljes
+  pontsor/időzítés megőrzésére alkalmas adatformátum lesz; nem a ritkított élő
+  előnézet lejáratának meghosszabbítása.
+
 ### Leállítás és mentés
 - **100 m alatt nem menthető** (kép #45): „Az aktivitás 100 m alatti — nem mentjük". Elvethető vagy folytatható.
 - Mentés képernyő (nincs a képek közt, meg kell tervezni):

@@ -91,7 +91,10 @@
   route, distanceM, movingMs, speedMps, startedAt, updatedAt }`. A `route`
   legfeljebb 400 pontra ritkított; írás legfeljebb 15 másodpercenként és
   állapotváltáskor. Csak a tulajdonos olvashatja és írhatja, játékadatnak nem
-  forrása.
+  forrása. Ez egyetlen, felülírt kijelzési slot, nem félbehagyott utak listája:
+  csak `recording`/`paused` állapotban és az `updatedAt` után legfeljebb 1 óráig
+  jelenik meg. `finished` nem jeleníthető meg. A későbbi Pro, eszközök között
+  folytatható út külön, teljes pontosságú sémát igényel.
 - `usernames/{lowercase}` → `{ uid, username, createdAt }` — egyediség tranzakcióval. A dokumentum azonosítója a kisbetűs kulcs, a `username` mező a megjelenítési alak.
 
 ### `activities/{activityId}`
