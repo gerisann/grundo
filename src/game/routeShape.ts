@@ -119,3 +119,21 @@ export function countUTurns(points: readonly LatLng[]): number {
   }
   return count;
 }
+
+/**
+ * A mellékutcai „lábakat” már a birtokviszony szerinti pontozás ELŐTT szűri.
+ *
+ * Nem húzunk abszolút plafont: ha egy környék úthálózata minden irányban
+ * kényszerít visszafordulást, akkor is kell ajánlatot adnunk. A helyi legjobb
+ * alakhoz képest legfeljebb egy extra fordulást engedünk; ha ettől háromnál
+ * kevesebb jelölt maradna, a három legtisztábbat tartjuk meg. Így a játéktét
+ * továbbra is tud három különböző küldetést adni, a látványosan rossz
+ * fésű-alakú útvonalak viszont nem nyerhetnek pusztán több cellával.
+ */
+export function preferCleanRoutes<T extends { uTurns: number }>(routes: readonly T[]): T[] {
+  if (routes.length <= 3) return [...routes];
+  const ordered = [...routes].sort((a, b) => a.uTurns - b.uTurns);
+  const best = ordered[0]!.uTurns;
+  const clean = ordered.filter((route) => route.uTurns <= best + 1);
+  return clean.length >= 3 ? clean : ordered.slice(0, 3);
+}

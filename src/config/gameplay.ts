@@ -296,7 +296,7 @@ export const GAMEPLAY = {
 
   // ── Küldetés-ajánló ─────────────────────────────────────────────────────
   /**
-   * A felajánlható időkeretek percben. A bemenet IDŐ, nem távolság — a
+   * A felajánlható időkeretek percben. Időalapú tervezésnél a
    * felhasználónak nem kell fejben átváltania, hogy nála 45 perc hány km.
    */
   MISSION_MINUTE_OPTIONS: [15, 30, 45, 60] as const,

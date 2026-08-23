@@ -1,6 +1,6 @@
 # GRUNDO — projekt gerinc
 
-**Státusz:** V0.3 specifikáció · 2026-08-19 (15 alapdöntés rögzítve)
+**Státusz:** V0.4 specifikáció · 2026-08-23 (18 alapdöntés rögzítve)
 **Cél:** production ready közösségi mozgás- és területfoglaló app (iOS/Android + web admin)
 **Stack:** Google AI Studio (fejlesztés) · Firebase (Auth, Firestore, Storage, FCM, Hosting) · Cloud Run (geo/konnektor/job szolgáltatások) · Mapbox
 
@@ -61,7 +61,7 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | 5 | Területvesztés push | **minden támadásról**, plafon nélkül (1 támadás = 1 értesítés) | [02](02-funkcionalis-spec.md#értesítések) |
 | 6 | Lokális feed | **ingyenes**, nem Pro-funkció | [02](02-funkcionalis-spec.md#előfizetés-kép-25) |
 | 7 | Terület mértékegysége | **km²**, 3 tizedessel *(a 08-15-i m²-döntést 2026-08-17 felülírta)* | [03](03-jatekszabalyok.md#a-terület-megjelenítése) |
-| 8 | Útvonalgenerátor | **küldetés-ajánló**: idő alapú bemenet, területi hozadék a kimenet | [02](02-funkcionalis-spec.md#útvonalak-fül--küldetés-ajánló) |
+| 8 | Útvonalgenerátor | **küldetés-ajánló**: idő vagy távolság alapú bemenet, felülírható tempóval, céllal és iránnyal; területi hozadék a kimenet | [02](02-funkcionalis-spec.md#küldetések-fül--küldetés-ajánló) |
 | 9 | Anti-cheat | **Trust Score** (7 jelforrás); gyanús aktivitás látszik, de nem módosít birtokviszonyt | [03](03-jatekszabalyok.md#trust-score--aktivitás-hitelesség) |
 | 10 | Jelentés-kategóriák | GPS-manipuláció · jármű · hibás mérés · sértő · adatvédelem · egyéb | [02](02-funkcionalis-spec.md#jelentés) |
 | 11 | **Privát zóna** | az onboarding **kötelező lépése**; kezdet és vég külön, 50/100/200 m, alapból BE 200 m-en, kikapcsolható | [02](02-funkcionalis-spec.md#privát-zóna) |
@@ -69,3 +69,6 @@ A kettő **össze van kötve**: a területszerzés a legnagyobb GP-forrás, a bi
 | 13 | Játékkonfiguráció futásidőben | az `appConfig/gameplay` felülírja a **hangolható** konstansokat; a **szerkezeti** konstansok (H3 felbontás, cellaterület, hurokküszöbök, szintlépcső) élesben nem állíthatók *(2026-08-19)* | [06](06-architektura-es-admin.md#7-játékkonfiguráció) |
 | 14 | Időszakos szorzók (modifierek) | külön `modifiers` kollekció, **kötelezően véges** élettartammal; globális, területi vagy szegmens hatókörrel. **Az automatika kizárólag modifiert írhat, `appConfig`-ot soha** *(2026-08-19)* | [06](06-architektura-es-admin.md#modifierek--időszakos-szorzók) |
 | 15 | Admin felület formája | **lusta betöltésű `/admin` terület** a játékos appban, `src/admin/` mappafegyelemmel — nem külön alkalmazás *(2026-08-19)* | [06](06-architektura-es-admin.md#admin-felület) |
+| 16 | Küldetések helye | A **Profil › Küldetések** önálló fül; itt él a generátor és a mentett küldetések listája, utóbbi a Tracking indítása előtt is elérhető *(2026-08-23)* | [02](02-funkcionalis-spec.md#küldetések-fül--küldetés-ajánló) |
+| 17 | Küldetés bemenete | **Idő vagy km**; időnél saját átlagtempó, kézi felülírással. Opcionális célprioritás és égtáj *(2026-08-23)* | [02](02-funkcionalis-spec.md#küldetések-fül--küldetés-ajánló) |
+| 18 | Saját profil fülei | **Profil · Statisztika · Küldetések · Riválisok · Klánok · Badges**, swipe- és egérhúzásos vízszintes görgetéssel; a Statisztika és Klánok előkészített későbbi felület *(2026-08-23)* | [02](02-funkcionalis-spec.md#profil-navigáció-döntés-2026-08-23) |

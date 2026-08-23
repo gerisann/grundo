@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
+import { ProfileTabs } from '@/components/ProfileTabs';
+import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
@@ -10,7 +12,7 @@ import { rememberGhostRoute } from '@/lib/ghostRoute';
 import { MISSION_KIND_META, missionAreaStat } from '@/lib/missionMeta';
 import { isRouteSaved, saveRoute } from '@/lib/savedRoutes';
 import { formatArea, formatDistance, formatNumber } from '@/lib/format';
-import { api, ApiError, apiConfigured, type Mission, type MissionResult } from '@/lib/api';
+import { api, ApiError, apiConfigured, type Mission, type MissionPriority, type MissionResult } from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
 import type { ActivityType } from '@/types';
 import './missions.css';
@@ -22,9 +24,8 @@ import './missions.css';
  * itt az útvonalnak játékbeli TÉTJE van, és a kártya ezt mondja ki: mennyi
  * területet szerzel, kitől veszel el, melyik zónád védelme nő.
  *
- * A bemenet IDŐ, nem távolság — a felhasználónak nem kell fejben átváltania,
- * hogy nála 45 perc hány kilométer. A célhosszt a szerver számolja a saját
- * átlagtempójából.
+ * A bemenet IDŐ vagy TÁVOLSÁG. Időnél a szerver a saját átlagtempóból számol,
+ * amit az adott küldetéshez felül lehet írni.
  *
  * docs/02-funkcionalis-spec.md → Útvonalak fül — Küldetés-ajánló
  */
@@ -38,6 +39,7 @@ const TYPE_OPTIONS: { value: ActivityType; label: string }[] = [
 const LAST_TYPE_KEY = 'grundo.lastActivityType';
 
 type TimeUnit = 'minute' | 'hour';
+type TargetMode = 'time' | 'distance';
 
 const UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'minute', label: 'perc' },
@@ -117,6 +119,12 @@ export function MissionsScreen() {
   );
   const [customUnit, setCustomUnit] = useState<TimeUnit>('minute');
   const [type, setType] = useState<ActivityType>(() => readType());
+  const [targetMode, setTargetMode] = useState<TargetMode>('time');
+  const [distanceValue, setDistanceValue] = useState('5');
+  const [paceValue, setPaceValue] = useState('');
+  const [priority, setPriority] = useState<MissionPriority>('balanced');
+  const [preferredBearing, setPreferredBearing] = useState('');
+  const [savedOpen, setSavedOpen] = useState(false);
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [result, setResult] = useState<MissionResult | null>(restored.result);
   const [loading, setLoading] = useState(false);
@@ -171,12 +179,24 @@ export function MissionsScreen() {
       return;
     }
 
-    const wanted = resolveMinutes(customOpen, minutes, customValue, customUnit);
-    if (wanted === null) {
+    const wanted = targetMode === 'time'
+      ? resolveMinutes(customOpen, minutes, customValue, customUnit)
+      : null;
+    const distanceKm = targetMode === 'distance' ? Number(distanceValue) : null;
+    if (targetMode === 'time' && wanted === null) {
       const maxHours = Math.round(GAMEPLAY.MISSION_MAX_MINUTES / 60);
       setError(
         `Az időkeret ${GAMEPLAY.MISSION_MIN_MINUTES} perc és ${maxHours} óra között lehet.`,
       );
+      return;
+    }
+    if (targetMode === 'distance' && (!Number.isFinite(distanceKm) || distanceKm! < 0.5 || distanceKm! > 50)) {
+      setError('A célhossz 0,5 és 50 km között lehet.');
+      return;
+    }
+    const paceSecPerKm = resolvePace(type, paceValue);
+    if (paceValue.trim() && paceSecPerKm === null) {
+      setError(type === 'ride' ? 'Adj meg 3 és 60 km/h közötti sebességet.' : 'A tempó formátuma például 6:15.');
       return;
     }
 
@@ -189,7 +209,14 @@ export function MissionsScreen() {
         return;
       }
 
-      const generated = await api.generateMissions({ ...where, minutes: wanted, type });
+      const generated = await api.generateMissions({
+        ...where,
+        ...(targetMode === 'time' ? { minutes: wanted! } : { distanceKm: distanceKm! }),
+        ...(paceSecPerKm === null ? {} : { paceSecPerKm }),
+        priority,
+        ...(preferredBearing === '' ? {} : { preferredBearing: Number(preferredBearing) }),
+        type,
+      });
       setResult(generated);
       setFromToday(false);
       // Az eredmény átkerül a Home „mai küldetés" kártyájára, és ide is
@@ -208,12 +235,25 @@ export function MissionsScreen() {
 
   return (
     <>
-      <ScreenHeader title="Küldetések" backTo="/" />
+      <ScreenHeader title="Küldetések" backTo="/profil" />
 
       <div className="screen-body stack">
+        <ProfileTabs active="missions" />
         <section className="card mission__form">
-          <div className="mission__question">Mennyi időd van?</div>
+          <SegmentedControl
+            options={[{ value: 'time', label: 'Idő' }, { value: 'distance', label: 'Távolság' }]}
+            value={targetMode}
+            onChange={setTargetMode}
+            label="Tervezés alapja"
+            block
+          />
 
+          <div className="mission__question">
+            {targetMode === 'time' ? 'Mennyi időd van?' : 'Hány kilométert mennél?'}
+          </div>
+
+          {targetMode === 'time' ? (
+          <>
           {/*
             Gombsor, nem csúszka. A docs csúszkát ír, de öt fix érték mellett a
             csúszka csak pontatlanabb: ugyanaz az öt állás, nehezebben
@@ -276,6 +316,16 @@ export function MissionsScreen() {
               />
             </div>
           ) : null}
+          </>
+          ) : (
+            <label className="mission__field">
+              <span>Célhossz</span>
+              <span className="mission__input-with-unit">
+                <input type="number" min="0.5" max="50" step="0.5" value={distanceValue} onChange={(event) => setDistanceValue(event.target.value)} />
+                <strong>km</strong>
+              </span>
+            </label>
+          )}
 
           <SegmentedControl
             options={TYPE_OPTIONS}
@@ -285,8 +335,45 @@ export function MissionsScreen() {
             block
           />
 
+          <label className="mission__field">
+            <span>{type === 'ride' ? 'Tervezett átlagsebesség (opcionális)' : 'Tervezett átlagtempó (opcionális)'}</span>
+            <input
+              value={paceValue}
+              inputMode={type === 'ride' ? 'decimal' : 'numeric'}
+              placeholder={type === 'ride' ? 'pl. 22 km/h' : 'pl. 6:15 perc/km'}
+              onChange={(event) => setPaceValue(event.target.value)}
+            />
+            <small>Üresen hagyva a korábbi aktivitásaid átlaga számít.</small>
+          </label>
+
+          <div className="mission__select-grid">
+            <label className="mission__field">
+              <span>Elsődleges cél</span>
+              <select value={priority} onChange={(event) => setPriority(event.target.value as MissionPriority)}>
+                <option value="balanced">Legjobb ajánlat</option>
+                <option value="conquest">Új terület</option>
+                <option value="raid">Rablás</option>
+                <option value="fortify">Grund erősítése</option>
+                <option value="explore">Felfedezés</option>
+              </select>
+            </label>
+            <label className="mission__field">
+              <span>Irány</span>
+              <select value={preferredBearing} onChange={(event) => setPreferredBearing(event.target.value)}>
+                <option value="">Mindegy</option>
+                <option value="0">Észak</option><option value="45">Északkelet</option>
+                <option value="90">Kelet</option><option value="135">Délkelet</option>
+                <option value="180">Dél</option><option value="225">Délnyugat</option>
+                <option value="270">Nyugat</option><option value="315">Északnyugat</option>
+              </select>
+            </label>
+          </div>
+
           <Button block onClick={() => void generate()} loading={loading}>
             {result ? 'Újragenerálás' : 'Küldetéseket kérek'}
+          </Button>
+          <Button block variant="ghost" onClick={() => setSavedOpen(true)}>
+            Mentett küldetések
           </Button>
 
           {error ? (
@@ -318,8 +405,30 @@ export function MissionsScreen() {
           />
         ) : null}
       </div>
+      {savedOpen ? (
+        <SavedRoutesSheet
+          onClose={() => setSavedOpen(false)}
+          onSelect={(mission) => {
+            rememberGhostRoute(mission);
+            navigate('/rogzites');
+          }}
+        />
+      ) : null}
     </>
   );
+}
+
+function resolvePace(type: ActivityType, raw: string): number | null {
+  const value = raw.trim().replace(',', '.');
+  if (!value) return null;
+  if (type === 'ride') {
+    const kmh = Number(value.replace(/\s*km\/h$/i, ''));
+    return Number.isFinite(kmh) && kmh >= 3 && kmh <= 60 ? 3600 / kmh : null;
+  }
+  const match = /^(\d{1,2})(?::([0-5]\d))?$/.exec(value.replace(/\s*(perc\/km)?$/i, ''));
+  if (!match) return null;
+  const seconds = Number(match[1]) * 60 + Number(match[2] ?? 0);
+  return seconds >= 120 && seconds <= 3600 ? seconds : null;
 }
 
 function Results({

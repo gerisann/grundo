@@ -11,6 +11,45 @@
   color: var(--text-primary);
 }
 
+.mission__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+}
+
+.mission__field input,
+.mission__field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.mission__field small { color: var(--text-tertiary); }
+
+.mission__input-with-unit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.mission__select-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 420px) {
+  .mission__select-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Időkeret-választó ───────────────────────────────────────────── */
 
 .mission__minutes {

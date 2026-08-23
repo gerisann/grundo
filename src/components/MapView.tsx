@@ -562,7 +562,7 @@ export interface MapHexCell {
   cell: CellId;
   /** A foglalt mező védettsége. Ha nincs megadva, 1-esnek tekintjük. */
   defense?: number;
-  /** Élő, még nem hiteles foglalási előnézet: kitöltött, de szintszám nélkül. */
+  /** Élő, még nem hiteles foglalási előnézet. */
   preview?: boolean;
   /** A mező tulajdonosa — a koppintásra megjelenő kártyához. */
   owner?: string;
@@ -655,7 +655,7 @@ function addLayers(instance: mapboxgl.Map): void {
       source: GHOST_SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': cssColor('var(--info)'),
+        'line-color': cssColor('var(--territory-stolen)'),
         'line-width': 4,
         'line-dasharray': [0.6, 1.6],
         'line-opacity': 0.85,
@@ -688,16 +688,13 @@ function syncData(
       for (const entry of layer.cells) {
         const cell = typeof entry === 'string' ? entry : entry.cell;
         const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
-        const preview = typeof entry !== 'string' && entry.preview === true;
         const territory = layer.role === 'rival' || layer.role === 'interior' || layer.role === 'stolen';
         const color = layer.role === 'rival' && defense === 5
           ? cssColor(RIVAL_MAX_COLOR)
           : cssColor(ROLE_COLOR[layer.role]);
-        const opacity = preview
-          ? ROLE_FILL_OPACITY.interior
-          : territory
-            ? cssNumber(`--defense-alpha-${defense}`, defense === 1 ? 0 : 0.2)
-            : ROLE_FILL_OPACITY[layer.role];
+        const opacity = territory
+          ? cssNumber(`--defense-alpha-${defense}`, defense === 1 ? 0 : 0.2)
+          : ROLE_FILL_OPACITY[layer.role];
         features.push({
           type: 'Feature' as const,
           properties: {
@@ -714,7 +711,7 @@ function syncData(
              * birtok, csak a leggyengébb szinten. Így a térkép egységes: ami
              * a tiéd vagy a riválisé, azon mindig ott a szintje.
              */
-            defenseLabel: territory && !preview ? String(defense) : '',
+            defenseLabel: territory ? String(defense) : '',
             labelColor: defense >= 4
               ? cssColor('var(--territory-label-strong)')
               : cssColor('var(--text-primary)'),

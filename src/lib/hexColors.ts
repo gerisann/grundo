@@ -19,7 +19,7 @@ export const ROLE_COLOR: Record<HexRole, string> = {
   /** A tiéd, védve (2-es szint vagy fölötte). */
   interior: 'var(--territory-own)',
   /** A tiéd, 1-es szinten — ma egyetlen bezárással elvehető. */
-  stolen: 'var(--territory-own)',
+  stolen: 'var(--territory-stolen)',
   /** Másé. */
   rival: 'var(--territory-rival)',
   /** Szabad. */

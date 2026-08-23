@@ -25,3 +25,20 @@
   outline-offset: 1px;
   border-color: var(--accent);
 }
+
+.conn--embedded {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  min-height: 260px;
+  animation: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.conn--embedded .conn__list {
+  overflow: visible;
+  padding-bottom: var(--sp-3);
+}

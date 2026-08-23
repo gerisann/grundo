@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countUTurns } from './routeShape';
+import { countUTurns, preferCleanRoutes } from './routeShape';
 import { destinationPoint } from './missions';
 import type { LatLng } from './geo';
 
@@ -71,5 +71,17 @@ describe('countUTurns', () => {
     expect(countUTurns([])).toBe(0);
     expect(countUTurns([CENTRE])).toBe(0);
     expect(countUTurns([CENTRE, CENTRE])).toBe(0);
+  });
+});
+
+describe('preferCleanRoutes', () => {
+  it('kiszűri a helyi legjobbnál több mint egy fordulással rosszabb lábakat', () => {
+    const routes = [0, 1, 1, 3, 6].map((uTurns, id) => ({ id, uTurns }));
+    expect(preferCleanRoutes(routes).map((route) => route.uTurns)).toEqual([0, 1, 1]);
+  });
+
+  it('legalább három jelöltet megtart, ha minden útvonal kényszerűen rosszabb', () => {
+    const routes = [1, 4, 5, 8].map((uTurns, id) => ({ id, uTurns }));
+    expect(preferCleanRoutes(routes).map((route) => route.uTurns)).toEqual([1, 4, 5]);
   });
 });

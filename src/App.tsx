@@ -16,6 +16,7 @@ import { PublicProfileScreen } from './screens/PublicProfileScreen';
 import { ActivityScreen } from './screens/ActivityScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { MissionsScreen } from './screens/MissionsScreen';
+import { ProfileRivalsScreen, ProfileStatsScreen, ProfileClansScreen, ProfileBadgesScreen } from './screens/ProfileSectionScreens';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
 import { PrivacyScreen } from './screens/settings/PrivacyScreen';
@@ -153,6 +154,10 @@ function Router() {
           <Route path="/rogzites" element={<TrackingScreen />} />
           <Route path="/kozosseg" element={<CommunityScreen />} />
           <Route path="/profil" element={<ProfileScreen />} />
+          <Route path="/profil/rivalisok" element={<ProfileRivalsScreen />} />
+          <Route path="/profil/statisztikak" element={<ProfileStatsScreen />} />
+          <Route path="/profil/klanok" element={<ProfileClansScreen />} />
+          <Route path="/profil/badges" element={<ProfileBadgesScreen />} />
           {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}
           <Route path="/felhasznalo/:username" element={<PublicProfileScreen />} />
           <Route path="/kereses" element={<SearchScreen />} />

@@ -1,0 +1,31 @@
+.profile-tabs {
+  display: flex;
+  gap: var(--sp-1);
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  cursor: grab;
+  user-select: none;
+}
+.profile-tabs:active { cursor: grabbing; }
+.profile-tabs::-webkit-scrollbar { display: none; }
+
+.profile-tabs__item {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: var(--fs-small);
+}
+
+.profile-tabs__item--active {
+  color: var(--accent);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-card);
+}

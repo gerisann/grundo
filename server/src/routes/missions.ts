@@ -15,7 +15,7 @@ import {
 import { decodePolyline } from '../../../src/game/polyline';
 import { layerOf, traceToCellPath } from '../../../src/game/cells';
 import { detectLoopsDetailed, loopCells } from '../../../src/game/loops';
-import { countUTurns } from '../../../src/game/routeShape';
+import { countUTurns, preferCleanRoutes } from '../../../src/game/routeShape';
 import {
   averagePaceSecPerKm,
   directionsProfile,
@@ -65,7 +65,7 @@ const MAX_TARGET_KM = 50;
 /**
  * POST /api/missions/generate
  *
- * A küldetés-ajánló. NEM útvonaltervező: a bemenet IDŐ, nem távolság, a
+ * A küldetés-ajánló. NEM egyszerű útvonaltervező: a bemenet IDŐ vagy TÁVOLSÁG, a
  * kimenet pedig játékbeli tét.
  *
  *   { lat, lng, minutes: 45, type: 'run' }
@@ -142,16 +142,19 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
 
     const paceSamples = await recentPaceSamples(uid, input.type, cfg.MISSION_PACE_SAMPLE_ACTIVITIES);
     const measuredPace = averagePaceSecPerKm(paceSamples);
-    const pace = measuredPace ?? cfg.MISSION_DEFAULT_PACE_S_PER_KM[input.type];
+    const pace = input.paceSecPerKm ?? measuredPace ?? cfg.MISSION_DEFAULT_PACE_S_PER_KM[input.type];
     // A plafon teljesítményi védelem — lásd `MAX_TARGET_KM`. A felület a
     // ténylegesen használt célhosszt írja ki, tehát a vágás nem néma.
-    const targetKm = Math.min(targetDistanceKm(input.minutes, pace, cfg), MAX_TARGET_KM);
+    const targetKm = Math.min(
+      input.distanceKm ?? targetDistanceKm(input.minutes!, pace, cfg),
+      MAX_TARGET_KM,
+    );
 
     /* ── 2. Kör-jelöltek nyolc irányban ─────────────────────────────── */
 
     const origin = { lat: input.lat, lng: input.lng };
     const profile = directionsProfile(input.type);
-    const bearings = missionBearings(cfg);
+    const bearings = orderBearings(missionBearings(cfg), input.preferredBearing);
 
     const planAt = async (bearing: number, wantedKm: number) => {
       const waypoints = loopWaypoints(origin, bearing, wantedKm, cfg);
@@ -257,7 +260,10 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           .sort((a, b) => a.error - b.error)
           .slice(0, FALLBACK_LIMIT);
 
-    const shaped: ShapedCandidate[] = usable.map(({ error: _error, ...candidate }) => candidate);
+    const directional = preferDirection(usable, input.preferredBearing);
+    const shaped: ShapedCandidate[] = preferCleanRoutes(
+      directional.map(({ error: _error, ...candidate }) => candidate),
+    );
 
     if (shaped.length === 0) {
       res.json({
@@ -304,7 +310,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
 
     /* ── 6. Válogatás és a célpontok feloldása ──────────────────────── */
 
-    const missions = pickMissions(candidates);
+    const missions = prioritizeMissions(pickMissions(candidates), input.priority);
     const named = await resolveVictimNames(uid, missions, today);
 
     if (!isPro) {
@@ -346,7 +352,11 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
 interface MissionInput {
   lat: number;
   lng: number;
-  minutes: number;
+  minutes?: number;
+  distanceKm?: number;
+  paceSecPerKm?: number;
+  priority: 'balanced' | 'conquest' | 'raid' | 'fortify' | 'explore';
+  preferredBearing?: number;
   type: ActivityType;
 }
 
@@ -370,12 +380,28 @@ function parseInput(body: unknown): MissionInput {
     határai: öt percnél rövidebb kör nem zár be semmit, nyolc óránál
     hosszabbra pedig nem tervezünk útvonalat (a Directions is elhasalna).
   */
+  const hasDistance = raw.distanceKm !== undefined;
   const minutes = Math.round(Number(raw.minutes));
-  if (!Number.isFinite(minutes) || minutes < MIN_MINUTES || minutes > MAX_MINUTES) {
-    throw badRequest(
-      'invalid_minutes',
-      `Az időkeret ${MIN_MINUTES} és ${MAX_MINUTES} perc között lehet.`,
-    );
+  const distanceKm = Number(raw.distanceKm);
+  if (hasDistance) {
+    if (!Number.isFinite(distanceKm) || distanceKm < 0.5 || distanceKm > MAX_TARGET_KM) {
+      throw badRequest('invalid_distance', `A célhossz 0,5 és ${MAX_TARGET_KM} km között lehet.`);
+    }
+  } else if (!Number.isFinite(minutes) || minutes < MIN_MINUTES || minutes > MAX_MINUTES) {
+    throw badRequest('invalid_minutes', `Az időkeret ${MIN_MINUTES} és ${MAX_MINUTES} perc között lehet.`);
+  }
+
+  const paceSecPerKm = raw.paceSecPerKm === undefined ? undefined : Number(raw.paceSecPerKm);
+  if (paceSecPerKm !== undefined && (!Number.isFinite(paceSecPerKm) || paceSecPerKm < 60 || paceSecPerKm > 3600)) {
+    throw badRequest('invalid_pace', 'A megadott átlagtempó nem reális.');
+  }
+  const priorities = new Set(['balanced', 'conquest', 'raid', 'fortify', 'explore']);
+  const priority = typeof raw.priority === 'string' && priorities.has(raw.priority)
+    ? raw.priority as MissionInput['priority']
+    : 'balanced';
+  const preferredBearing = raw.preferredBearing === undefined ? undefined : Number(raw.preferredBearing);
+  if (preferredBearing !== undefined && (!Number.isFinite(preferredBearing) || preferredBearing < 0 || preferredBearing >= 360)) {
+    throw badRequest('invalid_bearing', 'A választott irány hibás.');
   }
 
   const type = String(raw.type ?? 'run');
@@ -383,7 +409,37 @@ function parseInput(body: unknown): MissionInput {
     throw badRequest('invalid_type', 'Ismeretlen mozgásforma.');
   }
 
-  return { lat, lng, minutes, type };
+  return {
+    lat,
+    lng,
+    ...(hasDistance ? { distanceKm } : { minutes }),
+    ...(paceSecPerKm === undefined ? {} : { paceSecPerKm }),
+    priority,
+    ...(preferredBearing === undefined ? {} : { preferredBearing }),
+    type,
+  };
+}
+
+function orderBearings(bearings: number[], preferred?: number): number[] {
+  if (preferred === undefined) return bearings;
+  const distance = (bearing: number) => Math.abs(((bearing - preferred + 540) % 360) - 180);
+  return [...bearings].sort((a, b) => distance(a) - distance(b));
+}
+
+function preferDirection<T extends { bearing: number }>(routes: T[], preferred?: number): T[] {
+  if (preferred === undefined) return routes;
+  const distance = (bearing: number) => Math.abs(((bearing - preferred + 540) % 360) - 180);
+  const preferredHalf = routes.filter((route) => distance(route.bearing) <= 90);
+  // Ritka úthálózatnál ne adjunk üres választ csak az irány miatt.
+  return preferredHalf.length >= 3 ? preferredHalf : routes;
+}
+
+function prioritizeMissions<T extends { kind: string }>(
+  missions: T[],
+  priority: MissionInput['priority'],
+): T[] {
+  if (priority === 'balanced') return missions;
+  return [...missions].sort((a, b) => Number(b.kind === priority) - Number(a.kind === priority));
 }
 
 /**

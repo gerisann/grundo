@@ -83,6 +83,7 @@ export function TrackingScreen() {
     [ghostRoute],
   );
   const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
+  const [showHexes, setShowHexes] = useState(true);
 
   /**
    * Egy mentett útvonal kiválasztása — MÁR a rögzítés képernyőn állunk, tehát
@@ -129,40 +130,61 @@ export function TrackingScreen() {
    */
   const cellBucket = Math.floor(displayPoints.length / 5);
 
+  const [nearby, setNearby] = useState<TilesResult | null>(null);
+  const [nearbyView, setNearbyView] = useState<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+    zoom: number;
+  } | null>(null);
+
   /**
    * Élő előnézet: mi lenne, ha MOST fejezném be?
    *
-   * A motort futtatjuk le a jelenlegi nyomvonalra, üres birtokviszonnyal. Ez
-   * nem a hiteles eredmény — azt a szerver számolja, a valódi tulajdonosokkal —,
-   * de megmutatja, mit zártál be, és nagyjából mennyit ér.
+   * A motort a térkép legutóbbi birtok-pillanatképével futtatjuk. A végleges
+   * eredmény továbbra is szerveroldali, de így menet közben már külön látszik
+   * az új, az elrabolt és a megerősített mező, a várható védelmi szinttel.
    *
    * Ötösével frissítünk: a teljes futás 11 km-es nyomvonalon ~230 ms, ami
    * mintánként megismételve akadozó felületet adna.
    */
   const preview = useMemo(() => {
     if (displayPoints.length < 2) {
-      return { path: [] as string[], claimable: [] as string[], gp: 0 };
+      return { path: [] as string[], claimable: [] as string[], own: [], stolen: [], gp: 0 };
     }
     const { path } = traceToCellPath(displayPoints);
     try {
+      const ownership = new Map(
+        (nearby?.cells ?? []).map((cell) => [cell.cell, { owner: cell.owner, defense: cell.defense }]),
+      );
       const result = processActivity({
         points: displayPoints,
         type: displayType,
         distanceKm: displayDistanceM / 1000,
-        actorId: 'preview',
-        ownership: new Map(),
+        actorId: profileUid || 'preview',
+        ownership,
         streakDays: 0,
         gpEarnedToday: 0,
       });
-      return { path, claimable: [...result.claimedCells], gp: result.gp.total };
+      const own: { cell: string; defense: number; preview: true }[] = [];
+      const stolen: { cell: string; defense: number; preview: true }[] = [];
+      const claimable: string[] = [];
+      for (const [cell, fate] of result.claim?.fates ?? []) {
+        if (fate === 'breakthrough') continue;
+        const item = { cell, defense: result.claim?.updates.get(cell)?.defense ?? 1, preview: true as const };
+        (fate === 'stolen' ? stolen : own).push(item);
+        claimable.push(cell);
+      }
+      return { path, claimable, own, stolen, gp: result.gp.total };
     } catch {
       // A motor túl nagy hurokra kivételt dob (GPS-ugrás). A nyom attól még
       // rajzolható — az előnézet hiánya nem indok arra, hogy a térkép is
       // kiessen.
-      return { path, claimable: [] as string[], gp: 0 };
+      return { path, claimable: [] as string[], own: [], stolen: [], gp: 0 };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cellBucket, distanceBucket, state.status, remoteState?.activityId, displayType]);
+  }, [cellBucket, distanceBucket, state.status, remoteState?.activityId, displayType, nearby, profileUid]);
 
   const cells = preview.path;
 
@@ -172,14 +194,6 @@ export function TrackingScreen() {
    * Futás közben az az érdekes kérdés, hogy „hova érdemes mennem" — arra pedig
    * csak akkor lehet válaszolni, ha látod, mi van már elfoglalva körülötted.
    */
-  const [nearby, setNearby] = useState<TilesResult | null>(null);
-  const [nearbyView, setNearbyView] = useState<{
-    south: number;
-    west: number;
-    north: number;
-    east: number;
-    zoom: number;
-  } | null>(null);
   const nearbyCache = useRef(new Map<string, TilesResult>());
   const nearbyLayer = useRef(layerOf(displayType));
 
@@ -355,7 +369,7 @@ export function TrackingScreen() {
         {mapboxConfigured ? (
           <Suspense fallback={null}>
             <MapView
-              layers={[
+              layers={showHexes ? [
                 // Sorrend = rajzolási sorrend: alul az idegen, fölötte a
                 // bezárt terület, legfelül a friss nyom.
                 { role: 'free', cells: nearbyFree },
@@ -363,10 +377,11 @@ export function TrackingScreen() {
                 { role: 'interior', cells: nearbyMine },
                 {
                   role: 'interior',
-                  cells: preview.claimable.map((cell) => ({ cell, preview: true })),
+                  cells: preview.own,
                 },
+                { role: 'stolen', cells: preview.stolen },
                 { role: 'trail', cells },
-              ]}
+              ] : []}
               track={displayPoints}
               ghostTrack={ghostTrack}
               position={mapPosition}
@@ -385,6 +400,17 @@ export function TrackingScreen() {
           </p>
         )}
       </div>
+
+      <button
+        type="button"
+        className={`track__hex-toggle${showHexes ? ' track__hex-toggle--on' : ''}`}
+        aria-pressed={showHexes}
+        aria-label={showHexes ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
+        title={showHexes ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
+        onClick={() => setShowHexes((visible) => !visible)}
+      >
+        <HexagonIcon />
+      </button>
 
       {paused ? (
         <div className="track__paused">
@@ -565,6 +591,15 @@ export function TrackingScreen() {
         />
       ) : null}
     </div>
+  );
+}
+
+function HexagonIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
+      <path d="m12 2.5 8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5L12 2.5Z" />
+      <path d="m12 2.5v19M3.8 7.25l16.4 9.5M20.2 7.25l-16.4 9.5" opacity=".55" />
+    </svg>
   );
 }
 
@@ -1053,4 +1088,3 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
 
   return null;
 }
-

@@ -379,6 +379,7 @@ export type LeaderboardWindow = 'day' | 'week' | 'month' | 'alltime';
  * ugyanannak a fokozatai. docs/02 → Küldetés-ajánló.
  */
 export type MissionKind = 'conquest' | 'raid' | 'fortify' | 'explore';
+export type MissionPriority = 'balanced' | MissionKind;
 
 export interface Mission {
   kind: MissionKind;
@@ -1037,13 +1038,17 @@ export const api = {
     ),
 
   /**
-   * Küldetés-ajánló. A bemenet IDŐ, nem távolság — a célhosszt a szerver
-   * számolja a felhasználó saját átlagtempójából.
+   * Küldetés-ajánló. Időből saját/felülírt tempóval számol célhosszt, vagy
+   * közvetlen kilométert fogad.
    */
   generateMissions: (input: {
     lat: number;
     lng: number;
-    minutes: number;
+    minutes?: number;
+    distanceKm?: number;
+    paceSecPerKm?: number;
+    priority?: MissionPriority;
+    preferredBearing?: number;
     type: ActivityType;
   }) =>
     request<MissionResult>('/api/missions/generate', {

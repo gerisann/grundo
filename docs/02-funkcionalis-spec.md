@@ -128,7 +128,7 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
 2. **Köszöntő sor**: „Szia, {felhasználónév}" egy sorban.
 3. **Összegző sáv**: terület · összes GP · aktuális sorozat. A feed vezérlőitől
    külön blokk, világoslila–narancs színátmenettel.
-4. **Napi küldetés-kártya** — a [küldetés-ajánló](#útvonalak-fül--küldetés-ajánló) legjobb aktuális ajánlata, egy koppintással indítható.
+4. **Napi küldetés-kártya** — a [küldetés-ajánló](#küldetések-fül--küldetés-ajánló) legjobb aktuális ajánlata, egy koppintással indítható.
 5. **Feed-váltó**: `MINDENKI` / `KÖVETED`. A Mindenki nézeten belül
    `GLOBÁLIS` / `HELYI` földrajzi szűrő és `MA` / `HÉT` / `HÓNAP` /
    `MINDIG` / `EGYEDI` dátumszűrő van. A dátumválasztó az app saját lekerekített
@@ -162,7 +162,7 @@ A GRUNDO szíve (képek #49, #21).
 - Jobb felül: **ranglista** gomb, alatta **helyzet-központosítás** és **info**.
 - **Hexagon-rács** ([lásd 03](03-jatekszabalyok.md)): saját cellák = lila, másé = piros. A szabad cellák hálója csak nagyon halvány tájékozódási réteg, nem fedheti el az utcatérképet. A **védelmi szint** kitöltése: 1× csak körvonal, 2× 15 %, 3× 50 %, 4× 90 %, 5× tömör sötét árnyalat. A 2–5 közötti szám a cella közepén csak olyan közeli zoomszinten jelenik meg, ahol olvasható és nem ér össze a szomszédaival.
 - Zoom-függő megjelenítés: utcaszinten egyedi hexagonok, kerületszinten aggregált foltok, városszinten zóna-kontúrok és hőtérkép.
-- Zónára koppintva **terület-lap**: tulajdonos · méret (m²) · védelem · leggyengébb pontja · mikor szerezte · hányszor cserélt gazdát · **„Foglald vissza"** gomb → közvetlenül a [küldetés-ajánlóba](#útvonalak-fül--küldetés-ajánló), ami útvonalat javasol erre a zónára.
+- Zónára koppintva **terület-lap**: tulajdonos · méret (km²) · védelem · leggyengébb pontja · mikor szerezte · hányszor cserélt gazdát · **„Foglald vissza"** gomb → közvetlenül a [küldetés-ajánlóba](#küldetések-fül--küldetés-ajánló), ami útvonalat javasol erre a zónára.
 - Üres állapot: „Még nincs területed — zárj be egy kört" + Indítás gomb.
 
 ### Ranglista (kép #21)
@@ -189,6 +189,8 @@ A GRUNDO szíve (képek #49, #21).
 - Élő: távolság, idő, aktuális és átlag tempó/sebesség, szintemelkedés, lépésfrekvencia/pedálfordulat, pulzus (ha van szenzor), teljesítmény (becsült vagy mért).
 - **Élő területjelzés**: a nyom hexagonjai világítanak a térképen; amint bezárul egy hurok, a belső cellák azonnal kitöltődnek és megjelenik a szerzett m² + GP. Bezárás előtt: „Zárd be: még 120 m".
 - A rögzítés térképe ugyanazt a saját/rivális/szabad mezőképet és ugyanazokat a védettségi szinteket mutatja, mint a Grund oldal. A nézet frissítése alatt a legutóbbi pillanatkép marad látható; a mezők nem villoghatnak ki.
+- A térkép jobb felső **hexagon gombja** ki- és bekapcsolja a teljes mezőréteget. A kiválasztott küldetés vezetővonala szaggatott `#FA5F73`.
+- Az élő előnézetben a szabadon megszerzett és megerősített mező lila, az idegentől elrabolt mező `#FA5F73`. Mindkettő az 1–5 védelmi szint szerinti telítettséget és közeli zoomnál a várható szint számát mutatja.
 - Gombok: szünet · **stop** · kamera.
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
@@ -307,11 +309,15 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - Összes távolság · átlagtempó.
 - Idegen profilnál: Követés / Kérés · Üzenet · `⋯` (némítás, tiltás, jelentés). Privát fióknál csak a fejléc látszik.
 
+### Profil-navigáció *(döntés: 2026-08-23)*
+
+A saját profil felső fülei ebben a rögzített sorrendben: **Profil · Statisztika · Küldetések · Riválisok · Klánok · Badges**. A Küldetések, Riválisok és Badges már működő tartalom; a Statisztika és Klánok fül a navigáció stabil helyét most megkapja, a részletes funkció későbbi fázisban készül el. Kis kijelzőn a fülsor vízszintesen görgethető: érintéssel swipe, asztali gépen egérrel fogd‑és‑húzd gesztus működik; a feliratok nem törnek több sorba.
+
 ### Riválisok *(döntés: 2026-08-22)*
 
 Ha valaki elvesz területet valakitől, a kettejük kapcsolata **rivális** lesz — ez nem kérés/elfogadás kérdése, mint a követés, hanem MEGTÖRTÉNIK, a lopás pillanatában. A rangsor alapja a **kicserélt mezők száma** (szerzett + vesztett): „ha valaki 1×10 cellát lopott, az ugyanannyit ér, mint 10×1". Az áttörés (megvédett támadás) nem hoz létre rivalitást, mert egy mező sem cserélt gazdát.
 
-- **Profil fülön** egy szekció mutatja a TOP 3 riválist (eltűnik, ha nincs egy sem), gomb mögött a teljes, kliensoldalon kereshető lista (max 200 elem betöltve).
+- **Profil fülön** egy szekció mutatja a TOP 3 riválist (eltűnik, ha nincs egy sem); az **önálló Riválisok fülön** van a teljes, kliensoldalon kereshető lista (max 200 elem betöltve).
 - A név mellett **mindenhol** (feed, hozzászólás, aktivitás-részletek, keresés, követő-lista, terület-tulajdonos kártya, ranglista, nyilvános profil) egy **„RIVÁLIS" címke** jelenik meg (`#FC5F71` háttér, fekete szöveg), témafüggetlen.
 - Ha egy rivális támad, az értesítés külön hangot kap: „Egy riválisod megtámadta a grundod!", km²-ben és mezőben is mutatva a veszteséget. Az első összecsapás még semleges hangot kap.
 - Más felhasználó rivális-listája **nem publikus** — megmutatná, kitől szokott veszíteni.
@@ -328,15 +334,17 @@ Adatmodell: `users/{uid}/rivals/{otherUid}`, két tükör-dokumentum lopásonké
 - **Minden aktivitás / Regeneráció**: „Jól regenerálódtál — mehet a kemény edzés", aktív napok, heti táv, egymást követő napok.
 - **GRUNDO-blokk** (új): összes elfoglalt terület, összes elvett/elvesztett zóna, leghosszabb birtoklás, összes GP forrásonként.
 
-### Útvonalak fül — **Küldetés-ajánló** (képek #33, #18) `[Pro: korlátlan · Ingyenes: heti 5]`
+### Küldetések fül — **Küldetés-ajánló** (képek #33, #18) `[Pro: korlátlan · Ingyenes: heti 5]`
 
 *(döntés: 2026-08-15)* — Ez nem útvonaltervező, hanem **terület-ajánló motor**. A referencia-app „fuss 8 km-t" logikája bármelyik futóappban megvan; a GRUNDO-ban az útvonalnak **játékbeli tétje** van, és ezt kell kimondani.
 
-**A bemenet nem távolság, hanem idő:**
+**A bemenet idő vagy távolság:**
 
-> „Mennyi időd van?" — csúszka: 15 / 30 / 45 / 60 / 90 perc, + típusválasztó (futás / séta / bringa)
+> „Mennyi időd van?" — 15 / 30 / 45 / 60 perc vagy egyedi perc/óra; **vagy** közvetlen célhossz km-ben. Mindkettőhöz típusválasztó (futás / séta / bringa) tartozik.
 
-A távot a rendszer a felhasználó **saját átlagtempójából** számolja (új felhasználónál típus szerinti alapérték). Így nem kell fejben számolnia, hogy 45 perc az nála hány kilométer.
+Időalapú tervezésnél a távot a rendszer a felhasználó **saját átlagtempójából** számolja (új felhasználónál típus szerinti alapérték). A felhasználó ezt az adott küldetéshez felülírhatja perc/km, bringánál km/h értékkel. Távolságalapú tervezésnél a km a célhossz, az idő csak becslés.
+
+Opcionális finomhangolás: elsődleges cél (`legjobb ajánlat` · `új terület` · `rablás` · `grund erősítése` · `felfedezés`) és égtáj. A cél a találatok sorrendjét, az égtáj a körjelöltek vizsgálati sorrendjét adja; egyik sem ígér eredményt, ha a valós úthálózat vagy birtokviszony nem ad megfelelő kört.
 
 **A kimenet 3–4 küldetés-kártya**, mind más karakterrel:
 
@@ -370,7 +378,7 @@ Szűrők megmaradnak: kevés útkereszteződés · zöldterület · lapos terep.
 
 **Home-integráció:** a legjobb ajánlat **napi küldetés-kártyaként** megjelenik a Home tetején is („A mai küldetésed"), egy koppintással indítható. Ez a legerősebb visszahívó elem az egész appban — nem általános biztatás, hanem konkrét, helyi, mérhető tét.
 
-**Mentett útvonalak** listája megmarad, indítás közvetlenül trackingből (kép #27 „Mentett útvonalak" gomb).
+**Mentett küldetések** listája a Profil › Küldetések fülön él, és indítás előtt közvetlenül a Trackingből is megnyitható (kép #27 „Mentett útvonalak" gomb). A mentett számok generáláskori pillanatképek; indításkor a szerver a friss birtokviszonyból számol.
 
 ### Edzés fül (képek #16, #40) `[Pro]`
 - Regeneráció-kártya.

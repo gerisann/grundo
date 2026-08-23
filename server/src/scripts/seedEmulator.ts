@@ -145,6 +145,39 @@ async function seedNotifications() {
   return 25;
 }
 
+/** Valószerű TOP 3 + teljes lista a Rivális profil-szekció vizuális próbájához. */
+async function seedRivals() {
+  const scores = [
+    { uid: 'demo-kata', gained: 128, lost: 74, gainedEvents: 4, lostEvents: 3 },
+    { uid: 'demo-peti', gained: 38, lost: 96, gainedEvents: 2, lostEvents: 5 },
+    { uid: 'demo-zsofi', gained: 61, lost: 29, gainedEvents: 3, lostEvents: 1 },
+    { uid: 'demo-mark', gained: 12, lost: 17, gainedEvents: 1, lostEvents: 2 },
+  ];
+  const users = db.collection(COLLECTIONS.users);
+  for (const score of scores) {
+    const batch = db.batch();
+    const exchanged = score.gained + score.lost;
+    batch.set(users.doc(ME.uid).collection('rivals').doc(score.uid), {
+      gainedCells: score.gained,
+      lostCells: score.lost,
+      exchangedCells: exchanged,
+      gainedEvents: score.gainedEvents,
+      lostEvents: score.lostEvents,
+      lastAt: new Date(),
+    });
+    batch.set(users.doc(score.uid).collection('rivals').doc(ME.uid), {
+      gainedCells: score.lost,
+      lostCells: score.gained,
+      exchangedCells: exchanged,
+      gainedEvents: score.lostEvents,
+      lostEvents: score.gainedEvents,
+      lastAt: new Date(),
+    });
+    await batch.commit();
+  }
+  return scores.length;
+}
+
 /* ── Futás ────────────────────────────────────────────────────────── */
 
 console.log(`Projekt: ${process.env.GOOGLE_CLOUD_PROJECT}`);
@@ -194,11 +227,13 @@ await db
   .set({ lat: 47.4735, lng: 18.9975, updatedAt: new Date() });
 
 const notifications = await seedNotifications();
+const rivals = await seedRivals();
 
 console.log('\nKész.');
 console.log(`  felhasználó:   ${ME.email} / ${ME.password} (uid: ${ME.uid})`);
 console.log(`  további fiók:  ${PEOPLE.length}`);
 console.log('  követés:       3 követő, 2 követett');
 console.log(`  értesítés:     ${notifications} (ebből 6 olvasatlan)`);
+console.log(`  rivális:       ${rivals} (TOP 3 + kereshető lista)`);
 console.log('\nA böngészőben: await __grundoDevSignIn()');
 process.exit(0);

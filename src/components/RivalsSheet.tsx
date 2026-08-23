@@ -21,7 +21,7 @@ import './rivalsSheet.css';
  * lista VÉGÉRŐL hiányoznak emberek, vagyis a legkevesebbet cserélt
  * ellenfelek. A keresés tehát pontosan azokat találja meg, akik számítanak.
  */
-export function RivalsSheet({ onClose }: { onClose: () => void }) {
+export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<Rival[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -30,7 +30,7 @@ export function RivalsSheet({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onClose?.();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -69,13 +69,13 @@ export function RivalsSheet({ onClose }: { onClose: () => void }) {
   }, [items, query]);
 
   return (
-    <div className="conn" role="dialog" aria-modal="true" aria-label="Riválisok">
-      <header className="conn__head">
+    <div className={`conn${embedded ? ' conn--embedded' : ''}`} role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : true} aria-label="Riválisok">
+      {!embedded ? <header className="conn__head">
         <h2 className="conn__title">Riválisok</h2>
-        <button type="button" className="conn__close" aria-label="Bezárás" onClick={onClose}>
+        <button type="button" className="conn__close" aria-label="Bezárás" onClick={() => onClose?.()}>
           <CloseIcon />
         </button>
-      </header>
+      </header> : null}
 
       {items && items.length > 0 ? (
         <div className="rivals__search">
@@ -111,7 +111,7 @@ export function RivalsSheet({ onClose }: { onClose: () => void }) {
                 type="button"
                 className="conn__row"
                 onClick={() => {
-                  onClose();
+                  onClose?.();
                   navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`);
                 }}
               >

@@ -99,7 +99,7 @@ Eredetileg két lehetőséget vázoltam fel (PostGIS vs. Firestore+turf.js) — 
 ### `mission-service` — küldetés-ajánló
 - Kör-jelöltek generálása idő (nem táv) alapján, a felhasználó saját tempájából.
 - Minden jelölt kiértékelése a **jelenlegi** birtokviszonyok ellen: új / lopható / áttörendő / erősíthető cellák.
-- 3–4 érdemben különböző küldetés visszaadása becsült GP-vel ([02](02-funkcionalis-spec.md#útvonalak-fül--küldetés-ajánló)).
+- 3–4 érdemben különböző küldetés visszaadása becsült GP-vel ([02](02-funkcionalis-spec.md#küldetések-fül--küldetés-ajánló)).
 - Adatvédelmi szűrés: privát fiók tulajdonosa nem nevezhető meg; ugyanaz a személy naponta legfeljebb egyszer célpont.
 - Kvóta: ingyenes heti 5, Pro korlátlan.
 

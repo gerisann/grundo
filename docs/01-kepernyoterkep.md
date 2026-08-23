@@ -118,8 +118,11 @@ Közösség
 
 Profil
 ├── Profil (szint, streak, heti bontás, terület, GP)
-├── Statisztikák
-├── Útvonalak (generálás + mentettek)
+├── Statisztika
+├── Küldetések (generálás + mentettek)
+├── Riválisok (teljes, kereshető saját lista)
+├── Klánok (előkészített fül, későbbi funkció)
+├── Badges (jelvények)
 ├── Edzés (regeneráció + tervek)
 ├── Jelvények
 └── Beállítások

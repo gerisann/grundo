@@ -1,7 +1,7 @@
 /**
  * Küldetés-ajánló — a tiszta rész.
  *
- * Ez NEM útvonaltervező. A bemenet IDŐ, nem távolság, a kimenet pedig
+ * Ez NEM egyszerű útvonaltervező. A bemenet IDŐ vagy TÁVOLSÁG, a kimenet pedig
  * játékbeli tét: mennyi területet szerezhetsz, kitől vehetsz el, melyik
  * zónád védelme nő. A „fuss 8 km-t" logika bármelyik futóappban megvan; a
  * GRUNDO-ban az útvonalnak következménye van a rácson.

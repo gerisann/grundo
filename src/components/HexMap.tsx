@@ -25,7 +25,7 @@ const ROLE_STYLE: Record<HexRole, { fill: string; stroke: string }> = {
   interior: { fill: 'var(--territory-own-fill)', stroke: 'var(--territory-own)' },
   trail: { fill: 'var(--trail-pending-fill)', stroke: 'var(--trail-pending)' },
   rival: { fill: 'var(--territory-rival-fill)', stroke: 'var(--territory-rival)' },
-  stolen: { fill: 'var(--territory-own-fill)', stroke: 'var(--territory-rival)' },
+  stolen: { fill: 'var(--territory-stolen-fill)', stroke: 'var(--territory-stolen)' },
   // Szabad cella: látszik, hogy létezik, de nem vonja el a figyelmet.
   free: { fill: 'transparent', stroke: 'var(--territory-neutral)' },
 };
