@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RivalBadge } from '@/components/RivalBadge';
 import { useThemeContext } from '@/hooks/ThemeProvider';
@@ -16,6 +16,8 @@ import {
 import type { FeedActivity } from '@/lib/api';
 import './activityCard.css';
 import { HexMap } from '@/components/HexMap';
+import { decodePolyline } from '@/game/polyline';
+import { processActivity } from '@/game';
 
 /**
  * Egy aktivitás a feedben.
@@ -47,6 +49,23 @@ export function ActivityCard({
   const mapUrl = mapFailed ? null : routeImageUrl(item.route, { theme });
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
   const title = item.title ?? activityTitle(item.type, item.startedAt);
+  const previewCells = useMemo(() => {
+    if (item.activityCells?.length) return item.activityCells;
+    try {
+      const points = decodePolyline(item.route);
+      return [...processActivity({
+        points,
+        type: item.type,
+        distanceKm: item.distanceM / 1000,
+        actorId: item.author.uid,
+        ownership: new Map(),
+        streakDays: 0,
+        gpEarnedToday: 0,
+      }).claimedCells];
+    } catch {
+      return [];
+    }
+  }, [item.activityCells, item.author.uid, item.distanceM, item.route, item.type]);
 
   /*
     A FEJLÉC A NYITÓ GOMBON KÍVÜL VAN, és ennek oka van: idegen szerzőnél a
@@ -106,8 +125,8 @@ export function ActivityCard({
               decoding="async"
               onError={() => setMapFailed(true)}
             />
-            {hexesVisible && (item.activityCells?.length ?? 0) > 0 ? <HexMap layers={[{ role: 'interior', cells: item.activityCells ?? [] }]} track={[]} height={180} /> : null}
-            <span role="button" tabIndex={0} className="acard__hex-toggle" aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'} aria-pressed={hexesVisible} onClick={(event) => { event.stopPropagation(); setHexesVisible((visible) => !visible); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setHexesVisible((visible) => !visible); } }}>
+            {hexesVisible && previewCells.length > 0 ? <HexMap layers={[{ role: 'interior', cells: previewCells }]} track={[]} height={180} /> : null}
+            <span role="button" tabIndex={0} className={`acard__hex-toggle${hexesVisible ? ' acard__hex-toggle--on' : ''}`} aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'} aria-pressed={hexesVisible} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setHexesVisible((visible) => !visible); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setHexesVisible((visible) => !visible); } }}>
               <HexagonIcon />
             </span>
             </>

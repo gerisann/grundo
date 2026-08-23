@@ -85,6 +85,7 @@
   opacity: .72;
 }
 .acard__hex-toggle { position: absolute; right: var(--sp-2); bottom: var(--sp-2); z-index: 2; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(20,16,28,.82); color: #8F5CF2; display: grid; place-items: center; }
+.acard__hex-toggle--on { background: #8F5CF2; color: #fff; box-shadow: 0 0 0 2px rgb(255 255 255 / .24); }
 
 .acard__map {
   display: block;
