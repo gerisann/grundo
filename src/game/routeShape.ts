@@ -137,3 +137,18 @@ export function preferCleanRoutes<T extends { uTurns: number }>(routes: readonly
   const clean = ordered.filter((route) => route.uTurns <= best + 1);
   return clean.length >= 3 ? clean : ordered.slice(0, 3);
 }
+
+/**
+ * Csak valóban tiszta, oda-vissza mellékutcai nyúlvány nélküli útvonalak.
+ *
+ * A `preferCleanRoutes` egymáshoz képest rangsorol: akkor is visszaad jelöltet,
+ * ha a környéken mindegyik rossz. A felhasználói ajánlásnál ez már nem elég:
+ * egyetlen fölösleges visszafordulás is olyan útvonalat ígér, amit senki nem
+ * akarna követni. Itt ezért abszolút minőségi kapu van. Kevesebb ajánlat jobb,
+ * mint egy térképen láthatóan hibás ajánlat.
+ */
+export function withoutOutAndBackSpurs<T extends { uTurns: number }>(
+  routes: readonly T[],
+): T[] {
+  return routes.filter((route) => route.uTurns === 0);
+}

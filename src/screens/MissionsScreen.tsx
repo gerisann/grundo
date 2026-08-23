@@ -12,6 +12,7 @@ import { rememberGhostRoute } from '@/lib/ghostRoute';
 import { MISSION_KIND_META, missionAreaStat } from '@/lib/missionMeta';
 import { isRouteSaved, saveRoute } from '@/lib/savedRoutes';
 import { formatArea, formatDistance, formatNumber } from '@/lib/format';
+import { compatibleDistanceTarget } from '@/lib/missionTarget';
 import { api, ApiError, apiConfigured, type Mission, type MissionPriority, type MissionResult } from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
 import type { ActivityType } from '@/types';
@@ -211,7 +212,12 @@ export function MissionsScreen() {
 
       const generated = await api.generateMissions({
         ...where,
-        ...(targetMode === 'time' ? { minutes: wanted! } : { distanceKm: distanceKm! }),
+        ...(targetMode === 'time'
+          ? { minutes: wanted! }
+          : compatibleDistanceTarget(
+              distanceKm!,
+              paceSecPerKm ?? GAMEPLAY.MISSION_DEFAULT_PACE_S_PER_KM[type],
+            )),
         ...(paceSecPerKm === null ? {} : { paceSecPerKm }),
         priority,
         ...(preferredBearing === '' ? {} : { preferredBearing: Number(preferredBearing) }),
@@ -473,6 +479,8 @@ function emptyMessage(reason: string | undefined): string {
       return 'Innen most nem jött ki bezárható kör — errefelé kevés az átkötő utca. Próbáld másik mozgásformával, vagy indulj el egy másik pontról.';
     case 'no_fit':
       return 'Találtunk köröket, de egyik sem fért bele ebbe az időkeretbe. Próbáld hosszabb idővel.';
+    case 'no_clean_routes':
+      return 'Találtunk köröket, de mindegyikben fölösleges visszafordulás volt. Próbáld újra, vagy válassz másik irányt.';
     default:
       return 'Most nincs ajánlható küldetés.';
   }

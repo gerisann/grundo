@@ -15,7 +15,11 @@ import {
 import { decodePolyline } from '../../../src/game/polyline';
 import { layerOf, traceToCellPath } from '../../../src/game/cells';
 import { detectLoopsDetailed, loopCells } from '../../../src/game/loops';
-import { countUTurns, preferCleanRoutes } from '../../../src/game/routeShape';
+import {
+  countUTurns,
+  preferCleanRoutes,
+  withoutOutAndBackSpurs,
+} from '../../../src/game/routeShape';
 import {
   averagePaceSecPerKm,
   directionsProfile,
@@ -261,8 +265,9 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           .slice(0, FALLBACK_LIMIT);
 
     const directional = preferDirection(usable, input.preferredBearing);
+    const clean = withoutOutAndBackSpurs(directional);
     const shaped: ShapedCandidate[] = preferCleanRoutes(
-      directional.map(({ error: _error, ...candidate }) => candidate),
+      clean.map(({ error: _error, ...candidate }) => candidate),
     );
 
     if (shaped.length === 0) {
@@ -275,7 +280,13 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           emiatt nem lehetett megmondani, hogy az úthálózat nem ad kört,
           vagy csak rossz méretűt kértünk — ez a hangolást lehetetlenné tette.
         */
-        reason: routesReturned === 0 ? 'no_routes' : closedLoops === 0 ? 'no_loops' : 'no_fit',
+        reason: routesReturned === 0
+          ? 'no_routes'
+          : closedLoops === 0
+            ? 'no_loops'
+            : usable.length > 0 && clean.length === 0
+              ? 'no_clean_routes'
+              : 'no_fit',
         diagnostics: { routesReturned, closedLoops, bearings: bearings.length },
       });
       return;

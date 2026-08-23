@@ -189,7 +189,7 @@ A GRUNDO szíve (képek #49, #21).
 - Élő: távolság, idő, aktuális és átlag tempó/sebesség, szintemelkedés, lépésfrekvencia/pedálfordulat, pulzus (ha van szenzor), teljesítmény (becsült vagy mért).
 - **Élő területjelzés**: a nyom hexagonjai világítanak a térképen; amint bezárul egy hurok, a belső cellák azonnal kitöltődnek és megjelenik a szerzett m² + GP. Bezárás előtt: „Zárd be: még 120 m".
 - A rögzítés térképe ugyanazt a saját/rivális/szabad mezőképet és ugyanazokat a védettségi szinteket mutatja, mint a Grund oldal. A nézet frissítése alatt a legutóbbi pillanatkép marad látható; a mezők nem villoghatnak ki.
-- A térkép jobb felső **hexagon gombja** ki- és bekapcsolja a teljes mezőréteget. A kiválasztott küldetés vezetővonala szaggatott `#FA5F73`.
+- A teljes mezőréteget egy fekete, üres hatszög ikonos gomb kapcsolja ki és be. A gomb a jobb alsó térképvezérlő-oszlopban, a 2D/3D váltóval azonos 40×40 px méretben jelenik meg. A megjegyzett 3D nézet már a térkép első betöltésekor érvényesül; az ikon és a tényleges kameradőlés nem térhet el. A kiválasztott küldetés vezetővonala szaggatott `#FA5F73`.
 - Az élő előnézetben a szabadon megszerzett és megerősített mező lila, az idegentől elrabolt mező `#FA5F73`. Mindkettő az 1–5 védelmi szint szerinti telítettséget és közeli zoomnál a várható szint számát mutatja.
 - Gombok: szünet · **stop** · kamera.
 - Automatikus szünet (opcionális, sebességküszöb alatt).
@@ -346,7 +346,7 @@ Időalapú tervezésnél a távot a rendszer a felhasználó **saját átlagtemp
 
 Opcionális finomhangolás: elsődleges cél (`legjobb ajánlat` · `új terület` · `rablás` · `grund erősítése` · `felfedezés`) és égtáj. A cél a találatok sorrendjét, az égtáj a körjelöltek vizsgálati sorrendjét adja; egyik sem ígér eredményt, ha a valós úthálózat vagy birtokviszony nem ad megfelelő kört.
 
-**A kimenet 3–4 küldetés-kártya**, mind más karakterrel:
+**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel. Fölösleges oda-vissza mellékutcai kitérőt tartalmazó jelölt nem ajánlható; ha emiatt kevesebb tiszta kör marad, a minőség elsőbbséget élvez a darabszámmal szemben.
 
 | Típus | Példa szöveg |
 |---|---|

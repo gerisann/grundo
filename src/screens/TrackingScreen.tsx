@@ -386,6 +386,8 @@ export function TrackingScreen() {
               ghostTrack={ghostTrack}
               position={mapPosition}
               allowTilt
+              hexesVisible={showHexes}
+              onToggleHexes={() => setShowHexes((visible) => !visible)}
               follow={running || remoteState?.status === 'recording'}
               onViewport={setNearbyView}
               fill
@@ -400,17 +402,6 @@ export function TrackingScreen() {
           </p>
         )}
       </div>
-
-      <button
-        type="button"
-        className={`track__hex-toggle${showHexes ? ' track__hex-toggle--on' : ''}`}
-        aria-pressed={showHexes}
-        aria-label={showHexes ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
-        title={showHexes ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
-        onClick={() => setShowHexes((visible) => !visible)}
-      >
-        <HexagonIcon />
-      </button>
 
       {paused ? (
         <div className="track__paused">
@@ -591,15 +582,6 @@ export function TrackingScreen() {
         />
       ) : null}
     </div>
-  );
-}
-
-function HexagonIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
-      <path d="m12 2.5 8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5L12 2.5Z" />
-      <path d="m12 2.5v19M3.8 7.25l16.4 9.5M20.2 7.25l-16.4 9.5" opacity=".55" />
-    </svg>
   );
 }
 

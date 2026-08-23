@@ -118,6 +118,8 @@
 
   /* ── Térkép ──────────────────────────────────────────────────── */
   --map-bg:         #ececf1;
+  --map-control-bg: #0b0a0f;
+  --map-control-text: #ffffff;
   --map-road:       #ffffff;
   --map-road-minor: #f7f7f9;
   --map-label:      #686472;

@@ -32,29 +32,6 @@
   background: var(--bg-secondary);
 }
 
-.track__hex-toggle {
-  position: absolute;
-  z-index: 7;
-  right: var(--sp-3);
-  top: calc(var(--safe-top) + 58px);
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(12px);
-}
-
-.track__hex-toggle--on {
-  color: var(--accent-on);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
 /* ── A rárétegzett felület ───────────────────────────────────────── */
 
 .track__overlay {

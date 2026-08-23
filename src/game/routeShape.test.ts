@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countUTurns, preferCleanRoutes } from './routeShape';
+import { countUTurns, preferCleanRoutes, withoutOutAndBackSpurs } from './routeShape';
 import { destinationPoint } from './missions';
 import type { LatLng } from './geo';
 
@@ -83,5 +83,12 @@ describe('preferCleanRoutes', () => {
   it('legalább három jelöltet megtart, ha minden útvonal kényszerűen rosszabb', () => {
     const routes = [1, 4, 5, 8].map((uTurns, id) => ({ id, uTurns }));
     expect(preferCleanRoutes(routes).map((route) => route.uTurns)).toEqual([1, 4, 5]);
+  });
+});
+
+describe('withoutOutAndBackSpurs', () => {
+  it('csak a fölösleges visszafordulás nélküli jelölteket engedi ajánlani', () => {
+    const routes = [0, 1, 0, 3].map((uTurns, id) => ({ id, uTurns }));
+    expect(withoutOutAndBackSpurs(routes).map((route) => route.id)).toEqual([0, 2]);
   });
 });

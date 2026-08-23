@@ -65,6 +65,9 @@ export interface MapViewProps {
    * torzítana a hexagonokon.
    */
   allowTilt?: boolean;
+  /** A rögzítés hexagonrétegének állapota és kapcsolója. */
+  hexesVisible?: boolean;
+  onToggleHexes?: () => void;
   /**
    * Igazítsa a nézetet a nyomvonalra, amint az megérkezik.
    *
@@ -155,6 +158,8 @@ export function MapView({
   follow = true,
   hideRecenter = false,
   allowTilt = false,
+  hexesVisible,
+  onToggleHexes,
   fitTrack = false,
   height = 320,
   fill = false,
@@ -229,6 +234,10 @@ export function MapView({
       // rögzítés közben a felhasználó futás közben, egy pillantásra néz rá.
       pitchWithRotate: false,
       dragRotate: false,
+      // A tárolt 3D-beállítás már az első képkockán érvényes. Korábban a
+      // váltó hatása a Mapbox `load` eseménye előtt lefutott és elveszett,
+      // ezért a gomb 2D-t írt, miközben a térkép lapos maradt.
+      pitch: tilted ? TILTED_PITCH : 0,
     });
 
     /**
@@ -517,6 +526,20 @@ export function MapView({
         style={fill ? { height: '100%' } : { height }}
       />
       {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
+      {onToggleHexes && hexesVisible !== undefined ? (
+        <button
+          type="button"
+          className="mapview__hex-toggle"
+          aria-pressed={hexesVisible}
+          aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
+          title={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
+          onClick={onToggleHexes}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
+            <path d="m12 2.5 8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5L12 2.5Z" />
+          </svg>
+        </button>
+      ) : null}
       {allowTilt ? (
         <button
           type="button"

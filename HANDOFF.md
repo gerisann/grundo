@@ -6,12 +6,14 @@ Ez a fájl az AKTUÁLIS állapotot mutatja. A történet a git logban van.
 ellenőrzését, közös nevezőre hozta a küldetés-specifikációt és a kódot, valamint
 elkészítette a profil új füles navigációját és a tracking kért térképi javításait.
 A profilfülek utólagos vizuális és kattintási finomítása is elkészült.
+Ezután lezárult a távolságalapú küldetés verziókompatibilitása, az abszolút
+útvonal-tisztasági kapu, valamint a tracking térképvezérlőinek javítása.
 
 ## ÁLLAPOT
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
-- Ág: `main`, az `origin/main` előtt 2 helyi committal.
-- Unit tesztek: **383 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
+- Ág: `main`, az `origin/main` előtt 3 helyi committal.
+- Unit tesztek: **386 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
 - Emulátoros készlet: **112 zöld** valódi Firestore/Auth emulátor ellen.
 - Típusellenőrzés: gyökér és `server/` hibamentes.
 - Production build: frontend és backend hibamentes. A Mapbox chunk ismert,
@@ -58,13 +60,18 @@ ellenőrizve:
 - A Home napi kártyája bezárható, chevronnal kattinthatónak látszik, és a
   konkrét napi ajánlatot tölti vissza — ez már a #9 commitjaiban elkészült,
   most böngészőben újra ellenőrizve.
-- Az útvonal „lábait” relatív tisztasági szűrő fogja meg: a helyi legjobbnál
-  legfeljebb egy extra U-fordulást enged, de legalább három jelöltet megtart.
-  Két új unit teszt rögzíti.
+- Távolságalapú kérés a km mellett kompatibilis időbecslést is küld, így a
+  frontend/backend egymás utáni telepítése közben sem kap téves időhibát.
+- Az útvonal „lábait” abszolút minőségi kapu fogja meg: detektált fölösleges
+  U-fordulással rendelkező jelölt nem ajánlható. Inkább kevesebb tiszta
+  küldetés jelenik meg. A viselkedést új unit tesztek rögzítik.
 
 ### Tracking térkép
 
-- Hexagon ikon ki/be kapcsolja a teljes mezőréteget.
+- A fekete, üres hatszög ikon ki/be kapcsolja a teljes mezőréteget; a jobb
+  alsó térképvezérlő-oszlopban, a 2D/3D gombbal azonos 40×40 px méretben van.
+- A megjegyzett 3D állapot már a Mapbox konstruktorában 55°-os dőlést kap,
+  ezért első betöltéskor sem tér el az ikon a tényleges kamerától.
 - A küldetés szaggatott vezetővonala `#FA5F73`.
 - Élő foglalás: új/megerősített mező lila, elrabolt mező `#FA5F73`.
 - Az élő előnézet már a közeli birtok-pillanatképpel fut, és a friss mezőkön
@@ -91,6 +98,8 @@ Helyi emulátoros környezetben, `geri@grundo.local` fiókkal:
 - 390×844 nézet, touch/mouse vízszintes görgetés: zöld.
 - Küldetések, Riválisok és Badgek valódi linkes átkattintása: zöld.
 - Sticky fejléc 700 px görgetés után is `top: 0`: zöld.
+- Tracking vezérlők: 40×40 px, 8 px rés, fekete hexagongomb, egyetlen SVG-path:
+  zöld; kapcsolás és 3D-állapot újratöltése: zöld.
 
 A #10 által indított Vite folyamat leállt. A már a menet elején is futó Firebase
 emulátor és 8080-as backend nem ehhez a menethez tartozott, ezért érintetlenül

@@ -129,3 +129,24 @@
   border-color: var(--accent);
   color: var(--accent-on);
 }
+
+/* Hexagonréteg — ugyanabban a jobb alsó vezérlőoszlopban és ugyanakkora,
+   mint a 2D/3D váltó. Szándékosan fekete: ez térképi segédkapcsoló, nem
+   kiválasztott játékállapot. */
+.mapview__hex-toggle {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3) + 96px
+  );
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--map-control-bg);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  color: var(--map-control-text);
+  z-index: 2;
+}
