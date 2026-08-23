@@ -51,9 +51,7 @@ workflows:
           agvtool new-version -all "$BUILD_NUMBER"
 
       - name: App Store aláírás beállítása
-        script: >-
-          xcode-project use-profiles
-          --custom-export-options='{"testFlightInternalTestingOnly": true}'
+        script: xcode-project use-profiles
 
       - name: App Store IPA készítése
         script: |
