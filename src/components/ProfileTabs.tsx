@@ -1,8 +1,8 @@
 import { useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import './profileTabs.css';
 
-type ProfileTab = 'profile' | 'missions' | 'rivals' | 'stats' | 'clans' | 'badges';
+export type ProfileTab = 'profile' | 'missions' | 'rivals' | 'stats' | 'clans' | 'badges';
 
 const TABS: { id: ProfileTab; label: string; to: string }[] = [
   { id: 'profile', label: 'Profil', to: '/profil' },
@@ -10,13 +10,13 @@ const TABS: { id: ProfileTab; label: string; to: string }[] = [
   { id: 'missions', label: 'Küldetések', to: '/kuldetesek' },
   { id: 'rivals', label: 'Riválisok', to: '/profil/rivalisok' },
   { id: 'clans', label: 'Klánok', to: '/profil/klanok' },
-  { id: 'badges', label: 'Badges', to: '/profil/badges' },
+  { id: 'badges', label: 'Badgek', to: '/profil/badgek' },
 ];
 
 export function ProfileTabs({ active }: { active: ProfileTab }) {
-  const navigate = useNavigate();
   const navRef = useRef<HTMLElement>(null);
-  const drag = useRef({ active: false, moved: false, x: 0, left: 0 });
+  const drag = useRef({ active: false, moved: false, pointerId: -1, x: 0, left: 0 });
+  const suppressClick = useRef(false);
   return (
     <nav
       ref={navRef}
@@ -24,40 +24,54 @@ export function ProfileTabs({ active }: { active: ProfileTab }) {
       aria-label="Profil fülek"
       onPointerDown={(event) => {
         const nav = navRef.current;
-        if (!nav) return;
-        drag.current = { active: true, moved: false, x: event.clientX, left: nav.scrollLeft };
-        nav.setPointerCapture(event.pointerId);
+        if (!nav || event.pointerType !== 'mouse' || event.button !== 0) return;
+        drag.current = {
+          active: true,
+          moved: false,
+          pointerId: event.pointerId,
+          x: event.clientX,
+          left: nav.scrollLeft,
+        };
       }}
       onPointerMove={(event) => {
         const nav = navRef.current;
         if (!nav || !drag.current.active) return;
         const delta = event.clientX - drag.current.x;
-        if (Math.abs(delta) > 4) drag.current.moved = true;
+        if (!drag.current.moved && Math.abs(delta) > 6) {
+          drag.current.moved = true;
+          suppressClick.current = true;
+          nav.setPointerCapture(event.pointerId);
+        }
+        if (!drag.current.moved) return;
+        event.preventDefault();
         nav.scrollLeft = drag.current.left - delta;
       }}
       onPointerUp={(event) => {
+        const nav = navRef.current;
+        if (nav?.hasPointerCapture(event.pointerId)) nav.releasePointerCapture(event.pointerId);
         drag.current.active = false;
-        navRef.current?.releasePointerCapture(event.pointerId);
+        if (drag.current.moved) requestAnimationFrame(() => { suppressClick.current = false; });
       }}
-      onPointerCancel={() => { drag.current.active = false; }}
+      onPointerCancel={() => {
+        drag.current.active = false;
+        suppressClick.current = false;
+      }}
+      onClickCapture={(event) => {
+        if (!suppressClick.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
     >
       {TABS.map((tab) => (
-        <button
-          type="button"
+        <NavLink
           key={tab.id}
+          to={tab.to}
+          draggable={false}
           className={active === tab.id ? 'profile-tabs__item profile-tabs__item--active' : 'profile-tabs__item'}
           aria-current={active === tab.id ? 'page' : undefined}
-          onClick={(event) => {
-            if (drag.current.moved) {
-              event.preventDefault();
-              drag.current.moved = false;
-              return;
-            }
-            navigate(tab.to);
-          }}
         >
           {tab.label}
-        </button>
+        </NavLink>
       ))}
     </nav>
   );

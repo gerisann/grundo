@@ -6,7 +6,7 @@ import { BadgeList } from '@/components/BadgeList';
 import { Avatar } from '@/components/ActivityCard';
 import { ConnectionsSheet } from '@/components/ConnectionsSheet';
 import { RivalsCard } from '@/components/RivalsCard';
-import { ProfileTabs } from '@/components/ProfileTabs';
+import { ProfileHeader } from '@/components/ProfileHeader';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useAuth } from '@/hooks/AuthProvider';
@@ -57,30 +57,9 @@ export function ProfileScreen() {
 
   return (
     <>
-      <header
-        className="screen-header"
-        style={{ justifyContent: 'space-between', paddingLeft: 'var(--sp-4)' }}
-      >
-        {/*
-          A fejlécben „Profilom" áll, NEM a felhasználónév: az alatta lévő
-          kártya úgyis kiírja a nevet és a @nevet is, tehát háromszor
-          szerepelt volna egymás alatt ugyanaz. A fejléc dolga megmondani,
-          MELYIK képernyőn vagy — a nyilvános profilnál marad a név, mert ott
-          épp az a kérdés, kié.
-        */}
-        <h1 className="screen-header__title">Profilom</h1>
-        <button
-          type="button"
-          className="screen-header__back"
-          aria-label="Beállítások"
-          onClick={() => navigate('/beallitasok')}
-        >
-          <GearIcon />
-        </button>
-      </header>
+      <ProfileHeader active="profile" />
 
       <div className="screen-body stack">
-        <ProfileTabs active="profile" />
         <div className="prof__identity">
           <button
             type="button"
@@ -338,25 +317,6 @@ function PencilIcon() {
       aria-hidden="true"
     >
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
     </svg>
   );
 }

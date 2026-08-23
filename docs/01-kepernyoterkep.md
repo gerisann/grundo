@@ -122,7 +122,7 @@ Profil
 ├── Küldetések (generálás + mentettek)
 ├── Riválisok (teljes, kereshető saját lista)
 ├── Klánok (előkészített fül, későbbi funkció)
-├── Badges (jelvények)
+├── Badgek (jelvények)
 ├── Edzés (regeneráció + tervek)
 ├── Jelvények
 └── Beállítások

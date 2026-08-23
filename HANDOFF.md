@@ -5,11 +5,12 @@ Ez a fájl az AKTUÁLIS állapotot mutatja. A történet a git logban van.
 **Következő menet neve: GRUNDO #11.** A #10 menet lezárta a rivális felület
 ellenőrzését, közös nevezőre hozta a küldetés-specifikációt és a kódot, valamint
 elkészítette a profil új füles navigációját és a tracking kért térképi javításait.
+A profilfülek utólagos vizuális és kattintási finomítása is elkészült.
 
 ## ÁLLAPOT
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
-- Ág: `main`, az `origin/main` előtt 1 helyi committal.
+- Ág: `main`, az `origin/main` előtt 2 helyi committal.
 - Unit tesztek: **383 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
 - Emulátoros készlet: **112 zöld** valódi Firestore/Auth emulátor ellen.
 - Típusellenőrzés: gyökér és `server/` hibamentes.
@@ -22,12 +23,14 @@ elkészítette a profil új füles navigációját és a tracking kért térkép
 ### Profil fülek
 
 Rögzített sorrend: **Profil · Statisztika · Küldetések · Riválisok · Klánok ·
-Badges**. Keskeny kijelzőn vízszintesen görgethető; touch swipe és egérrel
-fogd‑és‑húzd gesztus is működik. A 390 px széles böngészős próbán a 474 px-es
-fülsor 341 px-es helyen 133 px-et görgött, és a húzás nem aktivált fület.
+Badgek**. A tabsor háttér nélküli, normál betűvastagságú, halvány alsó
+elválasztóval és lila–korall gradiens aktív vonallal. A „Profilom” fejléc,
+beállítások gomb és tabsor közös sticky blokk, görgetésre is a képernyő tetején
+marad. Keskeny kijelzőn touch swipe és egérrel fogd‑és‑húzd is működik.
 
 - `Riválisok`: működő, teljes kereshető lista.
-- `Badges`: a meglévő jelvénylista önálló füle.
+- `Badgek`: a meglévő jelvénylista önálló füle; a régi `/profil/badges` cím
+  kompatibilitási átirányításként megmaradt.
 - `Statisztika`, `Klánok`: őszinte későbbi üres állapot, stabil route-tal.
 - A Profil TOP 3 rivális-kártyájának „Összes” gombja a dedikált fülre visz.
 
@@ -86,6 +89,8 @@ Helyi emulátoros környezetben, `geri@grundo.local` fiókkal:
 - idő/távolság küldetés-űrlap: zöld;
 - tracking hexagon kapcsoló ARIA-állapota: zöld;
 - 390×844 nézet, touch/mouse vízszintes görgetés: zöld.
+- Küldetések, Riválisok és Badgek valódi linkes átkattintása: zöld.
+- Sticky fejléc 700 px görgetés után is `top: 0`: zöld.
 
 A #10 által indított Vite folyamat leállt. A már a menet elején is futó Firebase
 emulátor és 8080-as backend nem ehhez a menethez tartozott, ezért érintetlenül
@@ -104,7 +109,7 @@ indexmódosítás nincs. A push és telepítés Geri feladata.
   még több városrészben megmérni; a szerződés és a fallback működik, de a
   route-minőség földrajzfüggő.
 - A Mapbox production chunk továbbra is 521,57 kB gzip; ismert korábbi ügy.
-- A Profil főoldalán a jelvény-előnézet egyelőre megmaradt a Badges fül mellett
+- A Profil főoldalán a jelvény-előnézet egyelőre megmaradt a Badgek fül mellett
   is. Később eldönthető, hogy rövid preview maradjon vagy teljesen költözzön ki.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE

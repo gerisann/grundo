@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
-import { ProfileTabs } from '@/components/ProfileTabs';
+import { Button, SegmentedControl } from '@/components/ui';
+import { ProfileHeader } from '@/components/ProfileHeader';
 import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useThemeContext } from '@/hooks/ThemeProvider';
@@ -235,10 +235,9 @@ export function MissionsScreen() {
 
   return (
     <>
-      <ScreenHeader title="Küldetések" backTo="/profil" />
+      <ProfileHeader active="missions" />
 
       <div className="screen-body stack">
-        <ProfileTabs active="missions" />
         <section className="card mission__form">
           <SegmentedControl
             options={[{ value: 'time', label: 'Idő' }, { value: 'distance', label: 'Távolság' }]}

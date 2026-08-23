@@ -157,7 +157,8 @@ function Router() {
           <Route path="/profil/rivalisok" element={<ProfileRivalsScreen />} />
           <Route path="/profil/statisztikak" element={<ProfileStatsScreen />} />
           <Route path="/profil/klanok" element={<ProfileClansScreen />} />
-          <Route path="/profil/badges" element={<ProfileBadgesScreen />} />
+          <Route path="/profil/badgek" element={<ProfileBadgesScreen />} />
+          <Route path="/profil/badges" element={<Navigate to="/profil/badgek" replace />} />
           {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}
           <Route path="/felhasznalo/:username" element={<PublicProfileScreen />} />
           <Route path="/kereses" element={<SearchScreen />} />

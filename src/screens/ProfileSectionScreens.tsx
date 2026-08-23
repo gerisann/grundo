@@ -1,4 +1,4 @@
-import { ProfileTabs } from '@/components/ProfileTabs';
+import { ProfileHeader } from '@/components/ProfileHeader';
 import { RivalsSheet } from '@/components/RivalsSheet';
 import { BadgeList } from '@/components/BadgeList';
 import { useProfile } from '@/hooks/ProfileProvider';
@@ -6,18 +6,15 @@ import type { ReactNode } from 'react';
 
 function Shell({
   active,
-  title,
   children,
 }: {
   active: 'rivals' | 'stats' | 'clans' | 'badges';
-  title: string;
   children: ReactNode;
 }) {
   return (
     <>
-      <header className="screen-header"><h1 className="screen-header__title">{title}</h1></header>
+      <ProfileHeader active={active} />
       <div className="screen-body stack">
-        <ProfileTabs active={active} />
         {children}
       </div>
     </>
@@ -25,7 +22,7 @@ function Shell({
 }
 
 export function ProfileRivalsScreen() {
-  return <Shell active="rivals" title="Riválisok"><RivalsSheet embedded /></Shell>;
+  return <Shell active="rivals"><RivalsSheet embedded /></Shell>;
 }
 
 function Planned({ title, text }: { title: string; text: string }) {
@@ -40,7 +37,7 @@ function Planned({ title, text }: { title: string; text: string }) {
 
 export function ProfileStatsScreen() {
   return (
-    <Shell active="stats" title="Statisztika">
+    <Shell active="stats">
       <Planned title="A statisztikáid itt kapnak helyet" text="Távok, tempó, GP, területszerzés és fejlődési trendek kerülnek majd erre a fülre." />
     </Shell>
   );
@@ -49,7 +46,7 @@ export function ProfileStatsScreen() {
 export function ProfileBadgesScreen() {
   const { profile } = useProfile();
   return (
-    <Shell active="badges" title="Badges">
+    <Shell active="badges">
       <section className="card">
         <BadgeList badges={profile?.badges ?? []} />
       </section>
@@ -59,7 +56,7 @@ export function ProfileBadgesScreen() {
 
 export function ProfileClansScreen() {
   return (
-    <Shell active="clans" title="Klánok">
+    <Shell active="clans">
       <Planned title="A klánok hamarosan érkeznek" text="Itt tudsz majd klánt létrehozni, csatlakozni és követni a közös grundotokat." />
     </Shell>
   );

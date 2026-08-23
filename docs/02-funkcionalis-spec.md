@@ -311,7 +311,7 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 
 ### Profil-navigáció *(döntés: 2026-08-23)*
 
-A saját profil felső fülei ebben a rögzített sorrendben: **Profil · Statisztika · Küldetések · Riválisok · Klánok · Badges**. A Küldetések, Riválisok és Badges már működő tartalom; a Statisztika és Klánok fül a navigáció stabil helyét most megkapja, a részletes funkció későbbi fázisban készül el. Kis kijelzőn a fülsor vízszintesen görgethető: érintéssel swipe, asztali gépen egérrel fogd‑és‑húzd gesztus működik; a feliratok nem törnek több sorba.
+A saját profil felső fülei ebben a rögzített sorrendben: **Profil · Statisztika · Küldetések · Riválisok · Klánok · Badgek**. A Küldetések, Riválisok és Badgek már működő tartalom; a Statisztika és Klánok fül a navigáció stabil helyét most megkapja, a részletes funkció későbbi fázisban készül el. A „Profilom” fejléc, a beállítások gomb és a fülsor görgetés közben a képernyő tetején marad. A fülsor háttér nélküli, halvány alsó elválasztót és az aktív fül alatt gradiens jelölést használ. Kis kijelzőn vízszintesen görgethető: érintéssel swipe, asztali gépen egérrel fogd‑és‑húzd gesztus működik; a feliratok nem törnek több sorba.
 
 ### Riválisok *(döntés: 2026-08-22)*
 

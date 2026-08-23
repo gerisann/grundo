@@ -1,10 +1,8 @@
 .profile-tabs {
   display: flex;
-  gap: var(--sp-1);
-  padding: 3px;
-  border-radius: var(--r-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
+  gap: var(--sp-4);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
   overflow-x: auto;
   scrollbar-width: none;
   touch-action: pan-x;
@@ -15,17 +13,44 @@
 .profile-tabs::-webkit-scrollbar { display: none; }
 
 .profile-tabs__item {
+  position: relative;
   flex: 0 0 auto;
-  min-height: 38px;
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-pill);
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  padding: 0;
   color: var(--text-secondary);
-  font-weight: 700;
+  font-weight: 400;
   font-size: var(--fs-small);
 }
 
 .profile-tabs__item--active {
-  color: var(--accent);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+}
+
+.profile-tabs__item--active::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent), var(--territory-stolen));
+}
+
+.profile-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-primary);
+}
+
+.profile-header .screen-header {
+  justify-content: space-between;
+  padding-left: var(--sp-4);
+}
+
+.profile-header + .screen-body {
+  padding-top: var(--sp-4);
 }
