@@ -4,6 +4,7 @@ import {
   countShortDetours,
   countUTurns,
   preferCleanRoutes,
+  selectMissionRoutes,
   withoutOutAndBackSpurs,
 } from './routeShape';
 import { destinationPoint } from './missions';
@@ -122,5 +123,17 @@ describe('withoutOutAndBackSpurs', () => {
   it('csak a fölösleges visszafordulás nélküli jelölteket engedi ajánlani', () => {
     const routes = [0, 1, 0, 3].map((uTurns, id) => ({ id, uTurns }));
     expect(withoutOutAndBackSpurs(routes).map((route) => route.id)).toEqual([0, 2]);
+  });
+});
+
+describe('selectMissionRoutes', () => {
+  it('a tiszta útvonalakat választja, ha van belőlük', () => {
+    const routes = [0, 1, 0, 3].map((uTurns, id) => ({ id, uTurns }));
+    expect(selectMissionRoutes(routes).map((route) => route.id)).toEqual([0, 2]);
+  });
+
+  it('a legkevésbé hibás köröket megtartja, ha tiszta egyáltalán nincs', () => {
+    const routes = [3, 1, 2, 4].map((uTurns, id) => ({ id, uTurns }));
+    expect(selectMissionRoutes(routes).map((route) => route.uTurns)).toEqual([1, 2, 3]);
   });
 });

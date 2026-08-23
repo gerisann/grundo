@@ -194,8 +194,8 @@ A GRUNDO szíve (képek #49, #21).
 - Gombok: szünet · **stop** · kamera.
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
-- **Háttérben futás**: „Allow all the time" helyengedély kell (kép #11) — ha nincs, figyelmeztetés, de a rögzítés folytatható képernyő-ébren.
-- **Élő rendszerértesítés** a lezárt képernyőn is (kép #03) — kikapcsolható a Beállításokban („Live Stats in Notification").
+- **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás gyűjti a pontokat lezárt képernyőnél is; a rendszer helyengedélyénél a **„Mindig”** opció kell. Ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. A natív sor az ébredő WebView-nak adódik át, ezért a háttérben tett út nem a felfüggesztett JavaScripttől függ.
+- **Élő rendszerértesítés** a lezárt képernyőn is (kép #03) — kikapcsolható a Beállításokban („Live Stats in Notification"). **Későbbi lépés:** ez külön iOS Live Activity / Android foreground service, nem feltétele a háttér-GPS-nek.
 
 ### Szüneteltetve (kép #03)
 - Folytatás · stop · fotó. Az értesítés is jelzi: „Szüneteltetve — koppints a visszatéréshez".

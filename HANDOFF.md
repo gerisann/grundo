@@ -6,67 +6,86 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`.
-- Az utolsó már GitHubra feltolt auth-javítás: `740eba7 Stabilize Firebase auth in iOS WebView`.
-- A webes és TestFlight build legutóbbi éles verziója: `1.0.0`; Codemagicben a
-  buildszám automatikusan nő.
-- Unit tesztek: 394 zöld, 112 emulátoros teszt a normál futásban kihagyva.
-  Emulátoros suite nem kell, mert sem Firestore-séma, sem szabály, sem
-  tranzakció nem változott.
+- GitHubon jelenleg `740eba7 Stabilize Firebase auth in iOS WebView` van.
+- A következő lokális commitba két, még fel nem pusholt funkciócsomag kerül:
+  az előző `fe5821d Natív iOS helyengedély és buildazonosító`, valamint a
+  jelenlegi küldetés-, rögzítő-életciklus- és háttér-GPS változások.
+- Teljes unit teszt: **399 zöld**, 112 célzott emulátoros teszt kihagyva.
+  Production Vite build sikeres 2026-08-23 16:20-kor.
 
-## MI MŰKÖDIK ÉLESBEN
+## MI VÁLTOZOTT EBBEN A MENETBEN
 
-- Codemagic → App Store Connect → TestFlight pipeline működik. A külső review
-  külön Apple-folyamat; belső teszteléshez a feltöltött build review nélkül is
-  használható.
-- A Cloud Run API helyes címe:
-  `https://grundo-api-65689674957.europe-west1.run.app`.
-  A rövid `a.run.app` alias erre a projektre 404-et ad, ne használd Vite
-  `VITE_API_BASE_URL` értéknek.
-- iOS-en az auth inicializálás Firebase `localStorage` perzisztenciát használ,
-  mert a WKWebView IndexedDB-je beragadhatott. A 4 másodperces indulási és a
-  15 másodperces belépési őrszem konkrét hibát mutat végtelen splash helyett.
-- A felhasználó a legutóbbi iOS buildben már eljutott a loginig és sikeresen
-  belépett.
+### Küldetésgenerálás
 
-## JELEN MENET VÁLTOZÁSAI — MÉG TESTFLIGHT-RA KERÜLNEK
+- Az `a858c52` abszolút útvonalhibaszűrője akkor is eldobta az összes jelöltet,
+  ha minden körön csak egy kisebb visszafordulás volt. Ez okozta a
+  „Találtunk köröket, de mindegyikben…” zsákutcát.
+- Most a 0 hibás útvonalak elsőbbséget kapnak, de ha nincs ilyen, a három
+  legkevésbé hibás kör visszakerül a találati listába. A küldetéskérés tehát
+  nem válik használhatatlanná. A tényleges Mapbox-geometriai kitérők további
+  javítása ettől független, következő optimalizálási feladat.
 
-- `@capacitor/geolocation` 8.2.2: iOS rögzítésnél a Capacitor natív
-  helymeghatározási plugin fut. A rendszer engedélykérése ezért **GRUNDO**
-  néven jelenik meg, nem `localhost` weboldalként.
-- A webes `navigator.geolocation` csak böngészőben marad. Háttér-GPS továbbra
-  sincs: nincs Background Modes capability, a `supportsBackground` ezért
-  helyesen `false`.
-- Beállítások → Alkalmazás alatt minden build kiírja a
-  `v1.0.0 · csatorna/build · rövid commit` azonosítót.
-  Web buildnél `web`, Codemagicnél `iOS build <BUILD_NUMBER>` a csatorna.
-- A `package.json` verziója is `1.0.0`, így egyezik az Xcode
-  `MARKETING_VERSION` értékével.
-- A kiadási rend AGENTS.md-ben és docs/07-ben rögzítve:
-  web = gyors funkcionális teszt; TestFlight = nagyobb funkciócsomag és minden
-  iOS-specifikus változás; mindig konkrét commitot kell promotálni.
+### Webes félbehagyott rögzítés
 
-## KÖVETKEZŐ LÉPÉSEK
+- Mérés: a „Folytatom” felajánlás csak akkor jelenhet meg, ha a
+  `RecorderProvider`/oldal újraindul és az IndexedDB-ből újraolvassa az aktív
+  állapotot; a böngészős GPS-hiba önmagában nem állítja félbe a rögzítőt.
+- Új, helyi életciklus-diagnosztika rögzíti a `hidden` és `pagehide` eseményt,
+  és visszaállításkor konkrétan kiírja: újratöltés, bezárás vagy háttérbe
+  kerülés előzte-e meg. A következő webes reprodukcióból így bizonyítható a
+  valódi kiváltó ok; jelenleg nem állítunk megalapozatlan automatikus javítást.
 
-1. Futtasd a teljes unit tesztet és a production buildet, majd commitold a
-   jelen menet fájljait.
-2. A felhasználó pusholja a commitot, majd indítson belőle Codemagic buildet.
-3. TestFlighton ellenőrizd: első rögzítéskor a natív **GRUNDO** location prompt,
-   Allow után GPS-fix, útvonal és stop/mentés. A háttérbe tett appot ne tekintsd
-   támogatottnak.
-4. Web deploy csak akkor szükséges, ha a webes kiadást is erre a commitra akarjuk
-   frissíteni. Szabály-, index- és backend telepítés ehhez a menethez nem kell.
+### iOS háttér-GPS
 
-## NYITOTT KOCKÁZATOK
+- A korábbi előtéri `@capacitor/geolocation` helyett helyi Swift Core Location
+  Capacitor bridge van. Aktív rögzítéskor 5 m-es szűrővel dolgozik,
+  `UIBackgroundModes: location` értékkel, és a lezárt képernyő alatt kapott
+  pontokat natív `UserDefaults` sorban megőrzi. A felébredő WebView átveszi
+  őket, így a háttérben megtett út nem függ a felfüggesztett JavaScripttől.
+- A rendszer „Mindig” engedélyét kéri a specifikáció szerint; enélkül a UI
+  továbbra is képernyő-ébrentartást kér. A force-quittel kilőtt alkalmazás
+  automatikus folytatása nem támogatott iOS-en.
+- **Kötelező valós TestFlight-teszt:** indíts rögzítést, adj „Mindig” engedélyt,
+  zárd le 3 percre, haladj 100+ métert, majd ellenőrizd a folytonos nyomvonalat.
+  A Windowsos fejlesztői környezetből Xcode-fordítás nem ellenőrizhető.
+- A zárolt képernyős Live Activity nincs elkészítve. Ez külön ActivityKit
+  bővítmény (és Androidon foreground service), a háttér-GPS-hez nem szükséges.
 
-- Háttér-GPS, natív Google/Apple belépés és APNs push még nincs implementálva.
-- A Mapbox WebGL és a natív GPS valós készülékes mérését minden nagyobb iOS
-  build után külön ellenőrizni kell.
-- A TestFlight külső review-ra egyszerre egy build lehet azonos verzió-trainben;
-  emiatt a Codemagic post-processing ilyenkor hibázhat, miközben az IPA és a
-  belső tesztelhető build sikeresen feltöltődött.
+### Push
+
+- A webes FCM út már kódban kész: engedélykérés csak felhasználói kapcsolóra,
+  service worker, VAPID token Firestore-ba, szerveroldali FCM-küldés és
+  érvénytelen token törlése. A helyi `.env.local` VAPID- és API-változója megvan.
+- Natív iOS push még nincs: az Apple APNs-kulcs vagy Firebase iOS Messaging
+  konfiguráció külső hitelesítőanyagot kíván. Ne generálj vagy helyettesíts
+  ilyet; előbb Apple Developer/Firebase oldali döntés és kulcs kell.
+
+## TELEPÍTÉSI SORREND
+
+1. A felhasználó pusholja a következő commitot.
+2. **Backend telepítés szükséges** a küldetés-generálás szerveroldali fallbackje
+   miatt.
+3. **Frontend telepítés szükséges** a webes rögzítő-diagnosztikához és a webes
+   FCM ellenőrzéséhez.
+4. Ezután Codemagicből TestFlight build ugyanebből a commitból; iOS háttér-GPS
+   csak valódi készüléken tekinthető ellenőrzöttnek. Szabály- és indextelepítés
+   ehhez a menethez nem kell.
+
+## KÖVETKEZŐ MENET
+
+1. Éles weben reprodukáld a rögzítő-megszakítást, és az új visszaállítási
+   üzenet alapján döntsd el, reload/pagehide/background volt-e a kiváltó ok.
+2. TestFlighton végezd el a lezárt képernyős GPS-tesztet. Sikertelen pontsor
+   esetén a Codemagic Xcode log és a készülék helyengedély-állapota az első
+   bizonyíték, ne módosítsunk vakon.
+3. Natív pushhoz kérj döntést: Firebase iOS Messaging (Firebase Console iOS
+   app + APNs-kulcs) vagy közvetlen APNs-szállítás. Ezután készülhet a kliens-
+   és szerveroldali tokenkezelés.
+4. A küldetések tényleges útvonalminőségét külön, Mapbox-válaszokra épített
+   mérőcsomaggal optimalizáld; a mostani fallback csak a nulla találatot oldja.
 
 ## MODELLJAVASLAT
 
-**Terra/Sol, közepes mélység** elég a kiadási azonosító, Capacitor plugin és
-felületi integráció munkához. Valós készülékes GPS- vagy Mapbox-anomália
-diagnózisánál **Sol, erős** indokolt.
+**Sol, erős** a valódi GPS-életciklus és háttérbeli anomáliák méréséhez.
+**Terra, közepes** elég az ezt követő, konkrét webes lifecycle-javításhoz és a
+natív push meglévő mintára épülő klienskódjához.

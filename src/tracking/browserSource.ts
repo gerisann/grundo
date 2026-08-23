@@ -13,6 +13,7 @@
  * mint az őszinte figyelmeztetés.
  */
 
+import type { ActivityType } from '@/types';
 import {
   TrackingError,
   type PositionHandlers,
@@ -39,7 +40,7 @@ export class BrowserPositionSource implements PositionSource {
 
   private watchId: number | null = null;
 
-  async start(handlers: PositionHandlers): Promise<void> {
+  async start(handlers: PositionHandlers, _activityType?: ActivityType): Promise<void> {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       throw new TrackingError('unsupported', 'Ez a böngésző nem tud helymeghatározást.');
     }

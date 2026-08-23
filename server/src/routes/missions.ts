@@ -17,8 +17,7 @@ import { layerOf, traceToCellPath } from '../../../src/game/cells';
 import { detectLoopsDetailed, loopCells } from '../../../src/game/loops';
 import {
   countRouteDefects,
-  preferCleanRoutes,
-  withoutOutAndBackSpurs,
+  selectMissionRoutes,
 } from '../../../src/game/routeShape';
 import {
   averagePaceSecPerKm,
@@ -267,9 +266,8 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           .slice(0, FALLBACK_LIMIT);
 
     const directional = preferDirection(usable, input.preferredBearing);
-    const clean = withoutOutAndBackSpurs(directional);
-    const shaped: ShapedCandidate[] = preferCleanRoutes(
-      clean.map(({ error: _error, ...candidate }) => candidate),
+    const shaped: ShapedCandidate[] = selectMissionRoutes(
+      directional.map(({ error: _error, ...candidate }) => candidate),
     );
 
     if (shaped.length === 0) {
@@ -286,9 +284,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           ? 'no_routes'
           : closedLoops === 0
             ? 'no_loops'
-            : usable.length > 0 && clean.length === 0
-              ? 'no_clean_routes'
-              : 'no_fit',
+            : 'no_fit',
         diagnostics: { routesReturned, closedLoops, bearings: bearings.length },
       });
       return;

@@ -201,16 +201,30 @@ export function preferCleanRoutes<T extends { uTurns: number }>(routes: readonly
 }
 
 /**
- * Csak valóban tiszta, oda-vissza mellékutcai nyúlvány nélküli útvonalak.
+ * A valóban tiszta, oda-vissza mellékutcai nyúlvány nélküli útvonalak.
  *
  * A `preferCleanRoutes` egymáshoz képest rangsorol: akkor is visszaad jelöltet,
  * ha a környéken mindegyik rossz. A felhasználói ajánlásnál ez már nem elég:
- * egyetlen fölösleges visszafordulás is olyan útvonalat ígér, amit senki nem
- * akarna követni. Itt ezért abszolút minőségi kapu van. Kevesebb ajánlat jobb,
- * mint egy térképen láthatóan hibás ajánlat.
+ * egyetlen fölösleges visszafordulás is rosszabb ajánlat. Ez azonban NEM
+ * kizáró kapu: ritka úthálózatban minden egyes kör tartalmazhat egy kényszerű
+ * visszafordulást. Ilyenkor a „nincs küldetés" rosszabb élmény, mint a helyi
+ * legjobb, őszintén megjelenített útvonal.
  */
 export function withoutOutAndBackSpurs<T extends { uTurns: number }>(
   routes: readonly T[],
 ): T[] {
   return routes.filter((route) => route.uTurns === 0);
+}
+
+/**
+ * A küldetéslistába kerülő útvonalak.
+ *
+ * Van tiszta jelölt → csak azokból válogatunk. Nincs tiszta jelölt → a teljes
+ * mezőnyt a már kipróbált relatív minőségi sorrendbe tesszük. Így a látványos
+ * zsákutcák nem nyernek, de az ajánló soha nem válik használhatatlanná attól,
+ * hogy az adott környék minden köre kényszerűen tartalmaz egy visszafordulást.
+ */
+export function selectMissionRoutes<T extends { uTurns: number }>(routes: readonly T[]): T[] {
+  const clean = withoutOutAndBackSpurs(routes);
+  return preferCleanRoutes(clean.length > 0 ? clean : routes);
 }

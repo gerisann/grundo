@@ -31,7 +31,7 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | Firestore / Storage | A meglévő web SDK marad. A fotófeldolgozás `createImageBitmap` hiányakor WebKit-kompatibilis `<img>` fallbacket használ, miközben a vászonra újrakódolás továbbra is törli az EXIF-et. |
 | Cloud Run API | A backend CORS allowlist része a `capacitor://localhost`; a backend újratelepítése szükséges az iOS API-hívások előtt. |
 | Mapbox GL | A webes WebGL implementáció marad. A Codemagicben olyan nyilvános Mapbox tokent kell használni, amelyet nem kizárólag HTTPS web-originre korlátoztak. |
-| Geolocation | iOS-en a `@capacitor/geolocation` natív plugin kéri a GRUNDO helyengedélyét, így nincs `localhost` böngészős prompt. Weben marad a `navigator.geolocation`. Háttér-GPS nincs bekapcsolva. |
+| Geolocation | iOS-en a saját Core Location Capacitor bridge kéri a GRUNDO helyengedélyét, így nincs `localhost` böngészős prompt. Aktív mérés alatt `UIBackgroundModes: location`, 5 m-es mintavétel és tartós natív pontsor fut; az ébredő WebView a sorba tett pontokat átveszi. A rendszer helyengedélyénél a „Mindig” opció kell a specifikáció szerinti lezárt képernyős rögzítéshez. Weben marad a `navigator.geolocation`, ott nincs háttérkövetés. |
 | Érintés/gesztus | A meglévő pointer/touch kezelés WKWebView-kompatibilis; natív gesztusplugin nem szükséges. |
 | SPA routing | A Capacitor `capacitor://localhost` originjén a meglévő BrowserRouter marad; nincs Associated Domains vagy universal link capability. |
 | Külső URL-ek | A jelenlegi kódban nincs külön `window.open`/külső link flow, ezért Browser plugin sem került be. |
@@ -39,9 +39,10 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | Státuszsáv / safe area | Edge-to-edge WKWebView, `viewport-fit=cover`, meglévő `safe-area-inset-*` CSS és a témát követő natív státuszsáv. |
 | Fájl/fotó választás | WKWebView file input támogatott; kamera- és fotótár-indoklások szerepelnek az Info.plistben. |
 
-Az első build szándékosan nem kér Push Notifications, Sign in with Apple,
-Associated Domains vagy Background Modes capabilityt. Ezeket csak a hozzájuk
-tartozó funkció tényleges implementálásakor szabad bekapcsolni.
+Az első build szándékosan nem kér Push Notifications, Sign in with Apple vagy
+Associated Domains capabilityt. A Background Modes → Location Updates már a
+natív háttér-GPS tényleges implementációjával együtt szerepel; a készülékes,
+lezárt kijelzős terepteszt ennek kötelező része.
 
 ## Kiadási rend: web és TestFlight
 
@@ -130,7 +131,10 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
    `CERTIFICATE_PRIVATE_KEY` néven másold be a teljes PEM tartalmat (a BEGIN
    és END sorokkal együtt), és jelöld **Secret** értéknek. A fájl és a
    `.pub` párja soha ne kerüljön a GRUNDO repositoryba.
-5. A Mapbox tokennél ellenőrizd, hogy a weboldal-origin korlátozás nem tiltja
+5. A Background Modes → Location updates megfelelője már commitolva van az
+   Info.plist `UIBackgroundModes: location` bejegyzésében; Codemagic ebből
+   épít, nincs külön portál- vagy kézi Xcode-lépés.
+6. A Mapbox tokennél ellenőrizd, hogy a weboldal-origin korlátozás nem tiltja
    a `capacitor://localhost` kéréseket; szükség esetén használj külön,
    minimális scope-ú natív publikus tokent.
 
@@ -158,5 +162,8 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
 - Valódi készüléken ellenőrizni kell az e-mailes authot, Mapbox WebGL-t,
   előtéri helyengedélyt, útvonalrögzítést, fotóválasztást, safe area-t és a
   világos/sötét státuszsávot.
-- A háttérbe küldött app jelenleg nem ígér folyamatos GPS-rögzítést. Ez külön
-  natív háttér-GPS fejlesztési és terepi tesztfeladat.
+- Készüléken indíts rögzítést, majd zárd le a képernyőt legalább 3 percre,
+  haladj közben legalább 100 métert, nyisd fel az appot és ellenőrizd a
+  folyamatos pontsort. A rendszer bármikor leállíthatja a kilőtt appot; az
+  aktív, háttérben hagyott rögzítés támogatott, nem a force-quit utáni
+  automatikus újraindítás.

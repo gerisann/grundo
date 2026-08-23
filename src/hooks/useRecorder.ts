@@ -39,6 +39,12 @@ import {
 import { TrackingError, type PositionSource } from '@/tracking/types';
 import { ApiError, api, apiConfigured, type ActivitySummary } from '@/lib/api';
 import { requestWakeLock, wakeLockSupported, type WakeLock } from '@/tracking/wakeLock';
+import {
+  currentNavigationType,
+  describeResumeCause,
+  installLifecycleDiagnostics,
+  readLastLifecycleEvent,
+} from '@/tracking/lifecycle';
 
 export interface RecorderApi {
   state: RecorderState;
@@ -52,6 +58,8 @@ export interface RecorderApi {
   wakeLockActive: boolean;
   /** Félbehagyott, folytatható rögzítés a korábbi munkamenetből. */
   resumable: RecorderState | null;
+  /** Miért állt helyre helyi mentésből a rögzítés. */
+  resumableNotice: string | null;
 
   /** A feltöltés állapota és eredménye. */
   upload: UploadState;
@@ -100,6 +108,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   const [error, setError] = useState<TrackingError | null>(null);
   const [hasFix, setHasFix] = useState(false);
   const [resumable, setResumable] = useState<RecorderState | null>(null);
+  const [resumableNotice, setResumableNotice] = useState<string | null>(null);
   const resumableRun = useRef<PersistedRun | null>(null);
   const [pendingType, setPendingType] = useState<ActivityType>('run');
   const wakeRef = useRef<WakeLock | null>(null);
@@ -121,6 +130,10 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   /* ── Félbehagyott rögzítés keresése induláskor ─────────────────── */
 
   useEffect(() => {
+    return installLifecycleDiagnostics();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       const store = defaultRunStore();
@@ -129,6 +142,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
       if (isResumable(saved, Date.now())) {
         resumableRun.current = saved;
         setResumable(saved.state);
+        setResumableNotice(describeResumeCause(readLastLifecycleEvent(), currentNavigationType()));
       }
       else await store.clear().catch(() => undefined);
     })();
@@ -139,7 +153,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
 
   /* ── A forrás elindítása és leállítása ─────────────────────────── */
 
-  const attach = useCallback(async () => {
+  const attach = useCallback(async (activityType: ActivityType = stateRef.current.type) => {
     setError(null);
     try {
       await positionSource.start({
@@ -150,7 +164,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
           apply((current) => applySample(current, sample));
         },
         onError: (err) => setError(err),
-      });
+      }, activityType);
     } catch (err) {
       setError(
         err instanceof TrackingError
@@ -195,7 +209,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
       setHasFix(false);
       apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
       await acquireWakeLock();
-      await attach();
+      await attach(type ?? pendingType);
     },
     [acquireWakeLock, apply, attach, pendingType],
   );
@@ -291,18 +305,20 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     if (saved === null || resumable === null) return;
     resumableRun.current = null;
     setResumable(null);
+    setResumableNotice(null);
     // Szüneteltetve vesszük át: a megszakítás óta eltelt idő nem mozgás volt,
     // és a felhasználónak kell eldöntenie, mikor folytatja.
     stateRef.current = prepareForRestore(saved);
     setState(stateRef.current);
     persister.save(stateRef.current);
     await acquireWakeLock();
-    await attach();
+    await attach(stateRef.current.type);
   }, [acquireWakeLock, attach, persister, resumable]);
 
   const dismissResumable = useCallback(async () => {
     resumableRun.current = null;
     setResumable(null);
+    setResumableNotice(null);
     await persister.clear();
   }, [persister]);
 
@@ -313,6 +329,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     supportsBackground: positionSource.supportsBackground,
     wakeLockActive,
     resumable,
+    resumableNotice,
     pendingType,
     setPendingType,
     upload,

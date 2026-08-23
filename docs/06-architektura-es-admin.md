@@ -157,7 +157,8 @@ A parancsok EGY SORBAN vannak, sorvégi backslash nélkül. Ez szándékos: a t�
 ## Kliens
 
 - **Ajánlás: React + Capacitor** (a meglévő webes tudásra épít, az AI Studio-s munkafolyamathoz illeszkedik). Ahol natív kell:
-  - háttér-helymeghatározás (`@capacitor-community/background-geolocation`),
+  - háttér-helymeghatározás (helyi iOS Core Location bridge; `UIBackgroundModes: location`,
+    a pontok natív sorba mentésével),
   - HealthKit / Health Connect plugin,
   - élő értesítés (iOS Live Activity, Android foreground service).
 - **Alternatíva:** React Native, ha a háttér-GPS és az akkumulátor-viselkedés kritikusabb, mint a fejlesztési sebesség. A tracking a legkockázatosabb natív felület — ezt kell először prototipizálni.

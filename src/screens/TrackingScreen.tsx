@@ -17,6 +17,7 @@ import { decodePolyline } from '@/game/polyline';
 import { processActivity } from '@/game';
 import { api, apiConfigured, type Mission, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
+import { isNativeApp } from '@/lib/platform';
 import {
   currentSpeedMps,
   lapDistances,
@@ -434,6 +435,7 @@ export function TrackingScreen() {
             <strong>Van egy félbehagyott rögzítésed.</strong>{' '}
             {recorder.resumable.points.length} pont,{' '}
             {formatDistance(recorder.resumable.distanceM)}.
+            {recorder.resumableNotice !== null ? <span> {recorder.resumableNotice}</span> : null}
             <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-3)' }}>
               <Button size="sm" onClick={() => void recorder.restore()}>
                 Folytatom
@@ -460,6 +462,9 @@ export function TrackingScreen() {
             </button>
             Tartsd bekapcsolva a képernyőt. Böngészőben a rögzítés megáll, ha a telefon
             lezáródik vagy másik appra váltasz.
+            {isNativeApp()
+              ? ' A lezárt képernyős méréshez a rendszer helyengedélyénél az „Mindig” opciót is engedélyezd.'
+              : ''}
             {recorder.wakeLockActive
               ? ' A képernyőt ébren tartjuk.'
               : ' A képernyő ébren tartása nem sikerült — állítsd hosszabbra a képernyő-időkorlátot.'}

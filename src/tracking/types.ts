@@ -1,3 +1,5 @@
+import type { ActivityType } from '@/types';
+
 /**
  * GRUNDO rögzítés — közös típusok.
  *
@@ -77,6 +79,7 @@ export interface PositionSource {
    */
   readonly ordered: boolean;
 
-  start(handlers: PositionHandlers): Promise<void>;
+  /** A mozgásforma a natív szolgáltatás energia- és aktivitási profiljához kell. */
+  start(handlers: PositionHandlers, activityType?: ActivityType): Promise<void>;
   stop(): void | Promise<void>;
 }
