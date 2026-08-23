@@ -22,6 +22,7 @@
     "clean:gp-ledger-junk": "tsx src/scripts/cleanGpLedgerJunk.ts",
     "backfill:blocked-by": "tsx src/scripts/backfillBlockedBy.ts",
     "backfill:area-windows": "tsx src/scripts/backfillAreaWindows.ts",
+    "backfill:rivals": "tsx src/scripts/backfillRivals.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts"
   },
   "dependencies": {

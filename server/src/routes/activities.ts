@@ -167,6 +167,26 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     if (committed.duplicate) {
       return res.json({ activityId, summary: committed.summary, duplicate: true });
     }
+
+    const stolenFrom = Object.entries(committed.stolenFrom ?? {}).filter(([, count]) => count > 0);
+    const breakthroughFrom = Object.entries(committed.breakthroughFrom ?? {}).filter(([, count]) => count > 0);
+
+    /**
+     * A rivalitás a válasz előtt létrejön.
+     *
+     * Korábban ez a tűzz-és-felejtsd értesítési blokkban futott, ezért az
+     * aktivitás mentése után azonnal megnyitott profil még üres rivális-listát
+     * kaphatott. A rivális badge kiértékelése is csak a következő aktivitásnál
+     * látta volna a kapcsolatot. Az „eddig is rivális volt-e” halmazt továbbra
+     * a tükörírás ELŐTT olvassuk, hogy az első támadás semleges maradjon.
+     */
+    const alreadyRivals = stolenFrom.length > 0
+      ? await existingRivals(uid, stolenFrom.map(([victimId]) => victimId))
+      : new Set<string>();
+    if (stolenFrom.length > 0) {
+      await recordRivalry(uid, Object.fromEntries(stolenFrom));
+    }
+
     /**
      * A jelvény-kiértékelés a FŐ TRANZAKCIÓN KÍVÜL fut, de a válasz ELŐTT,
      * bevárva.
@@ -202,8 +222,6 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       }
       if (awardedBadges.length > 0) notifyBadgesAwarded(uid, awardedBadges);
 
-      const stolenFrom = Object.entries(committed.stolenFrom ?? {}).filter(([, c]) => c > 0);
-      const breakthroughFrom = Object.entries(committed.breakthroughFrom ?? {}).filter(([, c]) => c > 0);
       if (stolenFrom.length > 0 || breakthroughFrom.length > 0) {
         const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
         const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
@@ -220,12 +238,6 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
           vesztené — a rögzítés után minden áldozat rivális, tehát mindenki a
           rivális-hangnemű értesítést kapná, az első összecsapásnál is.
         */
-        const alreadyRivals = await existingRivals(
-          uid,
-          stolenFrom.map(([victimId]) => victimId),
-        );
-        await recordRivalry(uid, Object.fromEntries(stolenFrom));
-
         for (const [victimId, count] of stolenFrom) {
           notifyTerritoryStolen(
             victimId,

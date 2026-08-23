@@ -426,6 +426,8 @@ Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`
 ```
 Tükör-alkollekció, mint a `blocks`/`blockedBy`: lopásonként két dokumentum keletkezik (`users/{támadó}/rivals/{áldozat}` és fordítva), tükrözött számokkal. Nincs index-igény, a `rivals` lekérdezés egyetlen mezőn (`exchangedCells`) rendez. Csak a tulajdonos olvashatja, írás kizárólag szerveroldalról. Lásd [server/src/lib/rivals.ts](../server/src/lib/rivals.ts).
 
+A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történetéből a `server/src/scripts/backfillRivals.ts` számolja újra. A szkript alapértelmezésben csak jelentést készít; az érintett tükördokumentumokat teljes aggregátummal írja felül, ezért ismételten is biztonságosan futtatható.
+
 ### `clubs/{clubId}`
 ```ts
 { name, description, photoURL, city, countryCode,

@@ -1,9 +1,9 @@
-import { formatNumber } from '@/lib/format';
+import { formatArea, formatNumber } from '@/lib/format';
 import type { Rival } from '@/lib/api';
 import './rivalScore.css';
 
 /**
- * Egy rivális mérlege: a FŐ SZÁM, utána kicsiben a bontás.
+ * Egy rivális mérlege: összecsapások, terület és cellamérleg.
  *
  * A fő szám a kicserélt mezők száma — ez a rangsor alapja is. Utána kisebb
  * betűvel, zölddel a szerzett, pirossal a vesztett (Geri, 2026-08-22).
@@ -19,15 +19,17 @@ import './rivalScore.css';
  * szerzett és melyik a vesztett.
  */
 export function RivalScore({ rival }: { rival: Rival }) {
+  const encounters = rival.gainedEvents + rival.lostEvents;
   return (
     <span className="rival-score">
-      <span className="rival-score__total">{formatNumber(rival.exchangedCells)}</span>
+      <span className="rival-score__total">{formatNumber(encounters)}×</span>
+      <span className="rival-score__area">{formatArea(rival.exchangedM2)}</span>
       <span className="rival-score__split">
         <span className="rival-score__gained">+{formatNumber(rival.gainedCells)}</span>
         <span className="rival-score__lost">−{formatNumber(rival.lostCells)}</span>
       </span>
       <span className="rival-score__sr">
-        {`${rival.exchangedCells} mező cserélt gazdát: ${rival.gainedCells} szerzett, ${rival.lostCells} vesztett`}
+        {`${encounters} összecsapás, ${formatArea(rival.exchangedM2)} gazdát cserélt terület: ${rival.gainedCells} szerzett, ${rival.lostCells} vesztett mező`}
       </span>
     </span>
   );

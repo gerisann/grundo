@@ -2,8 +2,8 @@
 
 Ez a fájl az AKTUÁLIS állapotot mutatja. A történet a git logban van.
 
-**Következő menet neve: GRUNDO #11.** A #10 menet lezárta a rivális felület
-ellenőrzését, közös nevezőre hozta a küldetés-specifikációt és a kódot, valamint
+**Következő menet neve: GRUNDO #11.** A #10 menet auditálta és javította a rivális
+felületet, közös nevezőre hozta a küldetés-specifikációt és a kódot, valamint
 elkészítette a profil új füles navigációját és a tracking kért térképi javításait.
 A profilfülek utólagos vizuális és kattintási finomítása is elkészült.
 Ezután lezárult a távolságalapú küldetés verziókompatibilitása, az abszolút
@@ -12,8 +12,8 @@ Ezután lezárult a távolságalapú küldetés verziókompatibilitása, az absz
 ## ÁLLAPOT
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
-- Ág: `main`, az `origin/main` előtt 3 helyi committal.
-- Unit tesztek: **386 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
+- Ág: `main`, az `origin/main` előtt 4 helyi committal.
+- Unit tesztek: **388 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
 - Emulátoros készlet: **112 zöld** valódi Firestore/Auth emulátor ellen.
 - Típusellenőrzés: gyökér és `server/` hibamentes.
 - Production build: frontend és backend hibamentes. A Mapbox chunk ismert,
@@ -30,22 +30,37 @@ elválasztóval és lila–korall gradiens aktív vonallal. A „Profilom” fej
 beállítások gomb és tabsor közös sticky blokk, görgetésre is a képernyő tetején
 marad. Keskeny kijelzőn touch swipe és egérrel fogd‑és‑húzd is működik.
 
-- `Riválisok`: működő, teljes kereshető lista.
+- `Riválisok`: a frontend és a backend route elkészült, de az éles backend
+  jelenleg régi (`grundo-api-00065-2cp`, 2026-08-22), ezért telepítésig az
+  „Ismeretlen végpont: GET /api/rivals” hiba látszik.
 - `Badgek`: a meglévő jelvénylista önálló füle; a régi `/profil/badges` cím
   kompatibilitási átirányításként megmaradt.
 - `Statisztika`, `Klánok`: őszinte későbbi üres állapot, stabil route-tal.
 - A Profil TOP 3 rivális-kártyájának „Összes” gombja a dedikált fülre visz.
 
-### Rivális funkció lezárása
+### Rivális funkció — audit és javítás
 
-Az emulátoros seed most négy kétoldalú rivalitást is létrehoz. Böngészőben
-ellenőrizve:
-
-- TOP 3 profil-kártya valós adatokkal;
-- teljes, kereshető riválislista;
-- világos és sötét téma;
-- üres és megjelenő állapot;
-- a korábbi öt emulátoros tükörírás-teszt továbbra is zöld.
+- Új lopás után a kétoldalú riválistükör most a válasz és a badge-értékelés
+  előtt jön létre, így a profil azonnal látja.
+- TOP 3 profil-kártya és teljes, max. 200 elemű kereshető fül kész.
+- Mindkét lista mutatja az összecsapások számát (`N×`), az összes gazdát
+  cserélt területet km²-ben, valamint a szerzett/vesztett mezőket.
+- A `RivalBadge` a feedben, hozzászólásoknál, kapcsolati listákban,
+  aktivitás-adatlapon, keresésben, területtulajdonosnál, ranglistán és a
+  nyilvános profilon be van kötve.
+- A visszatérő rivális támadásának értesítése külön címet kap; az első
+  összecsapás semleges marad.
+- A korábban csak dokumentációban említett visszatöltés most valóban létezik:
+  `server/src/scripts/backfillRivals.ts`, alapból száraz futás, éles íráshoz
+  kettős védelemmel.
+- Éles, csak olvasó audit: 11 lopási esemény, 412 gazdát cserélt mező,
+  2 tényleges pár. `geri ↔ peeti77`: **4×**, `+33/−30` mező; tehát a
+  `geri` fiókban peeti77 valóban rivális. `geri ↔ gerivagyok`: 7×,
+  `+54/−295` mező. Adatbázis-írás nem történt.
+- A rivális badge küszöbe egy kapcsolat lesz; a neve/jutalom-GP még Geri
+  döntésére vár, ezért ez az egy rész nincs késznek állítva.
+- A rivalitás által közvetlenül érintett 18 aktivitás- és 5 riválistükör-
+  emulátorteszt zöld; a backfill aggregátor további 2 unit tesztje zöld.
 
 ### Küldetések
 
@@ -107,8 +122,9 @@ maradt.
 
 ## TELEPÍTÉS
 
-A commit **frontend + backend** telepítést igényel. Firestore-szabály- vagy
-indexmódosítás nincs. A push és telepítés Geri feladata.
+A commit **frontend + backend** telepítést igényel. Ezután külön adatbázislépés
+a rivális backfill alkalmazása; Firestore-szabály- vagy indexmódosítás nincs.
+A push, backfill és telepítés Geri feladata.
 
 ## NYITOTT KISEBB ÜGYEK
 
@@ -120,6 +136,8 @@ indexmódosítás nincs. A push és telepítés Geri feladata.
 - A Mapbox production chunk továbbra is 521,57 kB gzip; ismert korábbi ügy.
 - A Profil főoldalán a jelvény-előnézet egyelőre megmaradt a Badgek fül mellett
   is. Később eldönthető, hogy rövid preview maradjon vagy teljesen költözzön ki.
+- A rivális badge neve és jutalom-GP-je még döntésre vár; a backfill csak ezután
+  kapja meg a visszamenőleges badge-kiosztást.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 

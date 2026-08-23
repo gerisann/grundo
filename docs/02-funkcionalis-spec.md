@@ -317,7 +317,7 @@ A saját profil felső fülei ebben a rögzített sorrendben: **Profil · Statis
 
 Ha valaki elvesz területet valakitől, a kettejük kapcsolata **rivális** lesz — ez nem kérés/elfogadás kérdése, mint a követés, hanem MEGTÖRTÉNIK, a lopás pillanatában. A rangsor alapja a **kicserélt mezők száma** (szerzett + vesztett): „ha valaki 1×10 cellát lopott, az ugyanannyit ér, mint 10×1". Az áttörés (megvédett támadás) nem hoz létre rivalitást, mert egy mező sem cserélt gazdát.
 
-- **Profil fülön** egy szekció mutatja a TOP 3 riválist (eltűnik, ha nincs egy sem); az **önálló Riválisok fülön** van a teljes, kliensoldalon kereshető lista (max 200 elem betöltve).
+- **Profil fülön** egy szekció mutatja a TOP 3 riválist (eltűnik, ha nincs egy sem); az **önálló Riválisok fülön** van a teljes, kliensoldalon kereshető lista (max 200 elem betöltve). Mindkét lista soronként mutatja az összecsapások számát (`N×`), az összes gazdát cserélt területet km²-ben, valamint a szerzett és vesztett mezők bontását.
 - A név mellett **mindenhol** (feed, hozzászólás, aktivitás-részletek, keresés, követő-lista, terület-tulajdonos kártya, ranglista, nyilvános profil) egy **„RIVÁLIS" címke** jelenik meg (`#FC5F71` háttér, fekete szöveg), témafüggetlen.
 - Ha egy rivális támad, az értesítés külön hangot kap: „Egy riválisod megtámadta a grundod!", km²-ben és mezőben is mutatva a veszteséget. Az első összecsapás még semleges hangot kap.
 - Más felhasználó rivális-listája **nem publikus** — megmutatná, kitől szokott veszíteni.
