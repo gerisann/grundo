@@ -14,7 +14,7 @@ fordulás- és helyikerülő-felismerést kapott.
 ## ÁLLAPOT
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
-- Ág: `main`, az `origin/main` előtt 5 helyi committal.
+- Ág: `main`, az `origin/main` előtt 1 helyi committal.
 - Unit tesztek: **391 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
 - Emulátoros készlet: **112 zöld** valódi Firestore/Auth emulátor ellen.
 - Típusellenőrzés: gyökér és `server/` hibamentes.
@@ -130,6 +130,11 @@ maradt.
 A commit **frontend + backend** telepítést igényel. Ezután külön adatbázislépés
 a rivális backfill alkalmazása; Firestore-szabály- vagy indexmódosítás nincs.
 A push, backfill és telepítés Geri feladata.
+
+A 2026-08-23-i első backend Cloud Build (`f18cd9ec-…`) még a fordításnál
+megállt, mert a Dockerfile nem másolta be a backend értesítései által használt
+közös `src/lib/format.ts` fájlt. A Docker build-kontextus javítva; az elhasalt
+build nem hozott létre új Cloud Run-revíziót, ezért biztonságosan újraindítható.
 
 ## NYITOTT KISEBB ÜGYEK
 
