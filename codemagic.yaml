@@ -13,6 +13,7 @@ workflows:
         - grundo_ios_signing
       vars:
         BUNDLE_ID: app.grundo.ios
+        LIVE_ACTIVITY_BUNDLE_ID: app.grundo.ios.liveactivity
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
       node: 22.14.0
@@ -41,15 +42,17 @@ workflows:
           test -f ios/App/App/GoogleService-Info.plist
           grep -q "CapacitorFirebaseMessaging" ios/App/CapApp-SPM/Package.swift
           grep -q "aps-environment" ios/App/App/App.entitlements
+          grep -q "NSSupportsLiveActivities" ios/App/App/Info.plist
+          grep -q "$LIVE_ACTIVITY_BUNDLE_ID" ios/App/App.xcodeproj/project.pbxproj
+          xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" -list >/dev/null
 
       - name: Ideiglenes aláíró keychain létrehozása
         script: keychain initialize
 
       - name: Apple aláírófájlok automatikus létrehozása
-        script: >-
-          app-store-connect fetch-signing-files "$BUNDLE_ID"
-          --type IOS_APP_STORE
-          --create
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files "$LIVE_ACTIVITY_BUNDLE_ID" --type IOS_APP_STORE --create
 
       - name: Aláíró tanúsítvány betöltése
         script: keychain add-certificates

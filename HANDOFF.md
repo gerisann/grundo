@@ -6,10 +6,11 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`.
-- GitHubon jelenleg `7c45ad9 Webes push production konfiguráció` van.
-- A lokális ág egy commit-tal jár a GitHub előtt: a natív iOS push
-  implementációja. A push a felhasználó következő lépése.
-- Teljes unit teszt: **402 zöld**, 112 célzott emulátoros teszt kihagyva.
+- GitHubon jelenleg `c6de619 Natív iOS push bekötése` van.
+- A lokális ág két commit-tal jár a GitHub előtt: `56f3c16` izolálja a
+  Codemagic push-tesztet, ezt követi a zárolt képernyős Live Activity.
+  A push a felhasználó következő lépése.
+- Teljes unit teszt: **403 zöld**, 112 célzott emulátoros teszt kihagyva.
 - A frontend production build és a backend TypeScript build sikeres
   2026-08-23-án. Natív Xcode-fordítás Windows alatt nem futtatható; ezt a
   Codemagic következő buildje ellenőrzi.
@@ -59,18 +60,42 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
   megállt; a Package.swift kézzel is tartalmazza a plugint. A macOS Codemagic
   syncnek ezt újra kell generálnia, a natív fordítás a döntő ellenőrzés.
 
+### Codemagic unit teszt javítása
+
+- A `c6de619` Codemagic buildben a push unit teszt valódi Firestore-írást
+  próbált, mert ott a Firebase environment teljes volt; helyben konfiguráció
+  nélkül ezért nem jelentkezett. A `56f3c16` teljesen mockolja a Firestore
+  határt, így a teszt semmilyen környezetben nem megy hálózatra.
+
+### Zárolt képernyős Live Activity
+
+- Külön `GrundoLiveActivity` WidgetKit extension target készült iOS 16.1+
+  rendszerre. A zárolt képernyőn és Dynamic Islanden mutatja a mozgásformát,
+  időt, távot, aktuális sebességet és szünetállapotot.
+- A Core Location bridge akkor is frissíti az ActivityKit állapotát, amikor a
+  WebView alszik. Előtérbe visszatérve a szűrt recorder-állapot korrigálja a
+  natív becslést; befejezéskor a Live Activity azonnal eltűnik.
+- A Beállítások → Értesítések alatt eszközönként kikapcsolható, alapból aktív.
+  A változtatás a következő rögzítéstől érvényes.
+- A `.pbxproj` külön parserrel érvényesnek bizonyult, mind az App, mind az
+  extension target felismerhető. A Swift/ActivityKit fordítást csak a
+  következő macOS Codemagic archive tudja véglegesen igazolni.
+
 ## TELEPÍTÉSI SORREND
 
-1. A felhasználó pusholja a lokális commitot.
+1. A felhasználó pusholja a két lokális commitot.
 2. Adatbázis-, szabály- és indextelepítés nem kell.
 3. **Backend telepítés szükséges** az egységes push-adatmezők és iOS hang miatt.
 4. **Frontend telepítés szükséges** a production VAPID és a push UI frissítése
    miatt.
-5. Ezután Codemagic TestFlight build ugyanebből a `main` commitból.
+5. Apple Developerben előbb létre kell hozni a `GRUNDO Live Activity`
+   Identifier/App ID-t `app.grundo.ios.liveactivity` bundle ID-val.
+6. Ezután Codemagic TestFlight build ugyanebből a `main` commitból; a workflow
+   mind az apphoz, mind az extensionhöz provisioning profile-t kér.
 
 ## KÖVETKEZŐ ELLENŐRZÉS
 
-1. Codemagicben a natív push preflight, SPM feloldás és Xcode archive legyen
+1. Codemagicben a natív push/Live Activity preflight, SPM feloldás és Xcode archive legyen
    zöld. Ha az Apple provisioning profile nem tartalmazza az
    `aps-environment` entitlementet, az automatikus signingot kell újragenerálni.
 2. TestFlighton a Beállítások → Értesítések kapcsoló kérje az iOS
@@ -79,15 +104,17 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
    hanggal, koppintásra nyissa meg a megfelelő GRUNDO képernyőt.
 4. Kikapcsolás után a token tűnjön el a Firestore-ból és ne érkezzen több push
    az adott eszközre.
-5. Külön terepi körben ellenőrizendő a lezárt képernyős háttér-GPS és a webes
-   rögzítő lifecycle-diagnosztikája.
+5. Egy közös terepi tesztben ellenőrizendő a lezárt képernyős háttér-GPS és a
+   Live Activity: 3+ perc, 100+ méter, szünet/folytatás, majd befejezés.
+6. Az éles weben újra kell reprodukálni a rögzítő megszakadását. Az új
+   lifecycle-adatból derül ki, hogy reload, pagehide, háttérbe kerülés vagy
+   saját állapotkezelési hiba előzte meg; utána készül a célzott javítás.
 
 ## NYITOTT KISEBB ÜGYEK
 
-- A zárolt képernyős Live Activity nincs elkészítve; külön ActivityKit
-  bővítmény.
 - A küldetések Mapbox útvonalgeometriájának zsákutcáit mérésalapú optimalizálás
   szükséges, a jelenlegi fallback csak a használhatatlan nulla találatot oldja.
+  A felhasználó ezt a jelenlegi sorrendben a harmadik feladatnak kérte.
 - Az npm production audit két közepes React Router figyelmeztetést jelez; a
   javítás major verzióváltást igényel, ezért nem része a push implementációnak.
 

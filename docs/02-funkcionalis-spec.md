@@ -195,7 +195,13 @@ A GRUNDO szíve (képek #49, #21).
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
 - **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás gyűjti a pontokat lezárt képernyőnél is; a rendszer helyengedélyénél a **„Mindig”** opció kell. Ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. A natív sor az ébredő WebView-nak adódik át, ezért a háttérben tett út nem a felfüggesztett JavaScripttől függ.
-- **Élő rendszerértesítés** a lezárt képernyőn is (kép #03) — kikapcsolható a Beállításokban („Live Stats in Notification"). **Későbbi lépés:** ez külön iOS Live Activity / Android foreground service, nem feltétele a háttér-GPS-nek.
+- **Élő rendszerértesítés** a lezárt képernyőn is (kép #03). iOS 16.1+
+  rendszeren ActivityKit Live Activity mutatja a mozgásformát, az eltelt időt,
+  a távolságot, az aktuális sebességet és a szünet állapotát a zárolt képernyőn,
+  valamint támogatott készüléken a Dynamic Islanden. A natív Core Location
+  réteg háttérben is frissíti, ezért nem függ a felfüggesztett WebView-tól.
+  A Beállítások → Értesítések alatt kikapcsolható; a változás a következő
+  rögzítéstől érvényes. Androidon ennek megfelelője későbbi foreground service.
 
 ### Szüneteltetve (kép #03)
 - Folytatás · stop · fotó. Az értesítés is jelzi: „Szüneteltetve — koppints a visszatéréshez".

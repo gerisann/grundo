@@ -3,6 +3,8 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { ScreenHeader, Switch } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
 import { db } from '@/lib/firebase';
+import { isNativeIos } from '@/lib/platform';
+import { liveActivityEnabled, setLiveActivityEnabled } from '@/tracking/liveActivity';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_ORDER, type NotificationType } from '@/lib/notificationTypes';
 import {
   currentPushPermission,
@@ -53,6 +55,7 @@ export function NotificationsScreen() {
   const [pushPermission, setPushPermission] = useState(currentPushPermission());
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
+  const [liveStats, setLiveStats] = useState(liveActivityEnabled);
 
   useEffect(() => {
     let active = true;
@@ -121,6 +124,20 @@ export function NotificationsScreen() {
           />
           {pushError ? <p className="field__error" role="alert">{pushError}</p> : null}
         </section>
+
+        {isNativeIos() ? (
+          <section className="card">
+            <Switch
+              checked={liveStats}
+              onChange={(value) => {
+                setLiveStats(value);
+                setLiveActivityEnabled(value);
+              }}
+              label="Élő mérés a zárolt képernyőn"
+              description="A következő rögzítéstől az idő, táv és sebesség megjelenik a Live Activityben és a Dynamic Islanden."
+            />
+          </section>
+        ) : null}
 
         <section>
           <div className="label list__group-label">Miről szóljunk</div>

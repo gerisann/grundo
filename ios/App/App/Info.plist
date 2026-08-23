@@ -34,6 +34,8 @@
 	<string>A GRUNDO aktív rögzítés alatt lezárt képernyőnél is használja a helyzetedet, hogy a futás, séta vagy kerékpározás útvonala és a meghódított mezők pontosak maradjanak.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>A GRUNDO a fotótárból kiválasztott képeket az aktivitásaidhoz tölti fel.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

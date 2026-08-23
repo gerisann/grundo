@@ -10,8 +10,10 @@
 
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import type { ActivityType } from '@/types';
+import { liveActivityEnabled } from './liveActivity';
 import {
   TrackingError,
+  type PositionActivityState,
   type PositionHandlers,
   type PositionSource,
 } from './types';
@@ -26,11 +28,16 @@ interface NativeLocation {
 }
 
 interface BackgroundLocationPlugin {
-  start(options: { activityType: ActivityType }): Promise<{
+  start(options: {
+    activityType: ActivityType;
+    activityState?: PositionActivityState;
+    liveActivityEnabled: boolean;
+  }): Promise<{
     permission: 'granted' | 'prompt';
     backgroundPermission?: 'granted' | 'not_granted';
   }>;
   stop(): Promise<void>;
+  syncActivity(options: PositionActivityState): Promise<void>;
   drain(): Promise<{ locations: NativeLocation[] }>;
   addListener(eventName: 'location', listenerFunc: (location: NativeLocation) => void): Promise<PluginListenerHandle>;
   addListener(
@@ -55,7 +62,11 @@ export class NativePositionSource implements PositionSource {
   private handlers: PositionHandlers | null = null;
   private lastDeliveredAt = 0;
 
-  async start(handlers: PositionHandlers, activityType: ActivityType = 'run'): Promise<void> {
+  async start(
+    handlers: PositionHandlers,
+    activityType: ActivityType = 'run',
+    activityState?: PositionActivityState,
+  ): Promise<void> {
     await this.stop();
     this.handlers = handlers;
     this.locationListener = await BackgroundLocation.addListener('location', (location) => {
@@ -70,13 +81,21 @@ export class NativePositionSource implements PositionSource {
     document.addEventListener('visibilitychange', this.visibilityListener);
 
     try {
-      const status = await BackgroundLocation.start({ activityType });
+      const status = await BackgroundLocation.start({
+        activityType,
+        activityState,
+        liveActivityEnabled: liveActivityEnabled(),
+      });
       this.backgroundPermissionGranted = status.backgroundPermission === 'granted';
       await this.drain();
     } catch (error) {
       await this.stop();
       throw toTrackingError(error);
     }
+  }
+
+  async syncActivity(state: PositionActivityState): Promise<void> {
+    await BackgroundLocation.syncActivity(state);
   }
 
   async stop(): Promise<void> {

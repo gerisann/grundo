@@ -36,6 +36,7 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | SPA routing | A Capacitor `capacitor://localhost` originjén a meglévő BrowserRouter marad; nincs Associated Domains vagy universal link capability. |
 | Külső URL-ek | A jelenlegi kódban nincs külön `window.open`/külső link flow, ezért Browser plugin sem került be. |
 | Push | Weben FCM service worker + VAPID; natív iOS-en `@capacitor-firebase/messaging` ad FCM tokent, a Firebase Production APNs-kulccsal kézbesít. A Push Notifications capability, `aps-environment` entitlement és `remote-notification` háttérmód bekötve. |
+| Live Activity | iOS 16.1+-on külön WidgetKit extension jeleníti meg a lezárt képernyőn és a Dynamic Islanden az aktív mérés idejét, távját, sebességét és szünetállapotát. A Core Location réteg háttérből frissíti. |
 | Státuszsáv / safe area | Edge-to-edge WKWebView, `viewport-fit=cover`, meglévő `safe-area-inset-*` CSS és a témát követő natív státuszsáv. |
 | Fájl/fotó választás | WKWebView file input támogatott; kamera- és fotótár-indoklások szerepelnek az Info.plistben. |
 
@@ -152,7 +153,24 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
    FCM tokent ment `platform: ios` jelöléssel, tokenfrissítéskor cserél, és
    leiratkozáskor a helyi valamint Firestore tokent is törli.
 
-### 6. Backend és workflow indítása
+### 6. Zárolt képernyős Live Activity
+
+1. Apple Developer → Certificates, Identifiers & Profiles → Identifiers alatt
+   az app App ID-ja mellett külön App ID kell a WidgetKit extensionnek:
+   `app.grundo.ios.liveactivity`. A név legyen `GRUNDO Live Activity`.
+2. Az app `Info.plist` fájljában a `NSSupportsLiveActivities` aktív. A külön
+   `GrundoLiveActivity` extension target minimum iOS 16.1-et kér, és az App
+   targetbe ágyazódik.
+3. A natív helyforrás indításkor létrehozza, szünet/folytatáskor frissíti,
+   befejezéskor azonnal lezárja a Live Activityt. Háttérben a szűrt Core
+   Location pontokból folytatja a táv és sebesség frissítését.
+4. A Beállítások → Értesítések → „Élő mérés a zárolt képernyőn” kapcsoló
+   helyi eszközbeállítás; alapból aktív, a következő rögzítéstől érvényes.
+5. Codemagic külön App Store provisioning profile-t kér az apphoz és az
+   `app.grundo.ios.liveactivity` extensionhöz, majd az `App` scheme mindkettőt
+   egy IPA-ba archiválja.
+
+### 7. Backend és workflow indítása
 
 1. A commit pusholása után telepítsd a **backendet**, mert az új
    `capacitor://localhost` CORS origin nélkül az iOS kliens API-hívásai
@@ -181,3 +199,6 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
   folyamatos pontsort. A rendszer bármikor leállíthatja a kilőtt appot; az
   aktív, háttérben hagyott rögzítés támogatott, nem a force-quit utáni
   automatikus újraindítás.
+- Ugyanezen teszt alatt a Live Activity jelenjen meg a zárolt képernyőn;
+  az idő másodpercenként fusson, a táv és sebesség mozgáskor frissüljön, a
+  szünet gomb után „Szünet” állapotot mutasson, befejezéskor pedig tűnjön el.

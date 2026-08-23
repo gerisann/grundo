@@ -36,7 +36,11 @@ import {
   prepareForRestore,
   type PersistedRun,
 } from '@/tracking/storage';
-import { TrackingError, type PositionSource } from '@/tracking/types';
+import {
+  TrackingError,
+  type PositionActivityState,
+  type PositionSource,
+} from '@/tracking/types';
 import { ApiError, api, apiConfigured, type ActivitySummary } from '@/lib/api';
 import { requestWakeLock, wakeLockSupported, type WakeLock } from '@/tracking/wakeLock';
 import {
@@ -97,7 +101,7 @@ export type UploadState =
   | { status: 'error'; message: string; retryable: boolean };
 
 export function useRecorder(source?: PositionSource): RecorderApi {
-  const positionSource = useMemo(
+  const positionSource = useMemo<PositionSource>(
     () => source ?? (isNativeApp() ? new NativePositionSource() : new BrowserPositionSource()),
     [source],
   );
@@ -122,9 +126,11 @@ export function useRecorder(source?: PositionSource): RecorderApi {
       stateRef.current = next;
       setState(next);
       persister.save(next);
+      const activityState = toPositionActivityState(next);
+      if (activityState) void positionSource.syncActivity?.(activityState);
       return next;
     },
-    [persister],
+    [persister, positionSource],
   );
 
   /* ── Félbehagyott rögzítés keresése induláskor ─────────────────── */
@@ -153,7 +159,10 @@ export function useRecorder(source?: PositionSource): RecorderApi {
 
   /* ── A forrás elindítása és leállítása ─────────────────────────── */
 
-  const attach = useCallback(async (activityType: ActivityType = stateRef.current.type) => {
+  const attach = useCallback(async (
+    activityType: ActivityType = stateRef.current.type,
+    activityState: RecorderState = stateRef.current,
+  ) => {
     setError(null);
     try {
       await positionSource.start({
@@ -164,7 +173,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
           apply((current) => applySample(current, sample));
         },
         onError: (err) => setError(err),
-      }, activityType);
+      }, activityType, toPositionActivityState(activityState) ?? undefined);
     } catch (err) {
       setError(
         err instanceof TrackingError
@@ -207,9 +216,9 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   const begin = useCallback(
     async (type?: ActivityType) => {
       setHasFix(false);
-      apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
+      const started = apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
       await acquireWakeLock();
-      await attach(type ?? pendingType);
+      await attach(type ?? pendingType, started);
     },
     [acquireWakeLock, apply, attach, pendingType],
   );
@@ -342,5 +351,18 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     discard,
     restore,
     dismissResumable,
+  };
+}
+
+function toPositionActivityState(state: RecorderState): PositionActivityState | null {
+  if (state.startedAt === null || (state.status !== 'recording' && state.status !== 'paused')) {
+    return null;
+  }
+  return {
+    startedAt: state.startedAt,
+    distanceM: state.distanceM,
+    pausedMs: state.pausedMs,
+    pausedAt: state.pausedAt,
+    status: state.status,
   };
 }

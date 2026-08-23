@@ -57,6 +57,15 @@ export interface PositionHandlers {
   onError(error: TrackingError): void;
 }
 
+/** A natív zárolt képernyős méréshez szükséges, kis méretű állapotpillanatkép. */
+export interface PositionActivityState {
+  startedAt: number;
+  distanceM: number;
+  pausedMs: number;
+  pausedAt: number | null;
+  status: 'recording' | 'paused';
+}
+
 export interface PositionSource {
   readonly name: string;
 
@@ -80,6 +89,12 @@ export interface PositionSource {
   readonly ordered: boolean;
 
   /** A mozgásforma a natív szolgáltatás energia- és aktivitási profiljához kell. */
-  start(handlers: PositionHandlers, activityType?: ActivityType): Promise<void>;
+  start(
+    handlers: PositionHandlers,
+    activityType?: ActivityType,
+    activityState?: PositionActivityState,
+  ): Promise<void>;
+  /** Előtérben a pontos, szűrt recorder-állapotot átadja a Live Activitynek. */
+  syncActivity?(state: PositionActivityState): void | Promise<void>;
   stop(): void | Promise<void>;
 }

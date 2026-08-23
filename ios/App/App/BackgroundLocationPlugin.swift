@@ -17,12 +17,17 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drain", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "syncActivity", returnType: CAPPluginReturnPromise),
     ]
 
     private let locationManager = CLLocationManager()
     private let queueKey = "grundo.backgroundLocationQueue.v1"
     private let maximumQueuedLocations = 500
     private var pendingStart = false
+    private var requestedActivityType = "run"
+    private var requestedActivityState: GrundoActivitySnapshot?
+    private var liveActivityEnabled = true
+    private var liveActivityController: AnyObject?
 
     public override func load() {
         locationManager.delegate = self
@@ -35,6 +40,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     @objc func start(_ call: CAPPluginCall) {
+        requestedActivityType = normalizedActivityType(call.getString("activityType"))
+        requestedActivityState = activitySnapshot(call.getObject("activityState"))
+        liveActivityEnabled = call.getBool("liveActivityEnabled") ?? true
         switch locationManager.authorizationStatus {
         case .authorizedAlways:
             startUpdates()
@@ -61,6 +69,15 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     @objc func stop(_ call: CAPPluginCall) {
         pendingStart = false
         locationManager.stopUpdatingLocation()
+        endLiveActivity()
+        call.resolve()
+    }
+
+    @objc func syncActivity(_ call: CAPPluginCall) {
+        if let snapshot = activitySnapshot(call.options) {
+            requestedActivityState = snapshot
+            syncLiveActivity(snapshot)
+        }
         call.resolve()
     }
 
@@ -96,6 +113,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
         for location in locations where location.horizontalAccuracy >= 0 {
             let payload = locationPayload(location)
             enqueue(payload)
+            recordLiveActivityLocation(location)
             notifyListeners("location", data: payload)
         }
     }
@@ -109,6 +127,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
         // iOS-ben végzetes hiba lenne, ezért a két rész mindig együtt változik.
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.startUpdatingLocation()
+        startLiveActivityIfNeeded()
     }
 
     private func locationPayload(_ location: CLLocation) -> [String: Any] {
@@ -138,5 +157,62 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
             queued.removeFirst(queued.count - maximumQueuedLocations)
         }
         UserDefaults.standard.set(queued, forKey: queueKey)
+    }
+
+    private func normalizedActivityType(_ value: String?) -> String {
+        value == "walk" || value == "ride" ? value! : "run"
+    }
+
+    private func activitySnapshot(_ value: JSObject?) -> GrundoActivitySnapshot? {
+        guard let value,
+              let startedAt = value["startedAt"] as? Double,
+              let distanceM = value["distanceM"] as? Double,
+              let pausedMs = value["pausedMs"] as? Double,
+              let status = value["status"] as? String else { return nil }
+        let pausedAt = value["pausedAt"] as? Double
+        return GrundoActivitySnapshot(
+            startedAt: Date(timeIntervalSince1970: startedAt / 1000),
+            distanceM: max(0, distanceM),
+            pausedSeconds: max(0, pausedMs / 1000),
+            pausedAt: pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) },
+            isPaused: status == "paused"
+        )
+    }
+
+    private func startLiveActivityIfNeeded() {
+        guard liveActivityEnabled else { return }
+        guard #available(iOS 16.1, *) else { return }
+        let controller = (liveActivityController as? GrundoLiveActivityController)
+            ?? GrundoLiveActivityController()
+        liveActivityController = controller
+        controller.start(
+            activityType: requestedActivityType,
+            snapshot: requestedActivityState ?? GrundoActivitySnapshot(
+                startedAt: Date(),
+                distanceM: 0,
+                pausedSeconds: 0,
+                pausedAt: nil,
+                isPaused: false
+            )
+        )
+    }
+
+    private func syncLiveActivity(_ snapshot: GrundoActivitySnapshot) {
+        guard #available(iOS 16.1, *),
+              let controller = liveActivityController as? GrundoLiveActivityController else { return }
+        controller.sync(snapshot)
+    }
+
+    private func recordLiveActivityLocation(_ location: CLLocation) {
+        guard #available(iOS 16.1, *),
+              let controller = liveActivityController as? GrundoLiveActivityController else { return }
+        controller.record(location)
+    }
+
+    private func endLiveActivity() {
+        guard #available(iOS 16.1, *),
+              let controller = liveActivityController as? GrundoLiveActivityController else { return }
+        controller.end()
+        liveActivityController = nil
     }
 }
