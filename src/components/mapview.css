@@ -150,3 +150,8 @@
   color: var(--map-control-text);
   z-index: 2;
 }
+.mapview__hex-toggle[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-color: var(--accent);
+}

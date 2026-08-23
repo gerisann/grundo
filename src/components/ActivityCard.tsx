@@ -52,7 +52,7 @@ export function ActivityCard({
   const previewCells = useMemo(() => {
     if (item.activityCells?.length) return item.activityCells;
     try {
-      const points = decodePolyline(item.route);
+      const points = decodePolyline(item.route).map((point) => ({ ...point, t: 0 }));
       return [...processActivity({
         points,
         type: item.type,
