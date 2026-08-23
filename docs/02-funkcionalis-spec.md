@@ -195,6 +195,13 @@ A GRUNDO szíve (képek #49, #21).
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
 - **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás gyűjti a pontokat lezárt képernyőnél is; a rendszer helyengedélyénél a **„Mindig”** opció kell. Ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. A natív sor az ébredő WebView-nak adódik át, ezért a háttérben tett út nem a felfüggesztett JavaScripttől függ.
+- A natív WebView memória- vagy rendszeresemény miatti újraindulása **nem
+  félbehagyás**: az app kérdés nélkül visszaveszi a helyi recorder-állapotot,
+  visszakapcsolódik a tovább futó Core Location sorhoz, és ugyanazt a mérést
+  folytatja. A kézi „Folytatom / Eldobom” döntés a webes/PWA helyreállításé.
+- A térkép nyomvonal-, küldetés- és cella-GeoJSON forrása külön frissül. Egy
+  GPS-pont vagy a másodperces stopper nem építheti újra a teljes cellaréteget;
+  ez iOS-en a WebView stabilitásának része, nem puszta optimalizálás.
 - **Élő rendszerértesítés** a lezárt képernyőn is (kép #03). iOS 16.1+
   rendszeren ActivityKit Live Activity mutatja a mozgásformát, az eltelt időt,
   a távolságot, az aktuális sebességet és a szünet állapotát a zárolt képernyőn,

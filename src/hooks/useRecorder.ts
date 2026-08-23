@@ -32,8 +32,8 @@ import {
 import {
   createRunPersister,
   defaultRunStore,
-  isResumable,
   prepareForRestore,
+  restoreStrategy,
   type PersistedRun,
 } from '@/tracking/storage';
 import {
@@ -139,24 +139,6 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     return installLifecycleDiagnostics();
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const store = defaultRunStore();
-      const saved: PersistedRun | null = await store.read().catch(() => null);
-      if (cancelled || saved === null) return;
-      if (isResumable(saved, Date.now())) {
-        resumableRun.current = saved;
-        setResumable(saved.state);
-        setResumableNotice(describeResumeCause(readLastLifecycleEvent(), currentNavigationType()));
-      }
-      else await store.clear().catch(() => undefined);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   /* ── A forrás elindítása és leállítása ─────────────────────────── */
 
   const attach = useCallback(async (
@@ -196,6 +178,47 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     setWakeLockActive(false);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const store = defaultRunStore();
+      const saved: PersistedRun | null = await store.read().catch(() => null);
+      if (cancelled || saved === null) return;
+
+      const strategy = restoreStrategy(saved, Date.now(), isNativeApp());
+      if (strategy === 'automatic') {
+        // iOS-en a WebView újraindulhat, miközben a natív Core Location és a
+        // Live Activity tovább fut. Ez nem félbehagyott út: a mentett
+        // állapotot kérdés és mesterséges szünet nélkül visszavesszük, majd a
+        // natív sorból azonnal beolvassuk a közben érkezett pontokat.
+        stateRef.current = saved.state;
+        setState(saved.state);
+        persister.save(saved.state);
+        await attach(saved.state.type, saved.state);
+        if (!cancelled) await acquireWakeLock();
+        return;
+      }
+      if (strategy === 'prompt') {
+        resumableRun.current = saved;
+        setResumable(saved.state);
+        setResumableNotice(describeResumeCause(readLastLifecycleEvent(), currentNavigationType()));
+        return;
+      }
+      await store.clear().catch(() => undefined);
+    })().catch((err: unknown) => {
+      if (!cancelled) {
+        setError(
+          err instanceof TrackingError
+            ? err
+            : new TrackingError('unavailable', 'A folyamatban lévő mérés helyreállítása nem sikerült.'),
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [acquireWakeLock, attach, persister]);
+
   /**
    * Leiratkozás a lap elhagyásakor.
    *
@@ -205,7 +228,11 @@ export function useRecorder(source?: PositionSource): RecorderApi {
    */
   useEffect(() => {
     return () => {
-      void positionSource.stop();
+      const active = stateRef.current.status === 'recording' || stateRef.current.status === 'paused';
+      // Natív aktív mérésnél a React/WebView leválása nem jelent befejezést.
+      // Csak a JS-listenereket bontjuk; a Core Location a következő WebView
+      // kapcsolódásáig folytatja a tartós sor gyűjtését.
+      void (active && positionSource.detach ? positionSource.detach() : positionSource.stop());
       void wakeRef.current?.release();
       void persister.flush();
     };

@@ -67,7 +67,10 @@ export class NativePositionSource implements PositionSource {
     activityType: ActivityType = 'run',
     activityState?: PositionActivityState,
   ): Promise<void> {
-    await this.stop();
+    // Egy új WebView ugyanahhoz a már futó natív Core Location méréshez
+    // kapcsolódik vissza. Itt TILOS a natív szolgáltatást leállítani: az
+    // rövid iOS WebView-újraindulás különben valódi GPS-lyukat okozna.
+    await this.detach();
     this.handlers = handlers;
     this.locationListener = await BackgroundLocation.addListener('location', (location) => {
       this.deliver(location);
@@ -100,6 +103,12 @@ export class NativePositionSource implements PositionSource {
 
   async stop(): Promise<void> {
     if (this.handlers !== null) await this.drain();
+    await this.detach();
+    this.backgroundPermissionGranted = false;
+    await BackgroundLocation.stop().catch(() => undefined);
+  }
+
+  async detach(): Promise<void> {
     await this.locationListener?.remove();
     await this.errorListener?.remove();
     if (this.visibilityListener !== null) {
@@ -109,8 +118,6 @@ export class NativePositionSource implements PositionSource {
     this.errorListener = null;
     this.visibilityListener = null;
     this.handlers = null;
-    this.backgroundPermissionGranted = false;
-    await BackgroundLocation.stop().catch(() => undefined);
   }
 
   private async drain(): Promise<void> {

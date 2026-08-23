@@ -96,5 +96,13 @@ export interface PositionSource {
   ): Promise<void>;
   /** Előtérben a pontos, szűrt recorder-állapotot átadja a Live Activitynek. */
   syncActivity?(state: PositionActivityState): void | Promise<void>;
+  /**
+   * Csak a JavaScript-oldali feliratkozást bontja le.
+   *
+   * Natív iOS-en a WebView újratöltődhet úgy, hogy a Core Location mérésnek
+   * tovább kell futnia. A teljes `stop()` ilyenkor adatvesztést okozna.
+   * Böngészős forrásnál nincs külön háttérszolgáltatás, ezért ez opcionális.
+   */
+  detach?(): void | Promise<void>;
   stop(): void | Promise<void>;
 }

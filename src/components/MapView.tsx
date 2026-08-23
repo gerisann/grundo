@@ -376,7 +376,7 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncData(instance, track, ghostTrack, layers);
+    syncTrackData(instance, track);
 
     /**
      * Egyszer igazítunk, az első valódi nyomvonalnál.
@@ -386,7 +386,21 @@ export function MapView({
      * nézetre.
      */
     fitTrackOnce(instance, track, fitTrack, fitted);
-  }, [track, ghostTrack, layers, fitTrack]);
+  }, [track, fitTrack]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    syncGhostData(instance, ghostTrack);
+  }, [ghostTrack]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    // Ez a legdrágább frissítés: több ezer H3-poligont építhet. Külön
+    // hatásban van, hogy egy új GPS-pont ne építse újra az összes cellát.
+    syncCellData(instance, layers);
+  }, [layers]);
 
   /* ── Pozíció és követés ────────────────────────────────────────── */
 
@@ -704,6 +718,15 @@ function syncData(
   ghostTrack: MapViewProps['ghostTrack'],
   layers: MapViewProps['layers'],
 ): void {
+  syncCellData(instance, layers);
+  syncTrackData(instance, track);
+  syncGhostData(instance, ghostTrack);
+}
+
+function syncCellData(
+  instance: mapboxgl.Map,
+  layers: MapViewProps['layers'],
+): void {
   const cellSource = instance.getSource(CELL_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (cellSource) {
     const features = [];
@@ -752,7 +775,9 @@ function syncData(
     }
     cellSource.setData({ type: 'FeatureCollection', features });
   }
+}
 
+function syncTrackData(instance: mapboxgl.Map, track: MapViewProps['track']): void {
   const trackSource = instance.getSource(TRACK_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (trackSource) {
     const coordinates = (track ?? []).map((p) => [p.lng, p.lat]);
@@ -770,7 +795,9 @@ function syncData(
           : [],
     });
   }
+}
 
+function syncGhostData(instance: mapboxgl.Map, ghostTrack: MapViewProps['ghostTrack']): void {
   const ghostSource = instance.getSource(GHOST_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (ghostSource) {
     const coordinates = (ghostTrack ?? []).map((p) => [p.lng, p.lat]);

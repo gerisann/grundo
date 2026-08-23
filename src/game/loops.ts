@@ -161,13 +161,44 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
 
   for (let i = 0; i < path.length; i++) {
     const cell = path[i]!;
-    const previous = lastSeenAt.get(cell);
+    const sameCellPrevious = lastSeenAt.get(cell);
 
-    if (previous !== undefined && i - previous < GAMEPLAY.MIN_LOOP_STEPS) {
+    if (sameCellPrevious !== undefined && i - sameCellPrevious < GAMEPLAY.MIN_LOOP_STEPS) {
       shortRevisits += 1;
     }
 
-    if (previous !== undefined && i - previous >= GAMEPLAY.MIN_LOOP_STEPS) {
+    /**
+     * A hurok a CELLAFALON záródik, nem a GPS-vonal matematikai
+     * keresztezésén. Ezért nemcsak a most újra meglátogatott cella lehet
+     * kapu, hanem bármely korábban bejárt ÉLSZOMSZÉDJA is. A felhasználó
+     * képein a két fal már összeért, a középpontvonal viszont néhány méterrel
+     * elkerülte önmagát — a régi, azonos-cellás feltétel ezt tévesen nyitott
+     * huroknak látta.
+     *
+     * A közvetlen előzmények természetesen mindig szomszédok, ezért csak a
+     * strukturális minimumon túli jelöltek számítanak. Több kapunál a
+     * legkorábbit próbáljuk először: ez adja a teljes, ténylegesen körbejárt
+     * falat; a flood fill és a minimum továbbra is kiszűri az üres érintést.
+     */
+    const exactCandidate = sameCellPrevious !== undefined &&
+      i - sameCellPrevious >= GAMEPLAY.MIN_LOOP_STEPS
+      ? sameCellPrevious
+      : undefined;
+    const neighbourCandidates = [...new Set(
+      gridDisk(cell, 1)
+        .filter((near) => near !== cell)
+        .map((near) => lastSeenAt.get(near))
+        .filter((index): index is number =>
+          index !== undefined && i - index >= GAMEPLAY.MIN_LOOP_STEPS),
+    )].sort((a, b) => a - b);
+    // Ha a GPS ténylegesen ugyanabba a cellába ért vissza, a korábbi,
+    // jól bevált kapu az elsődleges. A szomszédos zárás csak fallback, így
+    // nem vágunk le egy cellát a hagyományos körök falából.
+    const candidateIndices = exactCandidate === undefined
+      ? neighbourCandidates
+      : [exactCandidate, ...neighbourCandidates.filter((index) => index !== exactCandidate)];
+
+    for (const previous of candidateIndices) {
       // A zsákutcákat a bezárás ELŐTT vágjuk le: ami csak egy szomszéddal
       // érintkezik, az nem része a körnek. Lásd `pruneDeadEnds`.
       const rawWall = new Set(path.slice(previous, i + 1));
@@ -187,7 +218,6 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
             prunedCells,
             candidateCells: err.candidateCells,
           });
-          lastSeenAt.set(cell, i);
           continue;
         }
         throw err;
@@ -232,6 +262,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
          * Regressziós tesztek: `geometry.test.ts` → „rávezető szakasz".
          */
         lastSeenAt.clear();
+        break;
       } else {
         rejected.push({
           reason: 'interior_too_small',

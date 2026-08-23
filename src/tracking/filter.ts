@@ -19,6 +19,7 @@
  */
 
 import { distanceM } from '@/game/geo';
+import { GAMEPLAY } from '@/config/gameplay';
 import type { PositionSample } from './types';
 
 export const FILTER = {
@@ -27,7 +28,11 @@ export const FILTER = {
    * ~18,8 m: 50 m-es bizonytalanság már 2-3 cellányi tévedés, ami hamis
    * falat vagy hamis hurkot rajzolhat.
    */
-  MAX_ACCURACY_M: 50,
+  // Ugyanaz a küszöb, mint a játékmotorban. Korábban a rögzítő 50 méterig
+  // kirajzolta és a távba számolta a pontot, miközben a végleges motor 30
+  // méter fölött eldobta — ettől a vonal ugrált, a cellák pedig utólag
+  // eltérhettek a mentett eredménytől.
+  MAX_ACCURACY_M: GAMEPLAY.MAX_GPS_ACCURACY_M,
 
   /**
    * Fizikailag lehetetlen sebesség. Nem sportági határ — a bringás réteg

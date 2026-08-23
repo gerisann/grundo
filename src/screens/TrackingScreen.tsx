@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { cellToChildren } from 'h3-js';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
+import type { MapViewProps } from '@/components/MapView';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
@@ -130,10 +131,14 @@ export function TrackingScreen() {
   }, [state.status, remoteState?.status]);
 
   /**
-   * A cellák újraszámolása a nyomvonal hosszával arányos munka, ezért NEM
-   * futtatjuk minden mintánál: ötösével frissítünk.
+   * A drága foglalási előnézetet nem minden GPS-mintára, hanem minden ÚJ
+   * H3-cellára frissítjük. A korábbi öt GPS-pontos köteg bringánál 20–40
+   * méteres látható lemaradást okozott, majd egyszerre „behozta” a cellákat.
+   * Így ugyanabban a cellában továbbra sincs fölösleges flood fill, de a
+   * térképi fal legfeljebb egyetlen cellával maradhat le.
    */
-  const cellBucket = Math.floor(displayPoints.length / 5);
+  const cellPath = useMemo(() => traceToCellPath(displayPoints).path, [displayPoints]);
+  const cellRevision = `${cellPath.length}:${cellPath.at(-1) ?? ''}`;
 
   const [nearby, setNearby] = useState<TilesResult | null>(null);
   const [nearbyView, setNearbyView] = useState<{
@@ -158,7 +163,6 @@ export function TrackingScreen() {
     if (displayPoints.length < 2) {
       return { path: [] as string[], claimable: [] as string[], own: [], stolen: [], gp: 0 };
     }
-    const { path } = traceToCellPath(displayPoints);
     try {
       const ownership = new Map(
         (nearby?.cells ?? []).map((cell) => [cell.cell, { owner: cell.owner, defense: cell.defense }]),
@@ -181,15 +185,15 @@ export function TrackingScreen() {
         (fate === 'stolen' ? stolen : own).push(item);
         claimable.push(cell);
       }
-      return { path, claimable, own, stolen, gp: result.gp.total };
+      return { path: cellPath, claimable, own, stolen, gp: result.gp.total };
     } catch {
       // A motor túl nagy hurokra kivételt dob (GPS-ugrás). A nyom attól még
       // rajzolható — az előnézet hiánya nem indok arra, hogy a térkép is
       // kiessen.
-      return { path, claimable: [] as string[], own: [], stolen: [], gp: 0 };
+      return { path: cellPath, claimable: [] as string[], own: [], stolen: [], gp: 0 };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cellBucket, distanceBucket, state.status, remoteState?.activityId, displayType, nearby, profileUid]);
+  }, [cellRevision, distanceBucket, state.status, remoteState?.activityId, displayType, nearby, profileUid]);
 
   const cells = preview.path;
 
@@ -285,6 +289,27 @@ export function TrackingScreen() {
     return free;
   }, [nearby, nearbyView?.zoom]);
 
+  /**
+   * A Mapbox-rétegek referenciája csak valódi cellaváltozáskor változhat.
+   *
+   * Korábban a JSX-ben minden rendernél új tömb készült. A másodperces
+   * stopper-render ezért a teljes, akár több ezer hatszögből álló GeoJSON-t
+   * újra felépítette és `setData`-val a Mapboxnak adta. iOS WKWebViewben ez
+   * rövid idő alatt memória-/GPU-nyomást és WebContent újraindulást tudott
+   * okozni — pontosan ekkor jelent meg tévesen a félbehagyott rögzítés.
+   */
+  const mapHexLayers = useMemo<NonNullable<MapViewProps['layers']>>(
+    () => showHexes ? [
+      { role: 'free', cells: nearbyFree },
+      { role: 'rival', cells: nearbyOthers },
+      { role: 'interior', cells: nearbyMine },
+      { role: 'interior', cells: preview.own },
+      { role: 'stolen', cells: preview.stolen },
+      { role: 'trail', cells },
+    ] : [],
+    [showHexes, nearbyFree, nearbyOthers, nearbyMine, preview.own, preview.stolen, cells],
+  );
+
   const lastPoint = displayPoints.length > 0 ? displayPoints[displayPoints.length - 1]! : null;
 
   /**
@@ -365,19 +390,7 @@ export function TrackingScreen() {
         {mapboxConfigured ? (
           <Suspense fallback={null}>
             <MapView
-              layers={showHexes ? [
-                // Sorrend = rajzolási sorrend: alul az idegen, fölötte a
-                // bezárt terület, legfelül a friss nyom.
-                { role: 'free', cells: nearbyFree },
-                { role: 'rival', cells: nearbyOthers },
-                { role: 'interior', cells: nearbyMine },
-                {
-                  role: 'interior',
-                  cells: preview.own,
-                },
-                { role: 'stolen', cells: preview.stolen },
-                { role: 'trail', cells },
-              ] : []}
+              layers={mapHexLayers}
               track={displayPoints}
               ghostTrack={ghostTrack}
               position={mapPosition}

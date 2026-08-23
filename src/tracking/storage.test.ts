@@ -13,6 +13,7 @@ import {
   isResumable,
   memoryStore,
   prepareForRestore,
+  restoreStrategy,
   type PersistedRun,
   type RunStore,
 } from './storage';
@@ -187,6 +188,18 @@ describe('visszaállíthatóság', () => {
 
   it('friss, félbehagyott futás folytatható', () => {
     expect(isResumable(fresh(runWithPoints(), T0), T0 + 60_000)).toBe(true);
+  });
+
+  it('natív WebView-újrainduláskor automatikusan folytat, weben kérdez', () => {
+    const saved = fresh(runWithPoints(), T0);
+    expect(restoreStrategy(saved, T0 + 1_000, true)).toBe('automatic');
+    expect(restoreStrategy(saved, T0 + 1_000, false)).toBe('prompt');
+  });
+
+  it('lejárt vagy befejezett mentést natívban sem állít helyre', () => {
+    expect(restoreStrategy(fresh(runWithPoints(), T0), T0 + 60 * 60 * 1000 + 1, true)).toBe('discard');
+    expect(restoreStrategy(fresh(finish(runWithPoints(), T0 + 30_000), T0), T0 + 31_000, true))
+      .toBe('discard');
   });
 
   it('a befejezett futást nem ajánljuk fel', () => {

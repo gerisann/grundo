@@ -25,7 +25,7 @@ import {
   selfTouch,
   simpleLoop,
 } from './fixtures';
-import { gridDisk } from 'h3-js';
+import { gridDisk, gridRingUnsafe, latLngToCell } from 'h3-js';
 import type { TracePoint } from '@/types';
 
 /** Összefüggő-e a cellalánc? (minden szomszédos pár élszomszéd) */
@@ -89,6 +89,16 @@ describe('1. simple-loop — alap bezárás', () => {
     const { path } = traceToCellPath(simpleLoop(200));
     const [loop] = detectLoops(path);
     expect(loop!.interior.size).toBeGreaterThan(GAMEPLAY.MIN_INTERIOR_CELLS);
+  });
+
+  it('akkor is bezár, ha a fal vége csak élszomszédja a kezdetének', () => {
+    const center = latLngToCell(ORIGIN.lat, ORIGIN.lng, GAMEPLAY.H3_RESOLUTION);
+    // A gyűrű utolsó cellája élszomszédja az elsőnek, de nem azonos vele.
+    // Ez pontosan a terepi eset: a cellafal összeér, a GPS-középvonal nem
+    // keresztezi matematikailag önmagát.
+    const openAtCoordinateLevel = gridRingUnsafe(center, 2);
+    expect(openAtCoordinateLevel.at(-1)).not.toBe(openAtCoordinateLevel[0]);
+    expect(detectLoops(openAtCoordinateLevel)).toHaveLength(1);
   });
 });
 
@@ -491,7 +501,10 @@ describe('rávezető szakasz', () => {
     const bare = run(walk(square));
     const spurred = run(withSpur(300));
     // Ugyanaz a bezárt terület ugyanannyit ér, akárhonnan közelítetted meg.
-    expect(spurred.gp.claim).toBeCloseTo(bare.gp.claim, 5);
+    // Szomszédos cellafal-zárásnál a raszterkapu egyetlen falcellával előbb
+    // záródhat, mint az azonos-cellás kapu. Ez legfeljebb egy cella
+    // kerekítési eltérése lehet; többszörös jutalom továbbra sem fér bele.
+    expect(Math.abs(spurred.gp.claim - bare.gp.claim)).toBeLessThanOrEqual(0.1 + 1e-9);
   });
 
   it('az ismételt kör jutalma megmarad', () => {

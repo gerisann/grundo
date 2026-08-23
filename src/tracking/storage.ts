@@ -48,6 +48,25 @@ export function isResumable(run: PersistedRun, now: number): boolean {
   return isInsideBasicResumeWindow(run.savedAt, now);
 }
 
+export type RestoreStrategy = 'discard' | 'prompt' | 'automatic';
+
+/**
+ * Natív appban a helyi mentés nem feltétlenül félbehagyott aktivitás.
+ *
+ * A Core Location a WebView rövid újraindulása alatt is tovább mér. Ilyenkor
+ * a helyes viselkedés az automatikus visszakapcsolódás; a kézi kérdés csak a
+ * webes/PWA környezetben indokolt, ahol háttérben tényleg megszakadhatott a
+ * pozícióforrás.
+ */
+export function restoreStrategy(
+  run: PersistedRun,
+  now: number,
+  nativeApp: boolean,
+): RestoreStrategy {
+  if (!isResumable(run, now)) return 'discard';
+  return nativeApp ? 'automatic' : 'prompt';
+}
+
 /**
  * A megszakítás óta eltelt idő szünet, nem mozgás.
  *

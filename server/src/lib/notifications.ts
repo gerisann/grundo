@@ -148,6 +148,9 @@ async function sendPush(
   const tokensSnap = await db.collection(COLLECTIONS.devices).doc(uid).collection('tokens').get();
   if (tokensSnap.empty) return;
   const tokens = tokensSnap.docs.map((doc) => doc.id);
+  const tokenPlatforms = new Map(
+    tokensSnap.docs.map((doc) => [doc.id, String(doc.data().platform ?? 'unknown')]),
+  );
 
   const invalid: string[] = [];
   for (let index = 0; index < tokens.length; index += PUSH_CHUNK) {
@@ -165,6 +168,10 @@ async function sendPush(
     response.responses.forEach((result, i) => {
       if (result.success) return;
       const code = result.error?.code ?? '';
+      console.error(
+        `[push] ${uid} ${tokenPlatforms.get(chunk[i]!) ?? 'unknown'} token küldése elhasalt: ` +
+        `${code || 'ismeretlen_hiba'} ${result.error?.message ?? ''}`,
+      );
       // Csak a VÉGLEGESEN érvénytelen tokent töröljük — egy átmeneti hálózati
       // hiba (pl. `messaging/internal-error`) nem ok a leiratkozásra.
       if (code.includes('registration-token-not-registered') || code.includes('invalid-argument')) {

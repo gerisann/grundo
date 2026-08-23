@@ -152,6 +152,10 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
 4. A Capacitor plugin csak felhasználói kapcsolóra kér értesítési engedélyt,
    FCM tokent ment `platform: ios` jelöléssel, tokenfrissítéskor cserél, és
    leiratkozáskor a helyi valamint Firestore tokent is törli.
+5. Az `aps-environment` buildfüggő: Debugban `development`, App Store/TestFlight
+   Release-ben kötelezően `production`. A Codemagic ezt az archive előtt
+   ellenőrzi; a szerver minden sikertelen iOS FCM-kézbesítés platformját és
+   Firebase/APNs hibakódját naplózza.
 
 ### 6. Zárolt képernyős Live Activity
 
