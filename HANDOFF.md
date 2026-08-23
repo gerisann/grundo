@@ -7,13 +7,15 @@ felületet, közös nevezőre hozta a küldetés-specifikációt és a kódot, v
 elkészítette a profil új füles navigációját és a tracking kért térképi javításait.
 A profilfülek utólagos vizuális és kattintási finomítása is elkészült.
 Ezután lezárult a távolságalapú küldetés verziókompatibilitása, az abszolút
-útvonal-tisztasági kapu, valamint a tracking térképvezérlőinek javítása.
+útvonal-tisztasági kapu, valamint a tracking térképvezérlőinek javítása. A
+valós térképen ezután látott rövid hurkok miatt a minőségi kapu több léptékű
+fordulás- és helyikerülő-felismerést kapott.
 
 ## ÁLLAPOT
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
-- Ág: `main`, az `origin/main` előtt 4 helyi committal.
-- Unit tesztek: **388 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
+- Ág: `main`, az `origin/main` előtt 5 helyi committal.
+- Unit tesztek: **391 zöld**, 112 emulátoros teszt a normál futásban kihagyva.
 - Emulátoros készlet: **112 zöld** valódi Firestore/Auth emulátor ellen.
 - Típusellenőrzés: gyökér és `server/` hibamentes.
 - Production build: frontend és backend hibamentes. A Mapbox chunk ismert,
@@ -77,9 +79,12 @@ marad. Keskeny kijelzőn touch swipe és egérrel fogd‑és‑húzd is működi
   most böngészőben újra ellenőrizve.
 - Távolságalapú kérés a km mellett kompatibilis időbecslést is küld, így a
   frontend/backend egymás utáni telepítése közben sem kap téves időhibát.
-- Az útvonal „lábait” abszolút minőségi kapu fogja meg: detektált fölösleges
-  U-fordulással rendelkező jelölt nem ajánlható. Inkább kevesebb tiszta
-  küldetés jelenik meg. A viselkedést új unit tesztek rögzítik.
+- Az útvonal „lábait” abszolút minőségi kapu fogja meg. A korábbi egyetlen,
+  20 méteres U-fordulásmérés nem látta a néhány méteres lekerekített hurkokat
+  és a három derékszögű doboz-kitérőket. A detektor most 6, 12 és 20 méteren
+  mér, továbbá kiszűri a legfeljebb 350 méteres, 50%-nál rosszabb helyi
+  kerülőarányt. Hibás jelölt nem ajánlható; inkább kevesebb tiszta küldetés
+  jelenik meg. A három új alakteszttel együtt 10 routeShape unit teszt rögzíti.
 
 ### Tracking térkép
 
@@ -130,8 +135,9 @@ A push, backfill és telepítés Geri feladata.
 
 - A Statisztika és Klánok fül csak előkészített üres állapot; külön következő
   funkciómenet kell hozzájuk.
-- A küldetés irány/cél választását valós Mapbox-tokenes generálással érdemes
-  még több városrészben megmérni; a szerződés és a fallback működik, de a
+- A küldetés irány/cél választását és a 2026-08-23-án szigorított rövidkerülő-
+  kaput valós Mapbox-tokenes generálással érdemes még több városrészben
+  megmérni; a szerződés és a szintetikus alaktesztek működnek, de a
   route-minőség földrajzfüggő.
 - A Mapbox production chunk továbbra is 521,57 kB gzip; ismert korábbi ügy.
 - A Profil főoldalán a jelvény-előnézet egyelőre megmaradt a Badgek fül mellett

@@ -346,7 +346,7 @@ Időalapú tervezésnél a távot a rendszer a felhasználó **saját átlagtemp
 
 Opcionális finomhangolás: elsődleges cél (`legjobb ajánlat` · `új terület` · `rablás` · `grund erősítése` · `felfedezés`) és égtáj. A cél a találatok sorrendjét, az égtáj a körjelöltek vizsgálati sorrendjét adja; egyik sem ígér eredményt, ha a valós úthálózat vagy birtokviszony nem ad megfelelő kört.
 
-**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel. Fölösleges oda-vissza mellékutcai kitérőt tartalmazó jelölt nem ajánlható; ha emiatt kevesebb tiszta kör marad, a minőség elsőbbséget élvez a darabszámmal szemben.
+**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel. Fölösleges oda-vissza mellékutcai kitérőt, rövid visszatérő hurkot vagy háromoldalas „dobozkerülőt” tartalmazó jelölt nem ajánlható; ha emiatt kevesebb tiszta kör marad, a minőség elsőbbséget élvez a darabszámmal szemben. A minőségi kapu több, 6–20 méteres léptékben vizsgálja a visszafordulást, és külön felismeri a legfeljebb 350 méteres olyan helyi szakaszt, amelynek végpontjai légvonalban az út hosszának legfeljebb felére vannak egymástól.
 
 | Típus | Példa szöveg |
 |---|---|

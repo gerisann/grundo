@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { countUTurns, preferCleanRoutes, withoutOutAndBackSpurs } from './routeShape';
+import {
+  countRouteDefects,
+  countShortDetours,
+  countUTurns,
+  preferCleanRoutes,
+  withoutOutAndBackSpurs,
+} from './routeShape';
 import { destinationPoint } from './missions';
 import type { LatLng } from './geo';
 
@@ -71,6 +77,32 @@ describe('countUTurns', () => {
     expect(countUTurns([])).toBe(0);
     expect(countUTurns([CENTRE])).toBe(0);
     expect(countUTurns([CENTRE, CENTRE])).toBe(0);
+  });
+});
+
+describe('countShortDetours', () => {
+  it('észreveszi a visszatérő rövid lábat akkor is, ha a csúcsa lekerekített', () => {
+    const clean = circle(7500);
+    const spurred = withSpurs(clean, [0.4], 35);
+    expect(countShortDetours(clean)).toBe(0);
+    expect(countShortDetours(spurred)).toBeGreaterThan(0);
+    expect(countRouteDefects(spurred)).toBeGreaterThan(0);
+  });
+
+  it('nem minősít hibának egy rendes derékszögű utcafordulót', () => {
+    const origin = CENTRE;
+    const east = destinationPoint(origin, 90, 100);
+    const north = destinationPoint(east, 0, 100);
+    expect(countShortDetours([origin, east, north])).toBe(0);
+  });
+
+  it('kiszűri a háromoldalas, doboz alakú helyi kerülőt', () => {
+    const a = CENTRE;
+    const b = destinationPoint(a, 0, 80);
+    const c = destinationPoint(b, 90, 80);
+    const d = destinationPoint(c, 180, 80);
+    expect(countUTurns([a, b, c, d])).toBe(0);
+    expect(countShortDetours([a, b, c, d])).toBeGreaterThan(0);
   });
 });
 

@@ -37,17 +37,32 @@ import { distanceM, type LatLng } from './geo';
 /**
  * A be- és kimenő irányt ekkora bázison nézzük, nem szomszédos pontpárokból.
  *
- * MÉRT ÉRTÉK: a Directions sűrű pontsorában egy sima kanyar is nagy
- * szögváltozást ad pontpáronként — rövid bázissal minden kanyar „fordulónak"
- * látszana. 20 méteren egy valódi visszafordulás elkülönül a kanyartól.
+ * MÉRT ÉRTÉKEK: a Directions sűrű pontsorában egyetlen pontpárból egy sima
+ * kanyar is nagy szögváltozást adhat. A 6, 12 és 20 méteres bázis együtt a
+ * néhány méteres lábat és a hosszabb visszafordulást is látja.
  */
-const TURN_BASELINE_M = 20;
+const TURN_BASELINES_M = [6, 12, 20] as const;
 
 /** Ennél nagyobb irányváltás számít visszafordulásnak. */
 const U_TURN_DEGREES = 150;
 
 /** A mintavétel lépése — hogy a mérőszám ne a pontsűrűségtől függjön. */
 const SAMPLE_STEP_M = 5;
+
+/**
+ * Egy helyi kerülő legfeljebb ekkora lehet, hogy útvonalhibának tekintsük.
+ * A teljes küldetéskört természetesen nem akarjuk „kiegyenesíteni”.
+ */
+const LOCAL_DETOUR_MAX_M = 350;
+
+/** Legalább ekkora kitérőt érdemes a térképen is hibának venni. */
+const LOCAL_DETOUR_MIN_M = 25;
+
+/**
+ * Ha a két végpont légvonala az odavezető útnak legfeljebb ekkora része,
+ * akkor a rövid rész egy fölösleges visszatérés vagy doboz alakú kitérő.
+ */
+const LOCAL_DETOUR_DIRECT_RATIO = 0.5;
 
 /** Irányszög két pont között, fokban (0 = észak). */
 function bearingDeg(a: LatLng, b: LatLng): number {
@@ -98,26 +113,73 @@ function resample(points: readonly LatLng[], stepM: number): LatLng[] {
  */
 export function countUTurns(points: readonly LatLng[]): number {
   const sampled = resample(points, SAMPLE_STEP_M);
-  const span = Math.max(1, Math.round(TURN_BASELINE_M / SAMPLE_STEP_M));
+  const spans = TURN_BASELINES_M.map((baseline) =>
+    Math.max(1, Math.round(baseline / SAMPLE_STEP_M)),
+  );
+  const largestSpan = Math.max(...spans);
+  const smallestSpan = Math.min(...spans);
 
   let count = 0;
   let cooldown = 0;
-  for (let index = span; index + span < sampled.length; index += 1) {
+  for (let index = smallestSpan; index + smallestSpan < sampled.length; index += 1) {
     if (cooldown > 0) {
       cooldown -= 1;
       continue;
     }
-    const incoming = bearingDeg(sampled[index - span]!, sampled[index]!);
-    const outgoing = bearingDeg(sampled[index]!, sampled[index + span]!);
-    const turn = Math.abs(((outgoing - incoming + 540) % 360) - 180);
-    if (turn > U_TURN_DEGREES) {
+    const isUTurn = spans
+      .filter((span) => index >= span && index + span < sampled.length)
+      .some((span) => {
+      const incoming = bearingDeg(sampled[index - span]!, sampled[index]!);
+      const outgoing = bearingDeg(sampled[index]!, sampled[index + span]!);
+      const turn = Math.abs(((outgoing - incoming + 540) % 360) - 180);
+      return turn > U_TURN_DEGREES;
+      });
+    if (isUTurn) {
       count += 1;
       // Egy fordulatot ne számoljunk többször: a bázison belül minden
       // mintapont ugyanazt a visszafordulást látná.
-      cooldown = span;
+      cooldown = largestSpan;
     }
   }
   return count;
+}
+
+/**
+ * Rövid, aránytalan helyi kerülők száma.
+ *
+ * Ez fogja meg azt, amit egyetlen szög nem tud: a kis körforgásszerű hurkot,
+ * illetve a három 90°-os kanyarból álló „dobozt”. Egy rendes L-kanyar
+ * végpontjai az út hosszának kb. 71%-ára vannak egymástól; a képernyőképeken
+ * látható kitérők 50% alatt visszaérnek ugyanahhoz az útszakaszhoz.
+ */
+export function countShortDetours(points: readonly LatLng[]): number {
+  const sampled = resample(points, SAMPLE_STEP_M);
+  const minSpan = Math.max(2, Math.ceil(LOCAL_DETOUR_MIN_M / SAMPLE_STEP_M));
+  const maxSpan = Math.max(minSpan, Math.floor(LOCAL_DETOUR_MAX_M / SAMPLE_STEP_M));
+  let count = 0;
+
+  for (let start = 0; start + minSpan < sampled.length; start += 1) {
+    let defectEnd = -1;
+    const last = Math.min(sampled.length - 1, start + maxSpan);
+    for (let end = start + minSpan; end <= last; end += 1) {
+      const alongM = (end - start) * SAMPLE_STEP_M;
+      const directM = distanceM(sampled[start]!, sampled[end]!);
+      if (directM / alongM <= LOCAL_DETOUR_DIRECT_RATIO) defectEnd = end;
+    }
+    if (defectEnd < 0) continue;
+
+    count += 1;
+    // Ugyanazt a hurkot a következő néhány kezdőpontból is látnánk. A teljes
+    // hibás rész után folytatjuk, így egy kitérő pontosan egyszer számít.
+    start = defectEnd;
+  }
+
+  return count;
+}
+
+/** A küldetésválogatás egyetlen minőségi pontszáma. */
+export function countRouteDefects(points: readonly LatLng[]): number {
+  return countUTurns(points) + countShortDetours(points);
 }
 
 /**
