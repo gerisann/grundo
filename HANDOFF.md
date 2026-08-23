@@ -4,10 +4,10 @@ Ez a fájl az AKTUÁLIS állapotot mutatja, nem a történetet — minden menet 
 felülíródik, nem bővül. A történet a git logban van.
 
 **Következő menet neve: GRUNDO #10.** A Rivális funkció adatrétege LEZÁRULT
-(emulátoros teszt + dokumentáció megvan). A felület éles böngészőben MÉG
-NINCS kipróbálva — lásd lent, pontosan hol áll.
+(emulátoros teszt + dokumentáció megvan), és a felület egy RÉSZLEGES
+böngészős ellenőrzésen is átment — lásd lent, pontosan mi maradt ki.
 
-## ⚠️ A FELÜLET NINCS BÖNGÉSZŐBEN ELLENŐRIZVE — NE TELEPÍTS BELŐLE ELLENŐRZÉS NÉLKÜL
+## ⚠️ RIVÁLIS ADAT NÉLKÜL LETT NÉZVE A FELÜLET — NE TELEPÍTS BELŐLE ELLENŐRZÉS NÉLKÜL
 
 A kód **típusellenőrzött** (gyökér ÉS `server/` is hibamentes) és **a teljes
 117 emulátoros + típusellenőrzési teszt zöld**, benne az ÚJ
@@ -16,10 +16,23 @@ bizonyítja a tükör-írás (`recordRivalry`) helyességét és az
 `existingRivals` sorrend-függő viselkedését. A `docs/02-funkcionalis-spec.md`
 és a `docs/05-adatmodell.md` most már tartalmazza a Rivális funkciót.
 
-Ami VISZONT még nem történt meg: **a felület élőben, böngészőben nincs
-kipróbálva** (profil-szekció megjelenése/eltűnése, RIVÁLIS címke mindkét
-témában, teljes lista keresése). A token-limit miatt ez a menet ezt már nem
-tudta elvégezni — csak adatréteg-szinten van bizonyítva, hogy a logika helyes.
+**Amit ez a menet MÉG megnézett élőben**: helyi emulátoros környezet
+(`firebase emulators:start --only auth,firestore`, `seed:emulator`,
+`dev:emulator` gyökérben és `server/`-ben), bejelentkezve
+(`__grundoDevSignIn()`) a Profil fül betöltött, konzolhiba nélkül — és a
+**`RivalsCard` eltűnés-logikája helyesen működik**: a seed-adatban nincs
+rivalitás, a szekció nem jelenik meg. Ez a szerverek/emulátor leállítva
+maradtak a menet végén, nincs futó folyamat.
+
+**Amit EZ SEM nézett meg**, mert a seed-adatban nincs rivalitás, azt
+külön elő kellene idézni (két teszt-fiók, egyik elveszi a másik területét):
+- a profil-szekció TÉNYLEGES megjelenése TOP 3 riválissal,
+- a „RIVÁLIS" címke kinézete mindkét témában,
+- a teljes, kereshető lista (`RivalsSheet`).
+
+Ehhez a következő menetben érdemes a `server/src/scripts/seedEmulator.ts`-t
+bővíteni egy lopás-eseménnyel, vagy kézzel egy aktivitást menteni két
+seed-fiók között.
 
 ## MI KÉSZÜLT EL
 
@@ -117,9 +130,11 @@ egyedi inline típus helyett.
 1. ~~Emulátoros teszt~~ — KÉSZ (#9 vége): `rivals.emulator.test.ts`, 5 zöld teszt.
 2. ~~Élő próba emulátorban~~ — LEFEDVE az 1. ponttal (adatréteg szinten
    bizonyítva), böngészős kipróbálás nem történt.
-3. **A profil-szekció és a teljes lista éles felülete** — még mindig nincs
-   böngészőben ellenőrizve. A `RivalsCard` eltűnés-logikáját (nincs rivális →
-   nincs szekció) külön nézd meg.
+3. **A profil-szekció TOP 3-mal és a teljes lista éles felülete** — az
+   ELTŰNÉS-eset (nincs rivális → nincs szekció) MÁR ELLENŐRIZVE (#9 vége,
+   seed-adaton). A megjelenő állapot (van rivális) még nincs nézve, mert a
+   seed-adatban nincs rivalitás — ehhez elő kell idézni, pl. a
+   `seedEmulator.ts` bővítésével egy lopás-eseménnyel.
 4. **A „RIVÁLIS" címke ÁTNÉZNI mindkét témában élőben** — a token
    (`--rival-badge-bg` / `--rival-badge-text`) csak `tokens.css`-be van beírva,
    böngészőben nem látott.
