@@ -106,7 +106,7 @@ export function ActivityCard({
               decoding="async"
               onError={() => setMapFailed(true)}
             />
-            {hexesVisible && item.activityCells.length > 0 ? <HexMap layers={[{ role: 'interior', cells: item.activityCells }]} track={[]} height={180} /> : null}
+            {hexesVisible && (item.activityCells?.length ?? 0) > 0 ? <HexMap layers={[{ role: 'interior', cells: item.activityCells ?? [] }]} track={[]} height={180} /> : null}
             <span role="button" tabIndex={0} className="acard__hex-toggle" aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'} aria-pressed={hexesVisible} onClick={(event) => { event.stopPropagation(); setHexesVisible((visible) => !visible); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setHexesVisible((visible) => !visible); } }}>
               <HexagonIcon />
             </span>

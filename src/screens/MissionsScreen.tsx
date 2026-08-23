@@ -249,7 +249,7 @@ export function MissionsScreen() {
           <button type="button" className="mission__advanced-toggle" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
             {advancedOpen ? 'Egyszerű keresés' : 'Részletes keresés'}
           </button>
-          <div className="mission__advanced" hidden={!advancedOpen}>
+          <div>
           <SegmentedControl
             options={[{ value: 'time', label: 'Idő' }, { value: 'distance', label: 'Távolság' }]}
             value={targetMode}
@@ -338,6 +338,7 @@ export function MissionsScreen() {
           )}
 
 
+          {advancedOpen ? <div className="mission__advanced">
           <SegmentedControl
             options={TYPE_OPTIONS}
             value={type}
@@ -378,7 +379,9 @@ export function MissionsScreen() {
                 <option value="270">Nyugat</option><option value="315">Északnyugat</option>
               </select>
             </label>
+          </div></div> : null}
           </div>
+
           </div>
 
           <Button block onClick={() => void generate()} loading={loading}>

@@ -97,6 +97,11 @@ export function ActivityScreen() {
     [points, hasTimestamps],
   );
   const elevation = useMemo(() => elevationProfile(points), [points]);
+  const hasRoute = points.length >= 2;
+  const activityCells = useMemo(
+    () => [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))] ,
+    [points],
+  );
 
   if (loading) {
     return (
@@ -135,11 +140,6 @@ export function ActivityScreen() {
   }
 
   const effort = formatEffort(activity.type, activity.distanceM, activity.movingS);
-  const hasRoute = points.length >= 2;
-  const activityCells = useMemo(
-    () => [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))] ,
-    [points],
-  );
   const fastest = fastestSplit(splits);
 
   return (
