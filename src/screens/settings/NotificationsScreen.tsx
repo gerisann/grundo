@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_ORDER, type NotificationType } from '@/lib/notificationTypes';
 import {
   currentPushPermission,
+  readPushPermission,
   requestPermissionAndSubscribe,
   unsubscribe,
   type PushFailure,
@@ -38,7 +39,7 @@ const PUSH_ERROR: Record<PushFailure, string> = {
     'A push-értesítés nincs beállítva ebben a webes buildben (hiányzó VAPID-kulcs). Ez a mi hibánk, nem a tiéd — szólj nekünk.',
   unsupported: 'Ez a böngésző vagy eszköz nem támogatja a push-értesítést.',
   permission_denied:
-    'A böngésző letiltotta az értesítést. A böngésző beállításaiban (a címsor melletti lakat ikonnál) engedélyezheted újra.',
+    'Az értesítési engedély le van tiltva. Az eszköz vagy a böngésző értesítési beállításaiban engedélyezheted újra.',
   sw_failed:
     'Nem sikerült elindítani a háttérszolgáltatást. Próbáld újratölteni az oldalt — privát böngészés közben ez nem működik.',
   token_failed:
@@ -52,6 +53,16 @@ export function NotificationsScreen() {
   const [pushPermission, setPushPermission] = useState(currentPushPermission());
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void readPushPermission().then((permission) => {
+      if (active) setPushPermission(permission);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || !db) return;
@@ -87,7 +98,7 @@ export function NotificationsScreen() {
         await unsubscribe(user.uid);
       }
     } finally {
-      setPushPermission(currentPushPermission());
+      setPushPermission(await readPushPermission());
       setPushBusy(false);
     }
   }
@@ -104,7 +115,7 @@ export function NotificationsScreen() {
             label="Push-értesítés ezen az eszközön"
             description={
               pushPermission === 'unsupported'
-                ? 'Ez a böngésző nem támogatja a push-értesítést.'
+                ? 'Ez az eszköz vagy környezet nem támogatja a push-értesítést.'
                 : 'A lenti kapcsolók az alkalmazáson belüli listát ÉS a push-t is vezérlik — ez csak azt dönti el, kapjon-e ez az eszköz rendszerértesítést is.'
             }
           />

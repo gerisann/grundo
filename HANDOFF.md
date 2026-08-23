@@ -6,88 +6,93 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`.
-- GitHubon jelenleg `85802da Küldetés és iOS háttér-GPS javítása` van.
-- A lokális HEAD egy commit-tal a GitHub előtt jár: **Webes push production
-  konfiguráció**. A push a felhasználó következő lépése.
-- Teljes unit teszt: **399 zöld**, 112 célzott emulátoros teszt kihagyva.
-  Production Vite build sikeres 2026-08-23 17:05-kor; a generált bundle-ben
-  a production VAPID public key jelenléte külön ellenőrizve.
+- GitHubon jelenleg `7c45ad9 Webes push production konfiguráció` van.
+- A lokális ág egy commit-tal jár a GitHub előtt: a natív iOS push
+  implementációja. A push a felhasználó következő lépése.
+- Teljes unit teszt: **402 zöld**, 112 célzott emulátoros teszt kihagyva.
+- A frontend production build és a backend TypeScript build sikeres
+  2026-08-23-án. Natív Xcode-fordítás Windows alatt nem futtatható; ezt a
+  Codemagic következő buildje ellenőrzi.
 
-## MI VÁLTOZOTT EBBEN A MENETBEN
+## ELKÉSZÜLT
 
-### Küldetésgenerálás
+### Küldetés, webes rögzítés és háttér-GPS
 
-- Az `a858c52` abszolút útvonalhibaszűrője akkor is eldobta az összes jelöltet,
-  ha minden körön csak egy kisebb visszafordulás volt. Ez okozta a
-  „Találtunk köröket, de mindegyikben…” zsákutcát.
-- Most a 0 hibás útvonalak elsőbbséget kapnak, de ha nincs ilyen, a három
-  legkevésbé hibás kör visszakerül a találati listába. A küldetéskérés tehát
-  nem válik használhatatlanná. A tényleges Mapbox-geometriai kitérők további
-  javítása ettől független, következő optimalizálási feladat.
+- A küldetésgeneráló már nem ad nulla találatot csak azért, mert minden
+  Mapbox-jelöltben talált kisebb visszafordulást: ilyenkor a három legkevésbé
+  hibás kört adja vissza. A tényleges útvonalminőség külön optimalizálandó.
+- A webes rögzítés életciklus-diagnosztikája megkülönbözteti az újratöltést,
+  bezárást és háttérbe kerülést.
+- iOS-en natív Core Location bridge gyűjti és sorban tárolja a lezárt
+  képernyő alatt kapott pontokat. A valós, 100+ méteres TestFlight-teszt még
+  hátravan.
 
-### Webes félbehagyott rögzítés
+### Webes push
 
-- Mérés: a „Folytatom” felajánlás csak akkor jelenhet meg, ha a
-  `RecorderProvider`/oldal újraindul és az IndexedDB-ből újraolvassa az aktív
-  állapotot; a böngészős GPS-hiba önmagában nem állítja félbe a rögzítőt.
-- Új, helyi életciklus-diagnosztika rögzíti a `hidden` és `pagehide` eseményt,
-  és visszaállításkor konkrétan kiírja: újratöltés, bezárás vagy háttérbe
-  kerülés előzte-e meg. A következő webes reprodukcióból így bizonyítható a
-  valódi kiváltó ok; jelenleg nem állítunk megalapozatlan automatikus javítást.
+- A webes FCM út kész: felhasználói engedélykérés, service worker, VAPID token
+  Firestore-ba, szerveroldali FCM-küldés és érvénytelen token törlése.
+- A production VAPID public key a verziókövetett `.env.production` része, így
+  a Cloud Shell frontend buildben is elérhető.
 
-### iOS háttér-GPS
+### Natív iOS push
 
-- A korábbi előtéri `@capacitor/geolocation` helyett helyi Swift Core Location
-  Capacitor bridge van. Aktív rögzítéskor 5 m-es szűrővel dolgozik,
-  `UIBackgroundModes: location` értékkel, és a lezárt képernyő alatt kapott
-  pontokat natív `UserDefaults` sorban megőrzi. A felébredő WebView átveszi
-  őket, így a háttérben megtett út nem függ a felfüggesztett JavaScripttől.
-- A rendszer „Mindig” engedélyét kéri a specifikáció szerint; enélkül a UI
-  továbbra is képernyő-ébrentartást kér. A force-quittel kilőtt alkalmazás
-  automatikus folytatása nem támogatott iOS-en.
-- **Kötelező valós TestFlight-teszt:** indíts rögzítést, adj „Mindig” engedélyt,
-  zárd le 3 percre, haladj 100+ métert, majd ellenőrizd a folytonos nyomvonalat.
-  A Windowsos fejlesztői környezetből Xcode-fordítás nem ellenőrizhető.
-- A zárolt képernyős Live Activity nincs elkészítve. Ez külön ActivityKit
-  bővítmény (és Androidon foreground service), a háttér-GPS-hez nem szükséges.
-
-### Push
-
-- A webes FCM út már kódban kész: engedélykérés csak felhasználói kapcsolóra,
-  service worker, VAPID token Firestore-ba, szerveroldali FCM-küldés és
-  érvénytelen token törlése. A VAPID public key most már a verziókövetett
-  `.env.production` része, ezért a Cloud Shellből készített webbuild sem veszti
-  el akkor, ha ott nincs helyi `.env.local`.
-- Natív iOS push még nincs: az Apple APNs-kulcs vagy Firebase iOS Messaging
-  konfiguráció külső hitelesítőanyagot kíván. Ne generálj vagy helyettesíts
-  ilyet; előbb Apple Developer/Firebase oldali döntés és kulcs kell.
+- Az Apple Developerben az `app.grundo.ios` App ID Push Notifications
+  capabilityje aktív.
+- Az APNs kulcs neve `IPNForSendPush`, Key ID-je `9BGTAPANR8`, Team ID-je
+  `HFS68TZMCH`; Sandbox & Production jogosultságú. A `.p8` csak az Apple és a
+  Firebase felületén él, **nem kerül a repóba**.
+- A Firebase iOS app regisztrált (`app.grundo.ios`, App Store ID `6804285861`),
+  és a production APNs auth key fel van töltve a Cloud Messaginghez.
+- A letöltött `GoogleService-Info.plist` az iOS App target erőforrása. Ez
+  klienskonfiguráció, ezért verziókövetett; a Firebase SDK ebből inicializál.
+- A `@capacitor-firebase/messaging` plugin FCM tokent kér, a
+  `devices/{uid}/tokens/{token}` dokumentumba `platform: ios` értékkel menti,
+  tokenfrissítéskor cseréli, leiratkozáskor törli. A rendszerengedély és az
+  appon belüli kapcsoló külön állapot.
+- Értesítésre koppintás belső GRUNDO képernyőre navigál. Előtérben az alert,
+  badge és hang is engedélyezett; a szerver APNs payloadja alapértelmezett
+  hangot kér.
+- Az Xcode projekt tartalmazza a push entitlementet és a background remote
+  notification módot. A Codemagic a Capacitor sync után külön ellenőrzi a
+  plistet, a messaging plugint és az entitlementet, mielőtt IPA-t készít.
+- Windows alatt a Capacitor SPM symlink létrehozása jogosultsági hibával
+  megállt; a Package.swift kézzel is tartalmazza a plugint. A macOS Codemagic
+  syncnek ezt újra kell generálnia, a natív fordítás a döntő ellenőrzés.
 
 ## TELEPÍTÉSI SORREND
 
-1. A felhasználó pusholja a következő commitot.
-2. **Backend telepítés szükséges** a küldetés-generálás szerveroldali fallbackje
+1. A felhasználó pusholja a lokális commitot.
+2. Adatbázis-, szabály- és indextelepítés nem kell.
+3. **Backend telepítés szükséges** az egységes push-adatmezők és iOS hang miatt.
+4. **Frontend telepítés szükséges** a production VAPID és a push UI frissítése
    miatt.
-3. **Frontend telepítés szükséges** a webes rögzítő-diagnosztikához és a webes
-   FCM ellenőrzéséhez.
-4. Ezután Codemagicből TestFlight build ugyanebből a commitból; iOS háttér-GPS
-   csak valódi készüléken tekinthető ellenőrzöttnek. Szabály- és indextelepítés
-   ehhez a menethez nem kell.
+5. Ezután Codemagic TestFlight build ugyanebből a `main` commitból.
 
-## KÖVETKEZŐ MENET
+## KÖVETKEZŐ ELLENŐRZÉS
 
-1. Éles weben reprodukáld a rögzítő-megszakítást, és az új visszaállítási
-   üzenet alapján döntsd el, reload/pagehide/background volt-e a kiváltó ok.
-2. TestFlighton végezd el a lezárt képernyős GPS-tesztet. Sikertelen pontsor
-   esetén a Codemagic Xcode log és a készülék helyengedély-állapota az első
-   bizonyíték, ne módosítsunk vakon.
-3. Natív pushhoz kérj döntést: Firebase iOS Messaging (Firebase Console iOS
-   app + APNs-kulcs) vagy közvetlen APNs-szállítás. Ezután készülhet a kliens-
-   és szerveroldali tokenkezelés.
-4. A küldetések tényleges útvonalminőségét külön, Mapbox-válaszokra épített
-   mérőcsomaggal optimalizáld; a mostani fallback csak a nulla találatot oldja.
+1. Codemagicben a natív push preflight, SPM feloldás és Xcode archive legyen
+   zöld. Ha az Apple provisioning profile nem tartalmazza az
+   `aps-environment` entitlementet, az automatikus signingot kell újragenerálni.
+2. TestFlighton a Beállítások → Értesítések kapcsoló kérje az iOS
+   rendszerengedélyt. Firestore-ban jelenjen meg egy `platform: ios` FCM token.
+3. Valódi értesítést kell kiváltani lezárt képernyő mellett: jelenjen meg
+   hanggal, koppintásra nyissa meg a megfelelő GRUNDO képernyőt.
+4. Kikapcsolás után a token tűnjön el a Firestore-ból és ne érkezzen több push
+   az adott eszközre.
+5. Külön terepi körben ellenőrizendő a lezárt képernyős háttér-GPS és a webes
+   rögzítő lifecycle-diagnosztikája.
+
+## NYITOTT KISEBB ÜGYEK
+
+- A zárolt képernyős Live Activity nincs elkészítve; külön ActivityKit
+  bővítmény.
+- A küldetések Mapbox útvonalgeometriájának zsákutcáit mérésalapú optimalizálás
+  szükséges, a jelenlegi fallback csak a használhatatlan nulla találatot oldja.
+- Az npm production audit két közepes React Router figyelmeztetést jelez; a
+  javítás major verzióváltást igényel, ezért nem része a push implementációnak.
 
 ## MODELLJAVASLAT
 
-**Sol, erős** a valódi GPS-életciklus és háttérbeli anomáliák méréséhez.
-**Terra, közepes** elég az ezt követő, konkrét webes lifecycle-javításhoz és a
-natív push meglévő mintára épülő klienskódjához.
+**Sol, erős** a Codemagic/Xcode signing vagy valós iOS push hibakereséséhez.
+**Terra, közepes** elég, ha a build zöld és csak a készülékes ellenőrzés
+eredménye alapján kell kisebb kliensjavítás.

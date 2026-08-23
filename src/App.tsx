@@ -1,5 +1,5 @@
-import { Suspense, lazy } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
@@ -28,6 +28,7 @@ import { LoginScreen } from './screens/auth/LoginScreen';
 import { RegisterScreen } from './screens/auth/RegisterScreen';
 import { ForgotPasswordScreen } from './screens/auth/ForgotPasswordScreen';
 import { CompleteProfileScreen } from './screens/auth/CompleteProfileScreen';
+import { addNativePushActionListener } from './lib/push';
 
 /**
  * Az admin terület LUSTÁN töltődik.
@@ -60,6 +61,7 @@ export function App() {
           <BrowserRouter
             future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
           >
+            <NativePushActions />
             {/* A rivális-halmaz a router ALATT nem lenne elég: a „RIVÁLIS"
                 címke minden képernyőn megjelenhet, tehát egyetlen közös
                 betöltésnek kell fölöttük állnia. */}
@@ -73,6 +75,25 @@ export function App() {
       </ProfileProvider>
     </AuthProvider>
   );
+}
+
+function NativePushActions() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    let active = true;
+    void addNativePushActionListener(navigate).then((listenerDispose) => {
+      if (active) dispose = listenerDispose;
+      else listenerDispose();
+    });
+    return () => {
+      active = false;
+      dispose?.();
+    };
+  }, [navigate]);
+
+  return null;
 }
 
 function Router() {

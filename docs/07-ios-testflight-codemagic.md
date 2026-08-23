@@ -35,14 +35,14 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | Érintés/gesztus | A meglévő pointer/touch kezelés WKWebView-kompatibilis; natív gesztusplugin nem szükséges. |
 | SPA routing | A Capacitor `capacitor://localhost` originjén a meglévő BrowserRouter marad; nincs Associated Domains vagy universal link capability. |
 | Külső URL-ek | A jelenlegi kódban nincs külön `window.open`/külső link flow, ezért Browser plugin sem került be. |
-| Web push | A jelenlegi FCM service worker csak weben támogatott. Natív appban „nem támogatott”; APNs és Push Notifications capability nincs bekapcsolva. |
+| Push | Weben FCM service worker + VAPID; natív iOS-en `@capacitor-firebase/messaging` ad FCM tokent, a Firebase Production APNs-kulccsal kézbesít. A Push Notifications capability, `aps-environment` entitlement és `remote-notification` háttérmód bekötve. |
 | Státuszsáv / safe area | Edge-to-edge WKWebView, `viewport-fit=cover`, meglévő `safe-area-inset-*` CSS és a témát követő natív státuszsáv. |
 | Fájl/fotó választás | WKWebView file input támogatott; kamera- és fotótár-indoklások szerepelnek az Info.plistben. |
 
-Az első build szándékosan nem kér Push Notifications, Sign in with Apple vagy
-Associated Domains capabilityt. A Background Modes → Location Updates már a
-natív háttér-GPS tényleges implementációjával együtt szerepel; a készülékes,
-lezárt kijelzős terepteszt ennek kötelező része.
+A Push Notifications capability és a Background Modes → Location Updates +
+Remote notifications már a tényleges natív implementációval együtt szerepel.
+Sign in with Apple és Associated Domains továbbra sincs bekapcsolva. A
+készülékes, lezárt kijelzős GPS- és push-teszt kötelező.
 
 ## Kiadási rend: web és TestFlight
 
@@ -91,7 +91,7 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
 1. Az **Apple Developer → Certificates, Identifiers & Profiles → Identifiers**
    oldalon ellenőrizd, hogy létezik az explicit `app.grundo.ios` App ID a
    `HFS68TZMCH` team alatt. Ha nincs, hozd létre `GRUNDO` néven. Külön
-   capabilityt az első buildhez ne kapcsolj be.
+   A **Push Notifications** capability legyen bekapcsolva.
 2. Az **App Store Connect → My Apps → + → New App** alatt hozz létre iOS appot:
    név `GRUNDO`, Bundle ID `app.grundo.ios`, tetszőleges egyedi SKU (például
    `grundo-ios-1`). Az app-rekordnak az első feltöltés előtt léteznie kell.
@@ -138,7 +138,21 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
    a `capacitor://localhost` kéréseket; szükség esetén használj külön,
    minimális scope-ú natív publikus tokent.
 
-### 5. Backend és workflow indítása
+### 5. Natív iOS push
+
+1. Apple Developer → **Keys** alatt a meglévő, Team Scoped
+   `IPNForSendPush` kulcs (`9BGTAPANR8`) Sandbox & Production APNs-hozzáférést
+   ad. A `.p8` privát fájl nem kerülhet a repóba vagy Codemagic változóba.
+2. Firebase → Project settings → Cloud Messaging → **GRUNDO iOS** alatt a
+   Production APNs auth key fel van töltve a `HFS68TZMCH` teamhez.
+3. A Firebase iOS app bundle ID-ja `app.grundo.ios`; a hozzá tartozó
+   `GoogleService-Info.plist` az Xcode App target verziókövetett erőforrása.
+   Ez klienskonfiguráció, nem az APNs privát kulcs.
+4. A Capacitor plugin csak felhasználói kapcsolóra kér értesítési engedélyt,
+   FCM tokent ment `platform: ios` jelöléssel, tokenfrissítéskor cserél, és
+   leiratkozáskor a helyi valamint Firestore tokent is törli.
+
+### 6. Backend és workflow indítása
 
 1. A commit pusholása után telepítsd a **backendet**, mert az új
    `capacitor://localhost` CORS origin nélkül az iOS kliens API-hívásai

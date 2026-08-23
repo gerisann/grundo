@@ -36,6 +36,12 @@ workflows:
       - name: Capacitor iOS szinkron
         script: npx cap sync ios
 
+      - name: Natív push konfiguráció ellenőrzése
+        script: |
+          test -f ios/App/App/GoogleService-Info.plist
+          grep -q "CapacitorFirebaseMessaging" ios/App/CapApp-SPM/Package.swift
+          grep -q "aps-environment" ios/App/App/App.entitlements
+
       - name: Ideiglenes aláíró keychain létrehozása
         script: keychain initialize
 

@@ -103,7 +103,11 @@ export async function createNotification(input: CreateNotificationInput): Promis
         createdAt: FieldValue.serverTimestamp(),
       });
 
-    await sendPush(input.uid, { title: input.title, body: input.body, data: input.data });
+    await sendPush(input.uid, {
+      title: input.title,
+      body: input.body,
+      data: { type: input.type, ...(input.data ?? {}) },
+    });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error(`[notifications] ${input.type} -> ${input.uid} elhasalt`, error);
@@ -151,6 +155,11 @@ async function sendPush(
     const response = await messaging.sendEachForMulticast({
       notification: { title: payload.title, body: payload.body },
       data: payload.data ?? {},
+      // Az általános `notification` mező kirajzolja az iOS értesítést, de
+      // hangot nem kér automatikusan. A GRUNDO normál pushai ezért az APNs
+      // alapértelmezett hangját használják; a némítás továbbra is az iOS
+      // felhasználói beállítása marad.
+      apns: { payload: { aps: { sound: 'default' } } },
       tokens: chunk,
     });
     response.responses.forEach((result, i) => {
