@@ -74,7 +74,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     @objc func syncActivity(_ call: CAPPluginCall) {
-        if let snapshot = activitySnapshot(call.options) {
+        if let snapshot = activitySnapshot(call) {
             requestedActivityState = snapshot
             syncLiveActivity(snapshot)
         }
@@ -170,6 +170,27 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
               let pausedMs = value["pausedMs"] as? Double,
               let status = value["status"] as? String else { return nil }
         let pausedAt = value["pausedAt"] as? Double
+        return GrundoActivitySnapshot(
+            startedAt: Date(timeIntervalSince1970: startedAt / 1000),
+            distanceM: max(0, distanceM),
+            pausedSeconds: max(0, pausedMs / 1000),
+            pausedAt: pausedAt.map { Date(timeIntervalSince1970: $0 / 1000) },
+            isPaused: status == "paused"
+        )
+    }
+
+    /**
+     A `syncActivity` a pillanatképet közvetlenül a plugin-hívás gyökerében
+     kapja. Capacitor 8 alatt a `call.options` már `[AnyHashable: Any]`, nem
+     `JSObject`; a típusos getterek használata ezért nemcsak biztonságosabb,
+     hanem az Xcode 26-os Release fordítással is kompatibilis.
+     */
+    private func activitySnapshot(_ call: CAPPluginCall) -> GrundoActivitySnapshot? {
+        guard let startedAt = call.getDouble("startedAt"),
+              let distanceM = call.getDouble("distanceM"),
+              let pausedMs = call.getDouble("pausedMs"),
+              let status = call.getString("status") else { return nil }
+        let pausedAt = call.getDouble("pausedAt")
         return GrundoActivitySnapshot(
             startedAt: Date(timeIntervalSince1970: startedAt / 1000),
             distanceM: max(0, distanceM),

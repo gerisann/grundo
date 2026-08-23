@@ -7,9 +7,10 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`.
 - GitHubon jelenleg `c6de619 Natív iOS push bekötése` van.
-- A lokális ág két commit-tal jár a GitHub előtt: `56f3c16` izolálja a
-  Codemagic push-tesztet, ezt követi a zárolt képernyős Live Activity.
-  A push a felhasználó következő lépése.
+- A lokális ág a GitHub előtt jár: `56f3c16` izolálja a Codemagic
+  push-tesztet, ezt követi a zárolt képernyős Live Activity és annak
+  Capacitor 8/Xcode 26 fordítási javítása. A push a felhasználó következő
+  lépése.
 - Teljes unit teszt: **403 zöld**, 112 célzott emulátoros teszt kihagyva.
 - A frontend production build és a backend TypeScript build sikeres
   2026-08-23-án. Natív Xcode-fordítás Windows alatt nem futtatható; ezt a
@@ -78,8 +79,10 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 - A Beállítások → Értesítések alatt eszközönként kikapcsolható, alapból aktív.
   A változtatás a következő rögzítéstől érvényes.
 - A `.pbxproj` külön parserrel érvényesnek bizonyult, mind az App, mind az
-  extension target felismerhető. A Swift/ActivityKit fordítást csak a
-  következő macOS Codemagic archive tudja véglegesen igazolni.
+  extension target felismerhető. Az első Codemagic archive-ban maga a Live
+  Activity extension lefordult és belinkelődött; a fő targetet a Capacitor 8
+  megváltozott `call.options` típusa állította meg. A `syncActivity` már a
+  típusos `CAPPluginCall` gettereket használja; az új archive ellenőrzése vár.
 
 ## TELEPÍTÉSI SORREND
 
@@ -88,9 +91,9 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 3. **Backend telepítés szükséges** az egységes push-adatmezők és iOS hang miatt.
 4. **Frontend telepítés szükséges** a production VAPID és a push UI frissítése
    miatt.
-5. Apple Developerben előbb létre kell hozni a `GRUNDO Live Activity`
-   Identifier/App ID-t `app.grundo.ios.liveactivity` bundle ID-val.
-6. Ezután Codemagic TestFlight build ugyanebből a `main` commitból; a workflow
+5. Az Apple Developerben a `GRUNDO Live Activity` Identifier/App ID már
+   létrejött `app.grundo.ios.liveactivity` bundle ID-val.
+6. Codemagic TestFlight build ugyanebből a `main` commitból; a workflow
    mind az apphoz, mind az extensionhöz provisioning profile-t kér.
 
 ## KÖVETKEZŐ ELLENŐRZÉS
