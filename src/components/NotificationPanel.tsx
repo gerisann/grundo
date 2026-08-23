@@ -161,7 +161,7 @@ const DRAG_START_PX = 8;
  * képernyő széléig, ami két bajjal járt — a sor alatti tartalom kilátszott,
  * és a művelet küszöbe a kártya szélességéhez volt kötve.
  */
-const MAX_DRAG_PX = 60;
+const MAX_DRAG_PX = 120;
 /**
  * Elengedéskor ennél nagyobb elmozdulás indítja a műveletet.
  *
@@ -228,7 +228,16 @@ function NotificationRow({
 
   useEffect(() => {
     if (!reading) return;
-    const timer = window.setTimeout(() => onRead(item.id), READ_MS);
+    const timer = window.setTimeout(() => {
+      onRead(item.id);
+      // Az olvasott státusz lokálisan azonnal frissül, de a sor komponense
+      // ugyanazzal az id-val a listában marad. Ezt kötelezően nullázzuk,
+      // különben a zöld háttér a kicsúszott kártya mögött beragad.
+      setReading(false);
+      setSnapping(false);
+      dxNow.current = 0;
+      setDx(0);
+    }, READ_MS);
     return () => window.clearTimeout(timer);
   }, [reading, item.id, onRead]);
 
