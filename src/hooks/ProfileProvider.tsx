@@ -61,8 +61,21 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     setStatus('loading');
     setError('');
+    let timeout: number | undefined;
     try {
-      const { profile: next } = await api.me();
+      /**
+       * Egy elvesző native/CORS kérés nem maradhat örökké a Splash mögött.
+       * A backend hibáját a már létező ProfileError képernyő mutatja meg.
+       */
+      const { profile: next } = await Promise.race([
+        api.me(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = window.setTimeout(
+            () => reject(new Error('A profil betöltése időtúllépés miatt megszakadt. Ellenőrizd az internetkapcsolatot, majd próbáld újra.')),
+            12_000,
+          );
+        }),
+      ]);
       setProfile(next);
       setStatus('ready');
     } catch (err) {
@@ -73,6 +86,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       }
       setError(err instanceof Error ? err.message : 'Nem sikerült betölteni a profilt.');
       setStatus('error');
+    } finally {
+      if (timeout !== undefined) window.clearTimeout(timeout);
     }
   }, [authStatus]);
 

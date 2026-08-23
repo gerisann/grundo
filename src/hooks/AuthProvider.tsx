@@ -81,7 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth) return;
-    return onAuthStateChanged(auth, (next) => {
+    let receivedInitialState = false;
+    const unsubscribe = onAuthStateChanged(auth, (next) => {
+      receivedInitialState = true;
       setUser(next);
       setStatus(next ? 'signed-in' : 'signed-out');
 
@@ -105,7 +107,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRole(typeof claim === 'string' ? claim : null);
         })
         .catch(() => setRole(null));
+    }, (error) => {
+      receivedInitialState = true;
+      console.error('[GRUNDO] Firebase Auth indítási hiba.', error);
+      setUser(null);
+      setRole(null);
+      setStatus('signed-out');
     });
+
+    /**
+     * A Firebase böngészős SDK-jának normál esetben azonnal jeleznie kell a
+     * kezdeti auth-állapotot. WKWebView-ban azonban hálózati/persistence hiba
+     * esetén ez korlátlanul várhat; korábban ettől az egész app splashen maradt.
+     *
+     * Ilyenkor a belépőképernyőt megmutatjuk. Ha a Firebase később mégis
+     * visszaszól, a listener a valódi állapotára frissíti a felületet.
+     */
+    const timeout = window.setTimeout(() => {
+      if (!receivedInitialState) {
+        console.error('[GRUNDO] A Firebase Auth 12 másodpercen belül nem adta vissza a kezdeti állapotot.');
+        setStatus('signed-out');
+      }
+    }, 12_000);
+
+    return () => {
+      window.clearTimeout(timeout);
+      unsubscribe();
+    };
   }, []);
 
   const api = useMemo<AuthApi>(() => {

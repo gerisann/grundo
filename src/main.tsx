@@ -2,8 +2,12 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import './styles/global.css';
 import './components/ui/ui.css';
+
+// Az index.html indítási őrének jelezzük, hogy a JavaScript modul betöltődött.
+document.documentElement.dataset.grundoBooted = 'true';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,7 +25,9 @@ if (!root) throw new Error('#root nem található');
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
     </QueryClientProvider>
   </React.StrictMode>,
 );

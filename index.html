@@ -58,6 +58,25 @@
         }
       })();
     </script>
+    <script>
+      /*
+        Ez a kód szándékosan nem React-függő: ha maga a modulbetöltés akad el
+        iOS WKWebView-ban, különben csak a natív launch screen látszana.
+      */
+      window.setTimeout(function () {
+        if (document.documentElement.dataset.grundoBooted === 'true') return;
+
+        var root = document.getElementById('root');
+        if (!root) return;
+        root.innerHTML =
+          '<main style="min-height:100dvh;display:grid;place-items:center;padding:24px;background:#09080d;color:#fff;font-family:system-ui,sans-serif">' +
+          '<section style="max-width:420px;text-align:center">' +
+          '<h1 style="font-size:24px">A GRUNDO webes felülete nem indult el</h1>' +
+          '<p style="color:#c9c2d2;line-height:1.5">Kérjük, küldj visszajelzést a TestFlightból ezzel a hibával: iOS indítási időtúllépés (a JavaScript modul nem indult el).</p>' +
+          '<button type="button" onclick="location.reload()" style="border:0;border-radius:12px;padding:13px 18px;background:#8b5cf6;color:#fff;font:inherit">Újrapróbálom</button>' +
+          '</section></main>';
+      }, 15_000);
+    </script>
   </head>
   <body>
     <div id="root"></div>
