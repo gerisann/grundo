@@ -1,6 +1,7 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useTheme } from './useTheme';
 import type { Coords } from '@/lib/theme';
+import { syncNativeStatusBar } from '@/lib/nativeUi';
 
 type ThemeApi = ReturnType<typeof useTheme>;
 
@@ -30,5 +31,14 @@ export function ThemeProvider({
   // Enélkül az index.html inline szkriptje beállítja ugyan az induló témát,
   // de az automatikus (napszak szerinti) váltás soha nem következne be.
   const theme = useTheme({ coords, recordingActive });
+
+  useEffect(() => {
+    void syncNativeStatusBar(theme.theme).catch((error: unknown) => {
+      // A webes téma ettől függetlenül működik; az eltérés az Xcode logból
+      // diagnosztizálható anélkül, hogy a felhasználót megakasztanánk.
+      console.warn('[GRUNDO] A natív státuszsáv témája nem frissült.', error);
+    });
+  }, [theme.theme]);
+
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
 }

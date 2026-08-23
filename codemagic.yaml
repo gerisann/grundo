@@ -1,0 +1,70 @@
+workflows:
+  ios-testflight:
+    name: GRUNDO iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      app_store_connect: grundo_app_store_connect
+
+    environment:
+      groups:
+        - grundo_ios
+        - grundo_ios_signing
+      vars:
+        BUNDLE_ID: app.grundo.ios
+        XCODE_PROJECT: ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+      node: 22.14.0
+      xcode: 26.4
+
+    scripts:
+      - name: JavaScript-függőségek telepítése
+        script: npm ci
+
+      - name: Unit tesztek
+        script: npm run test
+
+      - name: Vite production build
+        script: npm run build
+
+      - name: Capacitor iOS szinkron
+        script: npx cap sync ios
+
+      - name: Ideiglenes aláíró keychain létrehozása
+        script: keychain initialize
+
+      - name: Apple aláírófájlok automatikus létrehozása
+        script: >-
+          app-store-connect fetch-signing-files "$BUNDLE_ID"
+          --type IOS_APP_STORE
+          --create
+
+      - name: Aláíró tanúsítvány betöltése
+        script: keychain add-certificates
+
+      - name: Egyedi build number beállítása
+        script: |
+          cd "$CM_BUILD_DIR/ios/App"
+          agvtool new-version -all "$BUILD_NUMBER"
+
+      - name: App Store aláírás beállítása
+        script: >-
+          xcode-project use-profiles
+          --custom-export-options='{"testFlightInternalTestingOnly": true}'
+
+      - name: App Store IPA készítése
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

@@ -16,6 +16,7 @@ Ez a mappa a GRUNDO funkcionális és technikai gerince. A `../*.jpg` (49 db) re
 | 04 | [Pontrendszer](04-pontrendszer.md) | GP-képlet, szorzók, streak, napi hold-bónusz, szintek, badge-ek, számpéldák |
 | 05 | [Adatmodell](05-adatmodell.md) | Firestore/PostGIS séma, kollekciók, indexek, biztonsági szabályok |
 | 06 | [Architektúra és admin](06-architektura-es-admin.md) | Szolgáltatások, jobok, admin felület, analitika, üzemeltetés, ütemterv |
+| 07 | [iOS és TestFlight](07-ios-testflight-codemagic.md) | Capacitor/WKWebView döntések, Codemagic pipeline és az első belső TestFlight build kézi lépései |
 
 ## A GRUNDO egy mondatban
 

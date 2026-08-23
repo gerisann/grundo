@@ -6,7 +6,8 @@ dist-server/
 # Környezeti változók — soha ne kerüljön verziókövetésbe
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
 *-service-account.json
 serviceAccountKey.json
 
@@ -29,5 +30,19 @@ Thumbs.db
 
 # Natív buildek (Capacitor)
 ios/App/Pods/
+ios/DerivedData/
+ios/**/*.xcarchive
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
 android/.gradle/
 android/app/build/
+
+# Apple aláírás — kizárólag Codemagic/Apple felületen kezelhető
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+*.provisionprofile
+*.pem
+*.key
+ios_distribution_private_key*

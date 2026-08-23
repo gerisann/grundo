@@ -50,13 +50,11 @@ async function toJpegBlob(file: File, maxEdge = MAX_EDGE): Promise<Blob> {
     throw new PhotoError('Csak képet lehet feltölteni.');
   }
 
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => {
-    throw new PhotoError('Ezt a képet nem sikerült megnyitni.');
-  });
+  const source = await decodeImage(file);
 
-  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const scale = Math.min(1, maxEdge / Math.max(source.width, source.height));
+  const width = Math.max(1, Math.round(source.width * scale));
+  const height = Math.max(1, Math.round(source.height * scale));
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -64,14 +62,61 @@ async function toJpegBlob(file: File, maxEdge = MAX_EDGE): Promise<Blob> {
 
   const context = canvas.getContext('2d');
   if (!context) throw new PhotoError('A böngésző nem tudta feldolgozni a képet.');
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
+  context.drawImage(source.image, 0, 0, width, height);
+  source.release();
 
   const blob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY),
   );
   if (!blob) throw new PhotoError('A képet nem sikerült előkészíteni.');
   return blob;
+}
+
+interface DecodedImage {
+  image: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
+}
+
+/**
+ * Safari/WKWebView fallback: régebbi iOS-verziókban a `createImageBitmap`
+ * hiányozhat. Az `<img>` út ugyanúgy vászonra rajzol, ezért az EXIF és minden
+ * más metaadat a feltöltött JPEG-ből továbbra is eltűnik.
+ */
+async function decodeImage(file: File): Promise<DecodedImage> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return {
+        image: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        release: () => bitmap.close(),
+      };
+    } catch {
+      // A WebKit által támogatott formátumokat még az <img> dekóder megnyithatja.
+    }
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new PhotoError('Ezt a képet nem sikerült megnyitni.'));
+      element.src = url;
+    });
+    return {
+      image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      release: () => URL.revokeObjectURL(url),
+    };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
 }
 
 export interface UploadProgress {

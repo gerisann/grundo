@@ -19,6 +19,7 @@
 import { doc, serverTimestamp, setDoc, deleteDoc } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported, type Messaging } from 'firebase/messaging';
 import { app, db } from './firebase';
+import { isNativeApp } from './platform';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -27,7 +28,15 @@ let messagingInstance: Messaging | null | undefined;
 /** `undefined` = még nem próbáltuk; `null` = nem támogatott ezen a böngészőn/eszközön. */
 async function getMessagingIfSupported(): Promise<Messaging | null> {
   if (messagingInstance !== undefined) return messagingInstance;
-  if (!app || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+  // A jelenlegi FCM implementáció webes service workerre épül. A natív push
+  // külön APNs + Capacitor plugin bevezetést igényel; addig ne kérjen hibásan
+  // böngészős értesítési engedélyt a WKWebView.
+  if (
+    isNativeApp() ||
+    !app ||
+    typeof navigator === 'undefined' ||
+    !('serviceWorker' in navigator)
+  ) {
     messagingInstance = null;
     return null;
   }
@@ -73,7 +82,7 @@ async function saveToken(uid: string, token: string): Promise<void> {
 export type PushPermission = 'granted' | 'denied' | 'default' | 'unsupported';
 
 export function currentPushPermission(): PushPermission {
-  if (typeof Notification === 'undefined') return 'unsupported';
+  if (isNativeApp() || typeof Notification === 'undefined') return 'unsupported';
   return Notification.permission;
 }
 

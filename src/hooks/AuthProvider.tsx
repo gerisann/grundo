@@ -15,6 +15,7 @@ import {
 import { auth, firebaseConfigured, requireAuth } from '@/lib/firebase';
 // `backend` néven, mert az AuthProvider saját visszatérési objektuma is `api`.
 import { api as backend, apiConfigured } from '@/lib/api';
+import { isNativeApp } from '@/lib/platform';
 
 export type AuthStatus = 'loading' | 'signed-in' | 'signed-out' | 'unconfigured';
 
@@ -180,6 +181,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signInWithGoogle() {
+        if (isNativeApp()) {
+          throw new Error(
+            'A Google-belépés a TestFlight első verziójában még nem érhető el. ' +
+              'Lépj be e-mail-címmel és jelszóval.',
+          );
+        }
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
         await signInWithPopup(requireAuth(), provider);
@@ -188,6 +195,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async linkGoogle() {
         const instance = requireAuth();
         if (!instance.currentUser) throw new Error('Nincs bejelentkezett felhasználó.');
+        if (isNativeApp()) {
+          throw new Error(
+            'A Google-fiók összekapcsolása a TestFlight első verziójában még nem érhető el.',
+          );
+        }
         await linkWithPopup(instance.currentUser, new GoogleAuthProvider());
       },
 
