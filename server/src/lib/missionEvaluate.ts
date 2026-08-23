@@ -32,6 +32,8 @@ export interface ShapedCandidate {
   cells: Set<CellId>;
   /** Fölösleges visszafordulások az útvonalon — a válogatás döntetlenjéhez. */
   uTurns: number;
+  /** Rövid visszatérő hurok vagy háromoldalas dobozkerülő. */
+  shortDetours: number;
 }
 
 export interface EvaluateContext {
@@ -98,6 +100,7 @@ export function evaluateCandidate(
       newBlocks,
       cells: result.claimedCells,
       uTurns: shaped.uTurns,
+      shortDetours: shaped.shortDetours,
     };
   } catch {
     return null;

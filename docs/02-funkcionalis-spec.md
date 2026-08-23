@@ -367,7 +367,9 @@ Időalapú tervezésnél a távot a rendszer a felhasználó **saját átlagtemp
 
 Opcionális finomhangolás: elsődleges cél (`legjobb ajánlat` · `új terület` · `rablás` · `grund erősítése` · `felfedezés`) és égtáj. A cél a találatok sorrendjét, az égtáj a körjelöltek vizsgálati sorrendjét adja; egyik sem ígér eredményt, ha a valós úthálózat vagy birtokviszony nem ad megfelelő kört.
 
-**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel. Fölösleges oda-vissza mellékutcai kitérőt, rövid visszatérő hurkot vagy háromoldalas „dobozkerülőt” tartalmazó jelölt nem ajánlható; ha emiatt kevesebb tiszta kör marad, a minőség elsőbbséget élvez a darabszámmal szemben. A minőségi kapu több, 6–20 méteres léptékben vizsgálja a visszafordulást, és külön felismeri a legfeljebb 350 méteres olyan helyi szakaszt, amelynek végpontjai légvonalban az út hosszának legfeljebb felére vannak egymástól.
+**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel. A Mapbox minden bemeneti koordinátát sorrendben, kötelező pontként látogat meg, és a mértani körpontot a járható úthálózatra illeszti; ezért egy zsákutcára pattant köztes pont önmagában oda-vissza nyúlványt okozhat. A GRUNDO ezt nem légvonalas vonalradírral javítja, hanem irányhelyes útszakaszra illesztéssel (`bearings`, `continue_straight`), Mapbox-alternatívákkal, majd a hibát kiváltó köztes pont úthálózaton fekvő bejárathoz igazításával és teljes újratervezéssel.
+
+A minőségi kapu külön kezeli a valódi visszafordulást és az enyhébb helyi kerülőt: 6–20 méteres léptékben keresi a közel 180°-os fordulatot, továbbá felismeri a legfeljebb 350 méteres olyan rövid hurkot vagy háromoldalas „dobozkerülőt”, amelynek végpontjai légvonalban az út hosszának legfeljebb felére vannak egymástól. U-fordulásmentes jelölt mindig elsőbbséget élvez; azon belül a kevesebb helyi kerülő nyer. Ha egy ritka úthálózat egyetlen teljesen tiszta kört sem ad, a rendszer a helyi legjobbakat mutatja ahelyett, hogy használhatatlan nulla találatot adna.
 
 | Típus | Példa szöveg |
 |---|---|
@@ -385,14 +387,15 @@ Szűrők megmaradnak: kevés útkereszteződés · zöldterület · lapos terep.
 
 ```
 1. Kör-jelöltek generálása a jelenlegi pozíció körül (út-gráf, célhossz ±15 %, 8 irányban)
-2. Minden jelöltre: a bezáruló cellahalmaz kiszámítása (ugyanaz a flood fill, mint élesben)
-3. Értékelés a JELENLEGI birtokviszonyok ellen:
+2. Útvonalminőség: irányhelyes illesztés, hibás köztes pont újratervezése, U-fordulás/helyi kerülő rangsor
+3. Minden jelöltre: a bezáruló cellahalmaz kiszámítása (ugyanaz a flood fill, mint élesben)
+4. Értékelés a JELENLEGI birtokviszonyok ellen:
      szabad cellák          → új terület
      idegen, védelem 1      → lopható
      idegen, védelem ≥2     → áttörés kell
      saját cellák           → védelemnövelés
-4. Becsült GP a 04. fejezet képletével
-5. Kiválasztás: típusonként a legjobb, hogy 3 ÉRDEMBEN KÜLÖNBÖZŐ ajánlat legyen
+5. Becsült GP a 04. fejezet képletével
+6. Kiválasztás: típusonként a legjobb, hogy 3 ÉRDEMBEN KÜLÖNBÖZŐ ajánlat legyen
 ```
 
 **Adatvédelmi korlát:** a *„…-tól/-től"* megnevezés csak akkor jelenik meg névvel, ha a célszemély fiókja **publikus**. Privát fióknál a szöveg: „elvehetsz 18 000 m²-t egy helyi játékostól". A terület tulajdonosa amúgy is látszik a térképen, de a küldetés nem lehet célzott zaklatási eszköz — ezért nincs „kövesd X-et" jellegű ajánlat, és ugyanaz a személy naponta legfeljebb egyszer jelenik meg célpontként.

@@ -28,6 +28,7 @@
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import type { ActivityType, ClaimResult } from '@/types';
 import type { LatLng } from './geo';
+import { routeDefectScore } from './routeShape';
 
 /**
  * A négy küldetés-karakter.
@@ -206,6 +207,8 @@ export interface MissionCandidate {
    * végigmenni. Lásd `routeShape.ts` — ott áll, mit mértem és mit vetettem el.
    */
   uTurns: number;
+  /** Rövid visszatérő hurok vagy háromoldalas dobozkerülő. */
+  shortDetours?: number;
   /** Az összes érintett (fal + belső) cella — az átfedés-vizsgálathoz. */
   cells: ReadonlySet<string>;
 }
@@ -342,7 +345,7 @@ export function pickMissions(candidates: readonly MissionCandidate[]): Mission[]
   pairs.sort(
     (a, b) =>
       band(b.normalized) - band(a.normalized) ||
-      a.candidate.uTurns - b.candidate.uTurns ||
+      routeDefectScore(a.candidate) - routeDefectScore(b.candidate) ||
       b.normalized - a.normalized ||
       b.raw - a.raw ||
       b.candidate.estimatedGp - a.candidate.estimatedGp,

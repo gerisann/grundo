@@ -17,10 +17,25 @@
  */
 
 import { GAMEPLAY } from '../../../src/config/gameplay';
-import type { LatLng } from '../../../src/game/geo';
+import { distanceM, type LatLng } from '../../../src/game/geo';
+import { decodePolyline } from '../../../src/game/polyline';
+import {
+  countShortDetours,
+  countUTurns,
+  findShortDetours,
+} from '../../../src/game/routeShape';
 
 /** A Directions-hívás legfeljebb ennyi ideig futhat. */
 const REQUEST_TIMEOUT_MS = 8_000;
+
+/** Egy rosszul ráillesztett köztes pont legfeljebb ilyen messze lehet a hibától. */
+const WAYPOINT_DEFECT_RADIUS_M = 150;
+
+/** Egyetlen javító körben legfeljebb ennyi köztes pontot igazítunk útra. */
+const MAX_RELOCATED_WAYPOINTS = 2;
+
+/** A második javító menet csak akkor fut, ha az első valóban javított. */
+const MAX_REPAIR_PASSES = 2;
 
 export interface DirectionsRoute {
   /** A megtett táv méterben, az ÚTHÁLÓZAT szerint. */
@@ -29,6 +44,12 @@ export interface DirectionsRoute {
   durationS: number;
   /** Kódolt vonallánc, 5 tizedes pontossággal (`decodePolyline` érti). */
   polyline: string;
+}
+
+interface MapboxRoute {
+  distance?: number;
+  duration?: number;
+  geometry?: string;
 }
 
 export function mapboxToken(): string {
@@ -42,7 +63,7 @@ export function directionsConfigured(): boolean {
 /**
  * Egy kör megtervezése a megadott pontokon át, vissza a kiindulóhoz.
  *
- * A HIBA NEM DOBÁS, hanem `null`. Nyolc irányt kérünk le párhuzamosan, és
+ * A HIBA NEM DOBÁS, hanem üres lista. Nyolc irányt kérünk le párhuzamosan, és
  * teljesen normális, hogy némelyikre nincs járható út (tó, zsákutca, katonai
  * terület). Ha egy jelölt elhasal, a többi még bőven elég egy ajánlathoz —
  * egyetlen kivétel nem viheti el az egész generálást.
@@ -51,62 +72,223 @@ export async function planLoop(
   origin: LatLng,
   waypoints: readonly LatLng[],
   profile: 'walking' | 'cycling',
-): Promise<DirectionsRoute | null> {
+): Promise<DirectionsRoute[]> {
   const token = mapboxToken();
-  if (!token) return null;
+  if (!token) return [];
 
   // A kör: kiinduló → köztes pontok → vissza a kiindulóhoz.
   const path = [origin, ...waypoints, origin];
   const coordinates = path.map((point) => `${round6(point.lng)},${round6(point.lat)}`).join(';');
 
   /*
-    ⚠️ A `continue_straight=false` SZÁNDÉKOS, ÉS MÉRVE VAN.
+    A mértani köztes pont nem biztos, hogy úton fekszik. A Mapbox ezért egy
+    közeli útszakaszra illeszti, és a pontokat kötelezően, sorrendben járja be.
+    Ha a kiválasztott szakasz egy zsákutca, a korábbi
+    `continue_straight=false` kérés pontosan a képernyőképeken látható
+    oda-vissza „lábat" engedte meg.
 
-    Ez engedi meg, hogy az útvonal egy köztes pontnál visszaforduljon. Ettől
-    kerül néha egy-egy fölösleges „láb" a tervbe (beszalad egy mellékutcába,
-    megfordul, visszajön) — Geri jelentette 2026-08-22-én, screenshottal.
+    A javítás két, egymást kiegészítő Directions-funkció:
 
-    A kézenfekvő javítás a `true` lenne, és tényleg segít is a látványon:
-    3 kiindulás × 8 irányon a visszafordulások 65-ről 38-ra estek. DE ugyanez
-    a bezárt BELSŐ területet 1,900 km²-ről 1,425-re vitte — a negyede elveszik,
-    márpedig a játék arról szól. Ezért maradt a `false`.
+      1. `continue_straight=true`: köztes pontnál nem indulhatunk vissza azon
+         az úton, amelyiken érkeztünk;
+      2. `bearings`: a köztes pont csak olyan útszakaszra pattanhat, amelynek
+         iránya nagyjából a következő körpont felé mutat. A Mapbox által is
+         ajánlott 45°-os tűrés egy városi derékszögű hálóban mindig hagy
+         legalább egy fő irányt, a körre merőleges zsákutcát viszont kizárja.
 
-    A lábakat máshol kezeljük: a válogatás (`pickMissions`) döntetlennél a
-    kevesebb visszafordulású jelöltet választja, ami mérve ~1% területbe kerül.
-    Lásd `src/game/routeShape.ts` — ott van a teljes mérés és az is, mi bukott
-    el rajta (a `radiuses` paraméternek például SEMMI hatása nem volt).
+    Az `alternatives=true` ugyanabban az API-hívásban további, érdemben eltérő
+    útvonalakat is kér. Ezeket nem a Mapbox sorrendje alapján dobjuk el: a
+    küldetésmotor mindet megméri, és a tiszta, valóban kört záró változatokból
+    választ. Ha az iránykorlát mellett nincs útvonal, egyszer visszaesünk a
+    régi, laza kérésre — így ritka úthálózatban sem lesz üres az ajánló.
   */
+  const directional = await requestRoutes(
+    profile,
+    coordinates,
+    token,
+    `&continue_straight=true&bearings=${encodeURIComponent(loopBearings(path))}`,
+  );
+  if (directional.length > 0) {
+    let currentRoutes = directional;
+    let currentWaypoints = [...waypoints];
+    let currentDefects = bestDefectCount(currentRoutes);
+    let allRoutes = [...directional];
+
+    for (let pass = 0; pass < MAX_REPAIR_PASSES; pass += 1) {
+      const relocated = relocateDefectiveWaypoints(currentRoutes, currentWaypoints);
+      if (!relocated) break;
+
+      const repairedPath = [origin, ...relocated, origin];
+      const repairedCoordinates = repairedPath
+        .map((point) => `${round6(point.lng)},${round6(point.lat)}`)
+        .join(';');
+      const repaired = await requestRoutes(
+        profile,
+        repairedCoordinates,
+        token,
+        `&continue_straight=true&bearings=${encodeURIComponent(loopBearings(repairedPath))}`,
+      );
+      if (repaired.length === 0) break;
+
+      allRoutes = uniqueRoutes([...repaired, ...allRoutes]);
+      const repairedDefects = bestDefectCount(repaired);
+      if (repairedDefects >= currentDefects) break;
+      currentRoutes = repaired;
+      currentWaypoints = relocated;
+      currentDefects = repairedDefects;
+      if (currentDefects === 0) break;
+    }
+
+    return allRoutes;
+  }
+
+  return requestRoutes(profile, coordinates, token, '&continue_straight=false');
+}
+
+function bestDefectCount(routes: readonly DirectionsRoute[]): number {
+  return Math.min(
+    ...routes.map((route) => {
+      const points = decodePolyline(route.polyline);
+      // A tényleges visszafordulás erősebb hiba a lazább, rövidkerülő
+      // heurisztikánál; ezért a javító menet előbb ezt csökkenti.
+      return countUTurns(points) * 1_000 + countShortDetours(points);
+    }),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+/**
+ * A legjobb első útvonalon megkeresi a leginkább önmagába visszatérő helyi
+ * részeket, és az ezekhez tartozó mértani köztes pontot a kitérő bejáratához
+ * igazítja. Nem rajzolunk légvonalas „javítást": az új koordinátával ismét a
+ * Mapbox tervezi meg a teljes, járható útvonalat.
+ */
+function relocateDefectiveWaypoints(
+  routes: readonly DirectionsRoute[],
+  waypoints: readonly LatLng[],
+): LatLng[] | null {
+  const measured = routes
+    .map((route) => {
+      const points = decodePolyline(route.polyline);
+      return {
+        points,
+        defects: countUTurns(points) * 1_000 + countShortDetours(points),
+      };
+    })
+    .filter((entry) => entry.points.length >= 2)
+    .sort((a, b) => a.defects - b.defects)[0];
+  if (!measured || measured.defects === 0) return null;
+
+  // A legkisebb direkt/úthossz arány a legerősebb bizonyíték arra, hogy nem
+  // szükséges utcakerülőről, hanem ugyanoda visszatérő nyúlványról van szó.
+  const defects = findShortDetours(measured.points).sort(
+    (a, b) => a.directM / a.alongM - b.directM / b.alongM,
+  );
+  const replacements = new Map<number, LatLng>();
+
+  for (const defect of defects) {
+    let nearestIndex = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < waypoints.length; index += 1) {
+      if (replacements.has(index)) continue;
+      for (const point of defect.path) {
+        const distance = distanceM(waypoints[index]!, point);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      }
+    }
+    if (nearestIndex < 0 || nearestDistance > WAYPOINT_DEFECT_RADIUS_M) continue;
+
+    // Mindkét végpont úthálózaton van; azt választjuk, amelyik kisebb
+    // alakváltozással jár az eredeti mértani pont helyett.
+    const waypoint = waypoints[nearestIndex]!;
+    const replacement = distanceM(waypoint, defect.start) <= distanceM(waypoint, defect.end)
+      ? defect.start
+      : defect.end;
+    replacements.set(nearestIndex, replacement);
+    if (replacements.size >= MAX_RELOCATED_WAYPOINTS) break;
+  }
+
+  if (replacements.size === 0) return null;
+  return waypoints.map((waypoint, index) => replacements.get(index) ?? waypoint);
+}
+
+/**
+ * A kezdő- és végpont szabad, csak a mértani köztes pontok ráillesztését
+ * korlátozzuk. Minden köztes pontnál a következő körpont iránya az elvárt
+ * továbbhaladás; a lista hossza kötelezően megegyezik a koordinátákéval.
+ */
+export function loopBearings(path: readonly LatLng[], toleranceDeg = 45): string {
+  return path
+    .map((point, index) => {
+      if (index === 0 || index === path.length - 1) return '';
+      const next = path[index + 1];
+      if (!next) return '';
+      return `${Math.round(bearingDeg(point, next))},${toleranceDeg}`;
+    })
+    .join(';');
+}
+
+async function requestRoutes(
+  profile: 'walking' | 'cycling',
+  coordinates: string,
+  token: string,
+  constraintQuery: string,
+): Promise<DirectionsRoute[]> {
   const url =
     `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinates}` +
-    `?geometries=polyline&overview=full&continue_straight=false` +
+    `?geometries=polyline&overview=full&alternatives=true${constraintQuery}` +
     `&access_token=${encodeURIComponent(token)}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return null;
+    if (!response.ok) return [];
 
-    const body = (await response.json()) as {
-      code?: string;
-      routes?: { distance?: number; duration?: number; geometry?: string }[];
-    };
-    if (body.code !== 'Ok') return null;
+    const body = (await response.json()) as { code?: string; routes?: MapboxRoute[] };
+    if (body.code !== 'Ok') return [];
 
-    const route = body.routes?.[0];
-    if (!route || typeof route.geometry !== 'string') return null;
-
-    return {
-      distanceM: Number(route.distance ?? 0),
-      durationS: Number(route.duration ?? 0),
-      polyline: route.geometry,
-    };
+    const seen = new Set<string>();
+    const routes: DirectionsRoute[] = [];
+    for (const route of body.routes ?? []) {
+      if (typeof route.geometry !== 'string' || seen.has(route.geometry)) continue;
+      seen.add(route.geometry);
+      routes.push({
+        distanceM: Number(route.distance ?? 0),
+        durationS: Number(route.duration ?? 0),
+        polyline: route.geometry,
+      });
+    }
+    return routes;
   } catch {
     // Időtúllépés vagy hálózati hiba — ez a jelölt egyszerűen kimarad.
-    return null;
+    return [];
   } finally {
     clearTimeout(timer);
   }
+}
+
+function uniqueRoutes(routes: readonly DirectionsRoute[]): DirectionsRoute[] {
+  const seen = new Set<string>();
+  return routes.filter((route) => {
+    if (seen.has(route.polyline)) return false;
+    seen.add(route.polyline);
+    return true;
+  });
+}
+
+/** Irányszög két földrajzi pont között (0° = észak). */
+function bearingDeg(a: LatLng, b: LatLng): number {
+  const rad = Math.PI / 180;
+  const dLng = (b.lng - a.lng) * rad;
+  const lat1 = a.lat * rad;
+  const lat2 = b.lat * rad;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   countRouteDefects,
   countShortDetours,
   countUTurns,
+  findShortDetours,
   preferCleanRoutes,
   selectMissionRoutes,
   withoutOutAndBackSpurs,
@@ -88,6 +89,10 @@ describe('countShortDetours', () => {
     expect(countShortDetours(clean)).toBe(0);
     expect(countShortDetours(spurred)).toBeGreaterThan(0);
     expect(countRouteDefects(spurred)).toBeGreaterThan(0);
+    const [defect] = findShortDetours(spurred);
+    expect(defect).toBeDefined();
+    expect(defect!.path.length).toBeGreaterThan(2);
+    expect(defect!.directM / defect!.alongM).toBeLessThanOrEqual(0.5);
   });
 
   it('nem minősít hibának egy rendes derékszögű utcafordulót', () => {
@@ -135,5 +140,14 @@ describe('selectMissionRoutes', () => {
   it('a legkevésbé hibás köröket megtartja, ha tiszta egyáltalán nincs', () => {
     const routes = [3, 1, 2, 4].map((uTurns, id) => ({ id, uTurns }));
     expect(selectMissionRoutes(routes).map((route) => route.uTurns)).toEqual([1, 2, 3]);
+  });
+
+  it('a visszafordulásmentes jelöltet nem nyomja el több enyhébb helyi kerülő', () => {
+    const routes = [
+      { id: 'spur', uTurns: 1, shortDetours: 0 },
+      { id: 'cleaner', uTurns: 0, shortDetours: 4 },
+      { id: 'cleanest', uTurns: 0, shortDetours: 2 },
+    ];
+    expect(selectMissionRoutes(routes).map((route) => route.id)).toEqual(['cleaner', 'cleanest']);
   });
 });

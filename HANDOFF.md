@@ -6,12 +6,10 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`
 - Ág: `main`.
-- GitHubon jelenleg `c6de619 Natív iOS push bekötése` van.
-- A lokális ág a GitHub előtt jár: `56f3c16` izolálja a Codemagic
-  push-tesztet, ezt követi a zárolt képernyős Live Activity és annak
-  Capacitor 8/Xcode 26 fordítási javítása. A push a felhasználó következő
-  lépése.
-- Teljes unit teszt: **403 zöld**, 112 célzott emulátoros teszt kihagyva.
+- GitHubon jelenleg `de4ad25 Capacitor 8 Live Activity fordítás javítása` van.
+- A lokális ág egy küldetés-geometriai committal fog a GitHub előtt járni; a
+  push a felhasználó következő lépése.
+- Teljes unit teszt: **409 zöld**, 112 célzott emulátoros teszt kihagyva.
 - A frontend production build és a backend TypeScript build sikeres
   2026-08-23-án. Natív Xcode-fordítás Windows alatt nem futtatható; ezt a
   Codemagic következő buildje ellenőrzi.
@@ -20,9 +18,18 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 ### Küldetés, webes rögzítés és háttér-GPS
 
-- A küldetésgeneráló már nem ad nulla találatot csak azért, mert minden
-  Mapbox-jelöltben talált kisebb visszafordulást: ilyenkor a három legkevésbé
-  hibás kört adja vissza. A tényleges útvonalminőség külön optimalizálandó.
+- A Mapbox Directions minden mértani köztes pontot kötelezően, sorrendben
+  látogat meg; a zsákutcára pattant pont okozta a random oda-vissza lábakat.
+  A generátor már irányhelyesen illeszti a köztes pontokat (`bearings` és
+  `continue_straight`), alternatív útvonalakat kér, a visszatérő kitérőt okozó
+  pontot pedig az úthálózati bejárathoz igazítva újratervezi. Nem rajzol
+  légvonalas rövidítést, ezért a javított geometria továbbra is járható.
+- A valódi U-fordulás és az enyhébb helyi kerülő külön pontszám. Élő mérésen
+  (3 budapesti kiindulás × 8 irány, 7,5 km) a nyers U-fordulás 61-ről 14-re,
+  a ténylegesen felajánlott útvonalaké 16-ról **0-ra** csökkent; az átlagos
+  helyi kerülő 4,0-ről 3,17-re javult. A Map Matching próba 7/8 irányban
+  széteső részutakat adott az 50 méteres illesztési korlát miatt, ezért nem
+  került productionbe.
 - A webes rögzítés életciklus-diagnosztikája megkülönbözteti az újratöltést,
   bezárást és háttérbe kerülést.
 - iOS-en natív Core Location bridge gyűjti és sorban tárolja a lezárt
@@ -86,11 +93,10 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 
 ## TELEPÍTÉSI SORREND
 
-1. A felhasználó pusholja a két lokális commitot.
+1. A felhasználó pusholja a lokális küldetés-geometriai commitot.
 2. Adatbázis-, szabály- és indextelepítés nem kell.
-3. **Backend telepítés szükséges** az egységes push-adatmezők és iOS hang miatt.
-4. **Frontend telepítés szükséges** a production VAPID és a push UI frissítése
-   miatt.
+3. **Backend telepítés szükséges** az új Mapbox kéréshez és újratervezéshez.
+4. Ehhez a commithoz frontend telepítés nem szükséges.
 5. Az Apple Developerben a `GRUNDO Live Activity` Identifier/App ID már
    létrejött `app.grundo.ios.liveactivity` bundle ID-val.
 6. Codemagic TestFlight build ugyanebből a `main` commitból; a workflow
@@ -112,12 +118,12 @@ Ez a fájl az aktuális állapotot mutatja; a részletes történet a Git logban
 6. Az éles weben újra kell reprodukálni a rögzítő megszakadását. Az új
    lifecycle-adatból derül ki, hogy reload, pagehide, háttérbe kerülés vagy
    saját állapotkezelési hiba előzte meg; utána készül a célzott javítás.
+7. Backend deploy után ugyanarról a valós kiindulópontról több küldetést kell
+   generálni; a szaggatott útvonalon ne legyen oda-vissza zsákutcai láb. Ritka
+   úthálózatban a helyi legjobb fallback továbbra is adhat kényszerű kerülőt.
 
 ## NYITOTT KISEBB ÜGYEK
 
-- A küldetések Mapbox útvonalgeometriájának zsákutcáit mérésalapú optimalizálás
-  szükséges, a jelenlegi fallback csak a használhatatlan nulla találatot oldja.
-  A felhasználó ezt a jelenlegi sorrendben a harmadik feladatnak kérte.
 - Az npm production audit két közepes React Router figyelmeztetést jelez; a
   javítás major verzióváltást igényel, ezért nem része a push implementációnak.
 

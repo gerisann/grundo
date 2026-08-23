@@ -11,22 +11,23 @@
  * KELL mennie, meg kell fordulnia és vissza kell jönnie — a Mapboxnak nincs
  * választása, mert a pontot megadtuk.
  *
- * ⚠️ AMIT MEGMÉRTEM ÉS ELVETETTEM (2026-08-22, 3 kiindulás × 8 irány, éles
- * Directions-hívásokkal):
+ * A 2026-08-22-i első mérés megmutatta, hogy egyetlen kapcsoló nem elég:
  *
- *   - `continue_straight=true` (a #7 menet gyanúja): a U-fordulók 65-ről 38-ra
- *     esnek, DE a bezárt BELSŐ terület 1,900 km²-ről 1,425-re — a negyede
- *     elveszik. Rossz csere, nem vezettük be.
+ *   - a puszta `continue_straight=true` csökkentette a U-fordulást, de a
+ *     bezárt terület negyedét elvesztette;
  *   - `radiuses=150` és `300` a köztes pontokon: SEMMI hatás, bitre ugyanazok
  *     az útvonalak. A paraméter csak felső korlát a rákapcsolásra, nem
  *     preferencia.
  *   - 3 köztes pont 5 helyett: kevesebb kitérő, de a terület 2,015-ről
  *     1,147 km²-re esik. A háromszög-alakú kör egyszerűen kevesebbet zár be.
  *
- * AMI MŰKÖDÖTT: nem a hívást állítjuk át, hanem VÁLOGATUNK. Nyolc jelöltből
- * három kerül a felhasználó elé — ha a közel egyformák közül a tisztábbat
- * választjuk, a kitérők nagy része eltűnik, és ez mérve ~1% területbe kerül,
- * nem 25-be. Ez a függvény adja hozzá a mértéket.
+ * A 2026-08-23-i megoldás ezért háromrétegű: irányhelyes ráillesztés
+ * (`bearings` + `continue_straight`), a hibát okozó köztes pont úthálózati
+ * bejárathoz igazítása és újratervezése, végül külön U-fordulás/helyi kerülő
+ * szerinti válogatás. Élő mérésen (3 budapesti kiindulás × 8 irány, 7,5 km)
+ * a nyers U-fordulás 61-ről 14-re, a ténylegesen felajánlott útvonalaké
+ * 16-ról nullára csökkent. A Map Matching nem vált be: a szintetikus kör
+ * pontjai az 50 méteres illesztési korláton kívül széteső részutakat adtak.
  *
  * A modul TISZTA: közös a klienssel és a szerverrel, nincs benne I/O
  * (AGENTS.md 4. szabály).
@@ -107,9 +108,8 @@ function resample(points: readonly LatLng[], stepM: number): LatLng[] {
  * derékszög). Szintetikus próbán hitelesítve: tiszta körre 0, három beszúrt
  * lábra 3, hatra 6.
  *
- * ⚠️ A NULLA NEM CÉL. Egy városi kör természetes velejárója néhány
- * visszafordulás; a mérőszám arra való, hogy KÉT jelölt közül a tisztábbat
- * lehessen választani, nem arra, hogy abszolút küszöböt húzzunk.
+ * A felajánlásnál a nulla a cél. Ha ritka úthálózatban egyetlen ilyen jelölt
+ * sincs, a generálást nem tesszük használhatatlanná: a helyi legjobbat adjuk.
  */
 export function countUTurns(points: readonly LatLng[]): number {
   const sampled = resample(points, SAMPLE_STEP_M);
@@ -152,11 +152,28 @@ export function countUTurns(points: readonly LatLng[]): number {
  * végpontjai az út hosszának kb. 71%-ára vannak egymástól; a képernyőképeken
  * látható kitérők 50% alatt visszaérnek ugyanahhoz az útszakaszhoz.
  */
-export function countShortDetours(points: readonly LatLng[]): number {
+export interface ShortDetour {
+  /** A visszatérő rész úthálózaton fekvő kezdő- és végpontja. */
+  start: LatLng;
+  end: LatLng;
+  /** A teljes hibás rész — ezzel kapcsoljuk vissza a kiváltó köztes ponthoz. */
+  path: readonly LatLng[];
+  alongM: number;
+  directM: number;
+}
+
+/**
+ * A rövid visszatérő részek helye és geometriája.
+ *
+ * A részletes eredmény nemcsak diagnosztika: a küldetéstervező ebből tudja,
+ * melyik mértani köztes pont pattant rossz mellékutcára. Az ilyen pontot a
+ * kitérő úthálózaton fekvő bejáratához igazítva újratervezi a Mapboxszal.
+ */
+export function findShortDetours(points: readonly LatLng[]): ShortDetour[] {
   const sampled = resample(points, SAMPLE_STEP_M);
   const minSpan = Math.max(2, Math.ceil(LOCAL_DETOUR_MIN_M / SAMPLE_STEP_M));
   const maxSpan = Math.max(minSpan, Math.floor(LOCAL_DETOUR_MAX_M / SAMPLE_STEP_M));
-  let count = 0;
+  const defects: ShortDetour[] = [];
 
   for (let start = 0; start + minSpan < sampled.length; start += 1) {
     let defectEnd = -1;
@@ -168,13 +185,24 @@ export function countShortDetours(points: readonly LatLng[]): number {
     }
     if (defectEnd < 0) continue;
 
-    count += 1;
+    const alongM = (defectEnd - start) * SAMPLE_STEP_M;
+    defects.push({
+      start: sampled[start]!,
+      end: sampled[defectEnd]!,
+      path: sampled.slice(start, defectEnd + 1),
+      alongM,
+      directM: distanceM(sampled[start]!, sampled[defectEnd]!),
+    });
     // Ugyanazt a hurkot a következő néhány kezdőpontból is látnánk. A teljes
     // hibás rész után folytatjuk, így egy kitérő pontosan egyszer számít.
     start = defectEnd;
   }
 
-  return count;
+  return defects;
+}
+
+export function countShortDetours(points: readonly LatLng[]): number {
+  return findShortDetours(points).length;
 }
 
 /** A küldetésválogatás egyetlen minőségi pontszáma. */
@@ -182,21 +210,34 @@ export function countRouteDefects(points: readonly LatLng[]): number {
   return countUTurns(points) + countShortDetours(points);
 }
 
+export interface RouteQuality {
+  uTurns: number;
+  shortDetours?: number;
+}
+
+/**
+ * Rendezési pontszám: egy valódi megfordulás mindig rosszabb bármennyi
+ * enyhébb helyi kerülőnél. A mezőnevek külön maradnak, mert a korábbi közös
+ * szám miatt U-fordulásmentes útvonalak is „hibásnak" látszottak.
+ */
+export function routeDefectScore(route: RouteQuality): number {
+  return route.uTurns * 1_000 + (route.shortDetours ?? 0);
+}
+
 /**
  * A mellékutcai „lábakat” már a birtokviszony szerinti pontozás ELŐTT szűri.
  *
  * Nem húzunk abszolút plafont: ha egy környék úthálózata minden irányban
- * kényszerít visszafordulást, akkor is kell ajánlatot adnunk. A helyi legjobb
- * alakhoz képest legfeljebb egy extra fordulást engedünk; ha ettől háromnál
- * kevesebb jelölt maradna, a három legtisztábbat tartjuk meg. Így a játéktét
- * továbbra is tud három különböző küldetést adni, a látványosan rossz
- * fésű-alakú útvonalak viszont nem nyerhetnek pusztán több cellával.
+ * kényszerít hibát, akkor is kell ajánlatot adnunk. A valódi U-fordulás
+ * ezerszeres súlya biztosítja, hogy előbb a nyúlványok tűnjenek el, és csak
+ * azon belül rangsoroljuk a rövid helyi kerülőket. Ha háromnál kevesebb
+ * közeli minőségű jelölt maradna, a három legtisztábbat tartjuk meg.
  */
-export function preferCleanRoutes<T extends { uTurns: number }>(routes: readonly T[]): T[] {
+export function preferCleanRoutes<T extends RouteQuality>(routes: readonly T[]): T[] {
   if (routes.length <= 3) return [...routes];
-  const ordered = [...routes].sort((a, b) => a.uTurns - b.uTurns);
-  const best = ordered[0]!.uTurns;
-  const clean = ordered.filter((route) => route.uTurns <= best + 1);
+  const ordered = [...routes].sort((a, b) => routeDefectScore(a) - routeDefectScore(b));
+  const best = routeDefectScore(ordered[0]!);
+  const clean = ordered.filter((route) => routeDefectScore(route) <= best + 1);
   return clean.length >= 3 ? clean : ordered.slice(0, 3);
 }
 
@@ -210,7 +251,7 @@ export function preferCleanRoutes<T extends { uTurns: number }>(routes: readonly
  * visszafordulást. Ilyenkor a „nincs küldetés" rosszabb élmény, mint a helyi
  * legjobb, őszintén megjelenített útvonal.
  */
-export function withoutOutAndBackSpurs<T extends { uTurns: number }>(
+export function withoutOutAndBackSpurs<T extends RouteQuality>(
   routes: readonly T[],
 ): T[] {
   return routes.filter((route) => route.uTurns === 0);
@@ -224,7 +265,7 @@ export function withoutOutAndBackSpurs<T extends { uTurns: number }>(
  * zsákutcák nem nyernek, de az ajánló soha nem válik használhatatlanná attól,
  * hogy az adott környék minden köre kényszerűen tartalmaz egy visszafordulást.
  */
-export function selectMissionRoutes<T extends { uTurns: number }>(routes: readonly T[]): T[] {
+export function selectMissionRoutes<T extends RouteQuality>(routes: readonly T[]): T[] {
   const clean = withoutOutAndBackSpurs(routes);
   return preferCleanRoutes(clean.length > 0 ? clean : routes);
 }

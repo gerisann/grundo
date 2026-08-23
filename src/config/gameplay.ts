@@ -305,8 +305,9 @@ export const GAMEPLAY = {
   MISSION_MAX_MINUTES: 480,
   /**
    * Ennyi irányban keresünk kört a jelenlegi pozíció körül (docs/02: „8
-   * irányban"). Minden irány EGY Directions-hívás, tehát ez egyben a
-   * generálás API-költsége is.
+   * irányban"). Minden irány egy alap Directions-hívás; ha a geometriai
+   * ellenőrzés rosszul illesztett köztes pontot talál, ugyanazt az irányt
+   * legfeljebb kétszer újjátervezi.
    */
   MISSION_BEARINGS: 8,
   /**

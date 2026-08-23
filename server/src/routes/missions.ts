@@ -16,7 +16,8 @@ import { decodePolyline } from '../../../src/game/polyline';
 import { layerOf, traceToCellPath } from '../../../src/game/cells';
 import { detectLoopsDetailed, loopCells } from '../../../src/game/loops';
 import {
-  countRouteDefects,
+  countShortDetours,
+  countUTurns,
   selectMissionRoutes,
 } from '../../../src/game/routeShape';
 import {
@@ -161,8 +162,8 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
 
     const planAt = async (bearing: number, wantedKm: number) => {
       const waypoints = loopWaypoints(origin, bearing, wantedKm, cfg);
-      const route = await planLoop(origin, waypoints, profile);
-      return route ? { bearing, route } : null;
+      const routes = await planLoop(origin, waypoints, profile);
+      return routes.length > 0 ? { bearing, routes } : null;
     };
 
     /*
@@ -181,27 +182,42 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
     */
     const firstPass = await Promise.all(bearings.map((bearing) => planAt(bearing, targetKm)));
 
+    /** A célhosszhoz viszonyított eltérés — kalibráláshoz és válogatáshoz. */
+    const relativeError = (km: number) => Math.abs(km - targetKm) / targetKm;
+
     const secondPass = await Promise.all(
       firstPass.map(async (entry, index) => {
         if (!entry) return null;
-        const km = entry.route.distanceM / 1000;
-        if (!(km > 0) || withinTolerance(km, targetKm, cfg)) return null;
+        const reference = [...entry.routes].sort(
+          (a, b) => relativeError(a.distanceM / 1000) - relativeError(b.distanceM / 1000),
+        )[0];
+        const km = (reference?.distanceM ?? 0) / 1000;
+        if (!(km > 0) || entry.routes.some((route) => withinTolerance(route.distanceM / 1000, targetKm, cfg))) {
+          return null;
+        }
         // A sugár lineárisan hat a kerületre, tehát ez az arány közvetlenül
         // a korrigált célhossz.
         return planAt(bearings[index]!, targetKm * (targetKm / km));
       }),
     );
 
-    /** Irányonként a célhosszhoz KÖZELEBBI változat nyer. */
-    const relativeError = (km: number) => Math.abs(km - targetKm) / targetKm;
-    const best = bearings.map((_, index) => {
-      const a = firstPass[index];
-      const b = secondPass[index];
-      if (!a) return b ?? null;
-      if (!b) return a;
-      return relativeError(b.route.distanceM / 1000) < relativeError(a.route.distanceM / 1000)
-        ? b
-        : a;
+    /*
+      Nem dobjuk el a Directions alternatíváit a Mapbox első helyezése alapján.
+      Egy irány első és önkalibrált menetének minden egyedi geometriája tovább
+      jut a saját hurok- és hibamérésünkbe. Maguk az alternatívák ugyanabban a
+      Directions-válaszban érkeznek, tehát nem igényelnek külön API-hívást.
+    */
+    const planned = bearings.flatMap((bearing, index) => {
+      const seen = new Set<string>();
+      const routes = [
+        ...(firstPass[index]?.routes ?? []),
+        ...(secondPass[index]?.routes ?? []),
+      ];
+      return routes.flatMap((route) => {
+        if (seen.has(route.polyline)) return [];
+        seen.add(route.polyline);
+        return [{ bearing, route }];
+      });
     });
 
     /* ── 3. Geometria: melyik jelölt mely cellákat zárja be? ────────── */
@@ -211,8 +227,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
     let closedLoops = 0;
 
     const withLoops: (ShapedCandidate & { error: number })[] = [];
-    for (const entry of best) {
-      if (!entry) continue;
+    for (const entry of planned) {
       routesReturned += 1;
 
       const distanceKm = entry.route.distanceM / 1000;
@@ -236,9 +251,11 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           cells,
           // Az útvonal ALAKJA — ezzel bontja fel a válogatás a döntetlent, hogy
           // ne egy mellékutcákba beszaladgáló kör kerüljön a kártyára.
-          // A mezőnév kompatibilitás miatt `uTurns`, de a pontszám már a
-          // rövid visszatérő hurkokat és doboz-kitérőket is tartalmazza.
-          uTurns: countRouteDefects(coordinates),
+          // Külön mérték: egy valódi visszafordulás mindig erősebb hiba, mint
+          // a lazább helyi kerülő-heurisztika. Összevonva a teljesen
+          // U-fordulásmentes jelöltek is hibásnak látszottak.
+          uTurns: countUTurns(coordinates),
+          shortDetours: countShortDetours(coordinates),
           error: relativeError(distanceKm),
         });
       } catch {
