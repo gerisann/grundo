@@ -78,5 +78,5 @@ export interface PositionSource {
   readonly ordered: boolean;
 
   start(handlers: PositionHandlers): Promise<void>;
-  stop(): void;
+  stop(): void | Promise<void>;
 }

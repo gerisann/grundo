@@ -28,7 +28,10 @@ workflows:
         script: npm run test
 
       - name: Vite production build
-        script: npm run build
+        script: |
+          export VITE_BUILD_CHANNEL="iOS build ${BUILD_NUMBER}"
+          export VITE_GIT_SHA="$(git rev-parse --short HEAD)"
+          npm run build
 
       - name: Capacitor iOS szinkron
         script: npx cap sync ios

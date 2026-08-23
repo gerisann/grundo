@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useAuth } from '@/hooks/AuthProvider';
+import { buildInfo } from '@/lib/buildInfo';
 import { Button, List, ListRow, ScreenHeader } from '@/components/ui';
 
 /**
@@ -111,6 +112,13 @@ export function SettingsScreen() {
             </Button>
           </section>
         ) : null}
+
+        <section>
+          <div className="label list__group-label">Alkalmazás</div>
+          <List>
+            <ListRow label="Verzió" value={buildInfo.label} />
+          </List>
+        </section>
       </div>
     </>
   );

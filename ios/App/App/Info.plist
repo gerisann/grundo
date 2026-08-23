@@ -30,6 +30,8 @@
 	<string>A GRUNDO a kamerát az aktivitásaidhoz feltöltött fényképek elkészítésére használja.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>A GRUNDO a helyzetedet a futás, séta vagy kerékpározás útvonalának rögzítésére és a meghódított mezők kiszámítására használja.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>A GRUNDO a helyzetedet a futás, séta vagy kerékpározás útvonalának rögzítésére és a meghódított mezők kiszámítására használja.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>A GRUNDO a fotótárból kiválasztott képeket az aktivitásaidhoz tölti fel.</string>
 	<key>UIApplicationSceneManifest</key>

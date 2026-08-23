@@ -15,7 +15,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityType } from '@/types';
 import { clearGhostRoute } from '@/lib/ghostRoute';
+import { isNativeApp } from '@/lib/platform';
 import { BrowserPositionSource } from '@/tracking/browserSource';
+import { NativePositionSource } from '@/tracking/nativeSource';
 import {
   applySample,
   createRecorder,
@@ -87,7 +89,10 @@ export type UploadState =
   | { status: 'error'; message: string; retryable: boolean };
 
 export function useRecorder(source?: PositionSource): RecorderApi {
-  const positionSource = useMemo(() => source ?? new BrowserPositionSource(), [source]);
+  const positionSource = useMemo(
+    () => source ?? (isNativeApp() ? new NativePositionSource() : new BrowserPositionSource()),
+    [source],
+  );
   const persister = useMemo(() => createRunPersister(defaultRunStore()), []);
 
   const stateRef = useRef<RecorderState>(createRecorder('run'));
@@ -177,7 +182,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
    */
   useEffect(() => {
     return () => {
-      positionSource.stop();
+      void positionSource.stop();
       void wakeRef.current?.release();
       void persister.flush();
     };
@@ -259,7 +264,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   }, [persister]);
 
   const finish = useCallback(async () => {
-    positionSource.stop();
+    await positionSource.stop();
     apply((current) => finishRecorder(current, Date.now()));
     await releaseWakeLock();
     // Kiírás bevárva: a lezárt rögzítés nem veszhet el, mert épp egy
@@ -268,7 +273,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   }, [apply, persister, positionSource, releaseWakeLock]);
 
   const discard = useCallback(async () => {
-    positionSource.stop();
+    await positionSource.stop();
     await releaseWakeLock();
     await persister.clear();
     stateRef.current = createRecorder('run');

@@ -1,10 +1,10 @@
 # GRUNDO iOS · Capacitor · Codemagic · TestFlight
 
-**Állapot:** első belső TestFlight buildre előkészítve · 2026-08-23
+**Állapot:** Codemagic → TestFlight pipeline működik · 2026-08-23
 
 **App:** GRUNDO · **Bundle ID:** `app.grundo.ios` · **Team ID:** `HFS68TZMCH`
 
-**Verzió:** `1.0.0` · az első Codemagic build száma `1`
+**Verzió:** `1.0.0` · a Codemagic buildszám minden feltöltésnél nő
 
 ## Felépítés
 
@@ -20,17 +20,18 @@ npm ci → tesztek → npm run build → npx cap sync ios
 A `codemagic.yaml` workflow neve **GRUNDO iOS TestFlight**. Xcode 26.4-et és
 Node 22.14-et használ. A `BUILD_NUMBER` minden Codemagic futásnál az Xcode
 `CURRENT_PROJECT_VERSION` értéke lesz; a marketingverzió változatlanul 1.0.0.
+A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 
 ## WKWebView audit és döntések
 
 | Terület | Első build állapota |
 |---|---|
-| Firebase Auth e-mail/jelszó | Támogatott; a web SDK IndexedDB/localStorage perzisztenciája marad. |
+| Firebase Auth e-mail/jelszó | Támogatott; iOS-en kényszerített `localStorage` perzisztencia van, mert a WKWebView IndexedDB-je kezdeti auth-beragadást okozhat. |
 | Google popup OAuth | WKWebView-ben nem megbízható, ezért natív appban őszinte hibaüzenet jelenik meg. A későbbi natív Google flow iOS OAuth client ID-t és URL scheme-et igényel. Weben változatlanul működik. |
 | Firestore / Storage | A meglévő web SDK marad. A fotófeldolgozás `createImageBitmap` hiányakor WebKit-kompatibilis `<img>` fallbacket használ, miközben a vászonra újrakódolás továbbra is törli az EXIF-et. |
 | Cloud Run API | A backend CORS allowlist része a `capacitor://localhost`; a backend újratelepítése szükséges az iOS API-hívások előtt. |
 | Mapbox GL | A webes WebGL implementáció marad. A Codemagicben olyan nyilvános Mapbox tokent kell használni, amelyet nem kizárólag HTTPS web-originre korlátoztak. |
-| Geolocation | Előtérben a WKWebView `navigator.geolocation` működik; az Info.plist helyhasználati indoklást tartalmaz. Háttér-GPS nincs bekapcsolva az első buildben. |
+| Geolocation | iOS-en a `@capacitor/geolocation` natív plugin kéri a GRUNDO helyengedélyét, így nincs `localhost` böngészős prompt. Weben marad a `navigator.geolocation`. Háttér-GPS nincs bekapcsolva. |
 | Érintés/gesztus | A meglévő pointer/touch kezelés WKWebView-kompatibilis; natív gesztusplugin nem szükséges. |
 | SPA routing | A Capacitor `capacitor://localhost` originjén a meglévő BrowserRouter marad; nincs Associated Domains vagy universal link capability. |
 | Külső URL-ek | A jelenlegi kódban nincs külön `window.open`/külső link flow, ezért Browser plugin sem került be. |
@@ -41,6 +42,18 @@ Node 22.14-et használ. A `BUILD_NUMBER` minden Codemagic futásnál az Xcode
 Az első build szándékosan nem kér Push Notifications, Sign in with Apple,
 Associated Domains vagy Background Modes capabilityt. Ezeket csak a hozzájuk
 tartozó funkció tényleges implementálásakor szabad bekapcsolni.
+
+## Kiadási rend: web és TestFlight
+
+- A webapp a gyors fejlesztési és funkcionális tesztcsatorna.
+- TestFlight build csak érdemi funkciócsomag után készül, illetve azonnal,
+  ha iOS-specifikus kód (auth, GPS, engedélyek, térkép, safe area, háttér)
+  változik.
+- Mindkét felületen a **Beállítások → Alkalmazás → Verzió** sor mutatja az
+  `vX · csatorna/build · rövid commit` azonosítót. Csak azonos commit tekinthető
+  szinkron webes és iOS kiadásnak.
+- A Cloud Run backend külön települ, ezért az új backendnek a már kint lévő
+  mobil és webes kliensekkel is kompatibilisnek kell maradnia.
 
 ## Codemagic environment variable-ök
 

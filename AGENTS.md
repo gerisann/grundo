@@ -208,6 +208,20 @@ első.
   azért, mert „elég sok minden történt" — a szál közepén vágni drágább, mint
   végigvinni.
 
+## 3.5 Web és iOS kiadási rend
+
+- A **webapp a gyors fejlesztői és funkcionális tesztcsatorna**. A kis,
+  iteratív frontend-változások itt ellenőrzendők először.
+- A **TestFlight mérföldkő-csatorna**: ne készüljön minden apró commitból IPA.
+  Érdemi, felhasználói funkciócsomag után, valamint minden iOS-specifikus
+  változásnál (auth, GPS, engedély, térkép, safe area, háttér) kötelező a
+  készülékes ellenőrzés.
+- Egy iOS build mindig a `main` egy konkrét commitjából készül. A felület
+  Beállítások → Alkalmazás részén a `vX · csatorna/build · rövid commit` jel
+  alapján ellenőrizhető, hogy a weben és TestFlighton pontosan mi fut.
+- A backend külön települ, ezért a változásait a már telepített webes és iOS
+  kliensekkel visszafelé kompatibilisen kell kiadni.
+
 ## 4. Eszközhasználati csapdák
 
 - ⚠️ **Backslash a Bash eszközön át elveszik vagy átfordul.** A `\n` valódi
