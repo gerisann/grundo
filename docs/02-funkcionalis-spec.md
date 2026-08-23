@@ -307,6 +307,18 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - Összes távolság · átlagtempó.
 - Idegen profilnál: Követés / Kérés · Üzenet · `⋯` (némítás, tiltás, jelentés). Privát fióknál csak a fejléc látszik.
 
+### Riválisok *(döntés: 2026-08-22)*
+
+Ha valaki elvesz területet valakitől, a kettejük kapcsolata **rivális** lesz — ez nem kérés/elfogadás kérdése, mint a követés, hanem MEGTÖRTÉNIK, a lopás pillanatában. A rangsor alapja a **kicserélt mezők száma** (szerzett + vesztett): „ha valaki 1×10 cellát lopott, az ugyanannyit ér, mint 10×1". Az áttörés (megvédett támadás) nem hoz létre rivalitást, mert egy mező sem cserélt gazdát.
+
+- **Profil fülön** egy szekció mutatja a TOP 3 riválist (eltűnik, ha nincs egy sem), gomb mögött a teljes, kliensoldalon kereshető lista (max 200 elem betöltve).
+- A név mellett **mindenhol** (feed, hozzászólás, aktivitás-részletek, keresés, követő-lista, terület-tulajdonos kártya, ranglista, nyilvános profil) egy **„RIVÁLIS" címke** jelenik meg (`#FC5F71` háttér, fekete szöveg), témafüggetlen.
+- Ha egy rivális támad, az értesítés külön hangot kap: „Egy riválisod megtámadta a grundod!", km²-ben és mezőben is mutatva a veszteséget. Az első összecsapás még semleges hangot kap.
+- Más felhasználó rivális-listája **nem publikus** — megmutatná, kitől szokott veszíteni.
+- A tiltás elrejti, nem törli a rivális-rekordot (feloldás után visszaáll).
+
+Adatmodell: `users/{uid}/rivals/{otherUid}`, két tükör-dokumentum lopásonként. Lásd [server/src/lib/rivals.ts](../server/src/lib/rivals.ts) fejlécét a részletes indoklásért (miért nincs `firstAt` mező, miért olvasáskor szűr a tiltás).
+
 ### Statisztikák fül (képek #05, #06)
 - Aktivitástípus-váltó (futás / séta / bringa).
 - **Legjobb eredmények**: 400 m, 800 m, 1 km, 1 mérföld, 5 km, 10 km, félmaraton, maraton.

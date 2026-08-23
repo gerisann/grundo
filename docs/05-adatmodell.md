@@ -419,6 +419,13 @@ Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`
 - `followRequests/{targetUid}/items/{requesterUid}` → `{ createdAt }`
 - `users/{uid}/blocks/{targetUid}` · `users/{uid}/mutes/{targetUid}`
 
+### `users/{uid}/rivals/{otherUid}` *(döntés: 2026-08-22)*
+```ts
+{ gainedCells: number, lostCells: number, exchangedCells: number,
+  gainedEvents: number, lostEvents: number, lastAt: Timestamp }
+```
+Tükör-alkollekció, mint a `blocks`/`blockedBy`: lopásonként két dokumentum keletkezik (`users/{támadó}/rivals/{áldozat}` és fordítva), tükrözött számokkal. Nincs index-igény, a `rivals` lekérdezés egyetlen mezőn (`exchangedCells`) rendez. Csak a tulajdonos olvashatja, írás kizárólag szerveroldalról. Lásd [server/src/lib/rivals.ts](../server/src/lib/rivals.ts).
+
 ### `clubs/{clubId}`
 ```ts
 { name, description, photoURL, city, countryCode,
