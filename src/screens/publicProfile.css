@@ -21,8 +21,15 @@
   text-align: center;
 }
 
-.pprof__name {
+.pprof__name-row {
   margin-top: var(--sp-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.pprof__name {
   font-size: var(--fs-title);
   font-weight: 800;
   color: var(--text-primary);

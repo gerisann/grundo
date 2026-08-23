@@ -103,8 +103,10 @@ export function ConnectionsSheet({
                 }}
               >
                 <Avatar url={item.photoURL} name={item.username} size={40} />
-                <span className="conn__name">{item.username}</span>
-                <RivalBadge uid={item.uid} />
+                <span className="conn__identity">
+                  <span className="conn__name">{item.username}</span>
+                  <RivalBadge uid={item.uid} />
+                </span>
                 <ChevronIcon />
               </button>
             ))}

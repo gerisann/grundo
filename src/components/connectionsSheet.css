@@ -85,8 +85,15 @@
   border-color: var(--accent);
 }
 
-.conn__name {
+.conn__identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   flex: 1;
+  min-width: 0;
+}
+
+.conn__name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

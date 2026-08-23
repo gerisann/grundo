@@ -285,9 +285,20 @@
 }
 
 .terr__board-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.terr__board-identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .terr__board-area {

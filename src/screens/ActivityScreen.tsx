@@ -187,8 +187,10 @@ export function ActivityScreen() {
             >
               <Avatar url={activity.author.photoURL} name={activity.author.username} />
               <span className="act__who-text">
-                <span className="act__author">{activity.author.username}</span>
-                <RivalBadge uid={activity.author.uid} />
+                <span className="act__identity">
+                  <span className="act__author">{activity.author.username}</span>
+                  <RivalBadge uid={activity.author.uid} />
+                </span>
                 <span className="act__date">
                   {ACTIVITY_LABEL[activity.type]} · {formatDateTime(activity.startedAt)}
                 </span>

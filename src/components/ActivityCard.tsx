@@ -56,8 +56,10 @@ export function ActivityCard({
     <header className="acard__head">
       <Avatar url={item.author.photoURL} name={item.author.username} />
       <span className="acard__who">
-        <span className="acard__name">{showAuthor ? item.author.username : title}</span>
-        {showAuthor ? <RivalBadge uid={item.author.uid} /> : null}
+        <span className="acard__identity">
+          <span className="acard__name">{showAuthor ? item.author.username : title}</span>
+          {showAuthor ? <RivalBadge uid={item.author.uid} /> : null}
+        </span>
         <span className="acard__when">
           <span aria-hidden="true">{ACTIVITY_ICON[item.type]}</span>{' '}
           {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}

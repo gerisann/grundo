@@ -6,14 +6,16 @@
 .rival-badge {
   display: inline-block;
   flex: none;
-  padding: 1px 6px;
+  width: max-content;
+  justify-self: start;
+  padding: 1px 4px;
   border-radius: var(--r-sm);
   background: var(--rival-badge-bg);
   color: var(--rival-badge-text);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  line-height: 1.6;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
   /* A név mellett ül, de sosem tolja szét a sort: ha nincs hely, a NÉV
      rövidül, nem a címke. */
   white-space: nowrap;

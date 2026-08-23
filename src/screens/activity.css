@@ -80,6 +80,13 @@
   min-width: 0;
 }
 
+.act__identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
 .act__author {
   font-size: var(--fs-body);
   font-weight: 700;

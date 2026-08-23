@@ -43,6 +43,13 @@
   min-width: 0;
 }
 
+.acard__identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
 .acard__name {
   font-size: 15px;
   font-weight: 700;

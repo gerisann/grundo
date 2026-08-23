@@ -50,6 +50,8 @@ marad. Keskeny kijelzőn touch swipe és egérrel fogd‑és‑húzd is működi
 - A `RivalBadge` a feedben, hozzászólásoknál, kapcsolati listákban,
   aktivitás-adatlapon, keresésben, területtulajdonosnál, ranglistán és a
   nyilvános profilon be van kötve.
+- A címke minden nézetben közvetlenül a felhasználónév mellett ül; kompakt,
+  9 px-es, normál betűvastagságú és csak a szöveg szélességét foglalja.
 - A visszatérő rivális támadásának értesítése külön címet kap; az első
   összecsapás semleges marad.
 - A korábban csak dokumentációban említett visszatöltés most valóban létezik:

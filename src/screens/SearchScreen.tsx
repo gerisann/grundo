@@ -107,8 +107,10 @@ export function SearchScreen() {
                 aria-label={`${user.username} profiljának megnyitása`}
               >
                 <Avatar url={user.photoURL} name={user.username} size={40} />
-                <span className="search__name">{user.username}</span>
-                <RivalBadge uid={user.uid} />
+                <span className="search__identity">
+                  <span className="search__name">{user.username}</span>
+                  <RivalBadge uid={user.uid} />
+                </span>
               </button>
             ))}
           </div>

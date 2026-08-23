@@ -93,6 +93,13 @@
   color: var(--accent);
 }
 
+.search__identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
 .search__name {
   min-width: 0;
   overflow: hidden;

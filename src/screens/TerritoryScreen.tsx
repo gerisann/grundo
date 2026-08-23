@@ -588,8 +588,10 @@ function Leaderboard({
           >
             <span className="terr__board-rank">{index + 1}.</span>
             <Avatar url={entry.photoURL} name={entry.username} size={28} />
-            <span className="terr__board-name">{entry.username}</span>
-            <RivalBadge uid={entry.uid} />
+            <span className="terr__board-identity">
+              <span className="terr__board-name">{entry.username}</span>
+              <RivalBadge uid={entry.uid} />
+            </span>
             <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
           </button>
         ))}
