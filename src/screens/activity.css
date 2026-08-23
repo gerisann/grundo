@@ -23,6 +23,20 @@
   border-radius: 0;
 }
 
+/* A Mapbox-logó és attribúció kötelezően látható marad, de a részletező
+   alsó információs sávjától feljebb, visszafogottabban ül. */
+.act__map .mapboxgl-ctrl-bottom-left,
+.act__map .mapboxgl-ctrl-bottom-right {
+  bottom: 28px;
+  opacity: 0.68;
+  transition: opacity 160ms ease;
+}
+
+.act__map .mapboxgl-ctrl-bottom-left:hover,
+.act__map .mapboxgl-ctrl-bottom-right:hover {
+  opacity: 1;
+}
+
 /* Teljes képernyős mód: a térkép mindent kitölt, a lap többi része eltűnik. */
 .act--full .act__map {
   position: fixed;
