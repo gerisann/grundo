@@ -3,17 +3,23 @@
 Ez a fájl az AKTUÁLIS állapotot mutatja, nem a történetet — minden menet végén
 felülíródik, nem bővül. A történet a git logban van.
 
-**Következő menet neve: GRUNDO #10 (vagy a #9 folytatása, ha még ugyanaz a
-beszélgetés).** A Rivális funkció FÉLKÉSZ — ez a menet a heti tokenlimit miatt
-szakadt meg, nem azért, mert kész lett. Lásd lent, pontosan hol áll.
+**Következő menet neve: GRUNDO #10.** A Rivális funkció adatrétege LEZÁRULT
+(emulátoros teszt + dokumentáció megvan). A felület éles böngészőben MÉG
+NINCS kipróbálva — lásd lent, pontosan hol áll.
 
-## ⚠️ EZ A MENET NINCS LEZÁRVA — NE TELEPÍTS BELŐLE ELLENŐRZÉS NÉLKÜL
+## ⚠️ A FELÜLET NINCS BÖNGÉSZŐBEN ELLENŐRIZVE — NE TELEPÍTS BELŐLE ELLENŐRZÉS NÉLKÜL
 
 A kód **típusellenőrzött** (gyökér ÉS `server/` is hibamentes) és **a teljes
-389 régi teszt zöld** (381 fut, 107 kihagyva — emulátoros készlet). De az ÚJ
-rivális-logikának **nincs saját tesztje**, és **élőben egyáltalán nem lett
-kipróbálva**. Ez nem a szokásos „amit nem tudtam ellenőrizni" szakasz — ez
-tényleg befejezetlen munka.
+117 emulátoros + típusellenőrzési teszt zöld**, benne az ÚJ
+[rivals.emulator.test.ts](server/src/lib/rivals.emulator.test.ts) (5 teszt):
+bizonyítja a tükör-írás (`recordRivalry`) helyességét és az
+`existingRivals` sorrend-függő viselkedését. A `docs/02-funkcionalis-spec.md`
+és a `docs/05-adatmodell.md` most már tartalmazza a Rivális funkciót.
+
+Ami VISZONT még nem történt meg: **a felület élőben, böngészőben nincs
+kipróbálva** (profil-szekció megjelenése/eltűnése, RIVÁLIS címke mindkét
+témában, teljes lista keresése). A token-limit miatt ez a menet ezt már nem
+tudta elvégezni — csak adatréteg-szinten van bizonyítva, hogy a logika helyes.
 
 ## MI KÉSZÜLT EL
 
@@ -108,29 +114,20 @@ egyedi inline típus helyett.
 
 ## MIT KELL MÉG CSINÁLNI — EBBEN A SORRENDBEN
 
-1. **Emulátoros teszt a `recordRivalry`-ra és az `existingRivals`-ra.**
-   Kritikus, mert a tükör-írás (két dokumentum egy batch-ben) pontosan az a
-   fajta kód, amit a projekt szabálya («mérj, ne feltételezz») szerint
-   emulátorban kell látni működés közben, nem csak típusellenőrizve. Nézd meg
-   a `notifications.emulator.test.ts`-t mintaként.
-2. **Élő próba emulátorban, bejelentkezve**: két teszt-felhasználó, egyik
-   elvesz a másiktól, utána mindkét oldalon nézd meg a `/api/rivals` és
-   `/api/rivals/ids` választ. Ez fogná meg, ha a batch-írás vagy a
-   tükrözés valahol elszámolta magát.
-3. **A profil-szekció és a teljes lista éles felülete** — ez a menet egyiket
-   sem látta a böngészőben, csak típusellenőrizve. A `RivalsCard`
-   eltűnés-logikáját (nincs rivális → nincs szekció) külön érdemes nézni.
-4. **A „RIVÁLIS" címke elhelyezését ÁTNÉZNI mindkét témában** — a token
-   (`--rival-badge-bg` / `--rival-badge-text`) szándékosan témafüggetlen,
-   de ezt még nem néztem meg élőben, csak a `tokens.css`-be írtam be.
-5. **Eldönteni, kell-e a rivalitáshoz push-értesítés is**, vagy elég az
-   alkalmazáson belüli — a `notifyTerritoryStolen` mindkettőt elküldi a
-   `createNotification`-ön keresztül (az már push-t is csinál), tehát ez
-   valószínűleg magától működik, de nincs ellenőrizve.
-6. **`docs/`-ba felvenni a Rivális funkciót** — jelenleg SEHOL nincs
-   dokumentálva a specifikációban, csak ebben a HANDOFF-ban és a kódban. Ha
-   ez a menet itt marad token nélkül, egy jövőbeli menetnek a docs alapján
-   kellene tudnia rekonstruálni, mi a szándék.
+1. ~~Emulátoros teszt~~ — KÉSZ (#9 vége): `rivals.emulator.test.ts`, 5 zöld teszt.
+2. ~~Élő próba emulátorban~~ — LEFEDVE az 1. ponttal (adatréteg szinten
+   bizonyítva), böngészős kipróbálás nem történt.
+3. **A profil-szekció és a teljes lista éles felülete** — még mindig nincs
+   böngészőben ellenőrizve. A `RivalsCard` eltűnés-logikáját (nincs rivális →
+   nincs szekció) külön nézd meg.
+4. **A „RIVÁLIS" címke ÁTNÉZNI mindkét témában élőben** — a token
+   (`--rival-badge-bg` / `--rival-badge-text`) csak `tokens.css`-be van beírva,
+   böngészőben nem látott.
+5. **Eldönteni, kell-e külön push a rivalitáshoz** — a jelenlegi
+   `notifyTerritoryStolen` a meglévő `createNotification`-on megy, az már
+   push-t is küld, valószínűleg elég, de nincs élőben nézve.
+6. ~~`docs/`-ba felvenni~~ — KÉSZ (#9 vége): `docs/02-funkcionalis-spec.md`
+   (Riválisok szakasz) és `docs/05-adatmodell.md` (`rivals` alkollekció).
 
 ## ÖSSZEFOGLALÓ TÁBLÁZAT (a mostani állapotig)
 
