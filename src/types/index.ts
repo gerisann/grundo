@@ -5,7 +5,7 @@ export type ActivityType = 'run' | 'walk' | 'ride';
 export type Visibility = 'everyone' | 'followers' | 'only_me';
 export type TrustVerdict = 'trusted' | 'pending_review' | 'rejected';
 
-/** Egy H3 cella azonosítója (res 12). */
+/** Egy H3 cella azonosítója. A normál játékrács res 12; compact geometriában parent is lehet. */
 export type CellId = string;
 
 /** Egy nyers GPS-minta. */
@@ -31,12 +31,38 @@ export interface CellOwnership {
 /** Cella → tulajdonos. A hívó tölti fel a claim által érintett cellákkal. */
 export type OwnershipMap = Map<CellId, CellOwnership>;
 
+/**
+ * Nagy hurok tömör belseje.
+ *
+ * A `DetectedLoop.interior` ilyenkor csak a FALAT TARTALMAZÓ parentekben lévő,
+ * pontos res12 belső cellákat tartja. A teljesen belső parenteket nem bontjuk
+ * ki több millió res12 stringgé: azok itt, egyetlen H3 azonosítóként élnek.
+ *
+ * Ez NEM felbontáscsökkentés. Egy parent minden res12 gyereke belső, tehát a
+ * játéktér továbbra is res12; ez kizárólag memóriabeli tömör reprezentáció.
+ */
+export interface CompactLoopInterior {
+  /** A `fullParents` H3 felbontása (jelenleg res 10). */
+  parentResolution: number;
+  /** Teljesen belső parent cellák; minden res12 gyerekük a hurok belseje. */
+  fullParents: Set<CellId>;
+  /** A TELJES belső pontos res12 cellaszáma: fullParents gyerekei + `interior`. */
+  cellCount: number;
+}
+
 /** Egy detektált bezárás. */
 export interface DetectedLoop {
-  /** a nyom hurkot alkotó szakasza — ezek a "falak" */
+  /** a nyom hurkot alkotó szakasza — ezek a "falak" (res 12) */
   wall: Set<CellId>;
-  /** a közrezárt cellák */
+  /**
+   * A közrezárt res12 cellák.
+   *
+   * Kis/közepes huroknál ez a teljes belső. Nagy huroknál csak a pontos
+   * határsáv; a homogén belső részt a `compactInterior` képviseli.
+   */
   interior: Set<CellId>;
+  /** Opcionális tömör belső nagy hurkokhoz. */
+  compactInterior?: CompactLoopInterior;
   /** a nyom indexei, ahol a hurok kezdődik és záródik */
   fromIndex: number;
   toIndex: number;
@@ -48,6 +74,7 @@ export interface SuccessfulLoopDiagnostic {
   fromIndex: number;
   toIndex: number;
   wallCells: number;
+  /** Mindig a teljes, res12-egyenértékű belső cellaszám. */
   interiorCells: number;
   prunedCells: number;
 }
@@ -72,7 +99,7 @@ export type CellFate =
   | 'breakthrough'; // idegené volt védve — nem cserélt gazdát, a védelem csökkent
 
 export interface ClaimResult {
-  /** cellánkénti új állapot — csak a ténylegesen változott cellák */
+  /** cellánkénti új állapot — csak a ténylegesen változott, explicit cellák */
   updates: Map<CellId, CellOwnership>;
   /** cellánkénti kimenetel, a pontszámításhoz */
   fates: Map<CellId, CellFate>;
