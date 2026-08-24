@@ -39,6 +39,19 @@ describe('compact adaptive loop interior', () => {
     expect(loopInteriorCellCount(loop)).toBe(geometry.cellCount);
   });
 
+  it('a régi 2,2 millió res12 cellás limit fölötti hurkot sem materializálja ki', () => {
+    // 30 × 30 km ≈ 900 km², vagyis névlegesen ~2,9 millió res12 cella.
+    // A régi adaptív kód ezt LoopTooLargeErrorral eldobta közvetlenül azelőtt,
+    // hogy a teljes belsőt res12 Setbe bontotta volna.
+    const wall = squareWall(30_000);
+    const geometry = buildLoopInterior(wall);
+
+    expect(geometry.compactInterior).toBeDefined();
+    expect(geometry.cellCount).toBeGreaterThan(2_200_000);
+    expect(geometry.compactInterior!.fullParents.size).toBeLessThan(100_000);
+    expect(geometry.interior.size).toBeLessThan(250_000);
+  });
+
   it('kis huroknál változatlanul a teljes res12 interior Setet adja', () => {
     const wall = squareWall(200);
     const geometry = buildLoopInterior(wall);
