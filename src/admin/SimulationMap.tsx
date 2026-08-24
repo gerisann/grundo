@@ -17,6 +17,8 @@ interface SimulationMapProps {
   showGrid: boolean;
   showLoops: boolean;
   showClaims: boolean;
+  /** Minden új futás/reset növeli. Az előző run vizuális állapotát azonnal törli. */
+  resetToken: number;
   onAppendWaypoint(point: SimulationWaypoint): void;
   onMoveWaypoint(index: number, point: SimulationWaypoint): void;
 }
@@ -39,6 +41,7 @@ export function SimulationMap({
   showGrid,
   showLoops,
   showClaims,
+  resetToken,
   onAppendWaypoint,
   onMoveWaypoint,
 }: SimulationMapProps) {
@@ -103,6 +106,18 @@ export function SimulationMap({
       map.current = null;
     };
   }, []);
+
+  /**
+   * Új run indításakor az előző run minden vizuális nyomát azonnal levesszük.
+   * A route szerkesztő lila vonala marad, mert az a következő teszt bemenete.
+   * A következő location callback már az új run első piros/zöld/H3 állapotát
+   * rajzolja vissza.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !instance.isStyleLoaded()) return;
+    clearRunLayers(instance);
+  }, [resetToken]);
 
   useEffect(() => {
     const instance = map.current;
@@ -302,6 +317,16 @@ function addGameLayers(map: mapboxgl.Map) {
       },
     });
   }
+}
+
+function clearRunLayers(map: mapboxgl.Map) {
+  setLine(map, RAW_SOURCE, []);
+  setLine(map, ACCEPTED_SOURCE, []);
+  setSourceData(map, GRID_SOURCE, emptyFeatureCollection());
+  setSourceData(map, TRAIL_SOURCE, emptyFeatureCollection());
+  setSourceData(map, LOOP_SOURCE, emptyFeatureCollection());
+  setSourceData(map, CLAIM_SOURCE, emptyFeatureCollection());
+  setSourceData(map, REJECTED_SOURCE, emptyFeatureCollection());
 }
 
 function syncGameLayers(
