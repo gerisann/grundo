@@ -9,12 +9,14 @@
 
 export * from './cells';
 export * from './loops';
+export { detectLoops, detectLoopsDetailed } from './loopDetection';
 export * from './claim';
 export * from './scoring';
 export * from './modifiers';
 
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
-import { detectLoopsDetailed, loopCells } from './loops';
+import { detectLoopsDetailed } from './loopDetection';
+import { loopCells } from './loops';
 import { absorbIsolatedRivalCells, mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
