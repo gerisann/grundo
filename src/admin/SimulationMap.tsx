@@ -398,6 +398,15 @@ function collectRelevantGridCells(result: ProcessResult): CellId[] {
 function loopCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
   result.loops.forEach((loop, loopIndex) => {
+    // A compact teljes parentek maguk a belső terület pontos tömör csempéi.
+    // Nem bontjuk őket vissza 49 res12 poligonra csak a kirajzolás kedvéért.
+    for (const parent of loop.compactInterior?.fullParents ?? []) {
+      features.push(cellFeature(parent, {
+        kind: 'interior',
+        loop: loopIndex + 1,
+        compact: true,
+      }));
+    }
     for (const cell of loop.interior) {
       features.push(cellFeature(cell, { kind: 'interior', loop: loopIndex + 1 }));
     }
@@ -409,6 +418,27 @@ function loopCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSO
 }
 
 function claimCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  const compact = result.compactClaim;
+  if (compact) {
+    const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+    for (const [parent, defense] of compact.parents) {
+      features.push(cellFeature(parent, {
+        defense,
+        owner: 'lab-user',
+        fate: 'free',
+        compact: true,
+      }));
+    }
+    for (const [cell, defense] of compact.cells) {
+      features.push(cellFeature(cell, {
+        defense,
+        owner: 'lab-user',
+        fate: 'free',
+      }));
+    }
+    return { type: 'FeatureCollection', features };
+  }
+
   if (!result.claim) return emptyFeatureCollection<GeoJSON.Polygon>();
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
   for (const [cell, ownership] of result.claim.updates) {
