@@ -212,6 +212,10 @@ export function generateGpsActivity(
  * Core Location adapter. A `playbackRate` kizárólag a faliórát gyorsítja; a
  * minták SAJÁT timestampje változatlan marad, ezért a sebesség- és gap-szűrés
  * ugyanazt látja 1× és 100× lejátszásnál is.
+ *
+ * Hosszú aktivitásnál egyszerre mindig csak EGY timer él. Egy Balaton-kör
+ * 1 Hz-en több tízezer mintát jelent; mindegyikhez előre `setTimeout`-ot
+ * létrehozni önmagában stresszelné a böngészőt és meghamisítaná a tesztet.
  */
 export class SimulationPositionSource implements PositionSource {
   readonly name = 'simulation';
@@ -219,7 +223,7 @@ export class SimulationPositionSource implements PositionSource {
   readonly ordered = true;
 
   private stopped = true;
-  private timers = new Set<number>();
+  private timer: number | null = null;
 
   constructor(
     private readonly samples: readonly PositionSample[],
@@ -242,33 +246,50 @@ export class SimulationPositionSource implements PositionSource {
       return;
     }
 
+    // MAX: nem módosítjuk a telemetry timestampjeit, csak nem várunk köztük.
     if (!Number.isFinite(this.playbackRate) || this.playbackRate <= 0) {
       queueMicrotask(() => {
         if (this.stopped) return;
-        for (const sample of this.samples) handlers.onSample(sample);
+        for (const sample of this.samples) {
+          if (this.stopped) return;
+          handlers.onSample(sample);
+        }
         if (!this.stopped) this.onComplete?.();
       });
       return;
     }
 
-    const firstT = this.samples[0]!.t;
-    for (let i = 0; i < this.samples.length; i += 1) {
-      const sample = this.samples[i]!;
-      const delay = Math.max(0, (sample.t - firstT) / this.playbackRate);
-      const timer = window.setTimeout(() => {
-        this.timers.delete(timer);
-        if (this.stopped) return;
-        handlers.onSample(sample);
-        if (i === this.samples.length - 1) this.onComplete?.();
+    const emit = (index: number) => {
+      if (this.stopped) return;
+      const sample = this.samples[index];
+      if (!sample) {
+        this.onComplete?.();
+        return;
+      }
+
+      handlers.onSample(sample);
+      const next = this.samples[index + 1];
+      if (!next) {
+        this.onComplete?.();
+        return;
+      }
+
+      const delay = Math.max(0, (next.t - sample.t) / this.playbackRate);
+      this.timer = window.setTimeout(() => {
+        this.timer = null;
+        emit(index + 1);
       }, delay);
-      this.timers.add(timer);
-    }
+    };
+
+    queueMicrotask(() => emit(0));
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
-    for (const timer of this.timers) window.clearTimeout(timer);
-    this.timers.clear();
+    if (this.timer !== null) {
+      window.clearTimeout(this.timer);
+      this.timer = null;
+    }
   }
 }
 
