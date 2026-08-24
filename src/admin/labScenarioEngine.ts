@@ -1,6 +1,5 @@
 import {
   buildActivityGeometry,
-  processActivityGeometry,
   type ProcessResult,
 } from '@/game';
 import {
@@ -17,6 +16,11 @@ import {
   type SimulationWaypoint,
 } from '@/tracking/simulationSource';
 import type { ActivityType, CellId, OwnershipMap } from '@/types';
+import {
+  countLabPlayerCells,
+  countLabPlayerDefense,
+  processLabActivity,
+} from './labHierarchicalWorld';
 
 export interface LabPlayer {
   id: string;
@@ -57,7 +61,7 @@ export interface LabRunOutcome {
   generated: GeneratedGpsActivity;
   recorder: RecorderState;
   result: ProcessResult;
-  /** Hány ownership cella volt a worldben közvetlenül a commit előtt/után. */
+  /** Mixed H3 world bejegyzésszám közvetlenül a commit előtt/után. */
   worldCellsBefore: number;
   worldCellsAfter: number;
 }
@@ -72,6 +76,7 @@ export interface LabPhaseOutcome {
 
 export interface LabScenarioOutcome {
   phases: LabPhaseOutcome[];
+  /** LAB-only mixed-resolution H3 world: compact parent + res12 override. */
   ownership: OwnershipMap;
 }
 
@@ -91,8 +96,9 @@ interface PreparedRun {
  * az éles rendszerhez hasonlóan csak az aktivitás BEFEJEZÉSEKOR változik.
  * Minden commit az akkor aktuális közös world ownershipből számol újra.
  *
- * Ez a Firestore tranzakciók sorosítható JÁTÉKLOGIKAI eredményét modellezi.
- * A valódi lock/retry contention külön emulator mód feladata lesz.
+ * A sandbox world vegyes felbontású lehet: nagy homogén terület compact parent,
+ * részleges lopás/áttörés pedig finom res12 override. Ez kizárólag LAB-state;
+ * production Firestore továbbra is a saját blokkos commit útját használja.
  */
 export function runLabScenario(
   scenario: LabScenarioDefinition,
@@ -113,9 +119,7 @@ export function runLabScenario(
 
     /**
      * Először minden recorder elkészül a saját idővonalán, ownership-változás
-     * nélkül. Ez felel meg annak, hogy több telefon egyszerre rögzít.
-     *
-     * A commitok finish idő szerint követik egymást. Azonos finish timestampnél
+     * nélkül. A commitok finish idő szerint követik egymást; azonos finishnél
      * a seedelt tie-break reprodukálható sorrendet ad.
      */
     const commitQueue = [...prepared].sort((a, b) =>
@@ -127,7 +131,7 @@ export function runLabScenario(
       const run = commitQueue[order]!;
       const worldCellsBefore = ownership.size;
       const geometry = buildActivityGeometry(run.recorder.points);
-      const result = processActivityGeometry(
+      const result = processLabActivity(
         {
           points: run.recorder.points,
           type: run.definition.config.activityType,
@@ -172,36 +176,32 @@ export function runLabScenario(
   return { phases, ownership };
 }
 
-/** Egy kész claim végső ownership frissítése a sandbox worldre. */
+/**
+ * Egy kész claim végső ownership frissítése a sandbox worldre.
+ * A LAB compact result parent H3 indexeket is tartalmazhat; exact res12 update
+ * ugyanabban a Mapben override-ként él a parent fölött.
+ */
 export function applyClaimToWorld(world: OwnershipMap, result: ProcessResult): void {
   for (const [cell, next] of result.claim?.updates ?? []) {
     world.set(cell, next);
   }
 }
 
-/** Egy player végső tulajdonában lévő cellák száma. */
+/** Egy player végső tulajdonában lévő res12-egyenértékű cellák száma. */
 export function countPlayerCells(world: OwnershipMap, playerId: string): number {
-  let count = 0;
-  for (const ownership of world.values()) {
-    if (ownership.owner === playerId) count += 1;
-  }
-  return count;
+  return countLabPlayerCells(world, playerId);
 }
 
-/** Egy adott player/defense kombináció cellaszáma. */
+/** Egy player/defense kombináció res12-egyenértékű cellaszáma. */
 export function countPlayerDefense(
   world: OwnershipMap,
   playerId: string,
   defense: number,
 ): number {
-  let count = 0;
-  for (const ownership of world.values()) {
-    if (ownership.owner === playerId && ownership.defense === defense) count += 1;
-  }
-  return count;
+  return countLabPlayerDefense(world, playerId, defense);
 }
 
-/** A world celláit tulajdonos szerint csoportosítja Mapbox/debug célra. */
+/** A world H3 bejegyzéseit tulajdonos szerint csoportosítja Mapbox/debug célra. */
 export function worldCellsByOwner(world: OwnershipMap): Map<string, CellId[]> {
   const grouped = new Map<string, CellId[]>();
   for (const [cell, ownership] of world) {
