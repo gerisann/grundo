@@ -47,9 +47,6 @@ describe('overlap-aware loop detection', () => {
   });
 
   it('a bezárás utáni kilépő cella kötelező szeparátor, nem új hurok', () => {
-    // Egy normál kör bezárása után azonnal kifelé indulunk. A korábbi gate
-    // logika a kontaktzóna első külső celláján már újraélesedett, és ott a
-    // frissen bezárt területet még egyszer el tudta sütni.
     const points = buildTrace(
       [
         p(0, 0),
@@ -66,10 +63,28 @@ describe('overlap-aware loop detection', () => {
     expect(detectLoops(path)).toHaveLength(1);
   });
 
+  it('egy már lezárt régión belüli/peremi továbbhaladás nem képez új kompozit hurkokat', () => {
+    // Bezárunk egy nagy négyzetet, majd a már lezárt területen átvágunk és
+    // újra hozzáérünk a falhoz. Ez gráfelméletileg több ciklust is leírhat,
+    // de játékmenetben ugyanannak a closure-epizódnak a folytatása.
+    const points = buildTrace(
+      [
+        p(0, 0),
+        p(0, 260),
+        p(260, 260),
+        p(260, 0),
+        p(0, 0),
+        p(130, 130),
+        p(260, 0),
+        p(130, 80),
+      ],
+      { stepM: 6 },
+    );
+    const { path } = traceToCellPath(points);
+    expect(detectLoops(path)).toHaveLength(1);
+  });
+
   it('egy valódi kétlebenyes keresztező útvonal pontosan két hurkot ad', () => {
-    // Két külön hurok ugyanazon középső találkozási ponttal. Az első hurok
-    // kilépése nem lehet külön harmadik bezárás, a második valódi visszaérés
-    // viszont igen.
     const points = buildTrace(
       [
         p(0, 0),
