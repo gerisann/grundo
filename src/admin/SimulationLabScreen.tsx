@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
-import { processActivity } from '@/game';
+import { IncrementalActivityGeometry, processActivityGeometry } from '@/game';
 import { formatArea, formatGp } from '@/lib/format';
 import {
   applySample,
@@ -24,10 +24,9 @@ import './simulation-lab.css';
 const STORAGE_KEY = 'grundo.lab.scenarios.v1';
 const LAB_ACTOR_ID = 'lab-user';
 /**
- * A teljes processActivity() drága: cellalánc + loop detector + flood fill + claim.
- * A recorder minden GPS-fixet feldolgoz, de vizuális motor-snapshotból egy run alatt
- * ennyi bőven elég ahhoz, hogy a foglalás élőnek hasson. A futás VÉGÉN mindig
- * egzakt, teljes snapshot készül.
+ * A geometria most már inkrementális, de a claim + React + Mapbox snapshotot
+ * hosszú aktivitásnál továbbra sem érdemes minden egyes GPS-fixre kirajzolni.
+ * A futás VÉGÉN mindig egzakt, teljes snapshot készül.
  */
 const MAX_LIVE_ENGINE_FRAMES = 160;
 /**
@@ -61,7 +60,7 @@ export function SimulationLabScreen() {
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>('100');
   /** UI-snapshot a teljes recorderből. A belső `current` minden mintát feldolgoz. */
   const [recorder, setRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview'));
-  /** Ritkított snapshot — csak ebből fut a drága processActivity(). */
+  /** Ritkított snapshot — ebből készül a vizuális game-state. */
   const [engineRecorder, setEngineRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview-engine'));
   const [running, setRunning] = useState(false);
   const [scenarioName, setScenarioName] = useState('Tesztkör');
@@ -74,6 +73,11 @@ export function SimulationLabScreen() {
   const [deliveredRawCount, setDeliveredRawCount] = useState(0);
   const [runResetToken, setRunResetToken] = useState(0);
   const sourceRef = useRef<SimulationPositionSource | null>(null);
+  /**
+   * A teljes run H3/loop geometriája. Az új recorder snapshotból csak az új
+   * cellákat dolgozza fel; route-resetnél explicit ürítjük.
+   */
+  const geometryRef = useRef(new IncrementalActivityGeometry());
 
   const config = useMemo<GpsSimulationConfig>(
     () => ({
@@ -107,15 +111,19 @@ export function SimulationLabScreen() {
   );
   const gameResult = useMemo(() => {
     if (engineRecorder.points.length < 2) return null;
-    return processActivity({
-      points: engineRecorder.points,
-      type: activityType,
-      distanceKm: engineRecorder.distanceM / 1000,
-      actorId: LAB_ACTOR_ID,
-      ownership: new Map(),
-      streakDays: 1,
-      gpEarnedToday: 0,
-    });
+    const geometry = geometryRef.current.update(engineRecorder.points);
+    return processActivityGeometry(
+      {
+        points: engineRecorder.points,
+        type: activityType,
+        distanceKm: engineRecorder.distanceM / 1000,
+        actorId: LAB_ACTOR_ID,
+        ownership: new Map(),
+        streakDays: 1,
+        gpEarnedToday: 0,
+      },
+      geometry,
+    );
   }, [engineRecorder.points, engineRecorder.distanceM, activityType]);
 
   useEffect(() => () => void sourceRef.current?.stop(), []);
@@ -124,6 +132,7 @@ export function SimulationLabScreen() {
     await sourceRef.current?.stop();
     if (generated.samples.length < 2) return;
 
+    geometryRef.current.reset();
     setDeliveredRawCount(0);
     setRunResetToken((value) => value + 1);
 
@@ -173,9 +182,9 @@ export function SimulationLabScreen() {
             setRecorder(current);
           }
 
-          // Csak valóban új, recorder által elfogadott GPS-pont után lehet új
-          // H3 állapot. Hosszú aktivitásnál ritkítjuk a TELJES engine frame-et,
-          // különben minden prefixet újra számolnánk az elejétől (O(n²) LAB).
+          // Az engine snapshot ritkított, de a következő frame már NEM számolja
+          // újra a teljes korábbi hurokgeometriát: IncrementalActivityGeometry
+          // csak a hozzáadott H3 cellákat eteti a detectorba.
           if (
             current.points.length > beforePointCount &&
             current.points.length - lastEnginePointCount >= engineStride
@@ -200,6 +209,7 @@ export function SimulationLabScreen() {
 
   function resetRun() {
     void stopSimulation();
+    geometryRef.current.reset();
     setDeliveredRawCount(0);
     setRunResetToken((value) => value + 1);
     const clean = createRecorder(activityType, 'lab-preview');
@@ -223,6 +233,7 @@ export function SimulationLabScreen() {
 
   function loadScenario(scenario: SavedScenario) {
     void stopSimulation();
+    geometryRef.current.reset();
     setDeliveredRawCount(0);
     setRunResetToken((value) => value + 1);
     setScenarioName(scenario.name);
