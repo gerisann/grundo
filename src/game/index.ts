@@ -11,13 +11,18 @@ export * from './cells';
 export * from './loops';
 export * from './loopInterior';
 export * from './compactClaim';
-export { detectLoops, detectLoopsDetailed } from './loopDetection';
+export {
+  detectLoops,
+  detectLoopsDetailed,
+  IncrementalLoopDetector,
+  type IncrementalLoopSnapshot,
+} from './loopDetection';
 export * from './claim';
 export * from './scoring';
 export * from './modifiers';
 
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
-import { detectLoopsDetailed } from './loopDetection';
+import { detectLoopsDetailed, IncrementalLoopDetector } from './loopDetection';
 import { loopCells } from './loops';
 import { hasCompactInterior } from './loopInterior';
 import {
@@ -54,6 +59,21 @@ export interface ProcessInput {
    * mert ahhoz a teljes nyomvonalat kellene kiértékelnie.
    */
   modifierFactors?: { gp?: number; claim?: number };
+}
+
+/**
+ * A nyomvonalból kizárólag geometriailag következő, ownership-független rész.
+ *
+ * Ezt külön tartjuk, mert élő previewban a GPS path minden új cellával csak
+ * FOLYTATÓDIK. A hurkok újraszámítása a teljes prefixre felesleges és hosszú
+ * aktivitásnál négyzetes jellegű munkát okoz.
+ */
+export interface ActivityGeometry {
+  cellPath: CellId[];
+  loops: DetectedLoop[];
+  loopDiagnostics: LoopDiagnostics;
+  droppedPoints: number;
+  largeGaps: number;
 }
 
 export interface ProcessResult {
@@ -93,23 +113,6 @@ export interface SequentialLoopClaimResult {
 
 /**
  * A detektált hurkok celláit időrendben írja jóvá.
- *
- * FONTOS: egy későbbi, nagyobb hurok geometriailag tartalmazhat olyan területet,
- * amelyet ugyanebben az aktivitásban egy korábbi kisebb hurok már bezárt.
- * Példa: 8-as alakzat. Előbb bezárul az alsó lebeny, majd a felső lezárásakor
- * a detector egy nagy, mindkét lebenyt tartalmazó hurokgeometriát is találhat.
- *
- * Ettől a korábban megszerzett alsó terület NEM kaphat automatikusan +1
- * defense-et. Ugyanaz a cella csak akkor jogosult újabb claimre, ha a jelenlegi
- * hurok traversalja már AZ ELŐZŐ JÓVÁÍRÁS UTÁN kezdődött. Ez bizonyítja, hogy
- * a játékos ténylegesen újra megkerülte a területet (vagy egy azt magába
- * foglaló nagyobb területet), nem csak egy korábban megkezdett útvonal végén
- * zárt le egy újabb geometriát.
- *
- * A `creditedAt` cellánként a legutóbbi jóváíró hurok `toIndex` értékét őrzi.
- * - még nem jóváírt cella → mindig jogosult;
- * - `loop.fromIndex >= creditedAt[cell]` → új traversal, jogosult;
- * - különben → ugyanannak a korábbi traversalnak az átfedése, nem emel defense-et.
  */
 export function resolveSequentialLoopClaims(
   loops: readonly DetectedLoop[],
@@ -133,9 +136,6 @@ export function resolveSequentialLoopClaims(
     const eligible = new Set<CellId>();
 
     for (const cell of cells) {
-      // A teljes geometriai uniót megtartjuk auditáláshoz és szerveroldali
-      // ownership-scope olvasáshoz akkor is, ha a cella ezen a hurkon már nem
-      // jogosult újabb defense-emelésre.
       claimedCells.add(cell);
 
       const previousCreditAt = creditedAt.get(cell);
@@ -157,19 +157,72 @@ export function resolveSequentialLoopClaims(
   return { running, claimedCells, perLoop };
 }
 
-/**
- * Egy aktivitás teljes feldolgozása.
- *
- * FIGYELEM: a `points` mindig a TELJES nyomvonal legyen, a privát zóna
- * levágásától függetlenül. A levágás kizárólag megjelenítési művelet — ha a
- * foglalás a levágott nyomvonalból számolna, a privát zóna csalási felületté
- * válna (bekapcsolom 200 m-re, és ott nem érvényesülnek a szabályok).
- */
-export function processActivity(input: ProcessInput): ProcessResult {
-  const cfg = input.cfg ?? DEFAULT_GAMEPLAY;
-  const { path, droppedPoints, largeGaps } = traceToCellPath(input.points);
+/** Egyszeri/batch geometriaépítés — szerver végleges feldolgozásához is ezt használjuk. */
+export function buildActivityGeometry(points: readonly TracePoint[]): ActivityGeometry {
+  const { path, droppedPoints, largeGaps } = traceToCellPath(points);
   const loopDetection = detectLoopsDetailed(path);
-  const loops = loopDetection.loops;
+  return {
+    cellPath: path,
+    loops: loopDetection.loops,
+    loopDiagnostics: loopDetection.diagnostics,
+    droppedPoints,
+    largeGaps,
+  };
+}
+
+/**
+ * Élő previewhoz használható geometriai cache.
+ *
+ * Ha a következő GPS snapshot cellalánca a korábbi path prefix-folytatása,
+ * kizárólag az új H3 cellákat dolgozza fel. Route reset, GPS-history csere vagy
+ * bármilyen visszamenőleges eltérés esetén egyszer újraépít, majd onnantól megint
+ * inkrementálisan halad.
+ */
+export class IncrementalActivityGeometry {
+  private detector = new IncrementalLoopDetector();
+  private path: CellId[] = [];
+
+  reset(): void {
+    this.detector = new IncrementalLoopDetector();
+    this.path = [];
+  }
+
+  update(points: readonly TracePoint[]): ActivityGeometry {
+    const traced = traceToCellPath(points);
+    const nextPath = traced.path;
+
+    if (!isPrefix(this.path, nextPath)) {
+      this.detector = new IncrementalLoopDetector();
+      this.detector.appendMany(nextPath);
+    } else if (nextPath.length > this.path.length) {
+      this.detector.appendMany(nextPath.slice(this.path.length));
+    }
+
+    this.path = nextPath;
+    const loopDetection = this.detector.snapshot();
+    return {
+      cellPath: nextPath,
+      loops: loopDetection.loops,
+      loopDiagnostics: loopDetection.diagnostics,
+      droppedPoints: traced.droppedPoints,
+      largeGaps: traced.largeGaps,
+    };
+  }
+}
+
+/**
+ * Már elkészített geometriából végzi el az ownership + scoring részt.
+ *
+ * Ez teszi lehetővé, hogy az élő preview ne számolja újra a teljes hurokgeometriát
+ * csak azért, mert érkezett egy új GPS fix vagy frissült a nearby ownership.
+ */
+export function processActivityGeometry(
+  input: ProcessInput,
+  geometry: ActivityGeometry,
+): ProcessResult {
+  const cfg = input.cfg ?? DEFAULT_GAMEPLAY;
+  const path = geometry.cellPath;
+  const loops = geometry.loops;
   const hasCompactLoop = loops.some(hasCompactInterior);
 
   /**
@@ -210,10 +263,10 @@ export function processActivity(input: ProcessInput): ProcessResult {
       gp,
       areaGainedM2: claim ? Math.round(claim.gainedM2) : 0,
       diagnostics: {
-        droppedPoints,
-        largeGaps,
+        droppedPoints: geometry.droppedPoints,
+        largeGaps: geometry.largeGaps,
         orphanAbsorbedCells: 0,
-        loops: loopDetection.diagnostics,
+        loops: geometry.loopDiagnostics,
       },
     };
   }
@@ -226,7 +279,6 @@ export function processActivity(input: ProcessInput): ProcessResult {
   );
   const { claimedCells, perLoop } = sequential;
 
-  // Az EREDETI birtokviszony kell a károsultak azonosításához.
   const mergedClaim =
     perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId, cfg) : null;
   const orphanResult = input.orphanScope
@@ -259,15 +311,34 @@ export function processActivity(input: ProcessInput): ProcessResult {
     gp,
     areaGainedM2: claim ? Math.round(claim.gainedM2) : 0,
     diagnostics: {
-      droppedPoints,
-      largeGaps,
+      droppedPoints: geometry.droppedPoints,
+      largeGaps: geometry.largeGaps,
       orphanAbsorbedCells: orphanResult.absorbed.size,
-      loops: loopDetection.diagnostics,
+      loops: geometry.loopDiagnostics,
     },
   };
+}
+
+/**
+ * Egy aktivitás teljes feldolgozása.
+ *
+ * FIGYELEM: a `points` mindig a TELJES nyomvonal legyen, a privát zóna
+ * levágásától függetlenül. A végleges szerveroldali feldolgozás szándékosan
+ * batch: egyszer építi fel a geometriát, majd egyszer könyveli az ownershipet.
+ */
+export function processActivity(input: ProcessInput): ProcessResult {
+  return processActivityGeometry(input, buildActivityGeometry(input.points));
 }
 
 /** Kényelmi függvény a nyom élő megjelenítéséhez rögzítés közben. */
 export function previewArea(cellCount: number): number {
   return cellsToM2(cellCount);
+}
+
+function isPrefix(previous: readonly CellId[], next: readonly CellId[]): boolean {
+  if (previous.length > next.length) return false;
+  for (let i = 0; i < previous.length; i += 1) {
+    if (previous[i] !== next[i]) return false;
+  }
+  return true;
 }
