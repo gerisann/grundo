@@ -22,6 +22,7 @@ import { SimulationMap } from './SimulationMap';
 import './simulation-lab.css';
 
 const STORAGE_KEY = 'grundo.lab.scenarios.v1';
+const LAB_ACTOR_ID = 'lab-user';
 
 type PlaybackRate = '1' | '10' | '100' | 'max';
 
@@ -49,6 +50,9 @@ export function SimulationLabScreen() {
   const [running, setRunning] = useState(false);
   const [scenarioName, setScenarioName] = useState('Tesztkör');
   const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>(() => loadScenarios());
+  const [showGrid, setShowGrid] = useState(false);
+  const [showLoops, setShowLoops] = useState(true);
+  const [showClaims, setShowClaims] = useState(true);
   const sourceRef = useRef<SimulationPositionSource | null>(null);
 
   const config = useMemo<GpsSimulationConfig>(
@@ -75,7 +79,7 @@ export function SimulationLabScreen() {
       points: recorder.points,
       type: activityType,
       distanceKm: recorder.distanceM / 1000,
-      actorId: 'lab-user',
+      actorId: LAB_ACTOR_ID,
       ownership: new Map(),
       streakDays: 1,
       gpEarnedToday: 0,
@@ -169,6 +173,21 @@ export function SimulationLabScreen() {
   const rejectedCount = Object.values(recorder.rejected).reduce((sum, value) => sum + value, 0);
   const claim = gameResult?.claim;
   const routeKm = routeDistanceM(route) / 1000;
+  const newCells = (claim?.counts.free ?? 0) + (claim?.counts.stolen ?? 0);
+  const ownedCells = claim
+    ? [...claim.updates.values()].filter((ownership) => ownership.owner === LAB_ACTOR_ID).length
+    : 0;
+  const discardedTrailCells = gameResult
+    ? new Set(gameResult.cellPath.filter((cell) => !gameResult.claimedCells.has(cell))).size
+    : 0;
+  const defenseCounts = [1, 2, 3, 4, 5].map((defense) =>
+    claim
+      ? [...claim.updates.values()].filter(
+          (ownership) => ownership.owner === LAB_ACTOR_ID && ownership.defense === defense,
+        ).length
+      : 0,
+  );
+  const loopDiagnostics = gameResult?.diagnostics.loops;
 
   return (
     <>
@@ -267,6 +286,11 @@ export function SimulationLabScreen() {
               <span>Kattints a térképre új ponthoz, a számozott pontokat húzhatod.</span>
             </div>
             <div className="lab-mapbar__actions">
+              <div className="lab-layer-controls" aria-label="Térképrétegek">
+                <LayerToggle label="H3 háló" checked={showGrid} onChange={setShowGrid} />
+                <LayerToggle label="Hurkok" checked={showLoops} onChange={setShowLoops} />
+                <LayerToggle label="Foglalás" checked={showClaims} onChange={setShowClaims} />
+              </div>
               <Button variant="secondary" size="sm" onClick={() => { resetRun(); setRoute((points) => points.slice(0, -1)); }} disabled={route.length === 0}>Utolsó törlése</Button>
               <Button variant="secondary" size="sm" onClick={() => { resetRun(); setRoute([]); }} disabled={route.length === 0}>Útvonal törlése</Button>
             </div>
@@ -276,6 +300,10 @@ export function SimulationLabScreen() {
             route={route}
             rawTrack={generated.samples}
             acceptedTrack={recorder.points}
+            result={gameResult}
+            showGrid={showGrid}
+            showLoops={showLoops}
+            showClaims={showClaims}
             onAppendWaypoint={(point) => { resetRun(); setRoute((points) => [...points, point]); }}
             onMoveWaypoint={(index, point) => {
               resetRun();
@@ -287,6 +315,19 @@ export function SimulationLabScreen() {
             <span><i className="lab-dot lab-dot--route" /> Ideális útvonal</span>
             <span><i className="lab-dot lab-dot--raw" /> Nyers GPS</span>
             <span><i className="lab-dot lab-dot--accepted" /> Recorder által elfogadott</span>
+            <span><i className="lab-swatch lab-swatch--grid" /> H3 háló</span>
+            <span><i className="lab-swatch lab-swatch--wall" /> Elfogadott hurok fala</span>
+            <span><i className="lab-swatch lab-swatch--interior" /> Érvényes belső terület</span>
+            <span><i className="lab-swatch lab-swatch--discarded" /> Nem foglalt útvonalcella</span>
+            <span><i className="lab-dot lab-dot--rejected" /> Elutasított hurokjelölt</span>
+            <span className="lab-defense-legend" aria-label="Védelmi szintek">
+              Védelem
+              {[1, 2, 3, 4, 5].map((level) => (
+                <i key={level} className={`lab-defense lab-defense--${level}`} title={`${level}× védelem`}>
+                  {level}
+                </i>
+              ))}
+            </span>
           </div>
 
           <div className="lab-stats">
@@ -295,17 +336,72 @@ export function SimulationLabScreen() {
             <Stat label="Generált idő" value={formatDuration(generated.durationMs)} />
             <Stat label="Dropout" value={String(generated.droppedSamples)} />
             <Stat label="Spike" value={String(generated.spikeSamples)} />
-            <Stat label="Elfogadott" value={String(recorder.points.length)} />
+            <Stat label="Elfogadott GPS" value={String(recorder.points.length)} />
             <Stat label="Recorder táv" value={`${(recorder.distanceM / 1000).toFixed(2)} km`} />
-            <Stat label="Elutasított" value={String(rejectedCount)} />
+            <Stat label="Elutasított GPS" value={String(rejectedCount)} />
             <Stat label="Bezárások" value={String(gameResult?.loops.length ?? 0)} />
+            <Stat label="Elutasított hurok" value={String(loopDiagnostics?.rejected.length ?? 0)} />
+            <Stat label="Saját cella végül" value={String(ownedCells)} />
+            <Stat label="Újonnan megszerezve" value={String(newCells)} />
+            <Stat label="Nem foglalt útvonalcella" value={String(discardedTrailCells)} />
             <Stat label="Foglalás" value={formatArea(gameResult?.areaGainedM2 ?? 0)} />
-            <Stat label="Szabad cella" value={String(claim?.counts.free ?? 0)} />
             <Stat label="GP" value={formatGp(gameResult?.gp.total ?? 0)} />
+          </div>
+
+          <div className="lab-debug-panels">
+            <section className="lab-debug-card">
+              <div className="lab-debug-card__head">
+                <strong>Hurokdiagnosztika</strong>
+                <span>{loopDiagnostics?.successful.length ?? 0} elfogadott · {loopDiagnostics?.rejected.length ?? 0} elutasított</span>
+              </div>
+              {!gameResult ? (
+                <p>Nincs még feldolgozott cellalánc.</p>
+              ) : (
+                <div className="lab-loop-list">
+                  {loopDiagnostics?.successful.map((item, index) => (
+                    <div key={`ok-${index}`} className="lab-loop-row lab-loop-row--ok">
+                      <strong>#{index + 1} ELFOGADVA</strong>
+                      <span>path {item.fromIndex} → {item.toIndex}</span>
+                      <span>fal {item.wallCells}</span>
+                      <span>belső {item.interiorCells}</span>
+                      {item.prunedCells > 0 ? <span>levágva {item.prunedCells}</span> : null}
+                    </div>
+                  ))}
+                  {loopDiagnostics?.rejected.map((item, index) => (
+                    <div key={`bad-${index}`} className="lab-loop-row lab-loop-row--bad">
+                      <strong>JELÖLT ELUTASÍTVA</strong>
+                      <span>path {item.fromIndex} → {item.toIndex}</span>
+                      <span>{loopReason(item.reason)}</span>
+                      <span>fal {item.wallCells}</span>
+                      <span>belső {item.interiorCells}</span>
+                    </div>
+                  ))}
+                  {(loopDiagnostics?.successful.length ?? 0) === 0 && (loopDiagnostics?.rejected.length ?? 0) === 0 ? (
+                    <p>A motor még nem képzett hurokjelöltet.</p>
+                  ) : null}
+                </div>
+              )}
+            </section>
+
+            <section className="lab-debug-card">
+              <div className="lab-debug-card__head">
+                <strong>Cellák védelmi szintje</strong>
+                <span>{ownedCells} saját cella</span>
+              </div>
+              <div className="lab-defense-counts">
+                {defenseCounts.map((count, index) => (
+                  <div key={index}>
+                    <i className={`lab-defense lab-defense--${index + 1}`}>{index + 1}</i>
+                    <span>{count} cella</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
           {rejectedCount > 0 ? (
             <div className="lab-diagnostics">
+              <strong>GPS filter:</strong>
               {Object.entries(recorder.rejected).map(([reason, count]) => (
                 <span key={reason}>{reason}: <strong>{count}</strong></span>
               ))}
@@ -314,6 +410,27 @@ export function SimulationLabScreen() {
         </main>
       </div>
     </>
+  );
+}
+
+function LayerToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange(value: boolean): void;
+}) {
+  return (
+    <label className={`lab-layer-toggle${checked ? ' lab-layer-toggle--on' : ''}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
   );
 }
 
@@ -362,6 +479,10 @@ function Stat({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function loopReason(reason: 'interior_too_small' | 'too_large'): string {
+  return reason === 'interior_too_small' ? 'belső terület túl kicsi' : 'hurok túl nagy';
 }
 
 function formatDuration(ms: number): string {
