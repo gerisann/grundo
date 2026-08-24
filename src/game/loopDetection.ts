@@ -6,7 +6,13 @@ import type {
   LoopDiagnostics,
   RejectedLoopDiagnostic,
 } from '@/types';
-import { floodFillInterior, LoopTooLargeError, pruneDeadEnds } from './loops';
+import { LoopTooLargeError, pruneDeadEnds } from './loops';
+import {
+  buildLoopInterior,
+  loopInteriorCellCount,
+  loopInteriorHas,
+  loopInteriorOverlapCount,
+} from './loopInterior';
 
 interface AcceptedLoopRecord {
   loop: DetectedLoop;
@@ -106,9 +112,9 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
       const wall = pruneDeadEnds(rawWall);
       const prunedCells = Math.max(0, rawWall.size - wall.size);
 
-      let interior: Set<CellId>;
+      let interiorGeometry: ReturnType<typeof buildLoopInterior>;
       try {
-        interior = floodFillInterior(wall);
+        interiorGeometry = buildLoopInterior(wall);
       } catch (err) {
         if (err instanceof LoopTooLargeError) {
           rejected.push({
@@ -125,19 +131,27 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
         throw err;
       }
 
-      if (interior.size < GAMEPLAY.MIN_INTERIOR_CELLS) {
+      if (interiorGeometry.cellCount < GAMEPLAY.MIN_INTERIOR_CELLS) {
         rejected.push({
           reason: 'interior_too_small',
           fromIndex: previous,
           toIndex: i,
           wallCells: wall.size,
-          interiorCells: interior.size,
+          interiorCells: interiorGeometry.cellCount,
           prunedCells,
         });
         continue;
       }
 
-      const candidate: DetectedLoop = { wall, interior, fromIndex: previous, toIndex: i };
+      const candidate: DetectedLoop = {
+        wall,
+        interior: interiorGeometry.interior,
+        ...(interiorGeometry.compactInterior
+          ? { compactInterior: interiorGeometry.compactInterior }
+          : {}),
+        fromIndex: previous,
+        toIndex: i,
+      };
 
       // Ugyanannak a geometriai huroknak a közvetlen folytatása nem kap új
       // bezárást. Egy teljesen új traversal viszont továbbra is számíthat.
@@ -150,7 +164,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
         fromIndex: previous,
         toIndex: i,
         wallCells: wall.size,
-        interiorCells: interior.size,
+        interiorCells: interiorGeometry.cellCount,
         prunedCells,
       });
       accepted.push({ loop: candidate, toIndex: i });
@@ -202,11 +216,11 @@ function gateZone(a: CellId, b: CellId): Set<CellId> {
 /**
  * A lezárt régió maga + a fal közvetlen külső kontaktzónája.
  *
- * Nem materializáljuk előre a teljes 1-ringet (nagy huroknál felesleges
- * memória lenne); egy aktuális cellához legfeljebb hét membership-check elég.
+ * Compact nagy huroknál a homogén belsőt parent-membership alapján kérdezzük,
+ * tehát itt sem kell több millió res12 cellát materializálni.
  */
 function insideClosureZone(cell: CellId, loop: DetectedLoop): boolean {
-  if (loop.wall.has(cell) || loop.interior.has(cell)) return true;
+  if (loop.wall.has(cell) || loopInteriorHas(loop, cell)) return true;
   for (const near of gridDisk(cell, 1)) {
     if (loop.wall.has(near)) return true;
   }
@@ -227,23 +241,19 @@ function isTraversalDuplicate(
 }
 
 /**
- * Ugyanazt a területet elsődlegesen a BELSEJE alapján azonosítjuk. A H3-kapu
- * 1–2 cellás eltolódása a falat látványosan megváltoztathatja úgy, hogy a
- * bezárt terület valójában azonos marad. Egy valóban nagyobb, új területet is
- * hozzáadó hurok viszont a belső méretarány miatt nem esik ebbe a dedupe-ba.
+ * Ugyanazt a területet elsődlegesen a BELSEJE alapján azonosítjuk. Compact
+ * geometriánál a metszetszám parent-szinten számolható, ezért egy Balaton-méretű
+ * hurok deduplikációja sem bont vissza több millió res12 cellára.
  */
 function sameLoopGeometry(a: DetectedLoop, b: DetectedLoop): boolean {
-  const minInterior = Math.min(a.interior.size, b.interior.size);
-  const maxInterior = Math.max(a.interior.size, b.interior.size);
+  const aInterior = loopInteriorCellCount(a);
+  const bInterior = loopInteriorCellCount(b);
+  const minInterior = Math.min(aInterior, bInterior);
+  const maxInterior = Math.max(aInterior, bInterior);
 
   if (minInterior > 0) {
     if (minInterior / maxInterior < 0.85) return false;
-    const smaller = a.interior.size <= b.interior.size ? a.interior : b.interior;
-    const larger = smaller === a.interior ? b.interior : a.interior;
-    let shared = 0;
-    for (const cell of smaller) {
-      if (larger.has(cell)) shared += 1;
-    }
+    const shared = loopInteriorOverlapCount(a, b);
     if (shared / minInterior >= 0.95) return true;
   }
 
