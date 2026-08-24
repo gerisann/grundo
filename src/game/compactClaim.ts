@@ -67,9 +67,15 @@ export function resolveCompactEmptyWorldClaims(
    * `parentStates` csak akkor él, ha a parent minden res12 gyereke azonos
    * defense/credit állapotban van. Részleges metszésnél az adott parentet
    * legfeljebb 49 gyerekre bontjuk a `fineStates` mapben.
+   *
+   * `fineParents` külön index: ettől egy 40 000 parentből álló Balaton-belsőn
+   * nem kell 40 000 × 49 gyereket legenerálni csak azért, hogy megkérdezzük,
+   * van-e részleges override. Gyereklista kizárólag VALÓDI részleges metszésnél
+   * készül.
    */
   const parentStates = new Map<CellId, CompactState>();
   const fineStates = new Map<CellId, CompactState>();
+  const fineParents = new Set<CellId>();
 
   for (const loop of loops) {
     const compact = loop.compactInterior;
@@ -170,8 +176,7 @@ export function resolveCompactEmptyWorldClaims(
 
   function applyFullParent(parent: CellId, fromIndex: number, toIndex: number): void {
     const parentState = parentStates.get(parent);
-    const children = cellToChildren(parent, cfg.H3_RESOLUTION);
-    const hasFineState = children.some((child) => fineStates.has(child));
+    const hasFineState = fineParents.has(parent);
 
     if (!hasFineState) {
       if (parentState === undefined) {
@@ -187,8 +192,10 @@ export function resolveCompactEmptyWorldClaims(
       return;
     }
 
-    // Részleges korábbi állapot: csak ezt az egy parentet bontjuk ki.
+    // Részleges korábbi állapot: CSAK ezt az egy parentet bontjuk ki.
+    const children = cellToChildren(parent, cfg.H3_RESOLUTION);
     parentStates.delete(parent);
+    fineParents.add(parent);
     for (const child of children) {
       const previous = fineStates.get(child) ?? parentState;
       if (previous === undefined) {
@@ -212,6 +219,7 @@ export function resolveCompactEmptyWorldClaims(
 
     if (previous === undefined) {
       fineStates.set(cell, { defense: 1, creditedAt: toIndex });
+      fineParents.add(parent);
       return;
     }
     if (fromIndex < previous.creditedAt) return;
@@ -220,5 +228,6 @@ export function resolveCompactEmptyWorldClaims(
       defense: Math.min(previous.defense + 1, cfg.MAX_DEFENSE),
       creditedAt: toIndex,
     });
+    fineParents.add(parent);
   }
 }
