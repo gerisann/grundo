@@ -23,6 +23,13 @@ import './simulation-lab.css';
 
 const STORAGE_KEY = 'grundo.lab.scenarios.v1';
 const LAB_ACTOR_ID = 'lab-user';
+/**
+ * A teljes processActivity() drága: cellalánc + loop detector + flood fill + claim.
+ * A recorder minden GPS-fixet feldolgoz, de vizuális motor-snapshotból egy run alatt
+ * ennyi bőven elég ahhoz, hogy a foglalás élőnek hasson. A futás VÉGÉN mindig
+ * egzakt, teljes snapshot készül.
+ */
+const MAX_LIVE_ENGINE_FRAMES = 160;
 
 type PlaybackRate = '1' | '10' | '100' | 'max';
 
@@ -46,7 +53,10 @@ export function SimulationLabScreen() {
   const [spikePercent, setSpikePercent] = useState(0);
   const [seed, setSeed] = useState(738291);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>('100');
+  /** Teljes recorder — a nyers/elfogadott GPS és a statok minden mintára frissülnek. */
   const [recorder, setRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview'));
+  /** Ritkított snapshot — csak ebből fut a drága processActivity(). */
+  const [engineRecorder, setEngineRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview-engine'));
   const [running, setRunning] = useState(false);
   const [scenarioName, setScenarioName] = useState('Tesztkör');
   const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>(() => loadScenarios());
@@ -77,22 +87,26 @@ export function SimulationLabScreen() {
   );
 
   const generated = useMemo(() => generateGpsActivity(route, config), [route, config]);
+  const engineStride = useMemo(
+    () => Math.max(1, Math.ceil(generated.samples.length / MAX_LIVE_ENGINE_FRAMES)),
+    [generated.samples.length],
+  );
   const visibleRawTrack = useMemo(
     () => generated.samples.slice(0, Math.min(deliveredRawCount, generated.samples.length)),
     [generated.samples, deliveredRawCount],
   );
   const gameResult = useMemo(() => {
-    if (recorder.points.length < 2) return null;
+    if (engineRecorder.points.length < 2) return null;
     return processActivity({
-      points: recorder.points,
+      points: engineRecorder.points,
       type: activityType,
-      distanceKm: recorder.distanceM / 1000,
+      distanceKm: engineRecorder.distanceM / 1000,
       actorId: LAB_ACTOR_ID,
       ownership: new Map(),
       streakDays: 1,
       gpEarnedToday: 0,
     });
-  }, [recorder.points, recorder.distanceM, activityType]);
+  }, [engineRecorder.points, engineRecorder.distanceM, activityType]);
 
   useEffect(() => () => void sourceRef.current?.stop(), []);
 
@@ -100,23 +114,25 @@ export function SimulationLabScreen() {
     await sourceRef.current?.stop();
     if (generated.samples.length < 2) return;
 
-    // Az előző futás minden vizuális és recorder állapotát AZONNAL eldobjuk.
-    // A route marad, hiszen ugyanazt a scenario-t futtatjuk újra.
     setDeliveredRawCount(0);
     setRunResetToken((value) => value + 1);
 
     const started = start(createRecorder(activityType, `lab-${Date.now()}`), generated.samples[0]!.t);
     setRecorder(started);
+    setEngineRecorder(started);
     setRunning(true);
 
     let current = started;
     let delivered = 0;
+    let lastEnginePointCount = 0;
     const rate = playbackRate === 'max' ? 0 : Number(playbackRate);
     const source = new SimulationPositionSource(generated.samples, rate, () => {
       const endedAt = generated.samples[generated.samples.length - 1]?.t ?? Date.now();
       current = finish(current, endedAt);
       setDeliveredRawCount(generated.samples.length);
       setRecorder(current);
+      // A futás vége mindig egzakt: itt nincs ritkítás.
+      setEngineRecorder(current);
       setRunning(false);
       persistLastRun({
         at: Date.now(),
@@ -134,13 +150,21 @@ export function SimulationLabScreen() {
       {
         onSample(sample) {
           delivered += 1;
-          // A nyers GPS is csak akkor jelenik meg, amikor a location callback
-          // ténylegesen megérkezett a replay során.
           setDeliveredRawCount(delivered);
+          const beforePointCount = current.points.length;
           current = applySample(current, sample);
-          // A gameResult ebből az AKTUÁLIS recorder állapotból számolódik újra,
-          // ezért a H3 trail, a hurok és a claim is menet közben épül fel.
           setRecorder(current);
+
+          // Csak valóban új, recorder által elfogadott GPS-pont után lehet új
+          // H3 állapot. Hosszú aktivitásnál ritkítjuk a TELJES engine frame-et,
+          // különben minden prefixet újra számolnánk az elejétől (O(n²) LAB).
+          if (
+            current.points.length > beforePointCount &&
+            current.points.length - lastEnginePointCount >= engineStride
+          ) {
+            lastEnginePointCount = current.points.length;
+            setEngineRecorder(current);
+          }
         },
         onError(error) {
           console.error('[GRUNDO LAB] Simulation source error', error);
@@ -160,7 +184,9 @@ export function SimulationLabScreen() {
     void stopSimulation();
     setDeliveredRawCount(0);
     setRunResetToken((value) => value + 1);
-    setRecorder(createRecorder(activityType, 'lab-preview'));
+    const clean = createRecorder(activityType, 'lab-preview');
+    setRecorder(clean);
+    setEngineRecorder(clean);
   }
 
   function saveScenario() {
@@ -192,7 +218,9 @@ export function SimulationLabScreen() {
     setDropoutPercent(scenario.config.dropoutProbability * 100);
     setSpikePercent(scenario.config.spikeProbability * 100);
     setSeed(scenario.config.seed);
-    setRecorder(createRecorder(scenario.config.activityType, 'lab-preview'));
+    const clean = createRecorder(scenario.config.activityType, 'lab-preview');
+    setRecorder(clean);
+    setEngineRecorder(clean);
   }
 
   const rejectedCount = Object.values(recorder.rejected).reduce((sum, value) => sum + value, 0);
