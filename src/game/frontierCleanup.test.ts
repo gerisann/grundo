@@ -135,7 +135,7 @@ describe('stolen frontier orphan cleanup', () => {
     expect(result.has(mid)).toBe(false);
   });
 
-  it('a teljes processActivityGeometry pipeline is alkalmazza a szabályt orphanScope mellett', () => {
+  it('a teljes processActivityGeometry pipeline minden jogosult frontier-árvát egyszer tisztít', () => {
     const [aSide, b1, b2, b3, b4, cSide] = neighbours(CENTER);
     const before: OwnershipMap = new Map([
       [CENTER, ownership('A')],
@@ -175,7 +175,9 @@ describe('stolen frontier orphan cleanup', () => {
     }, geometry);
 
     expect(result.claim?.updates.get(CENTER)).toEqual(ownership('B'));
-    expect(result.diagnostics.orphanAbsorbedCells).toBe(1);
+    // A fixture szándékosan tartalmaz még egy izolált C frontier-cellát is;
+    // a szabály szerint azt is ugyanebben az egyetlen snapshot-passban kell tisztítani.
+    expect(result.diagnostics.orphanAbsorbedCells).toBe(2);
     expect(result.claim?.counts.stolen).toBe(5);
   });
 });
