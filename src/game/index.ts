@@ -67,6 +67,75 @@ export interface ProcessResult {
   };
 }
 
+export interface SequentialLoopClaimResult {
+  /** A geometriai bezárások teljes uniója — audit/scope célra. */
+  claimedCells: Set<CellId>;
+  /** A ténylegesen jóváírt hurkonkénti claim eredmények. */
+  perLoop: ClaimResult[];
+  /** A hurkok után kialakult átmeneti ownership. */
+  running: OwnershipMap;
+}
+
+/**
+ * A detektált hurkok celláit időrendben írja jóvá.
+ *
+ * FONTOS: egy későbbi, nagyobb hurok geometriailag tartalmazhat olyan területet,
+ * amelyet ugyanebben az aktivitásban egy korábbi kisebb hurok már bezárt.
+ * Példa: 8-as alakzat. Előbb bezárul az alsó lebeny, majd a felső lezárásakor
+ * a detector egy nagy, mindkét lebenyt tartalmazó hurokgeometriát is találhat.
+ *
+ * Ettől a korábban megszerzett alsó terület NEM kaphat automatikusan +1
+ * defense-et. Ugyanaz a cella csak akkor jogosult újabb claimre, ha a jelenlegi
+ * hurok traversalja már AZ ELŐZŐ JÓVÁÍRÁS UTÁN kezdődött. Ez bizonyítja, hogy
+ * a játékos ténylegesen újra megkerülte a területet (vagy egy azt magába
+ * foglaló nagyobb területet), nem csak egy korábban megkezdett útvonal végén
+ * zárt le egy újabb geometriát.
+ *
+ * A `creditedAt` cellánként a legutóbbi jóváíró hurok `toIndex` értékét őrzi.
+ * - még nem jóváírt cella → mindig jogosult;
+ * - `loop.fromIndex >= creditedAt[cell]` → új traversal, jogosult;
+ * - különben → ugyanannak a korábbi traversalnak az átfedése, nem emel defense-et.
+ */
+export function resolveSequentialLoopClaims(
+  loops: readonly DetectedLoop[],
+  ownership: OwnershipMap,
+  actorId: string,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+): SequentialLoopClaimResult {
+  const running: OwnershipMap = new Map(ownership);
+  const claimedCells = new Set<CellId>();
+  const perLoop: ClaimResult[] = [];
+  const creditedAt = new Map<CellId, number>();
+
+  for (const loop of loops) {
+    const cells = loopCells(loop);
+    const eligible = new Set<CellId>();
+
+    for (const cell of cells) {
+      // A teljes geometriai uniót megtartjuk auditáláshoz és szerveroldali
+      // ownership-scope olvasáshoz akkor is, ha a cella ezen a hurkon már nem
+      // jogosult újabb defense-emelésre.
+      claimedCells.add(cell);
+
+      const previousCreditAt = creditedAt.get(cell);
+      if (previousCreditAt === undefined || loop.fromIndex >= previousCreditAt) {
+        eligible.add(cell);
+      }
+    }
+
+    const result = resolveClaim(eligible, running, actorId, cfg);
+    for (const [cell, nextOwnership] of result.updates) {
+      running.set(cell, nextOwnership);
+    }
+    for (const cell of eligible) {
+      creditedAt.set(cell, loop.toIndex);
+    }
+    perLoop.push(result);
+  }
+
+  return { running, claimedCells, perLoop };
+}
+
 /**
  * Egy aktivitás teljes feldolgozása.
  *
@@ -81,22 +150,13 @@ export function processActivity(input: ProcessInput): ProcessResult {
   const loopDetection = detectLoopsDetailed(path);
   const loops = loopDetection.loops;
 
-  // A bezárásokat SORBAN dolgozzuk fel, mindegyiket az előző által frissített
-  // állapot ellen. Ha egyetlen egyesített halmazként kezelnénk, ugyanaz a kör
-  // négyszer megfutva csak egyszer számítana, és a védelem 1× maradna 4×
-  // helyett — a 04. fejezet C) példája éppen ezt írja le.
-  const running: OwnershipMap = new Map(input.ownership);
-  const claimedCells = new Set<CellId>();
-  const perLoop: ClaimResult[] = [];
-
-  for (const loop of loops) {
-    const cells = loopCells(loop);
-    for (const cell of cells) claimedCells.add(cell);
-
-    const result = resolveClaim(cells, running, input.actorId, cfg);
-    for (const [cell, ownership] of result.updates) running.set(cell, ownership);
-    perLoop.push(result);
-  }
+  const sequential = resolveSequentialLoopClaims(
+    loops,
+    input.ownership,
+    input.actorId,
+    cfg,
+  );
+  const { claimedCells, perLoop } = sequential;
 
   // Az EREDETI birtokviszony kell a károsultak azonosításához.
   const mergedClaim =
