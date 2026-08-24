@@ -1,4 +1,4 @@
-import { cellToChildren, cellToChildrenSize, cellToParent } from 'h3-js';
+import { cellToChildren, cellToChildrenSize, cellToParent, compactCells } from 'h3-js';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import type {
   CellFate,
@@ -17,11 +17,18 @@ interface CompactState {
 }
 
 export interface CompactClaimPreview {
-  /** A tömör teljes-parent állapot felbontása. */
+  /** A számítás alap-parent felbontása. A renderelt cellák ennél durvábbak is lehetnek. */
   parentResolution: number;
-  /** Teljes parent → egységes végső defense. */
+  /**
+   * A homogén belső rendercellái → defense. H3 `compactCells()` után vegyes,
+   * a parentResolutionnél durvább felbontás is előfordulhat, de a lefedett
+   * res12 cellahalmaz pontosan ugyanaz.
+   */
   parents: Map<CellId, number>;
-  /** Explicit res12 cella → végső defense (határsáv / részlegesen felbontott parent). */
+  /**
+   * A finom határsáv rendercellái → defense. Szintén veszteségmentesen H3-
+   * kompaktált; a tényleges explicit res12 állapot belül külön marad.
+   */
   cells: Map<CellId, number>;
   /** Végső cellaszám defense-szintenként. Index 0 = 1×, … index 4 = 5×. */
   defenseCounts: number[];
@@ -31,7 +38,7 @@ export interface CompactClaimPreview {
 
 export interface CompactEmptyWorldResult {
   claim: ClaimResult | null;
-  /** Csak az explicit finom cellák. A tömör parenteket a `preview` tartja. */
+  /** Csak az explicit finom res12 cellák. A tömör parenteket a `preview` tartja. */
   claimedCells: Set<CellId>;
   claimedCellCount: number;
   preview: CompactClaimPreview | null;
@@ -91,7 +98,7 @@ export function resolveCompactEmptyWorldClaims(
   }
 
   const defenseCounts = Array.from({ length: cfg.MAX_DEFENSE }, () => 0);
-  const parentPreview = new Map<CellId, number>();
+  const parentPreviewFine = new Map<CellId, number>();
   const finePreview = new Map<CellId, number>();
 
   // Parenteknél a fine override-ok felülírhatják az alapállapotot. Az ilyen
@@ -115,7 +122,7 @@ export function resolveCompactEmptyWorldClaims(
       defenseCounts[state.defense - 1] = (defenseCounts[state.defense - 1] ?? 0) + bulkCount;
       cellCount += bulkCount;
       weightedCells += bulkCount * multiplierFor(state.defense, cfg);
-      parentPreview.set(parent, state.defense);
+      parentPreviewFine.set(parent, state.defense);
     }
   }
 
@@ -142,7 +149,7 @@ export function resolveCompactEmptyWorldClaims(
     breakthrough: 0,
   };
 
-  // A finom explicit map a LAB részletes kirajzolásához marad meg. A teljes
+  // A finom explicit map a claim kompatibilitásához marad meg. A teljes
   // parentek szándékosan NINCSENEK itt kibontva.
   const updates = new Map<CellId, CellOwnership>();
   const fates = new Map<CellId, CellFate>();
@@ -161,14 +168,19 @@ export function resolveCompactEmptyWorldClaims(
     gainedM2: cellCount * cfg.CELL_AREA_M2,
   };
 
+  // A Mapboxnak nem küldünk ki tízezrével olyan H3 cellákat, amelyeket maga
+  // a H3 hierarchia veszteségmentesen egyetlen parentté tud összevonni.
+  const renderParents = compactDefenseMap(parentPreviewFine);
+  const renderFine = compactDefenseMap(finePreview);
+
   return {
     claim,
     claimedCells: new Set(finePreview.keys()),
     claimedCellCount: cellCount,
     preview: {
       parentResolution,
-      parents: parentPreview,
-      cells: finePreview,
+      parents: renderParents,
+      cells: renderFine,
       defenseCounts,
       cellCount,
     },
@@ -230,4 +242,25 @@ export function resolveCompactEmptyWorldClaims(
     });
     fineParents.add(parent);
   }
+}
+
+/**
+ * Defense-szintenként tömörít, mert különböző védelmi állapotú cellák nem
+ * vonhatók össze ugyanabba a render-parentbe. A H3 compactCells az uniót
+ * pontosan megőrzi, csak kevesebb, vegyes felbontású indexszel írja le.
+ */
+function compactDefenseMap(source: ReadonlyMap<CellId, number>): Map<CellId, number> {
+  if (source.size === 0) return new Map();
+  const byDefense = new Map<number, CellId[]>();
+  for (const [cell, defense] of source) {
+    const cells = byDefense.get(defense);
+    if (cells) cells.push(cell);
+    else byDefense.set(defense, [cell]);
+  }
+
+  const compacted = new Map<CellId, number>();
+  for (const [defense, cells] of byDefense) {
+    for (const cell of compactCells(cells)) compacted.set(cell, defense);
+  }
+  return compacted;
 }
