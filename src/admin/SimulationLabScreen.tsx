@@ -30,6 +30,12 @@ const LAB_ACTOR_ID = 'lab-user';
  * egzakt, teljes snapshot készül.
  */
 const MAX_LIVE_ENGINE_FRAMES = 160;
+/**
+ * A Mapbox LineString setData() minden alkalommal a TELJES addigi nyomvonalat
+ * újraszerializálja. Hosszú körnél ezért a GPS-vonal UI-frissítését is korlátozzuk,
+ * miközben maga a recorder továbbra is minden egyes location fixet feldolgoz.
+ */
+const MAX_LIVE_TRACK_FRAMES = 480;
 
 type PlaybackRate = '1' | '10' | '100' | 'max';
 
@@ -53,7 +59,7 @@ export function SimulationLabScreen() {
   const [spikePercent, setSpikePercent] = useState(0);
   const [seed, setSeed] = useState(738291);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>('100');
-  /** Teljes recorder — a nyers/elfogadott GPS és a statok minden mintára frissülnek. */
+  /** UI-snapshot a teljes recorderből. A belső `current` minden mintát feldolgoz. */
   const [recorder, setRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview'));
   /** Ritkított snapshot — csak ebből fut a drága processActivity(). */
   const [engineRecorder, setEngineRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview-engine'));
@@ -91,6 +97,10 @@ export function SimulationLabScreen() {
     () => Math.max(1, Math.ceil(generated.samples.length / MAX_LIVE_ENGINE_FRAMES)),
     [generated.samples.length],
   );
+  const trackStride = useMemo(
+    () => Math.max(1, Math.ceil(generated.samples.length / MAX_LIVE_TRACK_FRAMES)),
+    [generated.samples.length],
+  );
   const visibleRawTrack = useMemo(
     () => generated.samples.slice(0, Math.min(deliveredRawCount, generated.samples.length)),
     [generated.samples, deliveredRawCount],
@@ -125,13 +135,14 @@ export function SimulationLabScreen() {
     let current = started;
     let delivered = 0;
     let lastEnginePointCount = 0;
+    let lastTrackDelivered = 0;
     const rate = playbackRate === 'max' ? 0 : Number(playbackRate);
     const source = new SimulationPositionSource(generated.samples, rate, () => {
       const endedAt = generated.samples[generated.samples.length - 1]?.t ?? Date.now();
       current = finish(current, endedAt);
+      // A futás vége mindig egzakt: track és game state is teljes.
       setDeliveredRawCount(generated.samples.length);
       setRecorder(current);
-      // A futás vége mindig egzakt: itt nincs ritkítás.
       setEngineRecorder(current);
       setRunning(false);
       persistLastRun({
@@ -150,10 +161,17 @@ export function SimulationLabScreen() {
       {
         onSample(sample) {
           delivered += 1;
-          setDeliveredRawCount(delivered);
           const beforePointCount = current.points.length;
           current = applySample(current, sample);
-          setRecorder(current);
+
+          // A GPS/recorder belső állapota minden mintára frissül. A React +
+          // Mapbox vizuális snapshot viszont hosszú route-nál ritkított, mert
+          // a teljes LineString újraküldése önmagában négyzetes munkát okozna.
+          if (delivered - lastTrackDelivered >= trackStride) {
+            lastTrackDelivered = delivered;
+            setDeliveredRawCount(delivered);
+            setRecorder(current);
+          }
 
           // Csak valóban új, recorder által elfogadott GPS-pont után lehet új
           // H3 állapot. Hosszú aktivitásnál ritkítjuk a TELJES engine frame-et,
