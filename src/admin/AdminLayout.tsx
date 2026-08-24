@@ -23,6 +23,7 @@ const NAV = [
   { to: '/admin/akciok', label: 'Akciók', icon: '★' },
   { to: '/admin/aktivitasok', label: 'Aktivitások', icon: '⌖' },
   { to: '/admin/visszajatszas', label: 'Visszajátszás', icon: '▶' },
+  { to: '/admin/lab', label: 'Simulation LAB', icon: '◎' },
 ];
 
 export function AdminLayout() {
