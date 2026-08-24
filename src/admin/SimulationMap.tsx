@@ -17,7 +17,6 @@ interface SimulationMapProps {
   showGrid: boolean;
   showLoops: boolean;
   showClaims: boolean;
-  /** Minden új futás/reset növeli. Az előző run vizuális állapotát azonnal törli. */
   resetToken: number;
   onAppendWaypoint(point: SimulationWaypoint): void;
   onMoveWaypoint(index: number, point: SimulationWaypoint): void;
@@ -56,6 +55,8 @@ export function SimulationMap({
   const togglesRef = useRef({ showGrid, showLoops, showClaims });
   const appendRef = useRef(onAppendWaypoint);
   const moveRef = useRef(onMoveWaypoint);
+  const appliedThemeRef = useRef(theme);
+  const pendingStyleSyncRef = useRef(false);
 
   routeRef.current = route;
   rawRef.current = rawTrack;
@@ -64,6 +65,31 @@ export function SimulationMap({
   togglesRef.current = { showGrid, showLoops, showClaims };
   appendRef.current = onAppendWaypoint;
   moveRef.current = onMoveWaypoint;
+
+  function scheduleStyleSync(instance: mapboxgl.Map) {
+    if (pendingStyleSyncRef.current) return;
+    pendingStyleSyncRef.current = true;
+    instance.once('style.load', () => {
+      pendingStyleSyncRef.current = false;
+      if (map.current !== instance) return;
+      syncCurrentState(instance);
+    });
+  }
+
+  function syncCurrentState(instance: mapboxgl.Map) {
+    // A HTML marker nem a style része, ezért route szerkesztéskor azonnal
+    // frissíthető akkor is, ha a Mapbox style épp töltődik.
+    syncMarkers(instance, routeRef.current, markers, moveRef);
+
+    if (!instance.isStyleLoaded()) {
+      scheduleStyleSync(instance);
+      return;
+    }
+
+    addAllLayers(instance);
+    syncLines(instance, routeRef.current, rawRef.current, acceptedRef.current);
+    syncGameLayers(instance, resultRef.current, togglesRef.current);
+  }
 
   useEffect(() => {
     if (!mapboxConfigured || !container.current || map.current) return;
@@ -79,18 +105,13 @@ export function SimulationMap({
       pitchWithRotate: false,
     });
     map.current = instance;
+    appliedThemeRef.current = theme;
 
     const resizeObserver = new ResizeObserver(() => instance.resize());
     resizeObserver.observe(container.current);
 
     instance.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
-
-    instance.on('load', () => {
-      addAllLayers(instance);
-      syncLines(instance, routeRef.current, rawRef.current, acceptedRef.current);
-      syncGameLayers(instance, resultRef.current, togglesRef.current);
-      syncMarkers(instance, routeRef.current, markers, moveRef);
-    });
+    instance.on('load', () => syncCurrentState(instance));
 
     instance.on('click', (event) => {
       const target = event.originalEvent.target as HTMLElement | null;
@@ -100,6 +121,7 @@ export function SimulationMap({
 
     return () => {
       resizeObserver.disconnect();
+      pendingStyleSyncRef.current = false;
       for (const marker of markers.current) marker.remove();
       markers.current = [];
       instance.remove();
@@ -107,40 +129,24 @@ export function SimulationMap({
     };
   }, []);
 
-  /**
-   * Új run indításakor az előző run minden vizuális nyomát azonnal levesszük.
-   * A route szerkesztő lila vonala marad, mert az a következő teszt bemenete.
-   * A következő location callback már az új run első piros/zöld/H3 állapotát
-   * rajzolja vissza.
-   */
-  useEffect(() => {
-    const instance = map.current;
-    if (!instance || !instance.isStyleLoaded()) return;
-    clearRunLayers(instance);
-  }, [resetToken]);
-
-  useEffect(() => {
-    const instance = map.current;
-    if (!instance || !instance.isStyleLoaded()) return;
-    syncLines(instance, route, rawTrack, acceptedTrack);
-    syncMarkers(instance, route, markers, moveRef);
-  }, [route, rawTrack, acceptedTrack]);
-
-  useEffect(() => {
-    const instance = map.current;
-    if (!instance || !instance.isStyleLoaded()) return;
-    syncGameLayers(instance, result, { showGrid, showLoops, showClaims });
-  }, [result, showGrid, showLoops, showClaims]);
-
+  // Minden route/replay/toggle/reset ugyanazt a teljes map-state-et szinkronizálja.
+  // Ha a style épp nem ready, a legfrissebb állapot style.load után automatikusan
+  // újra lefut; nincs több elveszett React-frissítés.
   useEffect(() => {
     const instance = map.current;
     if (!instance) return;
+    syncCurrentState(instance);
+  }, [route, rawTrack, acceptedTrack, result, showGrid, showLoops, showClaims, resetToken]);
+
+  // Mountkor nem állítjuk be még egyszer ugyanazt a style-t. Csak valódi
+  // light/dark váltás indít új style-loadot.
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || appliedThemeRef.current === theme) return;
+    appliedThemeRef.current = theme;
+    pendingStyleSyncRef.current = false;
     instance.setStyle(mapStyleFor(theme));
-    instance.once('style.load', () => {
-      addAllLayers(instance);
-      syncLines(instance, routeRef.current, rawRef.current, acceptedRef.current);
-      syncGameLayers(instance, resultRef.current, togglesRef.current);
-    });
+    scheduleStyleSync(instance);
   }, [theme]);
 
   if (!mapboxConfigured) {
@@ -319,34 +325,35 @@ function addGameLayers(map: mapboxgl.Map) {
   }
 }
 
-function clearRunLayers(map: mapboxgl.Map) {
-  setLine(map, RAW_SOURCE, []);
-  setLine(map, ACCEPTED_SOURCE, []);
-  setSourceData(map, GRID_SOURCE, emptyFeatureCollection());
-  setSourceData(map, TRAIL_SOURCE, emptyFeatureCollection());
-  setSourceData(map, LOOP_SOURCE, emptyFeatureCollection());
-  setSourceData(map, CLAIM_SOURCE, emptyFeatureCollection());
-  setSourceData(map, REJECTED_SOURCE, emptyFeatureCollection());
-}
-
 function syncGameLayers(
   map: mapboxgl.Map,
   result: ProcessResult | null,
   toggles: { showGrid: boolean; showLoops: boolean; showClaims: boolean },
 ) {
+  setLayerVisible(map, `${GRID_SOURCE}-line`, toggles.showGrid);
+  setLayerVisible(map, `${TRAIL_SOURCE}-fill`, toggles.showClaims);
+  setLayerVisible(map, `${TRAIL_SOURCE}-line`, toggles.showClaims);
+  setLayerVisible(map, `${LOOP_SOURCE}-fill`, toggles.showLoops);
+  setLayerVisible(map, `${LOOP_SOURCE}-wall`, toggles.showLoops);
+  setLayerVisible(map, REJECTED_SOURCE, toggles.showLoops);
+  setLayerVisible(map, `${CLAIM_SOURCE}-fill`, toggles.showClaims);
+  setLayerVisible(map, `${CLAIM_SOURCE}-line`, toggles.showClaims);
+  setLayerVisible(map, `${CLAIM_SOURCE}-labels`, toggles.showClaims);
+
   if (!result) {
-    setSourceData(map, GRID_SOURCE, emptyFeatureCollection());
-    setSourceData(map, TRAIL_SOURCE, emptyFeatureCollection());
-    setSourceData(map, LOOP_SOURCE, emptyFeatureCollection());
-    setSourceData(map, CLAIM_SOURCE, emptyFeatureCollection());
-    setSourceData(map, REJECTED_SOURCE, emptyFeatureCollection());
+    clearGameSources(map);
     return;
   }
 
-  const gridCells = toggles.showGrid ? collectRelevantGridCells(result) : [];
-  setSourceData(map, GRID_SOURCE, cellCollection(gridCells, () => ({})));
+  setSourceData(
+    map,
+    GRID_SOURCE,
+    toggles.showGrid
+      ? cellCollection(collectRelevantGridCells(result), () => ({}))
+      : emptyFeatureCollection(),
+  );
 
-  const trailCells = toggles.showClaims ? [...new Set(result.cellPath)] : [];
+  const trailCells = [...new Set(result.cellPath)];
   setSourceData(
     map,
     TRAIL_SOURCE,
@@ -354,22 +361,23 @@ function syncGameLayers(
       state: result.claimedCells.has(cell) ? 'claimed' : 'discarded',
     })),
   );
+  setSourceData(map, LOOP_SOURCE, loopCollection(result));
+  setSourceData(map, REJECTED_SOURCE, rejectedLoopCollection(result));
+  setSourceData(map, CLAIM_SOURCE, claimCollection(result));
+}
 
-  setSourceData(
-    map,
-    LOOP_SOURCE,
-    toggles.showLoops ? loopCollection(result) : emptyFeatureCollection(),
-  );
-  setSourceData(
-    map,
-    REJECTED_SOURCE,
-    toggles.showLoops ? rejectedLoopCollection(result) : emptyFeatureCollection(),
-  );
-  setSourceData(
-    map,
-    CLAIM_SOURCE,
-    toggles.showClaims ? claimCollection(result) : emptyFeatureCollection(),
-  );
+function clearGameSources(map: mapboxgl.Map) {
+  setSourceData(map, GRID_SOURCE, emptyFeatureCollection());
+  setSourceData(map, TRAIL_SOURCE, emptyFeatureCollection());
+  setSourceData(map, LOOP_SOURCE, emptyFeatureCollection());
+  setSourceData(map, CLAIM_SOURCE, emptyFeatureCollection());
+  setSourceData(map, REJECTED_SOURCE, emptyFeatureCollection());
+}
+
+function setLayerVisible(map: mapboxgl.Map, layerId: string, visible: boolean) {
+  if (map.getLayer(layerId)) {
+    map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+  }
 }
 
 function collectRelevantGridCells(result: ProcessResult): CellId[] {
