@@ -245,19 +245,18 @@ export function SimulationLabScreen() {
   const claim = gameResult?.claim;
   const routeKm = routeDistanceM(route) / 1000;
   const newCells = (claim?.counts.free ?? 0) + (claim?.counts.stolen ?? 0);
-  const ownedCells = claim
-    ? [...claim.updates.values()].filter((ownership) => ownership.owner === LAB_ACTOR_ID).length
-    : 0;
+  const ownedCells = gameResult?.claimedCellCount ?? 0;
   const discardedTrailCells = gameResult
     ? new Set(gameResult.cellPath.filter((cell) => !gameResult.claimedCells.has(cell))).size
     : 0;
-  const defenseCounts = [1, 2, 3, 4, 5].map((defense) =>
-    claim
-      ? [...claim.updates.values()].filter(
-          (ownership) => ownership.owner === LAB_ACTOR_ID && ownership.defense === defense,
-        ).length
-      : 0,
-  );
+  const defenseCounts = gameResult?.compactClaim?.defenseCounts
+    ?? [1, 2, 3, 4, 5].map((defense) =>
+      claim
+        ? [...claim.updates.values()].filter(
+            (ownership) => ownership.owner === LAB_ACTOR_ID && ownership.defense === defense,
+          ).length
+        : 0,
+    );
   const loopDiagnostics = gameResult?.diagnostics.loops;
   const shellClassName = [
     'lab-shell',
@@ -466,6 +465,7 @@ export function SimulationLabScreen() {
                     <span>path {item.fromIndex} → {item.toIndex}</span>
                     <span>fal {item.wallCells}</span>
                     <span>belső {item.interiorCells}</span>
+                    {gameResult.loops[index]?.compactInterior ? <span>COMPACT</span> : null}
                     {item.prunedCells > 0 ? <span>levágva {item.prunedCells}</span> : null}
                   </div>
                 ))}
