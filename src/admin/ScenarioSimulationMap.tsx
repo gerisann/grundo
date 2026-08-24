@@ -43,6 +43,7 @@ const ACTIVE_ROUTE = 'lab-scenario-active-route';
 const OTHER_ROUTES = 'lab-scenario-routes';
 const RAW_TRACKS = 'lab-scenario-raw';
 const ACCEPTED_TRACKS = 'lab-scenario-accepted';
+const PLAYER_HEADS = 'lab-scenario-player-heads';
 const WORLD = 'lab-scenario-world';
 const GRID = 'lab-scenario-grid';
 const LOOPS = 'lab-scenario-loops';
@@ -83,6 +84,7 @@ export function ScenarioSimulationMap(props: Props) {
       .map((item) => ({ points: item.route, color: item.color }))));
     setSource(map, RAW_TRACKS, lineCollection(state.tracks.map((track) => ({ points: track.raw, color: track.color }))));
     setSource(map, ACCEPTED_TRACKS, lineCollection(state.tracks.map((track) => ({ points: track.accepted, color: track.color }))));
+    setSource(map, PLAYER_HEADS, playerHeadCollection(state.tracks));
     setSource(map, WORLD, state.showClaims ? worldCollection(state.world, state.ownerColors) : empty());
     setVisible(map, `${WORLD}-fill`, state.showClaims);
     setVisible(map, `${WORLD}-line`, state.showClaims);
@@ -159,12 +161,44 @@ export function ScenarioSimulationMap(props: Props) {
 }
 
 function addLayers(map: mapboxgl.Map) {
-  addSource(map, ACTIVE_ROUTE); addSource(map, OTHER_ROUTES); addSource(map, RAW_TRACKS); addSource(map, ACCEPTED_TRACKS);
-  addSource(map, WORLD); addSource(map, GRID); addSource(map, LOOPS); addSource(map, REJECTED);
-  addLineLayer(map, ACTIVE_ROUTE, ['get', 'color'] as any, 4, 0.95);
-  addLineLayer(map, OTHER_ROUTES, ['get', 'color'] as any, 2.5, 0.55);
-  addLineLayer(map, RAW_TRACKS, ['get', 'color'] as any, 2, 0.35);
-  addLineLayer(map, ACCEPTED_TRACKS, ['get', 'color'] as any, 3, 0.95);
+  addSource(map, ACTIVE_ROUTE);
+  addSource(map, OTHER_ROUTES);
+  addSource(map, RAW_TRACKS);
+  addSource(map, ACCEPTED_TRACKS);
+  addSource(map, PLAYER_HEADS);
+  addSource(map, WORLD);
+  addSource(map, GRID);
+  addSource(map, LOOPS);
+  addSource(map, REJECTED);
+
+  addLineLayer(map, ACTIVE_ROUTE, ['get', 'color'] as any, 4, 0.72);
+  addLineLayer(map, OTHER_ROUTES, ['get', 'color'] as any, 2.5, 0.42);
+  addLineLayer(map, RAW_TRACKS, ['get', 'color'] as any, 2, 0.32);
+  addLineLayer(map, ACCEPTED_TRACKS, ['get', 'color'] as any, 3.5, 0.98);
+
+  if (!map.getLayer(`${PLAYER_HEADS}-halo`)) map.addLayer({
+    id: `${PLAYER_HEADS}-halo`,
+    type: 'circle',
+    source: PLAYER_HEADS,
+    paint: {
+      'circle-radius': 10,
+      'circle-color': ['get', 'color'] as any,
+      'circle-opacity': 0.2,
+      'circle-blur': 0.35,
+    },
+  });
+  if (!map.getLayer(PLAYER_HEADS)) map.addLayer({
+    id: PLAYER_HEADS,
+    type: 'circle',
+    source: PLAYER_HEADS,
+    paint: {
+      'circle-radius': 5.5,
+      'circle-color': ['get', 'color'] as any,
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 2,
+      'circle-opacity': 1,
+    },
+  });
 
   if (!map.getLayer(`${WORLD}-fill`)) map.addLayer({ id: `${WORLD}-fill`, type: 'fill', source: WORLD, paint: {
     'fill-color': ['get', 'color'] as any,
@@ -190,17 +224,21 @@ function addLayers(map: mapboxgl.Map) {
 function addSource(map: mapboxgl.Map, id: string) {
   if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: empty() });
 }
+
 function addLineLayer(map: mapboxgl.Map, id: string, color: any, width: number, opacity: number) {
   if (!map.getLayer(id)) map.addLayer({ id, type: 'line', source: id, paint: {
     'line-color': color, 'line-width': width, 'line-opacity': opacity,
   }});
 }
+
 function setSource(map: mapboxgl.Map, id: string, data: GeoJSON.FeatureCollection) {
   (map.getSource(id) as mapboxgl.GeoJSONSource | undefined)?.setData(data);
 }
+
 function setVisible(map: mapboxgl.Map, id: string, visible: boolean) {
   if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
 }
+
 function empty<T extends GeoJSON.Geometry = GeoJSON.Geometry>(): GeoJSON.FeatureCollection<T> {
   return { type: 'FeatureCollection', features: [] };
 }
@@ -211,6 +249,20 @@ function lineCollection(items: readonly { points: readonly { lat: number; lng: n
       type: 'LineString', coordinates: item.points.map((point) => [point.lng, point.lat]),
     },
   })) };
+}
+
+function playerHeadCollection(tracks: readonly LabMapTrack[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+  for (const track of tracks) {
+    const point = track.accepted.at(-1) ?? track.raw.at(-1);
+    if (!point) continue;
+    features.push({
+      type: 'Feature',
+      properties: { playerId: track.playerId, color: track.color },
+      geometry: { type: 'Point', coordinates: [point.lng, point.lat] },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 function worldCollection(world: OwnershipMap, colors: ReadonlyMap<string, string>): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
@@ -257,7 +309,8 @@ function rejectedCollection(result: ProcessResult): GeoJSON.FeatureCollection<Ge
     if (cells.length < 2) continue;
     features.push({ type: 'Feature', properties: { reason: item.reason }, geometry: {
       type: 'LineString', coordinates: cells.map((cell) => {
-        const [lat, lng] = cellToLatLng(cell); return [lng, lat];
+        const [lat, lng] = cellToLatLng(cell);
+        return [lng, lat];
       }),
     }});
   }
@@ -281,11 +334,14 @@ function syncMarkers(
   for (const marker of holder.current) marker.remove();
   holder.current = route.map((point, index) => {
     const element = document.createElement('button');
-    element.type = 'button'; element.className = 'lab-waypoint'; element.textContent = String(index + 1);
+    element.type = 'button';
+    element.className = 'lab-waypoint';
+    element.textContent = String(index + 1);
     element.title = editable ? `Útvonalpont ${index + 1} — húzd a módosításhoz` : `Útvonalpont ${index + 1}`;
     const marker = new mapboxgl.Marker({ element, draggable: editable }).setLngLat([point.lng, point.lat]).addTo(map);
     if (editable) marker.on('dragend', () => {
-      const next = marker.getLngLat(); onMove(index, { lat: next.lat, lng: next.lng });
+      const next = marker.getLngLat();
+      onMove(index, { lat: next.lat, lng: next.lng });
     });
     return marker;
   });
