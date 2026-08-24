@@ -6,7 +6,6 @@ import type {
   ClaimResult,
   OwnershipMap,
 } from '@/types';
-import { multiplierFor } from './claim';
 
 export interface FrontierOrphanSearchInput {
   /** Res12 cellák, amelyek környezetében a friss rablás frontierét vizsgáljuk. */
@@ -139,6 +138,7 @@ export function cleanupStolenFrontierOrphans(
   const stolenFrom = { ...claim.stolenFrom };
   let weightedClaimM2 = claim.weightedClaimM2;
   let gainedM2 = claim.gainedM2;
+  const defenseOneMultiplier = cfg.DEFENSE_MULTIPLIER[0] ?? 1;
 
   // FONTOS: `planned` már teljes egészében az eredeti post-claim snapshotból
   // készült. Csak most alkalmazzuk egyszerre, ezért nincs kaszkád.
@@ -155,7 +155,7 @@ export function cleanupStolenFrontierOrphans(
       fates.set(cell, 'stolen');
       counts.stolen += 1;
       stolenFrom[previous.owner] = (stolenFrom[previous.owner] ?? 0) + 1;
-      weightedClaimM2 += multiplierFor(1, cfg) * cfg.CELL_AREA_M2;
+      weightedClaimM2 += defenseOneMultiplier * cfg.CELL_AREA_M2;
       gainedM2 += cfg.CELL_AREA_M2;
     }
     // Ha egy harmadik owner a domináns, a world korrekció megtörténik, de az
