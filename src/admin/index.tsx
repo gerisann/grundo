@@ -5,6 +5,7 @@ import { GameplayScreen } from './GameplayScreen';
 import { ModifiersScreen } from './ModifiersScreen';
 import { ActivityAuditScreen } from './ActivityAuditScreen';
 import { ReplayScreen } from './ReplayScreen';
+import { SimulationLabScreen } from './SimulationLabScreen';
 
 /**
  * Az admin terület egyetlen belépési pontja.
@@ -26,6 +27,7 @@ export default function AdminArea() {
         <Route path="akciok" element={<ModifiersScreen />} />
         <Route path="aktivitasok" element={<ActivityAuditScreen />} />
         <Route path="visszajatszas" element={<ReplayScreen />} />
+        <Route path="lab" element={<SimulationLabScreen />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
     </Routes>
