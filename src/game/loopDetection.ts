@@ -29,86 +29,110 @@ interface ClosureBlock {
 }
 
 /**
- * Hurokdetektor átfedő és egymásba kapcsolódó bezárásokhoz.
+ * Egyetlen H3 kontaktfolt több egymás melletti korábbi cellát is érinthet.
+ * Ezek a pathon jellemzően néhány indexen belül vannak, de geometriában ugyanazt
+ * a kereszteződést jelentik. Ha mindegyiket külön jelöltként futtatjuk, ugyanarra
+ * a fizikai találkozásra 2–6× Tarjan + flood fill indul.
  *
- * A H3-on egy fizikai útvonal-találkozás nem egy matematikai pont, hanem több
- * cellából álló kontaktfolt. Ráadásul egy már bezárt régió peremén/belsejében
- * továbbhaladva ugyanabból az útvonalból több, egyre nagyobb kompozit ciklus is
- * levezethető. Ezek gráfelméletileg létező ciklusok, de a játék szempontjából
- * NEM külön bezárási események.
- *
- * Ezért sikeres bezárás után a teljes lezárt régió (belső + fal + a fal egy
- * cellás kontaktzónája) ideiglenes closure zone. Amíg az útvonal ebből
- * ténylegesen ki nem lép, ugyanebből a closure-epizódból nem képezünk új
- * hurkot. Az első külső cella kötelező szeparátor, csak utána élesedik újra a
- * detector.
- *
- * Kivétel az ismételt teljes kör: ha a játékos a falat ténylegesen újra
- * végigjárja és visszaér az eredeti kapuhoz, az új traversal, ezért új
- * bezárásként számíthat és defense-et építhet.
+ * A 6 index elég tág egy res12 kontaktfolthoz, de több külön kör / külön korábbi
+ * áthaladás tipikusan nagyságrendekkel távolabb van a pathon, tehát azok nem
+ * olvadnak össze.
  */
-export function detectLoopsDetailed(path: readonly CellId[]): {
+const CONTACT_INDEX_CLUSTER_GAP = 6;
+
+export interface IncrementalLoopSnapshot {
   loops: DetectedLoop[];
   diagnostics: LoopDiagnostics;
-} {
-  const loops: DetectedLoop[] = [];
-  const successful: LoopDiagnostics['successful'] = [];
-  const rejected: RejectedLoopDiagnostic[] = [];
-  let shortRevisits = 0;
+}
 
-  const seenAt = new Map<CellId, number[]>();
-  const accepted: AcceptedLoopRecord[] = [];
-  let closureBlock: ClosureBlock | null = null;
+/**
+ * Állapottartó, inkrementális hurokdetektor.
+ *
+ * A korábbi batch algoritmus minden preview-frissítésnél az egész addigi
+ * aktivitást újraszámolta. Ez kis útvonalon is egyre drágább lett, főleg egy
+ * már bejárt fal mellett, ahol minden új cella több korábbi kontaktból képezhet
+ * hurokjelöltet.
+ *
+ * Ez az osztály pontosan ugyanazt a döntési logikát használja, de egy új H3
+ * cella érkezésekor CSAK az új cella által létrehozott jelölteket vizsgálja.
+ * A `detectLoopsDetailed()` lent kompatibilis batch wrapper marad.
+ */
+export class IncrementalLoopDetector {
+  private readonly path: CellId[] = [];
+  private readonly loops: DetectedLoop[] = [];
+  private readonly successful: LoopDiagnostics['successful'] = [];
+  private readonly rejected: RejectedLoopDiagnostic[] = [];
+  private shortRevisits = 0;
 
-  for (let i = 0; i < path.length; i += 1) {
-    const cell = path[i]!;
-    const sameHistory = seenAt.get(cell) ?? [];
+  private readonly seenAt = new Map<CellId, number[]>();
+  private readonly accepted: AcceptedLoopRecord[] = [];
+  private closureBlock: ClosureBlock | null = null;
+
+  /** Hány H3 cellát dolgoztunk már fel. */
+  get length(): number {
+    return this.path.length;
+  }
+
+  /**
+   * Egy új, már összefüggő cellalánc-elemet dolgoz fel.
+   * Visszatérési érték: keletkezett-e ezen a lépésen új elfogadott hurok.
+   */
+  append(cell: CellId): boolean {
+    const i = this.path.length;
+    this.path.push(cell);
+
+    const sameHistory = this.seenAt.get(cell) ?? [];
     const latestSame = sameHistory[sameHistory.length - 1];
 
     if (latestSame !== undefined && i - latestSame < GAMEPLAY.MIN_LOOP_STEPS) {
-      shortRevisits += 1;
+      this.shortRevisits += 1;
     }
 
-    if (closureBlock !== null) {
+    if (this.closureBlock !== null) {
       const minimumRepeatSteps = Math.max(
         GAMEPLAY.MIN_LOOP_STEPS,
-        Math.floor(closureBlock.loop.wall.size * 0.75),
+        Math.floor(this.closureBlock.loop.wall.size * 0.75),
       );
-      const repeatReady = i - closureBlock.acceptedAt >= minimumRepeatSteps;
+      const repeatReady = i - this.closureBlock.acceptedAt >= minimumRepeatSteps;
 
       // Ha egy teljes új lap után visszaértünk az eredeti kapuhoz, nem kell
       // kilépni a closure zone-ból: ez a szándékos multi-lap defense-eset.
-      if (repeatReady && closureBlock.gate.has(cell)) {
-        closureBlock = null;
-      } else if (insideClosureZone(cell, closureBlock.loop)) {
-        noteVisit(seenAt, cell, i);
-        continue;
+      if (repeatReady && this.closureBlock.gate.has(cell)) {
+        this.closureBlock = null;
+      } else if (insideClosureZone(cell, this.closureBlock.loop)) {
+        noteVisit(this.seenAt, cell, i);
+        return false;
       } else {
         // Az első valóban külső cella szeparátor. Ezen még nem keresünk új
         // hurkot; a következő cellától indulhat új closure-epizód.
-        closureBlock = null;
-        noteVisit(seenAt, cell, i);
-        continue;
+        this.closureBlock = null;
+        noteVisit(this.seenAt, cell, i);
+        return false;
       }
     }
 
     /**
      * A mostani cella saját korábbi előfordulásai és a hat élszomszéd korábbi
      * előfordulásai lehetnek kapuk. Cellánként legfeljebb a három legfrissebb
-     * strukturálisan érvényes előzményt tartjuk meg: ez megőrzi az overlap
-     * eseteket, de hosszú / ismételt útvonalnál nem engedi felrobbanni a
-     * jelöltek számát.
+     * strukturálisan érvényes előzményt tartjuk meg.
      */
     const candidates = new Set<number>();
     addRecentEligible(sameHistory, i, candidates);
     for (const near of gridDisk(cell, 1)) {
       if (near === cell) continue;
-      addRecentEligible(seenAt.get(near) ?? [], i, candidates);
+      addRecentEligible(this.seenAt.get(near) ?? [], i, candidates);
     }
-    const candidateIndices = [...candidates].sort((a, b) => b - a);
+
+    /**
+     * Egy H3 kereszteződés több egymás melletti korábbi cellát érinthet. Ezeket
+     * egyetlen kontaktfolttá vonjuk össze, és a korábbi viselkedéssel egyezően
+     * a legfrissebb indexet próbáljuk. Külön korábbi áthaladások a nagyobb
+     * indexkülönbség miatt külön jelöltek maradnak.
+     */
+    const candidateIndices = clusterCandidateIndices(candidates);
 
     for (const previous of candidateIndices) {
-      const rawWall = new Set(path.slice(previous, i + 1));
+      const rawWall = new Set(this.path.slice(previous, i + 1));
       const wall = pruneDeadEnds(rawWall);
       const prunedCells = Math.max(0, rawWall.size - wall.size);
 
@@ -117,7 +141,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
         interiorGeometry = buildLoopInterior(wall);
       } catch (err) {
         if (err instanceof LoopTooLargeError) {
-          rejected.push({
+          this.rejected.push({
             reason: 'too_large',
             fromIndex: previous,
             toIndex: i,
@@ -132,7 +156,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
       }
 
       if (interiorGeometry.cellCount < GAMEPLAY.MIN_INTERIOR_CELLS) {
-        rejected.push({
+        this.rejected.push({
           reason: 'interior_too_small',
           fromIndex: previous,
           toIndex: i,
@@ -155,31 +179,71 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
 
       // Ugyanannak a geometriai huroknak a közvetlen folytatása nem kap új
       // bezárást. Egy teljesen új traversal viszont továbbra is számíthat.
-      if (isTraversalDuplicate(candidate, previous, accepted)) {
+      if (isTraversalDuplicate(candidate, previous, this.accepted)) {
         continue;
       }
 
-      loops.push(candidate);
-      successful.push({
+      this.loops.push(candidate);
+      this.successful.push({
         fromIndex: previous,
         toIndex: i,
         wallCells: wall.size,
         interiorCells: interiorGeometry.cellCount,
         prunedCells,
       });
-      accepted.push({ loop: candidate, toIndex: i });
-      closureBlock = {
+      this.accepted.push({ loop: candidate, toIndex: i });
+      this.closureBlock = {
         loop: candidate,
-        gate: gateZone(path[previous]!, cell),
+        gate: gateZone(this.path[previous]!, cell),
         acceptedAt: i,
       };
-      break;
+      noteVisit(this.seenAt, cell, i);
+      return true;
     }
 
-    noteVisit(seenAt, cell, i);
+    noteVisit(this.seenAt, cell, i);
+    return false;
   }
 
-  return { loops, diagnostics: { successful, rejected, shortRevisits } };
+  appendMany(cells: readonly CellId[]): number {
+    let addedLoops = 0;
+    for (const cell of cells) {
+      if (this.append(cell)) addedLoops += 1;
+    }
+    return addedLoops;
+  }
+
+  snapshot(): IncrementalLoopSnapshot {
+    return {
+      loops: [...this.loops],
+      diagnostics: {
+        successful: [...this.successful],
+        rejected: [...this.rejected],
+        shortRevisits: this.shortRevisits,
+      },
+    };
+  }
+}
+
+/**
+ * Hurokdetektor átfedő és egymásba kapcsolódó bezárásokhoz.
+ *
+ * A H3-on egy fizikai útvonal-találkozás nem egy matematikai pont, hanem több
+ * cellából álló kontaktfolt. Ráadásul egy már bezárt régió peremén/belsejében
+ * továbbhaladva ugyanabból az útvonalból több, egyre nagyobb kompozit ciklus is
+ * levezethető. Ezek gráfelméletileg létező ciklusok, de a játék szempontjából
+ * NEM külön bezárási események.
+ *
+ * A batch API kompatibilitásból megmarad, de belül ugyanazt az inkrementális
+ * állapotgépet eteti végig pontosan egyszer.
+ */
+export function detectLoopsDetailed(path: readonly CellId[]): {
+  loops: DetectedLoop[];
+  diagnostics: LoopDiagnostics;
+} {
+  const detector = new IncrementalLoopDetector();
+  detector.appendMany(path);
+  return detector.snapshot();
 }
 
 export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
@@ -204,6 +268,32 @@ function addRecentEligible(
     target.add(index);
     added += 1;
   }
+}
+
+/**
+ * Ugyanahhoz a fizikai H3 kontaktfolthoz tartozó path-indexeket összevonja.
+ * A lista csökkenő sorrendű, minden klaszterből a legfrissebb index marad.
+ */
+function clusterCandidateIndices(candidates: ReadonlySet<number>): number[] {
+  const sorted = [...candidates].sort((a, b) => b - a);
+  if (sorted.length < 2) return sorted;
+
+  const result: number[] = [];
+  let clusterNewest = sorted[0]!;
+  let previous = sorted[0]!;
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const current = sorted[i]!;
+    if (previous - current <= CONTACT_INDEX_CLUSTER_GAP) {
+      previous = current;
+      continue;
+    }
+    result.push(clusterNewest);
+    clusterNewest = current;
+    previous = current;
+  }
+  result.push(clusterNewest);
+  return result;
 }
 
 function gateZone(a: CellId, b: CellId): Set<CellId> {
