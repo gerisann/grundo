@@ -224,7 +224,7 @@ export class SimulationPositionSource implements PositionSource {
   readonly ordered = true;
 
   private stopped = true;
-  private timer: number | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly samples: readonly PositionSample[],
@@ -272,7 +272,7 @@ export class SimulationPositionSource implements PositionSource {
           return;
         }
 
-        this.timer = window.setTimeout(() => {
+        this.timer = globalThis.setTimeout(() => {
           this.timer = null;
           emitChunk();
         }, 0);
@@ -298,7 +298,7 @@ export class SimulationPositionSource implements PositionSource {
       }
 
       const delay = Math.max(0, (next.t - sample.t) / this.playbackRate);
-      this.timer = window.setTimeout(() => {
+      this.timer = globalThis.setTimeout(() => {
         this.timer = null;
         emit(index + 1);
       }, delay);
@@ -310,7 +310,7 @@ export class SimulationPositionSource implements PositionSource {
   async stop(): Promise<void> {
     this.stopped = true;
     if (this.timer !== null) {
-      window.clearTimeout(this.timer);
+      globalThis.clearTimeout(this.timer);
       this.timer = null;
     }
   }
@@ -404,6 +404,9 @@ function offsetMeters<T extends Pick<SimulationWaypoint, 'lat' | 'lng'>>(
 }
 
 function wrapLng(value: number): number {
+  // Normál, már érvényes longitude-ot ne vigyünk át felesleges modulo-körön:
+  // a round-trip lebegőpontos eltérést okozott az ideális route-ban.
+  if (value >= -180 && value < 180) return value;
   return ((((value + 180) % 360) + 360) % 360) - 180;
 }
 
