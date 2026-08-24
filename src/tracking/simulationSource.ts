@@ -69,6 +69,7 @@ export const DEFAULT_GPS_SIMULATION_CONFIG: GpsSimulationConfig = {
 };
 
 const EARTH_M_PER_DEG_LAT = 111_320;
+const MAX_PLAYBACK_CHUNK = 128;
 
 function metersPerDegreeLng(lat: number): number {
   return EARTH_M_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180);
@@ -246,16 +247,38 @@ export class SimulationPositionSource implements PositionSource {
       return;
     }
 
-    // MAX: nem módosítjuk a telemetry timestampjeit, csak nem várunk köztük.
+    // MAX: a telemetry timestampjeit változatlanul hagyjuk, de nem egyetlen
+    // microtaskban toljuk át az egész aktivitást. React a microtaskon belüli
+    // állapotfrissítéseket összecsomagolja; több száz/ezer sample esetén ettől
+    // a LAB úgy nézett ki, mintha semmi sem történt volna. Kis csomagok között
+    // visszaadjuk a vezérlést az event loopnak, így a recorder és a UI is
+    // stabilan előrehalad, miközben a MAX továbbra is közel azonnali marad.
     if (!Number.isFinite(this.playbackRate) || this.playbackRate <= 0) {
-      queueMicrotask(() => {
+      let index = 0;
+      const emitChunk = () => {
         if (this.stopped) return;
-        for (const sample of this.samples) {
-          if (this.stopped) return;
+
+        const end = Math.min(this.samples.length, index + MAX_PLAYBACK_CHUNK);
+        while (index < end) {
+          const sample = this.samples[index];
+          if (!sample) break;
           handlers.onSample(sample);
+          index += 1;
         }
-        if (!this.stopped) this.onComplete?.();
-      });
+
+        if (index >= this.samples.length) {
+          this.timer = null;
+          this.onComplete?.();
+          return;
+        }
+
+        this.timer = window.setTimeout(() => {
+          this.timer = null;
+          emitChunk();
+        }, 0);
+      };
+
+      queueMicrotask(emitChunk);
       return;
     }
 
