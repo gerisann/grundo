@@ -11,6 +11,7 @@ export * from './cells';
 export * from './loops';
 export * from './loopInterior';
 export * from './compactClaim';
+export * from './frontierCleanup';
 export {
   detectLoops,
   detectLoopsDetailed,
@@ -29,7 +30,8 @@ import {
   resolveCompactEmptyWorldClaims,
   type CompactClaimPreview,
 } from './compactClaim';
-import { absorbIsolatedRivalCells, mergeClaims, resolveClaim } from './claim';
+import { cleanupStolenFrontierOrphans } from './frontierCleanup';
+import { mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import type {
@@ -282,10 +284,10 @@ export function processActivityGeometry(
   const mergedClaim =
     perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId, cfg) : null;
   const orphanResult = input.orphanScope
-    ? absorbIsolatedRivalCells(mergedClaim, input.ownership, input.actorId, input.orphanScope, cfg)
-    : { claim: mergedClaim, absorbed: new Set<CellId>() };
+    ? cleanupStolenFrontierOrphans(mergedClaim, input.ownership, input.actorId, input.orphanScope, cfg)
+    : { claim: mergedClaim, reassigned: new Set<CellId>() };
   const claim = orphanResult.claim;
-  for (const cell of orphanResult.absorbed) claimedCells.add(cell);
+  for (const cell of orphanResult.reassigned) claimedCells.add(cell);
 
   const gp = computeActivityGp(
     {
@@ -313,7 +315,7 @@ export function processActivityGeometry(
     diagnostics: {
       droppedPoints: geometry.droppedPoints,
       largeGaps: geometry.largeGaps,
-      orphanAbsorbedCells: orphanResult.absorbed.size,
+      orphanAbsorbedCells: orphanResult.reassigned.size,
       loops: geometry.loopDiagnostics,
     },
   };
