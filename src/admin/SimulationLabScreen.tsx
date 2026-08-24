@@ -23,7 +23,7 @@ import './simulation-lab.css';
 
 const STORAGE_KEY = 'grundo.lab.scenarios.v1';
 
-type PlaybackRate = 1 | 10 | 100 | 0;
+type PlaybackRate = '1' | '10' | '100' | 'max';
 
 interface SavedScenario {
   id: string;
@@ -44,7 +44,7 @@ export function SimulationLabScreen() {
   const [dropoutPercent, setDropoutPercent] = useState(0.5);
   const [spikePercent, setSpikePercent] = useState(0);
   const [seed, setSeed] = useState(738291);
-  const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(100);
+  const [playbackRate, setPlaybackRate] = useState<PlaybackRate>('100');
   const [recorder, setRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-preview'));
   const [running, setRunning] = useState(false);
   const [scenarioName, setScenarioName] = useState('Tesztkör');
@@ -86,7 +86,6 @@ export function SimulationLabScreen() {
 
   async function runSimulation() {
     await sourceRef.current?.stop();
-
     if (generated.samples.length < 2) return;
 
     const started = start(createRecorder(activityType, `lab-${Date.now()}`), generated.samples[0]!.t);
@@ -94,7 +93,8 @@ export function SimulationLabScreen() {
     setRunning(true);
 
     let current = started;
-    const source = new SimulationPositionSource(generated.samples, playbackRate, () => {
+    const rate = playbackRate === 'max' ? 0 : Number(playbackRate);
+    const source = new SimulationPositionSource(generated.samples, rate, () => {
       const endedAt = generated.samples[generated.samples.length - 1]?.t ?? Date.now();
       current = finish(current, endedAt);
       setRecorder(current);
@@ -221,10 +221,10 @@ export function SimulationLabScreen() {
             <SegmentedControl
               label="Sebesség"
               options={[
-                { value: 1, label: '1×' },
-                { value: 10, label: '10×' },
-                { value: 100, label: '100×' },
-                { value: 0, label: 'MAX' },
+                { value: '1', label: '1×' },
+                { value: '10', label: '10×' },
+                { value: '100', label: '100×' },
+                { value: 'max', label: 'MAX' },
               ]}
               value={playbackRate}
               onChange={setPlaybackRate}
@@ -267,7 +267,7 @@ export function SimulationLabScreen() {
               <span>Kattints a térképre új ponthoz, a számozott pontokat húzhatod.</span>
             </div>
             <div className="lab-mapbar__actions">
-              <Button variant="secondary" size="sm" onClick={() => setRoute((points) => points.slice(0, -1))} disabled={route.length === 0}>Utolsó törlése</Button>
+              <Button variant="secondary" size="sm" onClick={() => { resetRun(); setRoute((points) => points.slice(0, -1)); }} disabled={route.length === 0}>Utolsó törlése</Button>
               <Button variant="secondary" size="sm" onClick={() => { resetRun(); setRoute([]); }} disabled={route.length === 0}>Útvonal törlése</Button>
             </div>
           </div>
