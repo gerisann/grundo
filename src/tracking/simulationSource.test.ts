@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applySample, createRecorder, start } from './recorder';
 import {
   generateGpsActivity,
   routeDistanceM,
+  SimulationPositionSource,
   type SimulationWaypoint,
 } from './simulationSource';
 
@@ -91,5 +92,34 @@ describe('GPS activity generator', () => {
     expect(result.route).toEqual(ROUTE);
     expect(result.spikeSamples).toBeGreaterThan(0);
     expect(result.samples.some((sample) => Math.abs(sample.lat - BASE.lat) > 0.0001)).toBe(true);
+  });
+
+  it('MAX lejátszás minden mintát átad és befejeződik', async () => {
+    vi.useFakeTimers();
+    try {
+      const result = generateGpsActivity([east(0), east(3000)], CLEAN);
+      const received: typeof result.samples = [];
+      let completed = false;
+      const source = new SimulationPositionSource(result.samples, 0, () => {
+        completed = true;
+      });
+
+      await source.start(
+        {
+          onSample(sample) {
+            received.push(sample);
+          },
+          onError() {},
+        },
+        'ride',
+      );
+
+      await vi.runAllTimersAsync();
+
+      expect(received).toEqual(result.samples);
+      expect(completed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
