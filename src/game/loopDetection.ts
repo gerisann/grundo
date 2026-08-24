@@ -14,21 +14,32 @@ interface AcceptedLoopRecord {
   toIndex: number;
 }
 
+interface ClosureBlock {
+  /** Az éppen lezárt régió. Amíg benne/peremén haladunk, nincs új kompozit closure. */
+  loop: DetectedLoop;
+  /** A tényleges kapu környezete — teljes új kör után itt engedjük újra a repeat closure-t. */
+  gate: Set<CellId>;
+  acceptedAt: number;
+}
+
 /**
- * Hurokdetektor átfedő bezárásokhoz.
+ * Hurokdetektor átfedő és egymásba kapcsolódó bezárásokhoz.
  *
- * A teljes látogatási előzményt megtartjuk, hogy későbbi valódi hurkok
- * használhassanak korábbi útvonalrészt is. Emiatt viszont külön kell kezelni
- * azt, hogy egy fizikai útvonal-találkozás H3-on több egymás melletti cella.
+ * A H3-on egy fizikai útvonal-találkozás nem egy matematikai pont, hanem több
+ * cellából álló kontaktfolt. Ráadásul egy már bezárt régió peremén/belsejében
+ * továbbhaladva ugyanabból az útvonalból több, egyre nagyobb kompozit ciklus is
+ * levezethető. Ezek gráfelméletileg létező ciklusok, de a játék szempontjából
+ * NEM külön bezárási események.
  *
- * Egy elfogadott bezárás után a kapu 1-cellás kontaktzónájában nem keresünk
- * új hurkot. Amikor először kilépünk ebből a zónából, AZ A KILÉPŐ CELLA még
- * kötelező elválasztó cella: ott sem fut hurokvizsgálat. Csak a következő
- * cellától élesedhet újra a detector.
+ * Ezért sikeres bezárás után a teljes lezárt régió (belső + fal + a fal egy
+ * cellás kontaktzónája) ideiglenes closure zone. Amíg az útvonal ebből
+ * ténylegesen ki nem lép, ugyanebből a closure-epizódból nem képezünk új
+ * hurkot. Az első külső cella kötelező szeparátor, csak utána élesedik újra a
+ * detector.
  *
- * Ez fontos különbség. A korábbi verzió a zónából kilépés pillanatában rögtön
- * újraélesedett, ezért ugyanannak a huroknak a kilépési oldalán még egyszer
- * bezárást tudott generálni.
+ * Kivétel az ismételt teljes kör: ha a játékos a falat ténylegesen újra
+ * végigjárja és visszaér az eredeti kapuhoz, az új traversal, ezért új
+ * bezárásként számíthat és defense-et építhet.
  */
 export function detectLoopsDetailed(path: readonly CellId[]): {
   loops: DetectedLoop[];
@@ -41,7 +52,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
 
   const seenAt = new Map<CellId, number[]>();
   const accepted: AcceptedLoopRecord[] = [];
-  let blockedGateZone: Set<CellId> | null = null;
+  let closureBlock: ClosureBlock | null = null;
 
   for (let i = 0; i < path.length; i += 1) {
     const cell = path[i]!;
@@ -52,38 +63,41 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
       shortRevisits += 1;
     }
 
-    /**
-     * Bezárás utáni kapu-debounce.
-     *
-     * - amíg a kapu kontaktzónájában vagyunk: nincs új hurok;
-     * - az ELSŐ cella a zónán kívül: elválasztó cella, még mindig nincs hurok;
-     * - csak a következő cellától vizsgálunk újra.
-     *
-     * Így a metszéspont H3-klasztere és annak kilépő cellája egyetlen
-     * találkozási esemény marad, de egy teljes új kör továbbra is számíthat.
-     */
-    if (blockedGateZone !== null) {
-      if (!blockedGateZone.has(cell)) {
-        blockedGateZone = null;
+    if (closureBlock !== null) {
+      const minimumRepeatSteps = Math.max(
+        GAMEPLAY.MIN_LOOP_STEPS,
+        Math.floor(closureBlock.loop.wall.size * 0.75),
+      );
+      const repeatReady = i - closureBlock.acceptedAt >= minimumRepeatSteps;
+
+      // Ha egy teljes új lap után visszaértünk az eredeti kapuhoz, nem kell
+      // kilépni a closure zone-ból: ez a szándékos multi-lap defense-eset.
+      if (repeatReady && closureBlock.gate.has(cell)) {
+        closureBlock = null;
+      } else if (insideClosureZone(cell, closureBlock.loop)) {
+        noteVisit(seenAt, cell, i);
+        continue;
+      } else {
+        // Az első valóban külső cella szeparátor. Ezen még nem keresünk új
+        // hurkot; a következő cellától indulhat új closure-epizód.
+        closureBlock = null;
+        noteVisit(seenAt, cell, i);
+        continue;
       }
-      noteVisit(seenAt, cell, i);
-      continue;
     }
 
     /**
-     * A mostani cella saját korábbi előfordulásai és a hat élszomszéd minden
-     * korábbi előfordulása hurokkapu-jelölt. A frissebb jelöltet próbáljuk
-     * először, mert az adja a lokális, frissen bezárt hurkot.
+     * A mostani cella saját korábbi előfordulásai és a hat élszomszéd korábbi
+     * előfordulásai lehetnek kapuk. Cellánként legfeljebb a három legfrissebb
+     * strukturálisan érvényes előzményt tartjuk meg: ez megőrzi az overlap
+     * eseteket, de hosszú / ismételt útvonalnál nem engedi felrobbanni a
+     * jelöltek számát.
      */
     const candidates = new Set<number>();
-    for (const index of sameHistory) {
-      if (i - index >= GAMEPLAY.MIN_LOOP_STEPS) candidates.add(index);
-    }
+    addRecentEligible(sameHistory, i, candidates);
     for (const near of gridDisk(cell, 1)) {
       if (near === cell) continue;
-      for (const index of seenAt.get(near) ?? []) {
-        if (i - index >= GAMEPLAY.MIN_LOOP_STEPS) candidates.add(index);
-      }
+      addRecentEligible(seenAt.get(near) ?? [], i, candidates);
     }
     const candidateIndices = [...candidates].sort((a, b) => b - a);
 
@@ -126,7 +140,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
       const candidate: DetectedLoop = { wall, interior, fromIndex: previous, toIndex: i };
 
       // Ugyanannak a geometriai huroknak a közvetlen folytatása nem kap új
-      // jóváírást. Egy teljesen új traversal viszont továbbra is építhet defense-t.
+      // bezárást. Egy teljesen új traversal viszont továbbra is számíthat.
       if (isTraversalDuplicate(candidate, previous, accepted)) {
         continue;
       }
@@ -140,7 +154,11 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
         prunedCells,
       });
       accepted.push({ loop: candidate, toIndex: i });
-      blockedGateZone = gateZone(path[previous]!, cell);
+      closureBlock = {
+        loop: candidate,
+        gate: gateZone(path[previous]!, cell),
+        acceptedAt: i,
+      };
       break;
     }
 
@@ -160,11 +178,39 @@ function noteVisit(history: Map<CellId, number[]>, cell: CellId, index: number):
   else history.set(cell, [index]);
 }
 
+function addRecentEligible(
+  history: readonly number[],
+  currentIndex: number,
+  target: Set<number>,
+): void {
+  let added = 0;
+  for (let i = history.length - 1; i >= 0 && added < 3; i -= 1) {
+    const index = history[i]!;
+    if (currentIndex - index < GAMEPLAY.MIN_LOOP_STEPS) continue;
+    target.add(index);
+    added += 1;
+  }
+}
+
 function gateZone(a: CellId, b: CellId): Set<CellId> {
   const zone = new Set<CellId>();
   for (const cell of gridDisk(a, 1)) zone.add(cell);
   for (const cell of gridDisk(b, 1)) zone.add(cell);
   return zone;
+}
+
+/**
+ * A lezárt régió maga + a fal közvetlen külső kontaktzónája.
+ *
+ * Nem materializáljuk előre a teljes 1-ringet (nagy huroknál felesleges
+ * memória lenne); egy aktuális cellához legfeljebb hét membership-check elég.
+ */
+function insideClosureZone(cell: CellId, loop: DetectedLoop): boolean {
+  if (loop.wall.has(cell) || loop.interior.has(cell)) return true;
+  for (const near of gridDisk(cell, 1)) {
+    if (loop.wall.has(near)) return true;
+  }
+  return false;
 }
 
 function isTraversalDuplicate(
@@ -181,28 +227,35 @@ function isTraversalDuplicate(
 }
 
 /**
- * A H3-kapu következő cellája 1–2 falcellát hozzáadhat vagy elvehet, ezért
- * nem bitpontos azonosságot kérünk. A küszöb szigorú marad, hogy valódi,
- * átfedő, de eltérő hurkokat ne nyeljünk el.
+ * Ugyanazt a területet elsődlegesen a BELSEJE alapján azonosítjuk. A H3-kapu
+ * 1–2 cellás eltolódása a falat látványosan megváltoztathatja úgy, hogy a
+ * bezárt terület valójában azonos marad. Egy valóban nagyobb, új területet is
+ * hozzáadó hurok viszont a belső méretarány miatt nem esik ebbe a dedupe-ba.
  */
 function sameLoopGeometry(a: DetectedLoop, b: DetectedLoop): boolean {
-  const aWall = a.wall;
-  const bWall = b.wall;
-  const minWall = Math.min(aWall.size, bWall.size);
-  const maxWall = Math.max(aWall.size, bWall.size);
-  if (minWall === 0) return false;
-  if (minWall / maxWall < 0.88) return false;
-
   const minInterior = Math.min(a.interior.size, b.interior.size);
   const maxInterior = Math.max(a.interior.size, b.interior.size);
-  if (maxInterior > 0 && minInterior / maxInterior < 0.88) return false;
 
-  const smaller = aWall.size <= bWall.size ? aWall : bWall;
-  const larger = smaller === aWall ? bWall : aWall;
-  let shared = 0;
-  for (const cell of smaller) {
-    if (larger.has(cell)) shared += 1;
+  if (minInterior > 0) {
+    if (minInterior / maxInterior < 0.85) return false;
+    const smaller = a.interior.size <= b.interior.size ? a.interior : b.interior;
+    const larger = smaller === a.interior ? b.interior : a.interior;
+    let shared = 0;
+    for (const cell of smaller) {
+      if (larger.has(cell)) shared += 1;
+    }
+    if (shared / minInterior >= 0.95) return true;
   }
 
-  return shared / minWall >= 0.9;
+  const minWall = Math.min(a.wall.size, b.wall.size);
+  const maxWall = Math.max(a.wall.size, b.wall.size);
+  if (minWall === 0 || minWall / maxWall < 0.9) return false;
+
+  const smallerWall = a.wall.size <= b.wall.size ? a.wall : b.wall;
+  const largerWall = smallerWall === a.wall ? b.wall : a.wall;
+  let sharedWall = 0;
+  for (const cell of smallerWall) {
+    if (largerWall.has(cell)) sharedWall += 1;
+  }
+  return sharedWall / minWall >= 0.95;
 }
