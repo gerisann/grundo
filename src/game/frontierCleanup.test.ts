@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { gridDisk, latLngToCell } from 'h3-js';
-import type { CellId, CellOwnership, ClaimResult, OwnershipMap } from '@/types';
+import type {
+  CellFate,
+  CellId,
+  CellOwnership,
+  ClaimResult,
+  OwnershipMap,
+} from '@/types';
 import {
   cleanupStolenFrontierOrphans,
   findStolenFrontierReassignments,
@@ -17,7 +23,7 @@ function ownership(owner: string, defense = 1): CellOwnership {
 }
 
 function stolenClaim(updates: Map<CellId, CellOwnership>): ClaimResult {
-  const fates = new Map<CellId, 'stolen'>();
+  const fates = new Map<CellId, CellFate>();
   for (const cell of updates.keys()) fates.set(cell, 'stolen');
   return {
     updates,
