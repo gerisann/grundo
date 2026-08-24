@@ -1,86 +1,821 @@
-# GRUNDO — átadás
+# GRUNDO — Claude handoff
 
-## ÁLLAPOT
+> Frissítve: **2026-08-25**  
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo`  
+> GitHub: `gerisann/grundo`  
+> Ág: **`main`**  
+> Kód-baseline a handoff frissítése előtt: **`1770a743` — `ci: scope app and server Vitest runs correctly`**
 
-- Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`.
-- Jelenlegi HEAD: `a583af0 Értesítés olvasott gesztusának javítása`.
-- A 2026-08-23-i iOS terepteszt kritikus rögzítési, hurok- és push-hibáinak
-  javítása elkészült; push/telepítés még nincs.
-- Teljes unit teszt: **412 zöld**, 112 emulátoros teszt kihagyva. Frontend és
-  backend production build zöld.
+## 0. START HERE
 
-## ELKÉSZÜLT
+1. **Olvasd el először az `AGENTS.md`-t.** A projekt architekturális és munkafolyamat-szabályai elsőbbséget élveznek.
+2. Ez az egész GRUNDO projekt jelenleg **tesztfázisban van**, nincs production user. Geri kifejezetten engedte, hogy közvetlenül a `main` ágon dolgozzunk; nem kell külön feature branch csak azért, hogy ne törjünk el valamit.
+3. A játékmotor közös kliens/szerver kód: `src/game`. A kliens számítása preview; normál aktivitásmentésnél **a backend az authoritative**, és a raw trace-ből újraszámolja az eredményt.
+4. A legutóbbi komoly munka a területfoglalási motor, a Simulation LAB, nagy H3 hurkok, multi-player lopás és teljesítmény körül történt. **Ne egyszerűsítsd vissza ezeket full res12 materializálásra.**
+5. A defense-építés szándékos: egy valóban újra teljesített teljes traversal ugyanazt a területet 2×–5×-re erősítheti. Olyan „dedupe” vagy cooldown nem jó, ami ezt megszünteti.
 
-- Natív WebView-újrainduláskor az aktív mérés automatikusan visszaáll; a JS
-  leválása nem állítja le a Core Location szolgáltatást és Live Activityt.
-- A Mapbox nyomvonal- és cellaforrása külön frissül. GPS-pont vagy stopper nem
-  építi újra a több ezer cellás GeoJSON-t, megszüntetve a WKWebView
-  újraindulásának azonosított memória/GPU-terhelését.
-- A GPS élő szűrése és a játékmotor egyaránt 30 m pontossági küszöböt használ.
-- Az élő előnézet minden új H3-cellánál frissül, nem öt GPS-pontonként.
-- A hurok azonos vagy élszomszédos korábbi falcellánál záródik; a GPS-vonalnak
-  nem kell kereszteznie önmagát. A flood fill minimuma kizárja az üres
-  oda-vissza folyosót. A nyolcas második hurka is ugyanazzal a közös motorral
-  számolódik élőben és mentéskor.
-- Az elrabolt előnézeti cellák meglévő `stolen` rétege `#FA5F73`; a terepi
-  képeken a hiányzó hurok miatt nem jött létre elrabolt előnézet.
-- APNs Debugban `development`, TestFlight Release-ben `production`; Codemagic
-  ezt archive előtt ellenőrzi. A backend naplózza a sikertelen FCM/APNs
-  küldések platformját és hibakódját.
-- A specifikáció ezekkel a döntésekkel frissült.
+---
 
-### UI-IGAZÍTÁSOK (2026-08-23/24)
+## 1. JELENLEGI ELLENŐRZÖTT ÁLLAPOT
 
-- A rivális-lista kártyája arányos lila (`#8F5CF2`) / korall (`#FB5F73`)
-  háttérrel, a két szélen címkés `+`/`−` cellamérleggel és középre tett
-  avatárral készül. A szorzó jobb felső, sötét kiemelést kapott.
-- A legalább egy kedvelést kapott aktivitások szíve korall (`#FB5F73`).
-- A Küldetések képernyő egyszerű nézetében az időkeret és a mozgásforma
-  látszik. A további tempó/sebesség, cél és irány a részletes nézetben van;
-  a sebesség/tempó `− / érték / +` vezérlővel állítható. A nézetváltó és a
-  Mentett küldetések együtt az alsó gombsorban vannak.
-- Aktivitás-részletező: hexagon kapcsoló, aktív állapot, teljes hurokcellák
-  kliensoldali visszaszámítása régi aktivitásokhoz. A Mapbox-attribúció 28 px
-  feljebb és 32% opacityvel jelenik meg (jogi okból nem távolítható el).
-- Feed: a hexagon kapcsoló megnyitásakor már élő `MapView` réteget használ,
-  nem félrecsúszó SVG-t; a backendből érkező `activityCells` elsőbbséget kap.
-- Új aktivitások `activityCells` mezőjét a normál és a darabolt backend
-  feldolgozás is menti és a feed/részletező API visszaadja.
-- Az értesítés olvasottra húzásának maximuma 120 px, a commit-küszöb 84 px;
-  a zöld animáció lezárásakor a lokális állapot is nullázódik, így nem ragadhat
-  bent a zöld sáv.
+A legfrissebb GitHub Actions futás a `1770a743` kód-baseline-on **teljesen zöld**:
 
-### FONTOS KORLÁT / KÖVETKEZŐ JAVÍTÁS
+- app tesztek: ✅
+- app TypeScript/Vite build: ✅
+- server tesztek: ✅
+- server build: ✅
 
-- Régi, már elmentett aktivitások Firestore-dokumentumában nincs
-  `activityCells`. Saját, teljes track esetén a kliens ezt újraszámolja; idegen
-  vagy privát útvonalnál ez nem garantálható. Ha minden régi aktivitáshoz
-  pontos cellaréteg kell, külön backfill script szükséges.
-- Az aktivitásonkénti cellák ma egyszínű `interior` rétegben látszanak. Az új
-  és elrabolt cellák külön színéhez a backendnek cellánkénti sorsot (`free` /
-  `stolen`) is kellene eltárolnia és kiadnia.
+A user külön, lokálisan/Cloud Shellben lefuttatta az app-only teszteket is:
 
-## TELEPÍTÉSI SORREND
+```text
+Test Files  30 passed (30)
+Tests       302 passed (302)
+Failures    0
+Errors      0
+```
 
-1. Push.
-2. Adatbázis-, szabály- és indexlépés nem kell.
-3. A `f14317c` és `48f9fa5` óta backend **és** frontend telepítés kell az
-   aktivitás-cellák éles működéséhez. A későbbi tiszta UI commitokhoz csak
-   frontend kell.
-4. Codemagic/TestFlight build kell a natív javításokhoz.
+App-only teszt parancs:
 
-## KÖVETKEZŐ ELLENŐRZÉS
+```bash
+npx vitest run --dir src
+```
 
-1. TestFlight: 10+ perc, előtér, 2D/3D, képernyőzár, visszatérés; nem jelenhet
-   meg félbehagyott rögzítés.
-2. Egyszerű szomszédos cellafalú hurok és nyolcas: élőben és mentés után is.
-3. Rivális terület hurka: elrabolt előnézet `#FA5F73`.
-4. Natív push lezárt képernyőn. Hiba esetén Cloud Run `[push]` log.
-5. Értesítés: lassú balra húzás, gyors pöccintés, sikertelen hálózat esetén is
-   ne maradjon zöld sáv.
-6. A küldetés-útvonal minősége külön következő menet.
+A CI-t a `.github/workflows/ci.yml` külön `app` és `server` jobra bontja. A root `npm test` korábban összeszedett server teszteket is rossz dependency-környezettel; ezért lett rendesen szétválasztva.
 
-## MODELLJAVASLAT
+### Legutóbbi fontos stabilizálás
 
-Terepi ellenőrzéshez **Terra, közepes** elég; új iOS lifecycle vagy APNs
-hibakód elemzéséhez **Sol, erős**.
+A Vitest korábban több száz GPS objektumot írt ki diffként. Ez **egy darab** MAX-playback teszt hibája volt: `window.setTimeout` Node alatt nem létezett, a replay 128 minta után megszakadt, Vitest pedig kiírta az összes hiányzó sample-t. Javítva környezetfüggetlen `globalThis.setTimeout` / `globalThis.clearTimeout` használatra.
+
+Commit:
+
+```text
+e66482a  fix: make GPS simulation playback environment neutral
+```
+
+---
+
+## 2. JÁTÉKMOTOR — ALAPSZABÁLYOK
+
+Fő helyek:
+
+- `src/game/index.ts`
+- `src/game/claim.ts`
+- `src/game/loopDetection.ts`
+- `src/game/loopInterior.ts`
+- `src/game/compactClaim.ts`
+- `src/game/frontierCleanup.ts`
+- `src/game/cells.ts`
+- `src/config/gameplay.ts`
+
+Fontos aktuális szabályok:
+
+- gameplay H3 resolution: **res12**
+- névleges `CELL_AREA_M2 = 307.09`
+- `MIN_INTERIOR_CELLS = 1`
+- `MIN_LOOP_STEPS = 6`
+- `MAX_LOOP_BBOX_CELLS = 500000`
+- `MAX_DEFENSE = 5`
+- walking/running és cycling külön versenytérként kezelhető
+- egy aktivitásban több hurok is létrejöhet
+- ugyanaz a teljes hurok valódi új traversalban újra teljesítve defense-et épít
+- ugyanazon aktivitásból matematikailag levezethető kompozit/nested ciklus **nem feltétlenül jelent új gameplay bezárást vagy új claim creditet**
+
+A normál ownership szabály `src/game/claim.ts`-ban ugyanazon ownernél defense-et emel max 5-ig. A hurkok szekvenciálisan kerülnek elszámolásra, hogy valódi repeat lap tudjon erősíteni.
+
+---
+
+## 3. HUROKDETEKTOR — AKTUÁLIS MODELL
+
+A detector külön modulban van:
+
+```text
+src/game/loopDetection.ts
+```
+
+A flood-fill / fal-pruning utility-k maradtak:
+
+```text
+src/game/loops.ts
+```
+
+### Inkrementális detector
+
+A jelenlegi alap osztály:
+
+```ts
+IncrementalLoopDetector
+```
+
+A batch API (`detectLoopsDetailed(path)`) kompatibilitásból megmaradt, de belül ugyanazt az inkrementális state machine-t eteti végig egyszer.
+
+Miért kellett: korábban a LAB minden preview-framen az egész addigi útvonalat újraszámolta. Ha a játékos egy már korábban bejárt fal mellett haladt, egyetlen új H3 cella több régi kontaktot generált, és mindegyiken lefuthatott:
+
+```text
+path.slice
+→ Set
+→ Tarjan bridge / pruneDeadEnds
+→ interior build / flood fill
+→ overlap vizsgálat
+```
+
+Ez kis route-on is drasztikus lassulást okozott.
+
+Fő commitok:
+
+```text
+ecfb38a  perf: make loop detection incremental
+6a961f6  perf: reuse incremental activity geometry
+9007a84  perf: use incremental loop geometry in LAB
+d7417b0  test: verify incremental geometry parity
+```
+
+### H3 kontaktfolt-deduplikáció
+
+Egy fizikai kereszteződés több szomszédos res12 cellára eshet. Ezek ne indítsanak 2–6 külön closure-t. A detector kontakt-index klaszterezést használ (`CONTACT_INDEX_CLUSTER_GAP = 6`), mielőtt a drága geometria fut.
+
+Korábbi releváns commitok:
+
+```text
+512e9e7  fix: preserve overlapping loop history
+5cf6362  fix: use overlap-aware loop detector
+76264bc  test: cover overlapping loop closures
+b1dcdae  fix: collapse duplicate closures at H3 intersections
+3303709  test: prevent duplicate closures inside one H3 gate
+c677d1f  fix: require separation after loop gate exit
+fa38b19  test: cover loop gate exit debounce
+5129d72  fix: collapse composite closures inside closed regions
+b3e6432  test: cover composite closures inside closed region
+```
+
+### Closure zone
+
+Egy sikeres closure után nem csak a kapu 1 gyűrűje blokkol: a frissen lezárt régió + fal/contact zóna egy closure-epizódnak számít. Amíg a route ebből ténylegesen ki nem lép, ne képződjenek egyre nagyobb, ugyanabból a closure-ből levezetett kompozit ciklusok.
+
+- első valóban külső cella: separator
+- következő cellától indulhat új closure-epizód
+- kivétel: teljes új lap után az eredeti gate-hez visszaérve repeat closure engedett, mert ez defense-építés
+
+### Post-closure sliver és repeat-lap H3 jitter
+
+A tesztelés közben két regresszió derült ki:
+
+1. bezárás után kifelé haladva a régi fal + új rövid ág létre tudott hozni egy 18 falcellás / 2 interior cellás vékony fals slivert;
+2. ugyanazt a fizikai négyzetet négyszer futva a 4. kör H3 kapuzási jitter miatt 1 új cellával nagyobb lett.
+
+Javítás:
+
+```text
+f19e24f  fix: reject post-closure slivers and stabilize repeat loops
+```
+
+Aktuális elv:
+
+- vékony, régi falból és friss kifutó ágból származó sliver nem új gameplay hurok;
+- valódi repeat traversalnál 1–2 cellás H3 kvantálási eltérés nem növelheti lassan a területet; az előző azonos fizikai loop kanonikus geometriája használható defense-építéshez;
+- ettől különböző, legitim új hurkokat nem szabad összemosni.
+
+A diagnosztikai tesztfájlok ideiglenesen bekerültek, majd törölve lettek:
+
+```text
+075f7ff  test: remove temporary spur diagnostic
+6a83294  test: remove temporary multi-lap diagnostic
+```
+
+---
+
+## 4. TRAVERSAL CREDIT — MIÉRT NEM DUPLÁZZUK A NESTED TERÜLETET
+
+A figure-eight / összetett route egyik valódi modellhibája ez volt:
+
+- bezárult egy kisebb hurok;
+- később egy nagyobb, ugyanabból a folyamatos traversalból származó geometriai hurok magába foglalta;
+- a claim motor a kisebb területet automatikusan újra +1 defense-re emelte.
+
+A helyes gameplay-szabály:
+
+> Egy cellát ugyanazon traversal történetéből származó későbbi kompozit hurok nem fizethet ki még egyszer. Csak akkor kap új +1 claim creditet, ha a hurok maga az előző jóváírás UTÁN kezdődött, tehát ténylegesen új traversal történt.
+
+Commitok:
+
+```text
+93d2648  fix: credit loop cells only on new traversal
+f5c2542  test: prevent nested loop credit duplication
+```
+
+Ezért **ne** tegyél egyszerű claim-side cooldown-t: a repeat full lapnak továbbra is 2×→5× defense-et kell tudnia építeni.
+
+---
+
+## 5. NAGY HUROK / COMPACT H3
+
+### Eredeti probléma
+
+Egy kb. **177.6 km-es Balaton-jellegű** hurok `hurok túl nagy` hibával elutasításra került.
+
+A régi pipeline a teljes belsőt res12 stringekké materializálta, és kb. **2.2 millió res12 cellánál** hard capet húzott (~675 km² névleges nagyságrend). Ezt **nem** szabad egyszerűen 5–10 millióra emelni: JS `Set`/`Map` stringekkel memória- és CPU-problémát okozna.
+
+### Jelenlegi compact modell
+
+A gameplay továbbra is **res12**. A compact H3 csak reprezentáció / tárolási / render-optimalizáció.
+
+Nagy huroknál:
+
+```text
+pontos boundary / frontier → res12
+homogén teljesen belső rész → H3 parent cellák
+részleges konfliktus → csak az érintett parent bontódik finomabb gyerekekre
+```
+
+A LAB compact ownershipben tipikusan:
+
+```text
+1 res10 parent = 49 res12 gameplay cella
+```
+
+Fontos fájlok:
+
+```text
+src/game/loopInterior.ts
+src/game/loopInterior.test.ts
+src/game/compactClaim.ts
+src/game/compactClaim.test.ts
+src/game/largeLoopCompact.test.ts
+```
+
+Fő commitok:
+
+```text
+87fff6a  feat: add compact loop interior representation
+e476e42  feat: add compact adaptive loop interiors
+90b99fd  feat: detect large loops with compact interiors
+7f1f6fa  feat: resolve compact claims in empty LAB world
+a90f5c4  feat: process compact large loops in LAB
+2a7a684  feat: render compact large-loop previews
+bca22fc  feat: show exact compact claim stats in LAB
+22c906e  perf: avoid expanding untouched compact parents
+dcae286  test: process large loops through compact pipeline
+f331650  test: cover loops beyond legacy fine-cell cap
+aed4e9b  perf: compact LAB claim geometry for Mapbox
+```
+
+A LAB preview a renderhez H3 `compactCells()`-t is használhat, hogy több tízezer azonos állapotú parentből ne készüljön ugyanennyi GeoJSON feature.
+
+### Elszámolási szabály eltérő cellaméreteknél
+
+**Soha ne polygon-overlapből vagy a kirajzolt coarse cella területéből könyveld a gain/loss értéket.**
+
+Minden:
+
+- territory gain/loss
+- free/stolen/reclaimed/breakthrough
+- defense
+- GP
+
+kanonikus **res12-equivalent gameplay cellaszámban** értendő.
+
+Példa: egy res10 parent 49 res12 gyerek. Ha ebből 7-et lopnak el, 7 vált ownert és 42 marad. A parent csak reprezentációs optimalizáció; részleges támadásnál lokálisan felbomlik.
+
+---
+
+## 6. SIMULATION LAB — AKTUÁLIS FELÉPÍTÉS
+
+Route:
+
+```text
+/admin/lab
+```
+
+A jelenlegi fő képernyő:
+
+```text
+src/admin/SimulationLabScenarioScreen.tsx
+```
+
+`src/admin/SimulationLabScreen.tsx` jelenleg csak vékony wrapper.
+
+Fontos fájlok:
+
+```text
+src/admin/SimulationLabScenarioScreen.tsx
+src/admin/ScenarioSimulationMap.tsx
+src/admin/SimulationMap.tsx
+src/admin/labScenarioEngine.ts
+src/admin/labScenarioEngine.test.ts
+src/admin/labHierarchicalWorld.ts
+src/admin/labHierarchicalWorld.test.ts
+src/admin/simulation-lab.css
+src/admin/simulation-lab-scenario.css
+```
+
+### Alap LAB funkciók
+
+- Mapbox route editor
+- waypointok kattintással / húzással
+- undo / clear
+- walk/run/ride
+- speed
+- sample interval
+- reported accuracy
+- noise
+- drift
+- dropout
+- GPS spike
+- deterministic seed
+- playback 1× / 10× / 100× / MAX
+- route / raw GPS / accepted recorder külön réteg
+- H3 / loop / claim rétegek
+- defense 1×–5× jelölések
+- loop diagnostics
+- localStorage scenario mentés
+- helyi sandbox; normál API/Firestore worldöt nem ír
+
+Korábbi Mapbox style-sync race javítás:
+
+```text
+c7d16d2  fix: keep LAB Mapbox state in sync
+```
+
+### LAB performance throttling
+
+Hosszú replaynél korábban minden GPS fix újraküldte a teljes piros/zöld LineStringet és újrafuttatta a teljes game previewt. Most a vizuális frame-ek korlátozottak, miközben a recorder minden mintát megkap és a végén egzakt teljes eredmény készül.
+
+```text
+2497089  perf: bound LAB live engine recomputation
+b85bae8  perf: bound LAB track rendering work
+```
+
+---
+
+## 7. GPS SZIMULÁCIÓ
+
+Fontos fájlok:
+
+```text
+src/tracking/types.ts
+src/tracking/simulationSource.ts
+src/tracking/simulationSource.test.ts
+```
+
+`SimulationPositionSource` ugyanazt a `PositionSource` interfészt implementálja, mint a normál tracking source.
+
+Modellezett jelenségek:
+
+- sebességvariáció
+- timestamps / sample interval
+- reported accuracy
+- pillanatnyi GPS noise
+- korrelált lassú drift
+- dropout
+- spike
+- seedelt determinisztikus random
+- 1×/10×/100×/MAX
+- MAX chunkolt emit (128 minta + event-loop yield)
+
+Pragmatikus „normal phone, outdoor” tesztprofil, amit használtunk:
+
+```text
+Jelentett pontosság: ~6 m
+Mintavétel:          1 s
+Pillanatnyi zaj:     ~3 m
+Lassú drift:         ~0.2 m/minta
+Jelkimaradás:        ~0.5–0.7 %
+GPS spike:           ~0–0.2 %
+```
+
+Ez **heurisztikus szimulációs baseline**, nem kalibrált iPhone/Android mérési profil.
+
+---
+
+## 8. MULTI-PLAYER / PHASE LAB
+
+A user kifejezett célja: területlopás és 5–10 player szimultán aktivitásának tesztelése.
+
+Motor:
+
+```text
+src/admin/labScenarioEngine.ts
+src/admin/labScenarioEngine.test.ts
+```
+
+Commitok:
+
+```text
+9549085  feat: add multi-player LAB phase engine
+4a38dd0  test: cover multi-player LAB phases
+3f2eec4  feat: add multiplayer LAB map
+0cf69dc  feat: add phase and multiplayer LAB editor
+4ba9b6a  style: add multiplayer LAB controls
+6d09f2c  feat: switch LAB to phase multiplayer screen
+```
+
+### Modell
+
+- egy scenario több phase-ből áll
+- max 10 player
+- playerenként külön route/config/seed/activity/start offset
+- egy phase-en belül a GPS recording párhuzamos idővonalon futhat
+- az authoritative sandbox world **finish/commitkor** változik, nem minden GPS fixnél
+- commit finish-sorrendben történik
+- azonos finish timestampnél determinisztikus, seedelt tie-break
+- a world megmarad a phase-ek között
+- ugyanaz a phase újrafuttatható world reset nélkül → defense tesztelhető
+
+Ez a jelenlegi LAB-ban **transaction-equivalent determinisztikus modell**, nem valódi Firestore contention. Valódi race/concurrency teszthez később emulator-backed concurrent commit mód kell.
+
+### Phase UX
+
+A `Phase indítása` korábban úgy tűnhetett, mintha nem csinálna semmit, mert előbb szinkron headless calculation futott, és a hiba csak console-ba került.
+
+Javítva:
+
+```text
+preparing → running → done / error
+```
+
+- azonnali UI feedback
+- progress
+- elapsed time
+- látható hibaüzenet
+- mozgó player markerek
+- `Aktív player` átnevezve `Player teszt`-re
+
+Commitok:
+
+```text
+20daff0  fix: surface and replay LAB phase state
+76e3ddc  feat: show live players during LAB phase replay
+1fd2ea7  style: add LAB phase progress and status feedback
+```
+
+`Player teszt` csak a kiválasztott player solo previewja; nem az egész phase commitja.
+
+---
+
+## 9. HIERARCHIKUS LAB WORLD — COMPACT LOPÁS
+
+A multi-player phase első compact tesztje ezzel állt meg:
+
+```text
+Compact hurok ownership-feldolgozása csak a blokkos backend útvonalon engedett.
+```
+
+Nem volt helyes egyszerűen kivenni a guardot, mert az első compact claim csak a finom peremet írta volna a sandbox worldbe, és a következő player a nagy homogén belsőt tévesen szabadnak látta volna.
+
+Ezért készült külön mixed-resolution hierarchical LAB world:
+
+```text
+src/admin/labHierarchicalWorld.ts
+src/admin/labHierarchicalWorld.test.ts
+```
+
+Modell:
+
+```text
+res10 parent = homogén ownership/defense 49 res12 cellára
+res12 override = csak részlegesen érintett parentben
+```
+
+Ha egy kis normál hurok beleharap egy compact parentbe, csak az érintett parent bomlik 49 gyerekre; a világ többi compact része változatlanul tömör marad.
+
+Commitok:
+
+```text
+4a6ddbf  refactor: expose compact claim credits
+a6079d9  feat: add hierarchical LAB compact ownership
+b9525ae  fix: use hierarchical ownership in LAB phases
+0b18328  test: cover compact multiplayer LAB ownership
+```
+
+Tesztek lefedik:
+
+- 40k+ res12-equivalent compact terület bulk lopását másik playerrel
+- kis normál hurok részleges lopását compact parentből res12 override-okkal
+
+---
+
+## 10. RABLÁS UTÁNI ÁRVA CELLÁK — VÉGLEGES JÁTÉKSZABÁLY
+
+A user képeken mutatta, hogy GPS pontatlanság miatt rablás után maradhat 1 darabos régi-owner cella az új terület belsejében/peremén.
+
+A user által **jóváhagyott végleges szabály**:
+
+> Rablás után, a friss frontier post-claim snapshotjában, ha egy cella **nem érintkezik legalább 2 azonos tulajdonú oldalszomszéddal**, átkerül ahhoz az ownerhez, amelyik a legtöbb oldalán érintkezik vele. Holtversenynél marad. A döntések egyetlen snapshotból készülnek és egyszerre kerülnek alkalmazásra — nincs kaszkád / újraértékelés.
+
+Miért fontos a snapshot-only szabály: egy legitim, 1 cella széles folyosó belső celláinak 2 azonos szomszédja van. A végpont esetleg csak 1. Ha az algoritmus iteratív lenne, a végpont levágása után a következő is végponttá válna és visszaenné az egész folyosót. Ezért **NO CASCADE**.
+
+Fájlok:
+
+```text
+src/game/frontierCleanup.ts
+src/game/frontierCleanup.test.ts
+```
+
+Commitok:
+
+```text
+14e9f2d  feat: add stolen frontier orphan cleanup
+861438a  refactor: keep frontier cleanup independent
+fee403a  feat: apply frontier cleanup in game engine
+8a1b5e3  feat: clean stolen frontier orphans in LAB world
+d9211e0  test: cover stolen frontier orphan cleanup
+2fa8ca9  test: type frontier cleanup fates explicitly
+62f7846  test: cover frontier cleanup through claim pipeline
+64375a9  test: expect all eligible frontier orphans to clean up
+```
+
+A szabály csak **tényleges stolen frontier** után fusson, ne globális world-szépítésként.
+
+---
+
+## 11. BACKEND AUTHORITATIVE ÚTVONAL
+
+Normál activity POST:
+
+```text
+server/src/routes/activities.ts
+```
+
+Normál commit pipeline:
+
+```text
+server/src/lib/activityCommit.ts
+```
+
+Ez a közös játékmotort használja:
+
+```ts
+import { processActivity } from '../../../src/game';
+```
+
+Ezért minden loop/claim/frontier rule módosításnál:
+
+- LAB teszthez frontend deploy elég;
+- **valódi elmentett activity viselkedéshez Cloud Run backend deploy is kell.**
+
+A szerver a kliens previewját nem tekinti authoritative-nak, raw trace-ből újraszámol.
+
+---
+
+## 12. KRITIKUS NYITOTT FELADAT: PRODUCTION COMPACT BACKEND
+
+**EZ MÉG NINCS KÉSZ.**
+
+A LAB már tud:
+
+- nagy compact loopot detektálni
+- compact interiorral számolni
+- exact res12-equivalent statokat adni
+- Mapboxon tömören renderelni
+- multi-player compact ownershipet / lopást kezelni
+- részleges compact parentet finom override-dá bontani
+
+A production/chunked backend azonban még nem lett teljesen átállítva hierarchikus compact claimre.
+
+Elsődleges érintett fájlok:
+
+```text
+server/src/lib/activityChunked.ts
+server/src/lib/activityCommit.ts
+server/src/lib/grid.ts
+server/src/lib/gridMath.ts
+server/src/routes/activities.ts
+```
+
+A backend tárolási modell már eleve blokkokban dolgozik és tud homogén/uniform állapotokat tömöríteni, de a teljes nagy-hurok pipeline-ban **nem szabad a compact interior parenteket több millió res12 stringgé visszabontani**.
+
+A production implementációnak block/bulk módon meg kell őriznie:
+
+- free
+- reclaimed
+- stolen
+- breakthrough
+- defense 1–5
+- traversal credit
+- frontier orphan cleanup
+- exact res12-equivalent area/GP
+- partial-parent splitet csak ott, ahol tényleg szükséges
+
+A core-ban szándékosan volt/van guard az unsafe compact ownership feldolgozás ellen. **Ne töröld csak azért, hogy a hiba eltűnjön.** Előbb a teljes blokkos backend útvonalat kell korrektül implementálni.
+
+---
+
+## 13. KÖVETKEZŐ PERFORMANCE FELADAT: ÉLES TRACKING PREVIEW
+
+Korábban ellenőriztük, hogy a `TrackingScreen` élő previewja ugyanabba az O(n²)-szerű mintába tud esni, mint a régi LAB: új H3-cellánál a teljes addigi útvonalat újra processzálhatja.
+
+Érintett:
+
+```text
+src/screens/TrackingScreen.tsx
+```
+
+A LAB már `IncrementalActivityGeometry` / inkrementális detector irányba lett átkötve. **Ellenőrizd a jelenlegi `TrackingScreen.tsx`-et**, mielőtt módosítod; ha még teljes batch `processActivity(...)` fut minden új cellánál, ugyanazt az inkrementális geometry cache-t kell rávezetni.
+
+A final save maradhat batch/server-authoritative, mert az csak egyszer fut.
+
+---
+
+## 14. KÖVETKEZŐ KONKRÉT VALIDÁCIÓK
+
+### A. Bonyolult 11 pontos route
+
+A user vizuális számítása szerint a tesztroute-nak **4 fizikai closure-t** kell adnia, nem 9-et:
+
+1. jobb alsó loop
+2. felső loop
+3. középső/átfedő loop a későbbi keresztezésnél
+4. utolsó loop, ami valódi új traversalból duplázza az első területét
+
+A cellaszorzók már jók voltak; a closure-számot a legfrissebb detector után újra kell validálni. A `f19e24f` sliver fix nem törheti el a legitim átfedő hurkokat.
+
+### B. 177.6 km-es compact stresszteszt
+
+Elvárás LAB-ban:
+
+- nincs `hurok túl nagy`
+- closure elfogadva compact belsővel
+- pontos res12-equivalent stats
+- nem materializál több millió finom cellát
+- Mapbox nem fagy meg
+
+### C. Multi-player lopás
+
+Tesztelendő:
+
+- Phase 1: A foglal
+- Phase 2: B részben/teljesen lop
+- ugyanabban a phase-ben A/B/C eltérő start/finish order
+- 5–10 player overlap
+- compact + fine overlap
+- orphan cleanup csak stolen frontier után fusson
+- nincs cleanup cascade
+
+### D. Future: `RACE FUZZ`
+
+Jó következő LAB funkció lenne ugyanazt a simultaneous phase-t pl. 100 különböző seedelt commit orderrel lefuttatni, és összehasonlítani a final worldöt. Ha valódi Firestore contentiont akarunk mérni, ehhez külön emulator-backed concurrent commit mód kell.
+
+---
+
+## 15. KORÁBBI iOS / UI MUNKA, AMI TOVÁBBRA IS RELEVÁNS
+
+A korábbi handoffból megőrzendő állapot:
+
+- natív WebView újrainduláskor aktív tracking visszaáll; JS detach nem állítja le a Core Locationt és Live Activityt
+- Mapbox track és cell source külön frissül, hogy GPS fix / stopper ne építse újra fölöslegesen a több ezer cellás GeoJSON-t
+- live GPS szűrés és game filter 30 m accuracy threshold körül van összehangolva
+- APNs Debug = development, TestFlight Release = production; Codemagic ellenőrzi
+- backend push hibáknál platform / FCM/APNs hibakód logolható
+- rival card, Missions UI, activity-detail hex toggle, Feed live `MapView`, notification swipe korábbi javításai megmaradnak
+- új activity-k `activityCells` mezőt mentenek és feed/detail API ki tudja adni
+
+### Legacy `activityCells` caveat
+
+Régi Firestore activity dokumentumokban nincs feltétlen `activityCells`.
+
+- saját teljes trackből kliens újraszámolhatja
+- idegen/private route-nál ez nem garantált
+- ha minden régi activityhez exact cell layer kell, külön backfill szükséges
+
+Per-activity vizualizációnál a történelmi `free/stolen` cell-fate tárolás továbbra is külön adatmodell-kérdés lehet; ne keverd össze a jelenlegi world ownershipdel.
+
+---
+
+## 16. TELEPÍTÉS
+
+### Frontend / Firebase Hosting
+
+```bash
+cd ~/grundo
+git pull
+npm install
+npm run build
+firebase deploy --only hosting
+```
+
+### Backend / Cloud Run
+
+```bash
+cd ~/grundo
+git pull
+gcloud builds submit --config cloudbuild.yaml --substitutions=_MAPBOX_TOKEN=<existing configured token>
+```
+
+Ne másolj / írj ki tényleges secretet vagy tokent handoffba/logba.
+
+### Firebase rules / indexes / storage
+
+```bash
+cd ~/grundo
+firebase deploy --only firestore:rules,firestore:indexes,storage
+```
+
+LAB-only UI módosításnál frontend deploy elég.
+
+Game-engine módosításnál a normál mentéshez backend deploy is kell, mert a szerver újraszámolja a trace-t.
+
+**A legutóbbi final game-engine fixek utáni Hosting deploy nincs ebben a handoffban megerősítve. A production compact backend pedig még nincs kész, ezért azt ne tekintsd deploy-ready feature-nek.**
+
+---
+
+## 17. FONTOS FÁJLOK CLAUDE-NAK
+
+Olvasási sorrend javaslat:
+
+```text
+AGENTS.md
+HANDOFF.md
+docs/03-jatekszabalyok.md
+docs/06-architektura-es-admin.md
+
+src/game/index.ts
+src/game/loopDetection.ts
+src/game/loopInterior.ts
+src/game/compactClaim.ts
+src/game/frontierCleanup.ts
+src/game/claim.ts
+
+src/admin/SimulationLabScenarioScreen.tsx
+src/admin/ScenarioSimulationMap.tsx
+src/admin/labScenarioEngine.ts
+src/admin/labHierarchicalWorld.ts
+
+src/tracking/simulationSource.ts
+src/screens/TrackingScreen.tsx
+
+server/src/lib/activityCommit.ts
+server/src/lib/activityChunked.ts
+server/src/lib/grid.ts
+server/src/routes/activities.ts
+
+.github/workflows/ci.yml
+```
+
+---
+
+## 18. RECENT COMMIT CHAIN
+
+Legfrissebb releváns commitok, újabbtól visszafelé:
+
+```text
+1770a743  ci: scope app and server Vitest runs correctly
+6a83294   test: remove temporary multi-lap diagnostic
+075f7ff   test: remove temporary spur diagnostic
+f19e24f   fix: reject post-closure slivers and stabilize repeat loops
+64375a9   test: expect all eligible frontier orphans to clean up
+e66482a   fix: make GPS simulation playback environment neutral
+462f55c   ci: run tests and build on main
+62f7846   test: cover frontier cleanup through claim pipeline
+d9211e0   test: cover stolen frontier orphan cleanup
+8a1b5e3   feat: clean stolen frontier orphans in LAB world
+fee403a   feat: apply frontier cleanup in game engine
+14e9f2d   feat: add stolen frontier orphan cleanup
+0b18328   test: cover compact multiplayer LAB ownership
+b9525ae   fix: use hierarchical ownership in LAB phases
+a6079d9   feat: add hierarchical LAB compact ownership
+4a6ddbf   refactor: expose compact claim credits
+1fd2ea7   style: add LAB phase progress and status feedback
+76e3ddc   feat: show live players during LAB phase replay
+20daff0   fix: surface and replay LAB phase state
+d7417b0   test: verify incremental geometry parity
+6d09f2c   feat: switch LAB to phase multiplayer screen
+0cf69dc   feat: add phase and multiplayer LAB editor
+3f2eec4   feat: add multiplayer LAB map
+4a38dd0   test: cover multi-player LAB phases
+9549085   feat: add multi-player LAB phase engine
+9007a84   perf: use incremental loop geometry in LAB
+6a961f6   perf: reuse incremental activity geometry
+ecfb38a   perf: make loop detection incremental
+aed4e9b   perf: compact LAB claim geometry for Mapbox
+f331650   test: cover loops beyond legacy fine-cell cap
+dcae286   test: process large loops through compact pipeline
+22c906e   perf: avoid expanding untouched compact parents
+bca22fc   feat: show exact compact claim stats in LAB
+2a7a684   feat: render compact large-loop previews
+a90f5c4   feat: process compact large loops in LAB
+7f1f6fa   feat: resolve compact claims in empty LAB world
+90b99fd   feat: detect large loops with compact interiors
+e476e42   feat: add compact adaptive loop interiors
+87fff6a   feat: add compact loop interior representation
+5129d72   fix: collapse composite closures inside closed regions
+b85bae8   perf: bound LAB track rendering work
+2497089   perf: bound LAB live engine recomputation
+93d2648   fix: credit loop cells only on new traversal
+f5c2542   test: prevent nested loop credit duplication
+```
+
+---
+
+## 19. MUNKAELV A KÖVETKEZŐ AGENTNEK
+
+A jelenlegi motor sok egymásra épülő, teszttel rögzített gameplay-szabály eredménye. Ha valami furcsának tűnik:
+
+1. először reprodukáld LAB scenario-val / fixture-rel;
+2. írd le, hogy **fizikailag hány closure történt** és milyen traversalból;
+3. külön kezeld a loop detectiont, a claim creditet és a final ownership cleanupot;
+4. ne „javíts” claim-oldali cooldownnal detector hibát;
+5. ne növeld egyszerűen a nagy-loop hard capet;
+6. ne materializálj teljes compact területet res12 stringekké;
+7. minden geometry/gameplay módosításhoz regressziós teszt;
+8. push után nézd a GitHub Actions app + server jobot.
+
+A cél nem az, hogy minden matematikai ciklust gameplay huroknak nevezzünk, hanem hogy a valós mozgásból intuitív, stabil, reprodukálható területfoglalás legyen.
