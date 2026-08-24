@@ -9,6 +9,8 @@
 
 export * from './cells';
 export * from './loops';
+export * from './loopInterior';
+export * from './compactClaim';
 export { detectLoops, detectLoopsDetailed } from './loopDetection';
 export * from './claim';
 export * from './scoring';
@@ -17,6 +19,11 @@ export * from './modifiers';
 import { traceToCellPath, layerOf, cellsToM2 } from './cells';
 import { detectLoopsDetailed } from './loopDetection';
 import { loopCells } from './loops';
+import { hasCompactInterior } from './loopInterior';
+import {
+  resolveCompactEmptyWorldClaims,
+  type CompactClaimPreview,
+} from './compactClaim';
 import { absorbIsolatedRivalCells, mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
@@ -53,8 +60,16 @@ export interface ProcessResult {
   layer: 'foot' | 'bike';
   cellPath: CellId[];
   loops: DetectedLoop[];
+  /**
+   * Explicit res12 claim cellák. Nagy compact huroknál a teljes parenteket
+   * nem bontjuk ide; azokat a `compactClaim` tartja.
+   */
   claimedCells: Set<CellId>;
+  /** A teljes, res12-egyenértékű egyedi claim cellaszám. */
+  claimedCellCount: number;
   claim: ClaimResult | null;
+  /** Nagy, tömör hurok LAB/geometriai előnézete. Normál claimnél null. */
+  compactClaim: CompactClaimPreview | null;
   /** Hurkonkénti eredmény, kizárólag auditáláshoz és visszajátszáshoz. */
   loopClaims: ClaimResult[];
   gp: GpBreakdown;
@@ -108,6 +123,12 @@ export function resolveSequentialLoopClaims(
   const creditedAt = new Map<CellId, number>();
 
   for (const loop of loops) {
+    if (hasCompactInterior(loop)) {
+      throw new Error(
+        'Compact hurok valódi ownership mellett blokkos claim-feldolgozást igényel.',
+      );
+    }
+
     const cells = loopCells(loop);
     const eligible = new Set<CellId>();
 
@@ -149,6 +170,53 @@ export function processActivity(input: ProcessInput): ProcessResult {
   const { path, droppedPoints, largeGaps } = traceToCellPath(input.points);
   const loopDetection = detectLoopsDetailed(path);
   const loops = loopDetection.loops;
+  const hasCompactLoop = loops.some(hasCompactInterior);
+
+  /**
+   * Nagy huroknál az üres világ (LAB + szerver geometriai probe) tömören
+   * elszámolható. Valódi ownership esetén NEM bontjuk vissza itt több millió
+   * res12 Map-be; azt a backend blokkos commit útja végzi majd parentenként.
+   */
+  if (hasCompactLoop) {
+    if (input.ownership.size > 0 || input.orphanScope !== undefined) {
+      throw new Error(
+        'Compact hurok ownership-feldolgozása csak a blokkos backend útvonalon engedett.',
+      );
+    }
+
+    const compact = resolveCompactEmptyWorldClaims(loops, input.actorId, cfg);
+    const claim = compact.claim;
+    const gp = computeActivityGp(
+      {
+        type: input.type,
+        distanceKm: input.distanceKm,
+        claim,
+        streakDays: input.streakDays,
+        gpEarnedToday: input.gpEarnedToday,
+        modifierFactors: input.modifierFactors,
+      },
+      cfg,
+    );
+
+    return {
+      layer: layerOf(input.type),
+      cellPath: path,
+      loops,
+      claimedCells: compact.claimedCells,
+      claimedCellCount: compact.claimedCellCount,
+      claim,
+      compactClaim: compact.preview,
+      loopClaims: [],
+      gp,
+      areaGainedM2: claim ? Math.round(claim.gainedM2) : 0,
+      diagnostics: {
+        droppedPoints,
+        largeGaps,
+        orphanAbsorbedCells: 0,
+        loops: loopDetection.diagnostics,
+      },
+    };
+  }
 
   const sequential = resolveSequentialLoopClaims(
     loops,
@@ -184,7 +252,9 @@ export function processActivity(input: ProcessInput): ProcessResult {
     cellPath: path,
     loops,
     claimedCells,
+    claimedCellCount: claimedCells.size,
     claim,
+    compactClaim: null,
     loopClaims: perLoop,
     gp,
     areaGainedM2: claim ? Math.round(claim.gainedM2) : 0,
