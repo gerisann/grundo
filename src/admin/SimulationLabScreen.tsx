@@ -53,6 +53,10 @@ export function SimulationLabScreen() {
   const [showGrid, setShowGrid] = useState(false);
   const [showLoops, setShowLoops] = useState(true);
   const [showClaims, setShowClaims] = useState(true);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [deliveredRawCount, setDeliveredRawCount] = useState(0);
+  const [runResetToken, setRunResetToken] = useState(0);
   const sourceRef = useRef<SimulationPositionSource | null>(null);
 
   const config = useMemo<GpsSimulationConfig>(
@@ -73,6 +77,10 @@ export function SimulationLabScreen() {
   );
 
   const generated = useMemo(() => generateGpsActivity(route, config), [route, config]);
+  const visibleRawTrack = useMemo(
+    () => generated.samples.slice(0, Math.min(deliveredRawCount, generated.samples.length)),
+    [generated.samples, deliveredRawCount],
+  );
   const gameResult = useMemo(() => {
     if (recorder.points.length < 2) return null;
     return processActivity({
@@ -92,15 +100,22 @@ export function SimulationLabScreen() {
     await sourceRef.current?.stop();
     if (generated.samples.length < 2) return;
 
+    // Az előző futás minden vizuális és recorder állapotát AZONNAL eldobjuk.
+    // A route marad, hiszen ugyanazt a scenario-t futtatjuk újra.
+    setDeliveredRawCount(0);
+    setRunResetToken((value) => value + 1);
+
     const started = start(createRecorder(activityType, `lab-${Date.now()}`), generated.samples[0]!.t);
     setRecorder(started);
     setRunning(true);
 
     let current = started;
+    let delivered = 0;
     const rate = playbackRate === 'max' ? 0 : Number(playbackRate);
     const source = new SimulationPositionSource(generated.samples, rate, () => {
       const endedAt = generated.samples[generated.samples.length - 1]?.t ?? Date.now();
       current = finish(current, endedAt);
+      setDeliveredRawCount(generated.samples.length);
       setRecorder(current);
       setRunning(false);
       persistLastRun({
@@ -118,7 +133,13 @@ export function SimulationLabScreen() {
     await source.start(
       {
         onSample(sample) {
+          delivered += 1;
+          // A nyers GPS is csak akkor jelenik meg, amikor a location callback
+          // ténylegesen megérkezett a replay során.
+          setDeliveredRawCount(delivered);
           current = applySample(current, sample);
+          // A gameResult ebből az AKTUÁLIS recorder állapotból számolódik újra,
+          // ezért a H3 trail, a hurok és a claim is menet közben épül fel.
           setRecorder(current);
         },
         onError(error) {
@@ -137,6 +158,8 @@ export function SimulationLabScreen() {
 
   function resetRun() {
     void stopSimulation();
+    setDeliveredRawCount(0);
+    setRunResetToken((value) => value + 1);
     setRecorder(createRecorder(activityType, 'lab-preview'));
   }
 
@@ -156,6 +179,8 @@ export function SimulationLabScreen() {
 
   function loadScenario(scenario: SavedScenario) {
     void stopSimulation();
+    setDeliveredRawCount(0);
+    setRunResetToken((value) => value + 1);
     setScenarioName(scenario.name);
     setRoute(scenario.route.map((point) => ({ ...point })));
     setActivityType(scenario.config.activityType);
@@ -188,19 +213,27 @@ export function SimulationLabScreen() {
       : 0,
   );
   const loopDiagnostics = gameResult?.diagnostics.loops;
+  const shellClassName = [
+    'lab-shell',
+    !leftPanelOpen ? 'lab-shell--left-hidden' : '',
+    !rightPanelOpen ? 'lab-shell--right-hidden' : '',
+  ].filter(Boolean).join(' ');
 
   return (
     <>
       <ScreenHeader title="Simulation LAB" backTo="/admin" />
-      <div className="lab-shell">
-        <aside className="lab-panel lab-panel--controls">
+      <div className={shellClassName}>
+        <aside className="lab-panel lab-panel--controls" aria-hidden={!leftPanelOpen}>
           <section className="lab-section">
             <div className="lab-section__heading">
               <div>
                 <div className="lab-kicker">SANDBOX</div>
                 <h2>GPS aktivitás</h2>
               </div>
-              <span className="lab-badge">LOCAL ONLY</span>
+              <div className="lab-panel-head-actions">
+                <span className="lab-badge">LOCAL ONLY</span>
+                <button type="button" className="lab-panel-collapse" onClick={() => setLeftPanelOpen(false)} aria-label="Bal oldali panel elrejtése">‹</button>
+              </div>
             </div>
             <p className="field__hint">
               A futás nem hív activity API-t és nem ír normál Firestore adatot. A mentett scenario a böngésző helyi LAB tárában marad.
@@ -286,6 +319,12 @@ export function SimulationLabScreen() {
               <span>Kattints a térképre új ponthoz, a számozott pontokat húzhatod.</span>
             </div>
             <div className="lab-mapbar__actions">
+              {!leftPanelOpen ? (
+                <Button variant="secondary" size="sm" onClick={() => setLeftPanelOpen(true)}>Beállítások ›</Button>
+              ) : null}
+              {!rightPanelOpen ? (
+                <Button variant="secondary" size="sm" onClick={() => setRightPanelOpen(true)}>‹ Debug</Button>
+              ) : null}
               <div className="lab-layer-controls" aria-label="Térképrétegek">
                 <LayerToggle label="H3 háló" checked={showGrid} onChange={setShowGrid} />
                 <LayerToggle label="Hurkok" checked={showLoops} onChange={setShowLoops} />
@@ -298,116 +337,132 @@ export function SimulationLabScreen() {
 
           <SimulationMap
             route={route}
-            rawTrack={generated.samples}
+            rawTrack={visibleRawTrack}
             acceptedTrack={recorder.points}
             result={gameResult}
             showGrid={showGrid}
             showLoops={showLoops}
             showClaims={showClaims}
+            resetToken={runResetToken}
             onAppendWaypoint={(point) => { resetRun(); setRoute((points) => [...points, point]); }}
             onMoveWaypoint={(index, point) => {
               resetRun();
               setRoute((points) => points.map((item, itemIndex) => itemIndex === index ? point : item));
             }}
           />
+        </main>
 
-          <div className="lab-legend">
-            <span><i className="lab-dot lab-dot--route" /> Ideális útvonal</span>
-            <span><i className="lab-dot lab-dot--raw" /> Nyers GPS</span>
-            <span><i className="lab-dot lab-dot--accepted" /> Recorder által elfogadott</span>
-            <span><i className="lab-swatch lab-swatch--grid" /> H3 háló</span>
-            <span><i className="lab-swatch lab-swatch--wall" /> Elfogadott hurok fala</span>
-            <span><i className="lab-swatch lab-swatch--interior" /> Érvényes belső terület</span>
-            <span><i className="lab-swatch lab-swatch--discarded" /> Nem foglalt útvonalcella</span>
-            <span><i className="lab-dot lab-dot--rejected" /> Elutasított hurokjelölt</span>
-            <span className="lab-defense-legend" aria-label="Védelmi szintek">
-              Védelem
-              {[1, 2, 3, 4, 5].map((level) => (
-                <i key={level} className={`lab-defense lab-defense--${level}`} title={`${level}× védelem`}>
-                  {level}
-                </i>
-              ))}
-            </span>
-          </div>
+        <aside className="lab-panel lab-panel--debug" aria-hidden={!rightPanelOpen}>
+          <section className="lab-side-header">
+            <div>
+              <div className="lab-kicker">LIVE DEBUG</div>
+              <h2>Futás adatai</h2>
+            </div>
+            <button type="button" className="lab-panel-collapse" onClick={() => setRightPanelOpen(false)} aria-label="Jobb oldali panel elrejtése">›</button>
+          </section>
 
-          <div className="lab-stats">
-            <Stat label="Útvonal" value={`${routeKm.toFixed(2)} km`} />
-            <Stat label="GPS minták" value={String(generated.samples.length)} />
-            <Stat label="Generált idő" value={formatDuration(generated.durationMs)} />
-            <Stat label="Dropout" value={String(generated.droppedSamples)} />
-            <Stat label="Spike" value={String(generated.spikeSamples)} />
-            <Stat label="Elfogadott GPS" value={String(recorder.points.length)} />
-            <Stat label="Recorder táv" value={`${(recorder.distanceM / 1000).toFixed(2)} km`} />
-            <Stat label="Elutasított GPS" value={String(rejectedCount)} />
-            <Stat label="Bezárások" value={String(gameResult?.loops.length ?? 0)} />
-            <Stat label="Elutasított hurok" value={String(loopDiagnostics?.rejected.length ?? 0)} />
-            <Stat label="Saját cella végül" value={String(ownedCells)} />
-            <Stat label="Újonnan megszerezve" value={String(newCells)} />
-            <Stat label="Nem foglalt útvonalcella" value={String(discardedTrailCells)} />
-            <Stat label="Foglalás" value={formatArea(gameResult?.areaGainedM2 ?? 0)} />
-            <Stat label="GP" value={formatGp(gameResult?.gp.total ?? 0)} />
-          </div>
+          <section className="lab-side-section">
+            <div className="lab-section__title">Jelmagyarázat</div>
+            <div className="lab-legend">
+              <span><i className="lab-dot lab-dot--route" /> Ideális útvonal</span>
+              <span><i className="lab-dot lab-dot--raw" /> Nyers GPS</span>
+              <span><i className="lab-dot lab-dot--accepted" /> Recorder által elfogadott</span>
+              <span><i className="lab-swatch lab-swatch--grid" /> H3 háló</span>
+              <span><i className="lab-swatch lab-swatch--wall" /> Elfogadott hurok fala</span>
+              <span><i className="lab-swatch lab-swatch--interior" /> Érvényes belső terület</span>
+              <span><i className="lab-swatch lab-swatch--discarded" /> Nem foglalt útvonalcella</span>
+              <span><i className="lab-dot lab-dot--rejected" /> Elutasított hurokjelölt</span>
+              <span className="lab-defense-legend" aria-label="Védelmi szintek">
+                Védelem
+                {[1, 2, 3, 4, 5].map((level) => (
+                  <i key={level} className={`lab-defense lab-defense--${level}`} title={`${level}× védelem`}>
+                    {level}
+                  </i>
+                ))}
+              </span>
+            </div>
+          </section>
 
-          <div className="lab-debug-panels">
-            <section className="lab-debug-card">
-              <div className="lab-debug-card__head">
-                <strong>Hurokdiagnosztika</strong>
-                <span>{loopDiagnostics?.successful.length ?? 0} elfogadott · {loopDiagnostics?.rejected.length ?? 0} elutasított</span>
-              </div>
-              {!gameResult ? (
-                <p>Nincs még feldolgozott cellalánc.</p>
-              ) : (
-                <div className="lab-loop-list">
-                  {loopDiagnostics?.successful.map((item, index) => (
-                    <div key={`ok-${index}`} className="lab-loop-row lab-loop-row--ok">
-                      <strong>#{index + 1} ELFOGADVA</strong>
-                      <span>path {item.fromIndex} → {item.toIndex}</span>
-                      <span>fal {item.wallCells}</span>
-                      <span>belső {item.interiorCells}</span>
-                      {item.prunedCells > 0 ? <span>levágva {item.prunedCells}</span> : null}
-                    </div>
-                  ))}
-                  {loopDiagnostics?.rejected.map((item, index) => (
-                    <div key={`bad-${index}`} className="lab-loop-row lab-loop-row--bad">
-                      <strong>JELÖLT ELUTASÍTVA</strong>
-                      <span>path {item.fromIndex} → {item.toIndex}</span>
-                      <span>{loopReason(item.reason)}</span>
-                      <span>fal {item.wallCells}</span>
-                      <span>belső {item.interiorCells}</span>
-                    </div>
-                  ))}
-                  {(loopDiagnostics?.successful.length ?? 0) === 0 && (loopDiagnostics?.rejected.length ?? 0) === 0 ? (
-                    <p>A motor még nem képzett hurokjelöltet.</p>
-                  ) : null}
-                </div>
-              )}
-            </section>
+          <section className="lab-side-section">
+            <div className="lab-section__title">Aktuális állapot</div>
+            <div className="lab-stats">
+              <Stat label="Útvonal" value={`${routeKm.toFixed(2)} km`} />
+              <Stat label="GPS minták" value={String(generated.samples.length)} />
+              <Stat label="Generált idő" value={formatDuration(generated.durationMs)} />
+              <Stat label="Dropout" value={String(generated.droppedSamples)} />
+              <Stat label="Spike" value={String(generated.spikeSamples)} />
+              <Stat label="Nyers GPS eddig" value={String(deliveredRawCount)} />
+              <Stat label="Elfogadott GPS" value={String(recorder.points.length)} />
+              <Stat label="Recorder táv" value={`${(recorder.distanceM / 1000).toFixed(2)} km`} />
+              <Stat label="Elutasított GPS" value={String(rejectedCount)} />
+              <Stat label="Bezárások" value={String(gameResult?.loops.length ?? 0)} />
+              <Stat label="Elutasított hurok" value={String(loopDiagnostics?.rejected.length ?? 0)} />
+              <Stat label="Saját cella végül" value={String(ownedCells)} />
+              <Stat label="Újonnan megszerezve" value={String(newCells)} />
+              <Stat label="Nem foglalt útvonalcella" value={String(discardedTrailCells)} />
+              <Stat label="Foglalás" value={formatArea(gameResult?.areaGainedM2 ?? 0)} />
+              <Stat label="GP" value={formatGp(gameResult?.gp.total ?? 0)} />
+            </div>
+          </section>
 
-            <section className="lab-debug-card">
-              <div className="lab-debug-card__head">
-                <strong>Cellák védelmi szintje</strong>
-                <span>{ownedCells} saját cella</span>
-              </div>
-              <div className="lab-defense-counts">
-                {defenseCounts.map((count, index) => (
-                  <div key={index}>
-                    <i className={`lab-defense lab-defense--${index + 1}`}>{index + 1}</i>
-                    <span>{count} cella</span>
+          <section className="lab-side-section lab-side-section--loops">
+            <div className="lab-debug-card__head">
+              <strong>Hurokdiagnosztika</strong>
+              <span>{loopDiagnostics?.successful.length ?? 0} elfogadott · {loopDiagnostics?.rejected.length ?? 0} elutasított</span>
+            </div>
+            {!gameResult ? (
+              <p className="lab-empty-debug">Nincs még feldolgozott cellalánc.</p>
+            ) : (
+              <div className="lab-loop-list">
+                {loopDiagnostics?.successful.map((item, index) => (
+                  <div key={`ok-${index}`} className="lab-loop-row lab-loop-row--ok">
+                    <strong>#{index + 1} ELFOGADVA</strong>
+                    <span>path {item.fromIndex} → {item.toIndex}</span>
+                    <span>fal {item.wallCells}</span>
+                    <span>belső {item.interiorCells}</span>
+                    {item.prunedCells > 0 ? <span>levágva {item.prunedCells}</span> : null}
                   </div>
                 ))}
+                {loopDiagnostics?.rejected.map((item, index) => (
+                  <div key={`bad-${index}`} className="lab-loop-row lab-loop-row--bad">
+                    <strong>JELÖLT ELUTASÍTVA</strong>
+                    <span>path {item.fromIndex} → {item.toIndex}</span>
+                    <span>{loopReason(item.reason)}</span>
+                    <span>fal {item.wallCells}</span>
+                    <span>belső {item.interiorCells}</span>
+                  </div>
+                ))}
+                {(loopDiagnostics?.successful.length ?? 0) === 0 && (loopDiagnostics?.rejected.length ?? 0) === 0 ? (
+                  <p className="lab-empty-debug">A motor még nem képzett hurokjelöltet.</p>
+                ) : null}
               </div>
-            </section>
-          </div>
+            )}
+          </section>
+
+          <section className="lab-side-section">
+            <div className="lab-debug-card__head">
+              <strong>Cellák védelmi szintje</strong>
+              <span>{ownedCells} saját cella</span>
+            </div>
+            <div className="lab-defense-counts">
+              {defenseCounts.map((count, index) => (
+                <div key={index}>
+                  <i className={`lab-defense lab-defense--${index + 1}`}>{index + 1}</i>
+                  <span>{count} cella</span>
+                </div>
+              ))}
+            </div>
+          </section>
 
           {rejectedCount > 0 ? (
-            <div className="lab-diagnostics">
+            <section className="lab-side-section lab-diagnostics">
               <strong>GPS filter:</strong>
               {Object.entries(recorder.rejected).map(([reason, count]) => (
                 <span key={reason}>{reason}: <strong>{count}</strong></span>
               ))}
-            </div>
+            </section>
           ) : null}
-        </main>
+        </aside>
       </div>
     </>
   );
