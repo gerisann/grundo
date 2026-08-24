@@ -7,6 +7,7 @@ import type {
   ClaimResult,
   OwnershipMap,
 } from '@/types';
+import { processActivityGeometry, type ActivityGeometry } from './index';
 import {
   cleanupStolenFrontierOrphans,
   findStolenFrontierReassignments,
@@ -132,5 +133,49 @@ describe('stolen frontier orphan cleanup', () => {
 
     expect(result.get(end)).toEqual(ownership('B'));
     expect(result.has(mid)).toBe(false);
+  });
+
+  it('a teljes processActivityGeometry pipeline is alkalmazza a szabályt orphanScope mellett', () => {
+    const [aSide, b1, b2, b3, b4, cSide] = neighbours(CENTER);
+    const before: OwnershipMap = new Map([
+      [CENTER, ownership('A')],
+      [aSide!, ownership('A')],
+      [b1!, ownership('A')],
+      [b2!, ownership('A')],
+      [b3!, ownership('A')],
+      [b4!, ownership('A')],
+      [cSide!, ownership('C')],
+    ]);
+    const geometry: ActivityGeometry = {
+      cellPath: [b1!, b2!, b3!, b4!],
+      loops: [{
+        wall: new Set([b1!, b2!, b3!, b4!]),
+        interior: new Set(),
+        fromIndex: 0,
+        toIndex: 8,
+      }],
+      loopDiagnostics: {
+        successful: [],
+        rejected: [],
+        shortRevisits: 0,
+      },
+      droppedPoints: 0,
+      largeGaps: 0,
+    };
+
+    const result = processActivityGeometry({
+      points: [],
+      type: 'ride',
+      distanceKm: 1,
+      actorId: 'B',
+      ownership: before,
+      streakDays: 1,
+      gpEarnedToday: 0,
+      orphanScope: new Set<CellId>(gridDisk(CENTER, 2)),
+    }, geometry);
+
+    expect(result.claim?.updates.get(CENTER)).toEqual(ownership('B'));
+    expect(result.diagnostics.orphanAbsorbedCells).toBe(1);
+    expect(result.claim?.counts.stolen).toBe(5);
   });
 });
