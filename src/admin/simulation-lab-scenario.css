@@ -1,0 +1,138 @@
+.lab-phase-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lab-phase-tab {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  font: 800 11px/1 var(--font);
+  cursor: pointer;
+}
+
+.lab-phase-tab:hover,
+.lab-phase-tab--active {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lab-phase-tab--add {
+  border-style: dashed;
+  font-size: 17px;
+}
+
+.lab-player-list,
+.lab-world-list,
+.lab-event-list {
+  display: grid;
+  gap: 6px;
+}
+
+.lab-player {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+
+.lab-player:hover,
+.lab-player--active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.lab-player > i,
+.lab-world-list i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.lab-player > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lab-player strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.lab-player small {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.lab-world-list > div {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  font-size: 11px;
+}
+
+.lab-world-list span {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-event {
+  display: grid;
+  gap: 3px;
+  padding: 8px 9px;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  font-size: 10px;
+}
+
+.lab-event strong {
+  font-size: 11px;
+}
+
+.lab-event span {
+  color: var(--text-secondary);
+}
+
+.lab-player--active::after {
+  content: 'EDIT';
+  justify-self: end;
+  grid-column: 2;
+  grid-row: 1;
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+@media (max-width: 1180px) {
+  .lab-shell {
+    grid-template-columns: minmax(250px, 280px) minmax(0, 1fr) minmax(300px, 330px);
+  }
+}
