@@ -40,6 +40,13 @@ interface ClosureBlock {
  */
 const CONTACT_INDEX_CLUSTER_GAP = 6;
 
+/**
+ * Ismételt, tényleges új traversalnál ekkora H3-kvantálási eltérést tekintünk
+ * ugyanannak a fizikai huroknak. Ez nem deduplikálja a bezárást: a defense nő,
+ * csak nem engedi, hogy ugyanaz a kör 1-2 kapucella jitter miatt terjeszkedjen.
+ */
+const REPEAT_CANONICAL_MAX_SYMMETRIC_DIFF = 2;
+
 export interface IncrementalLoopSnapshot {
   loops: DetectedLoop[];
   diagnostics: LoopDiagnostics;
@@ -167,7 +174,7 @@ export class IncrementalLoopDetector {
         continue;
       }
 
-      const candidate: DetectedLoop = {
+      let candidate: DetectedLoop = {
         wall,
         interior: interiorGeometry.interior,
         ...(interiorGeometry.compactInterior
@@ -177,18 +184,36 @@ export class IncrementalLoopDetector {
         toIndex: i,
       };
 
+      /**
+       * Ha egy már lezárt fal mellől induló későbbi nyom csak egy egysoros,
+       * két dimenziós mag nélküli slivert csíp le, az nem új játékterület.
+       *
+       * Tipikus eset: bezártuk a négyzetet, majd a régi fal mellett kifelé
+       * haladunk. A H3 szomszédság 1-2 belső cellás mesterséges „hurkot” látna,
+       * pedig ez csak a cellakvantálásból adódó kilógó érintés. Valódi új lobe,
+       * amelyik a régi falat használja egyik oldalként, továbbra is számít,
+       * amint van tényleges 2D belső magja.
+       */
+      if (isThinPostClosureSliver(candidate, previous, this.accepted)) {
+        continue;
+      }
+
       // Ugyanannak a geometriai huroknak a közvetlen folytatása nem kap új
       // bezárást. Egy teljesen új traversal viszont továbbra is számíthat.
       if (isTraversalDuplicate(candidate, previous, this.accepted)) {
         continue;
       }
 
+      // Tényleges új lapnál a bezárás megmarad, de egy 1-2 cellás H3-kapu
+      // jitter ne növelje lassan a területet minden körrel.
+      candidate = canonicalizeNearIdenticalRepeat(candidate, previous, this.accepted);
+
       this.loops.push(candidate);
       this.successful.push({
         fromIndex: previous,
         toIndex: i,
-        wallCells: wall.size,
-        interiorCells: interiorGeometry.cellCount,
+        wallCells: candidate.wall.size,
+        interiorCells: loopInteriorCellCount(candidate),
         prunedCells,
       });
       this.accepted.push({ loop: candidate, toIndex: i });
@@ -317,6 +342,54 @@ function insideClosureZone(cell: CellId, loop: DetectedLoop): boolean {
   return false;
 }
 
+/**
+ * Egy régi, már lezárt falhoz tapadó egysoros H3-sliver felismerése.
+ * Csak akkor aktív, ha a jelölt ténylegesen egy korábbi closure előtti falindexet
+ * használ újra; önálló első kis hurokra ezért nincs hatással.
+ */
+function isThinPostClosureSliver(
+  candidate: DetectedLoop,
+  previous: number,
+  accepted: readonly AcceptedLoopRecord[],
+): boolean {
+  if (candidate.compactInterior || hasTwoDimensionalInteriorCore(candidate)) return false;
+
+  for (let i = accepted.length - 1; i >= 0; i -= 1) {
+    const record = accepted[i]!;
+    if (record.toIndex <= previous) break;
+    if (record.toIndex >= candidate.toIndex) continue;
+    if (wallsOverlap(candidate.wall, record.loop.wall)) return true;
+  }
+  return false;
+}
+
+/**
+ * A lineáris/egysoros belső minden cellájának legfeljebb két belső szomszédja
+ * van. Valódi 2D magban legalább egy cella három vagy több belső oldalszomszédot
+ * kap. Ez felbontásfüggetlenebb jel, mint egy önkényes „min. N belső cella”.
+ */
+function hasTwoDimensionalInteriorCore(loop: DetectedLoop): boolean {
+  if (loop.compactInterior) return true;
+  for (const cell of loop.interior) {
+    let neighbours = 0;
+    for (const near of gridDisk(cell, 1)) {
+      if (near === cell) continue;
+      if (loopInteriorHas(loop, near)) neighbours += 1;
+      if (neighbours >= 3) return true;
+    }
+  }
+  return false;
+}
+
+function wallsOverlap(a: ReadonlySet<CellId>, b: ReadonlySet<CellId>): boolean {
+  const smaller = a.size <= b.size ? a : b;
+  const larger = smaller === a ? b : a;
+  for (const cell of smaller) {
+    if (larger.has(cell)) return true;
+  }
+  return false;
+}
+
 function isTraversalDuplicate(
   candidate: DetectedLoop,
   previous: number,
@@ -328,6 +401,46 @@ function isTraversalDuplicate(
     if (sameLoopGeometry(candidate, record.loop)) return true;
   }
   return false;
+}
+
+/**
+ * Tényleges új traversalnál egy majdnem bitazonos H3-hurok cellahalmazát
+ * kanonizáljuk az előzőre. A bezárás ettől megmarad (defense credit jár), csak
+ * az 1-2 cellás kapuzási jitter nem hoz létre új területet.
+ */
+function canonicalizeNearIdenticalRepeat(
+  candidate: DetectedLoop,
+  previous: number,
+  accepted: readonly AcceptedLoopRecord[],
+): DetectedLoop {
+  if (candidate.compactInterior) return candidate;
+
+  for (let i = accepted.length - 1; i >= 0; i -= 1) {
+    const record = accepted[i]!;
+    if (previous < record.toIndex) continue;
+    if (record.loop.compactInterior) continue;
+    if (!sameLoopGeometry(candidate, record.loop)) continue;
+    if (normalLoopSymmetricDifference(candidate, record.loop) > REPEAT_CANONICAL_MAX_SYMMETRIC_DIFF) {
+      continue;
+    }
+
+    return {
+      wall: new Set(record.loop.wall),
+      interior: new Set(record.loop.interior),
+      fromIndex: candidate.fromIndex,
+      toIndex: candidate.toIndex,
+    };
+  }
+  return candidate;
+}
+
+function normalLoopSymmetricDifference(a: DetectedLoop, b: DetectedLoop): number {
+  const aCells = new Set<CellId>([...a.wall, ...a.interior]);
+  const bCells = new Set<CellId>([...b.wall, ...b.interior]);
+  let difference = 0;
+  for (const cell of aCells) if (!bCells.has(cell)) difference += 1;
+  for (const cell of bCells) if (!aCells.has(cell)) difference += 1;
+  return difference;
 }
 
 /**
