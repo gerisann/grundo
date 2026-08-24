@@ -24,7 +24,7 @@ jobs:
         run: npm ci
 
       - name: Test app
-        run: npx vitest run src
+        run: npx vitest run --dir src
 
       - name: Build app
         run: npm run build
@@ -32,9 +32,6 @@ jobs:
   server:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: server
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,13 +41,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
 
-      - name: Install server
+      - name: Install app toolchain
         run: npm ci
 
+      - name: Install server
+        run: npm ci --prefix server
+
       - name: Test server
-        run: npm test
+        run: npx vitest run --dir server/src
 
       - name: Build server
-        run: npm run build
+        run: npm --prefix server run build
