@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
 import { IncrementalActivityGeometry, processActivityGeometry, type ProcessResult } from '@/game';
-import { formatArea, formatGp } from '@/lib/format';
+import { formatGp } from '@/lib/format';
 import {
   applySample,
   createRecorder,
@@ -39,6 +39,7 @@ const MAX_LIVE_TRACK_FRAMES = 480;
 const PLAYER_COLORS = ['#8b5cf6', '#22c55e', '#f97316', '#38bdf8', '#ef4444', '#eab308', '#ec4899', '#14b8a6', '#a3e635', '#f43f5e'];
 
 type PlaybackRate = '1' | '10' | '100' | 'max';
+type PhaseStatus = 'idle' | 'preparing' | 'running' | 'done' | 'error';
 
 interface SavedScenario {
   id: string;
@@ -69,7 +70,9 @@ export function SimulationLabScenarioScreen() {
   const [world, setWorld] = useState<OwnershipMap>(() => new Map());
   const [phasePlayback, setPhasePlayback] = useState<PhasePlayback | null>(null);
   const [phaseHistory, setPhaseHistory] = useState<LabPhaseOutcome[]>([]);
-  const [phaseRunning, setPhaseRunning] = useState(false);
+  const [phaseStatus, setPhaseStatus] = useState<PhaseStatus>('idle');
+  const [phaseError, setPhaseError] = useState<string | null>(null);
+  const [phaseComputeMs, setPhaseComputeMs] = useState<number | null>(null);
   const phaseTimer = useRef<number | null>(null);
   const phaseWallStart = useRef(0);
 
@@ -151,18 +154,40 @@ export function SimulationLabScenarioScreen() {
     color: playerColor(players, run.playerId),
     route: run.route,
   }));
-  const ownerColors = useMemo(() => new Map(players.map((player, index) => [player.id, PLAYER_COLORS[index % PLAYER_COLORS.length]!])), [players]);
+  const ownerColors = useMemo(
+    () => new Map(players.map((player, index) => [player.id, PLAYER_COLORS[index % PLAYER_COLORS.length]!])),
+    [players],
+  );
+
+  const phaseProgress = phasePlayback
+    ? phasePlayback.simEnd <= phasePlayback.simStart
+      ? 100
+      : Math.max(0, Math.min(100, Math.round(
+          ((phasePlayback.simNow - phasePlayback.simStart) / (phasePlayback.simEnd - phasePlayback.simStart)) * 100,
+        )))
+    : 0;
+  const phaseBusy = phaseStatus === 'preparing' || phaseStatus === 'running';
+  const busy = soloRunning || phaseBusy;
 
   useEffect(() => () => {
     void soloSource.current?.stop();
     if (phaseTimer.current !== null) window.clearInterval(phaseTimer.current);
   }, []);
 
+  function invalidatePhasePreview() {
+    stopPhaseTimer();
+    setPhasePlayback(null);
+    setPhaseStatus('idle');
+    setPhaseError(null);
+    setPhaseComputeMs(null);
+  }
+
   function updateActiveRun(mutator: (run: LabPhaseRun) => LabPhaseRun) {
     setPhases((current) => current.map((phase) => phase.id !== activePhaseId ? phase : {
       ...phase,
       runs: phase.runs.map((run) => run.playerId === activePlayerId ? mutator(run) : run),
     }));
+    invalidatePhasePreview();
     resetSoloRun();
   }
 
@@ -206,6 +231,7 @@ export function SimulationLabScenarioScreen() {
       ...phase,
       runs: [...phase.runs, createRun(phase.id, player.id, index)],
     })));
+    invalidatePhasePreview();
     setActivePlayerId(player.id);
     resetSoloRun();
   }
@@ -241,6 +267,7 @@ export function SimulationLabScenarioScreen() {
       }),
     };
     setPhases((current) => [...current, phase]);
+    invalidatePhasePreview();
     setActivePhaseId(id);
     resetSoloRun();
   }
@@ -251,7 +278,8 @@ export function SimulationLabScenarioScreen() {
 
   async function runSolo() {
     await soloSource.current?.stop();
-    if (generated.samples.length < 2 || phaseRunning) return;
+    if (generated.samples.length < 2 || phaseBusy) return;
+    invalidatePhasePreview();
     soloGeometry.current.reset();
     setDeliveredRawCount(0);
     setRunResetToken((value) => value + 1);
@@ -292,18 +320,50 @@ export function SimulationLabScenarioScreen() {
 
   async function runPhase() {
     await soloSource.current?.stop();
-    stopPhasePlayback();
+    soloSource.current = null;
+    setSoloRunning(false);
+    stopPhaseTimer();
+
     const runs = activePhase.runs.filter((run) => run.route.length >= 2);
-    if (runs.length === 0) return;
+    if (runs.length === 0) {
+      setPhaseStatus('error');
+      setPhaseError('Ebben a phase-ben egyik playernek sincs legalább 2 pontos útvonala.');
+      return;
+    }
+
     const phase: LabPhase = { ...activePhase, runs };
+    setPhasePlayback(null);
+    setPhaseError(null);
+    setPhaseComputeMs(null);
+    setPhaseStatus('preparing');
+    setRunResetToken((value) => value + 1);
+
+    // A headless phase-számítás szinkron. Egy frame-et direkt visszaadunk a
+    // böngészőnek, hogy a „Phase előkészítése…” állapot még a nehéz számítás
+    // előtt ténylegesen kirajzolódjon.
+    await nextPaint();
+
     let outcome: LabScenarioOutcome;
+    const computeStarted = performance.now();
     try {
       outcome = runLabScenario({ players, phases: [phase], tieBreakSeed }, world);
     } catch (error) {
+      const message = errorMessage(error);
       console.error('[GRUNDO LAB] Phase failed', error);
+      setPhaseComputeMs(performance.now() - computeStarted);
+      setPhaseStatus('error');
+      setPhaseError(message);
       return;
     }
-    const phaseOutcome = outcome.phases[0]!;
+    setPhaseComputeMs(performance.now() - computeStarted);
+
+    const phaseOutcome = outcome.phases[0];
+    if (!phaseOutcome) {
+      setPhaseStatus('error');
+      setPhaseError('A phase engine nem adott vissza phase eredményt.');
+      return;
+    }
+
     const simStart = phaseOutcome.startedAt;
     const simEnd = phaseOutcome.finishedAt;
     const playback: PhasePlayback = {
@@ -314,15 +374,17 @@ export function SimulationLabScenarioScreen() {
       simStart,
       simEnd,
     };
-    setRunResetToken((value) => value + 1);
     setPhasePlayback(playback);
+
     if (playbackRate === 'max' || simEnd <= simStart) {
       setWorld(new Map(outcome.ownership));
       setPhasePlayback({ ...playback, simNow: simEnd });
       setPhaseHistory((history) => [...history, phaseOutcome]);
+      setPhaseStatus('done');
       return;
     }
-    setPhaseRunning(true);
+
+    setPhaseStatus('running');
     phaseWallStart.current = performance.now();
     const rate = Number(playbackRate);
     phaseTimer.current = window.setInterval(() => {
@@ -338,7 +400,7 @@ export function SimulationLabScenarioScreen() {
       if (simNow >= simEnd) {
         stopPhaseTimer();
         setWorld(new Map(outcome.ownership));
-        setPhaseRunning(false);
+        setPhaseStatus('done');
         setPhaseHistory((history) => [...history, phaseOutcome]);
       }
     }, 50);
@@ -351,7 +413,7 @@ export function SimulationLabScenarioScreen() {
 
   function stopPhasePlayback() {
     stopPhaseTimer();
-    setPhaseRunning(false);
+    setPhaseStatus((current) => current === 'running' || current === 'preparing' ? 'idle' : current);
   }
 
   function resetSoloRun() {
@@ -367,10 +429,13 @@ export function SimulationLabScenarioScreen() {
   }
 
   function resetWorld() {
-    stopPhasePlayback();
+    stopPhaseTimer();
     setWorld(new Map());
     setPhasePlayback(null);
     setPhaseHistory([]);
+    setPhaseStatus('idle');
+    setPhaseError(null);
+    setPhaseComputeMs(null);
     resetSoloRun();
   }
 
@@ -407,7 +472,6 @@ export function SimulationLabScenarioScreen() {
   const defenseCounts = [1, 2, 3, 4, 5].map((defense) => countPlayerDefense(world, activePlayerId, defense));
   const loopDiagnostics = gameResult?.diagnostics.loops;
   const shellClassName = ['lab-shell', !leftPanelOpen ? 'lab-shell--left-hidden' : '', !rightPanelOpen ? 'lab-shell--right-hidden' : ''].filter(Boolean).join(' ');
-  const busy = soloRunning || phaseRunning;
 
   return (
     <>
@@ -442,38 +506,44 @@ export function SimulationLabScenarioScreen() {
                 </button>;
               })}
             </div>
-            <div className="lab-actions"><Button variant="secondary" size="sm" onClick={addPlayer} disabled={players.length >= 10}>+ Player</Button><Button variant="ghost" size="sm" onClick={removeActivePlayer} disabled={players.length <= 1}>Player törlése</Button></div>
-            <input className="lab-input" value={activePlayer.name} onChange={(event) => renameActivePlayer(event.target.value)} aria-label="Player neve" />
-            <NumberField label="Start offset" value={(activeRun.startOffsetMs ?? 0) / 1000} min={0} max={86_400} step={1} suffix="s" onChange={setStartOffset} />
+            <div className="lab-actions"><Button variant="secondary" size="sm" onClick={addPlayer} disabled={players.length >= 10 || busy}>+ Player</Button><Button variant="ghost" size="sm" onClick={removeActivePlayer} disabled={players.length <= 1 || busy}>Player törlése</Button></div>
+            <input className="lab-input" value={activePlayer.name} onChange={(event) => renameActivePlayer(event.target.value)} aria-label="Player neve" disabled={busy} />
+            <NumberField label="Start offset" value={(activeRun.startOffsetMs ?? 0) / 1000} min={0} max={86_400} step={1} suffix="s" onChange={setStartOffset} disabled={busy} />
           </section>
 
           <section className="lab-section">
             <SegmentedControl label="Mozgásforma" options={[{ value: 'walk', label: 'Séta' }, { value: 'run', label: 'Futás' }, { value: 'ride', label: 'Bringázás' }]} value={config.activityType} onChange={(value) => setConfig('activityType', value as ActivityType)} size="sm" block columns={3} />
-            <NumberField label="Átlagsebesség" value={config.speedKmh} min={0.5} max={200} step={0.5} suffix="km/h" onChange={(value) => setConfig('speedKmh', value)} />
-            <NumberField label="Mintavétel" value={config.sampleIntervalS} min={0.1} max={60} step={0.1} suffix="s" onChange={(value) => setConfig('sampleIntervalS', value)} />
+            <NumberField label="Átlagsebesség" value={config.speedKmh} min={0.5} max={200} step={0.5} suffix="km/h" onChange={(value) => setConfig('speedKmh', value)} disabled={busy} />
+            <NumberField label="Mintavétel" value={config.sampleIntervalS} min={0.1} max={60} step={0.1} suffix="s" onChange={(value) => setConfig('sampleIntervalS', value)} disabled={busy} />
           </section>
 
           <section className="lab-section"><div className="lab-section__title">GPS modell</div>
-            <NumberField label="Jelentett pontosság" value={config.accuracyM} min={1} max={250} step={0.5} suffix="m" onChange={(value) => setConfig('accuracyM', value)} />
-            <NumberField label="Pillanatnyi zaj" value={config.noiseM} min={0} max={250} step={0.5} suffix="m" onChange={(value) => setConfig('noiseM', value)} />
-            <NumberField label="Lassú drift" value={config.driftM} min={0} max={50} step={0.1} suffix="m/minta" onChange={(value) => setConfig('driftM', value)} />
-            <NumberField label="Jelkimaradás" value={config.dropoutProbability * 100} min={0} max={95} step={0.1} suffix="%" onChange={(value) => setConfig('dropoutProbability', value / 100)} />
-            <NumberField label="GPS spike" value={config.spikeProbability * 100} min={0} max={50} step={0.1} suffix="%" onChange={(value) => setConfig('spikeProbability', value / 100)} />
-            <NumberField label="Seed" value={config.seed} min={1} max={2_147_483_647} step={1} onChange={(value) => setConfig('seed', Math.trunc(value))} />
+            <NumberField label="Jelentett pontosság" value={config.accuracyM} min={1} max={250} step={0.5} suffix="m" onChange={(value) => setConfig('accuracyM', value)} disabled={busy} />
+            <NumberField label="Pillanatnyi zaj" value={config.noiseM} min={0} max={250} step={0.5} suffix="m" onChange={(value) => setConfig('noiseM', value)} disabled={busy} />
+            <NumberField label="Lassú drift" value={config.driftM} min={0} max={50} step={0.1} suffix="m/minta" onChange={(value) => setConfig('driftM', value)} disabled={busy} />
+            <NumberField label="Jelkimaradás" value={config.dropoutProbability * 100} min={0} max={95} step={0.1} suffix="%" onChange={(value) => setConfig('dropoutProbability', value / 100)} disabled={busy} />
+            <NumberField label="GPS spike" value={config.spikeProbability * 100} min={0} max={50} step={0.1} suffix="%" onChange={(value) => setConfig('spikeProbability', value / 100)} disabled={busy} />
+            <NumberField label="Seed" value={config.seed} min={1} max={2_147_483_647} step={1} onChange={(value) => setConfig('seed', Math.trunc(value))} disabled={busy} />
           </section>
 
           <section className="lab-section"><div className="lab-section__title">Lejátszás</div>
             <SegmentedControl label="Sebesség" options={[{ value: '1', label: '1×' }, { value: '10', label: '10×' }, { value: '100', label: '100×' }, { value: 'max', label: 'MAX' }]} value={playbackRate} onChange={setPlaybackRate} size="sm" block columns={4} />
-            <div className="lab-actions"><Button onClick={() => void runSolo()} disabled={busy || generated.samples.length < 2}>Aktív player</Button><Button onClick={() => void runPhase()} disabled={busy || !activePhase.runs.some((run) => run.route.length >= 2)}>Phase indítása</Button><Button variant="secondary" onClick={resetSoloRun}>Run reset</Button><Button variant="secondary" onClick={resetWorld}>World nullázása</Button></div>
+            <div className="lab-actions">
+              <Button onClick={() => void runSolo()} disabled={busy || generated.samples.length < 2}>Player teszt</Button>
+              <Button onClick={() => void runPhase()} disabled={busy || !activePhase.runs.some((run) => run.route.length >= 2)}>{phaseButtonLabel(phaseStatus, phaseProgress)}</Button>
+              <Button variant="secondary" onClick={resetSoloRun} disabled={phaseBusy}>Run reset</Button>
+              <Button variant="secondary" onClick={resetWorld} disabled={phaseBusy}>World nullázása</Button>
+            </div>
+            <PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} />
           </section>
 
-          <section className="lab-section"><div className="lab-section__title">Scenario mentés</div><input className="lab-input" value={scenarioName} onChange={(event) => setScenarioName(event.target.value)} /><Button variant="secondary" onClick={saveScenario}>Scenario mentése</Button>
-            {savedScenarios.slice(0, 6).map((scenario) => <button key={scenario.id} type="button" className="lab-scenario" onClick={() => loadScenario(scenario)}><strong>{scenario.name}</strong><span>{scenario.players.length} player · {scenario.phases.length} phase</span></button>)}
+          <section className="lab-section"><div className="lab-section__title">Scenario mentés</div><input className="lab-input" value={scenarioName} onChange={(event) => setScenarioName(event.target.value)} /><Button variant="secondary" onClick={saveScenario} disabled={busy}>Scenario mentése</Button>
+            {savedScenarios.slice(0, 6).map((scenario) => <button key={scenario.id} type="button" className="lab-scenario" onClick={() => loadScenario(scenario)} disabled={busy}><strong>{scenario.name}</strong><span>{scenario.players.length} player · {scenario.phases.length} phase</span></button>)}
           </section>
         </aside>
 
         <main className="lab-workspace">
-          <div className="lab-mapbar"><div><strong>{activePhase.name} · {activePlayer.name}</strong><span>Az aktív player pontjai húzhatók; a többi route referencia.</span></div><div className="lab-mapbar__actions">
+          <div className="lab-mapbar"><div><strong>{activePhase.name} · {activePlayer.name}</strong><span>{phaseBusy ? `Phase ${phaseStatus === 'preparing' ? 'előkészítése' : `fut · ${phaseProgress}%`}` : 'Az aktív player pontjai húzhatók; a többi route referencia.'}</span></div><div className="lab-mapbar__actions">
             {!leftPanelOpen ? <Button variant="secondary" size="sm" onClick={() => setLeftPanelOpen(true)}>Beállítások ›</Button> : null}
             {!rightPanelOpen ? <Button variant="secondary" size="sm" onClick={() => setRightPanelOpen(true)}>‹ Debug</Button> : null}
             <div className="lab-layer-controls"><LayerToggle label="H3 háló" checked={showGrid} onChange={setShowGrid} /><LayerToggle label="Hurkok" checked={showLoops} onChange={setShowLoops} /><LayerToggle label="Foglalás" checked={showClaims} onChange={setShowClaims} /></div>
@@ -484,6 +554,7 @@ export function SimulationLabScenarioScreen() {
 
         <aside className="lab-panel lab-panel--debug" aria-hidden={!rightPanelOpen}>
           <section className="lab-side-header"><div><div className="lab-kicker">LIVE DEBUG</div><h2>World / Phase</h2></div><button type="button" className="lab-panel-collapse" onClick={() => setRightPanelOpen(false)}>›</button></section>
+          <section className="lab-side-section"><div className="lab-section__title">Phase állapot</div><PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} compact />{phasePlayback ? <div className="lab-phase-runs">{phasePlayback.phase.runs.map((run) => { const player = players.find((item) => item.id === run.playerId); const state = phaseRunState(run, phasePlayback.simNow); return <div key={run.runId} className={`lab-phase-run lab-phase-run--${state}`}><i style={{ background: playerColor(players, run.playerId) }} /><strong>{player?.name ?? run.playerId}</strong><span>{phaseRunStateLabel(state)}</span></div>; })}</div> : null}</section>
           <section className="lab-side-section"><div className="lab-section__title">World</div><div className="lab-world-list">{players.map((player, index) => <div key={player.id}><i style={{ background: PLAYER_COLORS[index % PLAYER_COLORS.length] }} /><strong>{player.name}</strong><span>{countPlayerCells(world, player.id)} cella</span></div>)}</div></section>
           <section className="lab-side-section"><div className="lab-section__title">Aktív player</div><div className="lab-stats"><Stat label="Útvonal" value={`${routeKm.toFixed(2)} km`} /><Stat label="GPS minták" value={String(generated.samples.length)} /><Stat label="Recorder táv" value={`${(soloRecorder.distanceM / 1000).toFixed(2)} km`} /><Stat label="Bezárások" value={String(gameResult?.loops.length ?? 0)} /><Stat label="Új / lopott" value={String(newCells)} /><Stat label="Lopott" value={String(claim?.counts.stolen ?? 0)} /><Stat label="Áttörés" value={String(claim?.counts.breakthrough ?? 0)} /><Stat label="GP" value={formatGp(gameResult?.gp.total ?? 0)} /></div></section>
           <section className="lab-side-section"><div className="lab-debug-card__head"><strong>Védelmi szint</strong><span>{ownedCells} saját cella</span></div><div className="lab-defense-counts">{defenseCounts.map((count, index) => <div key={index}><i className={`lab-defense lab-defense--${index + 1}`}>{index + 1}</i><span>{count} cella</span></div>)}</div></section>
@@ -501,28 +572,165 @@ function createInitialScenario(): { players: LabPlayer[]; phases: LabPhase[] } {
   const phase: LabPhase = { id: 'phase-1', name: 'Phase 1', runs: [createRun('phase-1', player.id, 1)] };
   return { players: [player], phases: [phase] };
 }
+
 function createRun(phaseId: string, playerId: string, index: number): LabPhaseRun {
   return { id: `${phaseId}-${playerId}`, playerId, route: [], config: createConfig(index), startOffsetMs: 0 };
 }
+
 function createConfig(index: number): GpsSimulationConfig {
   return { ...DEFAULT_GPS_SIMULATION_CONFIG, seed: DEFAULT_GPS_SIMULATION_CONFIG.seed + index - 1 };
 }
+
 function playerColor(players: readonly LabPlayer[], playerId: string): string {
   const index = Math.max(0, players.findIndex((player) => player.id === playerId));
   return PLAYER_COLORS[index % PLAYER_COLORS.length]!;
 }
+
 function prefixByTime<T extends { t: number }>(items: readonly T[], time: number): T[] {
-  let low = 0; let high = items.length;
-  while (low < high) { const mid = (low + high) >>> 1; if (items[mid]!.t <= time) low = mid + 1; else high = mid; }
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (items[mid]!.t <= time) low = mid + 1;
+    else high = mid;
+  }
   return items.slice(0, low);
 }
-function clonePlayers(players: readonly LabPlayer[]): LabPlayer[] { return players.map((player) => ({ ...player })); }
-function clonePhases(phases: readonly LabPhase[]): LabPhase[] { return phases.map((phase) => ({ ...phase, runs: phase.runs.map((run) => ({ ...run, route: run.route.map((point) => ({ ...point })), config: { ...run.config } })) })); }
-function loadScenarios(): SavedScenario[] { try { const raw = localStorage.getItem(STORAGE_KEY); const parsed = raw ? JSON.parse(raw) as SavedScenario[] : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
-function persistScenarios(items: SavedScenario[]) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* local-only convenience */ } }
 
-function LayerToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }) { return <label className={`lab-layer-toggle${checked ? ' lab-layer-toggle--on' : ''}`}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
-function NumberField({ label, value, min, max, step, suffix, onChange }: { label: string; value: number; min: number; max: number; step: number; suffix?: string; onChange(value: number): void }) { return <label className="lab-number"><span>{label}</span><span className="lab-number__control"><input type="number" value={value} min={min} max={max} step={step} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) onChange(next); }} />{suffix ? <small>{suffix}</small> : null}</span></label>; }
-function Stat({ label, value }: { label: string; value: string }) { return <div className="lab-stat"><span>{label}</span><strong>{value}</strong></div>; }
+function clonePlayers(players: readonly LabPlayer[]): LabPlayer[] {
+  return players.map((player) => ({ ...player }));
+}
 
-void formatArea;
+function clonePhases(phases: readonly LabPhase[]): LabPhase[] {
+  return phases.map((phase) => ({
+    ...phase,
+    runs: phase.runs.map((run) => ({
+      ...run,
+      route: run.route.map((point) => ({ ...point })),
+      config: { ...run.config },
+    })),
+  }));
+}
+
+function loadScenarios(): SavedScenario[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as SavedScenario[] : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistScenarios(items: SavedScenario[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    /* local-only convenience */
+  }
+}
+
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return 'Ismeretlen phase feldolgozási hiba.';
+}
+
+function phaseButtonLabel(status: PhaseStatus, progress: number): string {
+  if (status === 'preparing') return 'Phase előkészítése…';
+  if (status === 'running') return `Phase fut · ${progress}%`;
+  if (status === 'error') return 'Phase újrapróbálása';
+  if (status === 'done') return 'Phase újraindítása';
+  return 'Phase indítása';
+}
+
+function phaseStatusLabel(status: PhaseStatus): string {
+  if (status === 'preparing') return 'Előkészítés';
+  if (status === 'running') return 'Fut';
+  if (status === 'done') return 'Kész';
+  if (status === 'error') return 'Hiba';
+  return 'Készen áll';
+}
+
+function phaseRunState(run: LabPhaseOutcome['runs'][number], simNow: number): 'waiting' | 'recording' | 'committed' {
+  if (simNow < run.startedAt) return 'waiting';
+  if (simNow < run.finishedAt) return 'recording';
+  return 'committed';
+}
+
+function phaseRunStateLabel(state: 'waiting' | 'recording' | 'committed'): string {
+  if (state === 'waiting') return 'vár indulásra';
+  if (state === 'recording') return 'rögzít';
+  return 'commit kész';
+}
+
+function formatMs(ms: number): string {
+  if (ms < 1_000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1_000).toFixed(ms < 10_000 ? 2 : 1)} s`;
+}
+
+function PhaseStatusPanel({
+  status,
+  progress,
+  error,
+  computeMs,
+  playback,
+  compact = false,
+}: {
+  status: PhaseStatus;
+  progress: number;
+  error: string | null;
+  computeMs: number | null;
+  playback: PhasePlayback | null;
+  compact?: boolean;
+}) {
+  if (status === 'idle' && !playback && !error) return null;
+  return (
+    <div className={`lab-phase-status lab-phase-status--${status}${compact ? ' lab-phase-status--compact' : ''}`} role="status" aria-live="polite">
+      <div className="lab-phase-status__head">
+        <strong>{phaseStatusLabel(status)}</strong>
+        <span>{status === 'preparing' ? 'engine számítás…' : `${progress}%`}</span>
+      </div>
+      <div className="lab-phase-progress" aria-hidden="true"><i style={{ width: `${status === 'preparing' ? 12 : progress}%` }} /></div>
+      {error ? <p className="lab-phase-error">{error}</p> : null}
+      {!error && computeMs !== null ? <small>Engine előkészítés: {formatMs(computeMs)}</small> : null}
+      {!error && playback ? <small>Szimulált idő: {formatMs(Math.max(0, playback.simNow - playback.simStart))} / {formatMs(Math.max(0, playback.simEnd - playback.simStart))}</small> : null}
+    </div>
+  );
+}
+
+function LayerToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }) {
+  return <label className={`lab-layer-toggle${checked ? ' lab-layer-toggle--on' : ''}`}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  suffix,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix?: string;
+  onChange(value: number): void;
+  disabled?: boolean;
+}) {
+  return <label className="lab-number"><span>{label}</span><span className="lab-number__control"><input type="number" value={value} min={min} max={max} step={step} disabled={disabled} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) onChange(next); }} />{suffix ? <small>{suffix}</small> : null}</span></label>;
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div className="lab-stat"><span>{label}</span><strong>{value}</strong></div>;
+}
