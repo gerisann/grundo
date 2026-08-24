@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar } from '@/components/ActivityCard';
-import { RivalScore } from '@/components/RivalScore';
+import { RivalRow } from '@/components/RivalRow';
 import { api, ApiError, type Rival } from '@/lib/api';
 import './connectionsSheet.css';
 import './rivalsSheet.css';
@@ -106,28 +104,16 @@ export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => voi
           <p className="conn__note">Nincs ilyen nevű riválisod.</p>
         ) : (
           <>
-            {(filtered ?? []).map((rival) => {
-              const total = Math.max(1, rival.gainedCells + rival.lostCells);
-              const gained = Math.round((rival.gainedCells / total) * 100);
-              return (
-              <button
+            {(filtered ?? []).map((rival) => (
+              <RivalRow
                 key={rival.uid}
-                type="button"
-                className="conn__row rival-row"
-                style={{ '--rival-gained': `${gained}%` } as CSSProperties}
-                onClick={() => {
+                rival={rival}
+                onOpen={() => {
                   onClose?.();
                   navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`);
                 }}
-              >
-                <span className="rival-row__identity">
-                  <Avatar url={rival.photoURL} name={rival.username} size={44} />
-                  <span className="conn__name">{rival.username}</span>
-                </span>
-                <RivalScore rival={rival} />
-              </button>
-              );
-            })}
+              />
+            ))}
 
             {hasMore && !query ? (
               <p className="conn__note">
