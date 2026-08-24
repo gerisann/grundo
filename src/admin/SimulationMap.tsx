@@ -1,8 +1,11 @@
 import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { cellToBoundary, cellToLatLng, gridDisk } from 'h3-js';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import { mapStyleFor } from '@/lib/theme';
 import { useThemeContext } from '@/hooks/ThemeProvider';
+import type { ProcessResult } from '@/game';
+import type { CellId } from '@/types';
 import type { SimulationWaypoint } from '@/tracking/simulationSource';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -10,6 +13,10 @@ interface SimulationMapProps {
   route: readonly SimulationWaypoint[];
   rawTrack: readonly { lat: number; lng: number }[];
   acceptedTrack: readonly { lat: number; lng: number }[];
+  result: ProcessResult | null;
+  showGrid: boolean;
+  showLoops: boolean;
+  showClaims: boolean;
   onAppendWaypoint(point: SimulationWaypoint): void;
   onMoveWaypoint(index: number, point: SimulationWaypoint): void;
 }
@@ -17,11 +24,21 @@ interface SimulationMapProps {
 const ROUTE_SOURCE = 'lab-route';
 const RAW_SOURCE = 'lab-raw';
 const ACCEPTED_SOURCE = 'lab-accepted';
+const GRID_SOURCE = 'lab-grid';
+const TRAIL_SOURCE = 'lab-cell-trail';
+const LOOP_SOURCE = 'lab-loops';
+const CLAIM_SOURCE = 'lab-claim';
+const REJECTED_SOURCE = 'lab-rejected-loops';
+const MAX_GRID_CELLS = 12_000;
 
 export function SimulationMap({
   route,
   rawTrack,
   acceptedTrack,
+  result,
+  showGrid,
+  showLoops,
+  showClaims,
   onAppendWaypoint,
   onMoveWaypoint,
 }: SimulationMapProps) {
@@ -32,12 +49,16 @@ export function SimulationMap({
   const routeRef = useRef(route);
   const rawRef = useRef(rawTrack);
   const acceptedRef = useRef(acceptedTrack);
+  const resultRef = useRef(result);
+  const togglesRef = useRef({ showGrid, showLoops, showClaims });
   const appendRef = useRef(onAppendWaypoint);
   const moveRef = useRef(onMoveWaypoint);
 
   routeRef.current = route;
   rawRef.current = rawTrack;
   acceptedRef.current = acceptedTrack;
+  resultRef.current = result;
+  togglesRef.current = { showGrid, showLoops, showClaims };
   appendRef.current = onAppendWaypoint;
   moveRef.current = onMoveWaypoint;
 
@@ -62,10 +83,9 @@ export function SimulationMap({
     instance.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
     instance.on('load', () => {
-      addLine(instance, ROUTE_SOURCE, '#a855f7', 4, 0.9);
-      addLine(instance, RAW_SOURCE, '#ef4444', 2, 0.45);
-      addLine(instance, ACCEPTED_SOURCE, '#22c55e', 3, 0.95);
+      addAllLayers(instance);
       syncLines(instance, routeRef.current, rawRef.current, acceptedRef.current);
+      syncGameLayers(instance, resultRef.current, togglesRef.current);
       syncMarkers(instance, routeRef.current, markers, moveRef);
     });
 
@@ -93,13 +113,18 @@ export function SimulationMap({
 
   useEffect(() => {
     const instance = map.current;
+    if (!instance || !instance.isStyleLoaded()) return;
+    syncGameLayers(instance, result, { showGrid, showLoops, showClaims });
+  }, [result, showGrid, showLoops, showClaims]);
+
+  useEffect(() => {
+    const instance = map.current;
     if (!instance) return;
     instance.setStyle(mapStyleFor(theme));
     instance.once('style.load', () => {
-      addLine(instance, ROUTE_SOURCE, '#a855f7', 4, 0.9);
-      addLine(instance, RAW_SOURCE, '#ef4444', 2, 0.45);
-      addLine(instance, ACCEPTED_SOURCE, '#22c55e', 3, 0.95);
+      addAllLayers(instance);
       syncLines(instance, routeRef.current, rawRef.current, acceptedRef.current);
+      syncGameLayers(instance, resultRef.current, togglesRef.current);
     });
   }, [theme]);
 
@@ -112,6 +137,322 @@ export function SimulationMap({
   }
 
   return <div ref={container} className="lab-map" />;
+}
+
+function addAllLayers(map: mapboxgl.Map) {
+  addLine(map, ROUTE_SOURCE, token('--accent'), 4, 0.9);
+  addLine(map, RAW_SOURCE, token('--danger'), 2, 0.45);
+  addLine(map, ACCEPTED_SOURCE, token('--success'), 3, 0.95);
+  addGameLayers(map);
+}
+
+function addGameLayers(map: mapboxgl.Map) {
+  addGeoJsonSource(map, GRID_SOURCE);
+  addGeoJsonSource(map, TRAIL_SOURCE);
+  addGeoJsonSource(map, LOOP_SOURCE);
+  addGeoJsonSource(map, CLAIM_SOURCE);
+  addGeoJsonSource(map, REJECTED_SOURCE);
+
+  if (!map.getLayer(`${GRID_SOURCE}-line`)) {
+    map.addLayer({
+      id: `${GRID_SOURCE}-line`,
+      type: 'line',
+      source: GRID_SOURCE,
+      paint: {
+        'line-color': token('--border-strong'),
+        'line-width': 0.7,
+        'line-opacity': 0.45,
+      },
+    });
+  }
+
+  if (!map.getLayer(`${TRAIL_SOURCE}-fill`)) {
+    map.addLayer({
+      id: `${TRAIL_SOURCE}-fill`,
+      type: 'fill',
+      source: TRAIL_SOURCE,
+      paint: {
+        'fill-color': [
+          'match', ['get', 'state'],
+          'discarded', token('--territory-neutral'),
+          token('--trail-pending'),
+        ] as any,
+        'fill-opacity': [
+          'match', ['get', 'state'],
+          'discarded', 0.11,
+          0.08,
+        ] as any,
+      },
+    });
+  }
+  if (!map.getLayer(`${TRAIL_SOURCE}-line`)) {
+    map.addLayer({
+      id: `${TRAIL_SOURCE}-line`,
+      type: 'line',
+      source: TRAIL_SOURCE,
+      paint: {
+        'line-color': [
+          'match', ['get', 'state'],
+          'discarded', token('--territory-neutral'),
+          token('--trail-pending'),
+        ] as any,
+        'line-width': 1,
+        'line-opacity': 0.7,
+      },
+    });
+  }
+
+  if (!map.getLayer(`${LOOP_SOURCE}-fill`)) {
+    map.addLayer({
+      id: `${LOOP_SOURCE}-fill`,
+      type: 'fill',
+      source: LOOP_SOURCE,
+      filter: ['==', ['get', 'kind'], 'interior'],
+      paint: {
+        'fill-color': token('--info'),
+        'fill-opacity': 0.16,
+      },
+    });
+  }
+  if (!map.getLayer(`${LOOP_SOURCE}-wall`)) {
+    map.addLayer({
+      id: `${LOOP_SOURCE}-wall`,
+      type: 'line',
+      source: LOOP_SOURCE,
+      filter: ['==', ['get', 'kind'], 'wall'],
+      paint: {
+        'line-color': token('--warning'),
+        'line-width': 2,
+        'line-opacity': 0.95,
+      },
+    });
+  }
+
+  if (!map.getLayer(`${CLAIM_SOURCE}-fill`)) {
+    map.addLayer({
+      id: `${CLAIM_SOURCE}-fill`,
+      type: 'fill',
+      source: CLAIM_SOURCE,
+      paint: {
+        'fill-color': [
+          'match', ['get', 'fate'],
+          'breakthrough', token('--danger'),
+          token('--territory-own'),
+        ] as any,
+        'fill-opacity': [
+          'interpolate', ['linear'], ['get', 'defense'],
+          1, 0.22,
+          2, 0.32,
+          3, 0.44,
+          4, 0.58,
+          5, 0.74,
+        ] as any,
+      },
+    });
+  }
+  if (!map.getLayer(`${CLAIM_SOURCE}-line`)) {
+    map.addLayer({
+      id: `${CLAIM_SOURCE}-line`,
+      type: 'line',
+      source: CLAIM_SOURCE,
+      paint: {
+        'line-color': [
+          'match', ['get', 'fate'],
+          'breakthrough', token('--danger'),
+          token('--territory-own'),
+        ] as any,
+        'line-width': [
+          'interpolate', ['linear'], ['get', 'defense'],
+          1, 0.8,
+          5, 2.2,
+        ] as any,
+        'line-opacity': 0.95,
+      },
+    });
+  }
+  if (!map.getLayer(`${CLAIM_SOURCE}-labels`)) {
+    map.addLayer({
+      id: `${CLAIM_SOURCE}-labels`,
+      type: 'symbol',
+      source: CLAIM_SOURCE,
+      minzoom: 16,
+      layout: {
+        'text-field': ['concat', ['to-string', ['get', 'defense']], '×'] as any,
+        'text-size': 9,
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': token('--territory-label-strong'),
+        'text-halo-color': token('--territory-own'),
+        'text-halo-width': 1,
+      },
+    });
+  }
+
+  if (!map.getLayer(REJECTED_SOURCE)) {
+    map.addLayer({
+      id: REJECTED_SOURCE,
+      type: 'line',
+      source: REJECTED_SOURCE,
+      paint: {
+        'line-color': token('--danger'),
+        'line-width': 4,
+        'line-opacity': 0.9,
+        'line-dasharray': [1.5, 1.5],
+      },
+    });
+  }
+}
+
+function syncGameLayers(
+  map: mapboxgl.Map,
+  result: ProcessResult | null,
+  toggles: { showGrid: boolean; showLoops: boolean; showClaims: boolean },
+) {
+  if (!result) {
+    setSourceData(map, GRID_SOURCE, emptyFeatureCollection());
+    setSourceData(map, TRAIL_SOURCE, emptyFeatureCollection());
+    setSourceData(map, LOOP_SOURCE, emptyFeatureCollection());
+    setSourceData(map, CLAIM_SOURCE, emptyFeatureCollection());
+    setSourceData(map, REJECTED_SOURCE, emptyFeatureCollection());
+    return;
+  }
+
+  const gridCells = toggles.showGrid ? collectRelevantGridCells(result) : [];
+  setSourceData(map, GRID_SOURCE, cellCollection(gridCells, () => ({})));
+
+  const trailCells = toggles.showClaims ? [...new Set(result.cellPath)] : [];
+  setSourceData(
+    map,
+    TRAIL_SOURCE,
+    cellCollection(trailCells, (cell) => ({
+      state: result.claimedCells.has(cell) ? 'claimed' : 'discarded',
+    })),
+  );
+
+  setSourceData(
+    map,
+    LOOP_SOURCE,
+    toggles.showLoops ? loopCollection(result) : emptyFeatureCollection(),
+  );
+  setSourceData(
+    map,
+    REJECTED_SOURCE,
+    toggles.showLoops ? rejectedLoopCollection(result) : emptyFeatureCollection(),
+  );
+  setSourceData(
+    map,
+    CLAIM_SOURCE,
+    toggles.showClaims ? claimCollection(result) : emptyFeatureCollection(),
+  );
+}
+
+function collectRelevantGridCells(result: ProcessResult): CellId[] {
+  const cells = new Set<CellId>();
+  const seeds = new Set<CellId>(result.cellPath);
+  for (const cell of result.claimedCells) seeds.add(cell);
+
+  if (seeds.size > MAX_GRID_CELLS) return [];
+  for (const cell of seeds) {
+    for (const nearby of gridDisk(cell, 1)) {
+      cells.add(nearby);
+      if (cells.size > MAX_GRID_CELLS) return [];
+    }
+  }
+  return [...cells];
+}
+
+function loopCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  result.loops.forEach((loop, loopIndex) => {
+    for (const cell of loop.interior) {
+      features.push(cellFeature(cell, { kind: 'interior', loop: loopIndex + 1 }));
+    }
+    for (const cell of loop.wall) {
+      features.push(cellFeature(cell, { kind: 'wall', loop: loopIndex + 1 }));
+    }
+  });
+  return { type: 'FeatureCollection', features };
+}
+
+function claimCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  if (!result.claim) return emptyFeatureCollection<GeoJSON.Polygon>();
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  for (const [cell, ownership] of result.claim.updates) {
+    features.push(cellFeature(cell, {
+      defense: ownership.defense,
+      owner: ownership.owner,
+      fate: result.claim.fates.get(cell) ?? 'free',
+    }));
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function rejectedLoopCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSON.LineString> {
+  const features: GeoJSON.Feature<GeoJSON.LineString>[] = [];
+  for (const diagnostic of result.diagnostics.loops.rejected) {
+    const cells = result.cellPath.slice(diagnostic.fromIndex, diagnostic.toIndex + 1);
+    if (cells.length < 2) continue;
+    features.push({
+      type: 'Feature',
+      properties: {
+        reason: diagnostic.reason,
+        wallCells: diagnostic.wallCells,
+        interiorCells: diagnostic.interiorCells,
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: cells.map((cell) => {
+          const [lat, lng] = cellToLatLng(cell);
+          return [lng, lat];
+        }),
+      },
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function cellCollection(
+  cells: readonly CellId[],
+  properties: (cell: CellId) => GeoJSON.GeoJsonProperties,
+): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  return {
+    type: 'FeatureCollection',
+    features: cells.map((cell) => cellFeature(cell, properties(cell))),
+  };
+}
+
+function cellFeature(
+  cell: CellId,
+  properties: GeoJSON.GeoJsonProperties,
+): GeoJSON.Feature<GeoJSON.Polygon> {
+  const boundary = cellToBoundary(cell) as [number, number][];
+  const coordinates = boundary.map(([lat, lng]) => [lng, lat]);
+  if (coordinates.length > 0) coordinates.push([...coordinates[0]!] as [number, number]);
+  return {
+    type: 'Feature',
+    properties: { cell, ...properties },
+    geometry: { type: 'Polygon', coordinates: [coordinates] },
+  };
+}
+
+function addGeoJsonSource(map: mapboxgl.Map, sourceId: string) {
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, { type: 'geojson', data: emptyFeatureCollection() });
+  }
+}
+
+function setSourceData(map: mapboxgl.Map, sourceId: string, data: GeoJSON.FeatureCollection) {
+  const source = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
+  source?.setData(data);
+}
+
+function emptyFeatureCollection<T extends GeoJSON.Geometry = GeoJSON.Geometry>(): GeoJSON.FeatureCollection<T> {
+  return { type: 'FeatureCollection', features: [] };
+}
+
+function token(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 function addLine(
