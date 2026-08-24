@@ -3,7 +3,7 @@
 ## ÁLLAPOT
 
 - Repo: `C:\Users\Geri\Documents\GitHub\grundo`, ág: `main`.
-- Kiinduló HEAD: `8bfa2c4 Küldetés útvonalgeometria újratervezése`.
+- Jelenlegi HEAD: `a583af0 Értesítés olvasott gesztusának javítása`.
 - A 2026-08-23-i iOS terepteszt kritikus rögzítési, hurok- és push-hibáinak
   javítása elkészült; push/telepítés még nincs.
 - Teljes unit teszt: **412 zöld**, 112 emulátoros teszt kihagyva. Frontend és
@@ -29,23 +29,44 @@
   küldések platformját és hibakódját.
 - A specifikáció ezekkel a döntésekkel frissült.
 
-### UI-IGAZÍTÁSOK (2026-08-23)
+### UI-IGAZÍTÁSOK (2026-08-23/24)
 
-- A rivális-lista kártyái széles, két tónusú mérleghátteret és erősebb vizuális
-  hierarchiát kaptak; a rivális címke kisebb, de jobban olvasható lett.
-- A legalább egy kedvelést kapott aktivitások szíve korall (`#FB5F73`), az
-  értesítés olvasottra húzásának küszöbe kétszeresére nőtt.
-- A Küldetések képernyő alapból egyszerű időkeret-választót mutat; a további
-  cél-, irány-, tempó- és mozgásforma-beállítások a „Részletes keresés” alatt
-  nyithatók meg.
-- Ezek kizárólag frontend/UI módosítások; backend- vagy adatbázis-deploy nem
-  szükséges hozzájuk.
+- A rivális-lista kártyája arányos lila (`#8F5CF2`) / korall (`#FB5F73`)
+  háttérrel, a két szélen címkés `+`/`−` cellamérleggel és középre tett
+  avatárral készül. A szorzó jobb felső, sötét kiemelést kapott.
+- A legalább egy kedvelést kapott aktivitások szíve korall (`#FB5F73`).
+- A Küldetések képernyő egyszerű nézetében az időkeret és a mozgásforma
+  látszik. A további tempó/sebesség, cél és irány a részletes nézetben van;
+  a sebesség/tempó `− / érték / +` vezérlővel állítható. A nézetváltó és a
+  Mentett küldetések együtt az alsó gombsorban vannak.
+- Aktivitás-részletező: hexagon kapcsoló, aktív állapot, teljes hurokcellák
+  kliensoldali visszaszámítása régi aktivitásokhoz. A Mapbox-attribúció 28 px
+  feljebb és 32% opacityvel jelenik meg (jogi okból nem távolítható el).
+- Feed: a hexagon kapcsoló megnyitásakor már élő `MapView` réteget használ,
+  nem félrecsúszó SVG-t; a backendből érkező `activityCells` elsőbbséget kap.
+- Új aktivitások `activityCells` mezőjét a normál és a darabolt backend
+  feldolgozás is menti és a feed/részletező API visszaadja.
+- Az értesítés olvasottra húzásának maximuma 120 px, a commit-küszöb 84 px;
+  a zöld animáció lezárásakor a lokális állapot is nullázódik, így nem ragadhat
+  bent a zöld sáv.
+
+### FONTOS KORLÁT / KÖVETKEZŐ JAVÍTÁS
+
+- Régi, már elmentett aktivitások Firestore-dokumentumában nincs
+  `activityCells`. Saját, teljes track esetén a kliens ezt újraszámolja; idegen
+  vagy privát útvonalnál ez nem garantálható. Ha minden régi aktivitáshoz
+  pontos cellaréteg kell, külön backfill script szükséges.
+- Az aktivitásonkénti cellák ma egyszínű `interior` rétegben látszanak. Az új
+  és elrabolt cellák külön színéhez a backendnek cellánkénti sorsot (`free` /
+  `stolen`) is kellene eltárolnia és kiadnia.
 
 ## TELEPÍTÉSI SORREND
 
 1. Push.
 2. Adatbázis-, szabály- és indexlépés nem kell.
-3. Backend és frontend telepítés kell.
+3. A `f14317c` és `48f9fa5` óta backend **és** frontend telepítés kell az
+   aktivitás-cellák éles működéséhez. A későbbi tiszta UI commitokhoz csak
+   frontend kell.
 4. Codemagic/TestFlight build kell a natív javításokhoz.
 
 ## KÖVETKEZŐ ELLENŐRZÉS
@@ -55,7 +76,9 @@
 2. Egyszerű szomszédos cellafalú hurok és nyolcas: élőben és mentés után is.
 3. Rivális terület hurka: elrabolt előnézet `#FA5F73`.
 4. Natív push lezárt képernyőn. Hiba esetén Cloud Run `[push]` log.
-5. A küldetés-útvonal minősége külön következő menet.
+5. Értesítés: lassú balra húzás, gyors pöccintés, sikertelen hálózat esetén is
+   ne maradjon zöld sáv.
+6. A küldetés-útvonal minősége külön következő menet.
 
 ## MODELLJAVASLAT
 
