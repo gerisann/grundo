@@ -9,11 +9,6 @@ const p = (eastM: number, northM: number) => offset(ORIGIN, eastM, northM);
 
 describe('overlap-aware loop detection', () => {
   it('a következő hurok újrahasználhatja az előző bezárás régi falát', () => {
-    // 1. hurok: A-B-C-D-A
-    // 2. hurok: C-D-A-E-F-C — az első hurok C-D-A falrészét újrahasználja.
-    //
-    // A régi lastSeenAt.clear() miatt a második C már nem találta meg a
-    // korábbi C-D-A útvonalat, így csak egyetlen bezárás maradt.
     const points = buildTrace(
       [
         p(0, 0),
@@ -38,11 +33,6 @@ describe('overlap-aware loop detection', () => {
   it('egy H3 keresztezési kapu több szomszédos cellája nem süti el többször ugyanazt a hurkot', () => {
     const center = latLngToCell(ORIGIN.lat, ORIGIN.lng, GAMEPLAY.H3_RESOLUTION);
     const ring = gridRingUnsafe(center, 4);
-
-    // Egyszer megkerüljük a gyűrűt, bezárjuk, majd még több cellán haladunk
-    // tovább UGYANAZON a korábbi falon. A régi overlap-aware detector ezeknél
-    // a celláknál ugyanazt a területet újra és újra huroknak látta, ami egy
-    // fizikai körből rögtön 3–5-ös defense-t csinált.
     const path = [
       ...ring,
       ring[0]!,
@@ -56,13 +46,49 @@ describe('overlap-aware loop detection', () => {
     expect(detectLoops(path)).toHaveLength(1);
   });
 
+  it('a bezárás utáni kilépő cella kötelező szeparátor, nem új hurok', () => {
+    // Egy normál kör bezárása után azonnal kifelé indulunk. A korábbi gate
+    // logika a kontaktzóna első külső celláján már újraélesedett, és ott a
+    // frissen bezárt területet még egyszer el tudta sütni.
+    const points = buildTrace(
+      [
+        p(0, 0),
+        p(0, 220),
+        p(220, 220),
+        p(220, 0),
+        p(0, 0),
+        p(-60, -50),
+        p(-140, -120),
+      ],
+      { stepM: 6 },
+    );
+    const { path } = traceToCellPath(points);
+    expect(detectLoops(path)).toHaveLength(1);
+  });
+
+  it('egy valódi kétlebenyes keresztező útvonal pontosan két hurkot ad', () => {
+    // Két külön hurok ugyanazon középső találkozási ponttal. Az első hurok
+    // kilépése nem lehet külön harmadik bezárás, a második valódi visszaérés
+    // viszont igen.
+    const points = buildTrace(
+      [
+        p(0, 0),
+        p(-180, 180),
+        p(180, 180),
+        p(0, 0),
+        p(180, -180),
+        p(-180, -180),
+        p(0, 0),
+      ],
+      { stepM: 6 },
+    );
+    const { path } = traceToCellPath(points);
+    expect(detectLoops(path)).toHaveLength(2);
+  });
+
   it('ugyanaz a geometriai kör csak egy TELJES új traversal után számít újra', () => {
     const center = latLngToCell(ORIGIN.lat, ORIGIN.lng, GAMEPLAY.H3_RESOLUTION);
     const ring = gridRingUnsafe(center, 4);
-
-    // Első teljes kör + második teljes kör. A második kör köztes cellái nem
-    // új bezárások; csak akkor jár a második hurok, amikor a teljes új lap
-    // valóban visszaér a kapuhoz.
     const twice = [
       ...ring,
       ring[0]!,
