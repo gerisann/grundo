@@ -1,13 +1,16 @@
 import {
+  cellToChildren,
   cellToChildrenSize,
   cellToParent,
   compactCells,
   getResolution,
+  gridDisk,
 } from 'h3-js';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import {
   buildCompactClaimCredits,
   computeActivityGp,
+  findStolenFrontierReassignments,
   hasCompactInterior,
   layerOf,
   loopCells,
@@ -44,9 +47,14 @@ export function processLabActivity(
 
   if (!hasCompact) {
     // A normál core claim res12 exact Mapet vár. A mixed-resolution LAB worldből
-    // csak a ténylegesen érintett kis hurok celláit materializáljuk.
-    const scopedOwnership = materializeFineOwnership(input.ownership, geometry, cfg);
-    return processActivityGeometry({ ...input, ownership: scopedOwnership }, geometry);
+    // a claim teljes kétgyűrűs környezetét materializáljuk, mert a rablás utáni
+    // frontier-cleanupnak mind a 6 oldalszomszédot ismernie kell.
+    const scoped = materializeFineOwnership(input.ownership, geometry, cfg);
+    return processActivityGeometry({
+      ...input,
+      ownership: scoped.ownership,
+      orphanScope: scoped.scope,
+    }, geometry);
   }
 
   return processCompactLabActivity(input, geometry, cfg);
@@ -185,6 +193,80 @@ function processCompactLabActivity(
     }
   }
 
+  /**
+   * Rablás utáni frontier cleanup.
+   *
+   * A teljes compact belsőt NEM bontjuk ki. Csak azokat a lopott parenteket
+   * materializáljuk 49 res12 gyerekre, amelyek a post-claim worldben más ownerű
+   * parenttel érintkeznek. Így a szabály a határon pontos, de a többmilliós
+   * homogén belső továbbra is tömör marad.
+   */
+  const cleanupReassigned = new Set<CellId>();
+  if (counts.stolen > 0) {
+    const snapshotUpdates = new Map(updates);
+    const stolenSeeds = new Set<CellId>();
+
+    const snapshotOwnershipAt = (cell: CellId): CellOwnership | undefined => {
+      const exact = snapshotUpdates.get(cell);
+      if (exact !== undefined) return exact;
+      const resolution = getResolution(cell);
+      for (let parentRes = resolution - 1; parentRes >= 0; parentRes -= 1) {
+        const parent = cellToParent(cell, parentRes);
+        const updatedParent = snapshotUpdates.get(parent);
+        if (updatedParent !== undefined) return updatedParent;
+      }
+      return labWorldOwnershipAt(world, cell);
+    };
+
+    for (const [key, fate] of fates) {
+      if (fate !== 'stolen') continue;
+      const resolution = getResolution(key);
+      if (resolution === cfg.H3_RESOLUTION) {
+        stolenSeeds.add(key);
+        continue;
+      }
+      if (resolution > cfg.H3_RESOLUTION) continue;
+
+      const owner = snapshotOwnershipAt(key)?.owner;
+      if (!owner) continue;
+      const touchesDifferentOwner = gridDisk(key, 1).some((near) =>
+        near !== key && snapshotOwnershipAt(near)?.owner !== owner,
+      );
+      if (!touchesDifferentOwner) continue;
+
+      for (const child of cellToChildren(key, cfg.H3_RESOLUTION)) stolenSeeds.add(child);
+    }
+
+    const planned = findStolenFrontierReassignments({
+      stolenSeeds,
+      ownershipAt: snapshotOwnershipAt,
+      isDirectlyClaimed: (cell) =>
+        credits.cells.has(cell)
+        || credits.parents.has(cellToParent(cell, credits.parentResolution)),
+      gameplayResolution: cfg.H3_RESOLUTION,
+    });
+
+    // A `planned` teljes egészében ugyanabból a snapshotból készült; csak most
+    // alkalmazzuk, ezért az endpoint levágása nem indít folyosó-visszaevő kaszkádot.
+    for (const [cell, next] of planned) {
+      const previous = snapshotOwnershipAt(cell);
+      if (!previous || previous.owner === next.owner) continue;
+
+      updates.set(cell, next);
+      cleanupReassigned.add(cell);
+
+      if (next.owner === input.actorId) {
+        fates.set(cell, 'stolen');
+        counts.stolen += 1;
+        stolenFrom[previous.owner] = (stolenFrom[previous.owner] ?? 0) + 1;
+        weightedCells += multiplierFor(1, cfg);
+        gainedCells += 1;
+        previewFine.set(cell, 1);
+        defenseCounts[0] = (defenseCounts[0] ?? 0) + 1;
+      }
+    }
+  }
+
   const claim: ClaimResult = {
     updates,
     fates,
@@ -215,12 +297,15 @@ function processCompactLabActivity(
     cfg,
   );
 
+  const claimedCells = new Set(credits.cells.keys());
+  for (const cell of cleanupReassigned) claimedCells.add(cell);
+
   return {
     layer: layerOf(input.type),
     cellPath: geometry.cellPath,
     loops: geometry.loops,
-    claimedCells: new Set(credits.cells.keys()),
-    claimedCellCount: credits.cellCount,
+    claimedCells,
+    claimedCellCount: credits.cellCount + cleanupReassigned.size,
     claim,
     compactClaim: preview,
     loopClaims: [],
@@ -229,7 +314,7 @@ function processCompactLabActivity(
     diagnostics: {
       droppedPoints: geometry.droppedPoints,
       largeGaps: geometry.largeGaps,
-      orphanAbsorbedCells: 0,
+      orphanAbsorbedCells: cleanupReassigned.size,
       loops: geometry.loopDiagnostics,
     },
   };
@@ -264,17 +349,23 @@ function materializeFineOwnership(
   world: OwnershipMap,
   geometry: ActivityGeometry,
   cfg: GameplayConfig,
-): OwnershipMap {
-  if (world.size === 0 || geometry.loops.length === 0) return new Map();
-  const scoped: OwnershipMap = new Map();
+): { ownership: OwnershipMap; scope: Set<CellId> } {
+  const scope = new Set<CellId>();
+
   for (const loop of geometry.loops) {
     for (const cell of loopCells(loop)) {
       if (getResolution(cell) !== cfg.H3_RESOLUTION) continue;
-      const ownership = labWorldOwnershipAt(world, cell);
-      if (ownership !== undefined) scoped.set(cell, ownership);
+      for (const near of gridDisk(cell, 2)) scope.add(near);
     }
   }
-  return scoped;
+
+  const ownership: OwnershipMap = new Map();
+  for (const cell of scope) {
+    const held = labWorldOwnershipAt(world, cell);
+    if (held !== undefined) ownership.set(cell, held);
+  }
+
+  return { ownership, scope };
 }
 
 /** N azonos claim-jóváírás hatása egy cellára, iteráció nélkül. */
