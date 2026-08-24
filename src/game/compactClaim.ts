@@ -10,10 +10,22 @@ import type {
 import { multiplierFor } from './claim';
 import { hasCompactInterior } from './loopInterior';
 
-interface CompactState {
-  defense: number;
+interface CompactCreditState {
+  /** Hányszor jogosult claimre ez a cella ugyanebben az aktivitásban. */
+  credits: number;
   /** A legutóbbi hurok toIndexe, amely ezt a cellát jóváírta. */
   creditedAt: number;
+}
+
+export interface CompactClaimCredits {
+  /** A homogén parentek alapfelbontása (jelenleg res10). */
+  parentResolution: number;
+  /** Teljes parent → aktivitáson belüli claim-jóváírások száma. */
+  parents: Map<CellId, number>;
+  /** Finom res12 override → aktivitáson belüli claim-jóváírások száma. */
+  cells: Map<CellId, number>;
+  /** A teljes, egyedi res12-egyenértékű cellaszám. */
+  cellCount: number;
 }
 
 export interface CompactClaimPreview {
@@ -45,21 +57,20 @@ export interface CompactEmptyWorldResult {
 }
 
 /**
- * Nagy hurok(ka)t üres világban úgy könyvel el, hogy a homogén belső parentek
- * nem bomlanak több millió res12 Map-be.
+ * Ownership-független compact claim-jóváírások.
  *
- * Ez a LAB és a szerver GEOMETRIA-PROBE útja. Valódi ownership mellett a
- * backend blokkos claimje végzi ugyanezt az aktuális Firestore állapotból.
+ * A traversal-credit szabály itt dől el: egy későbbi, ugyanabból a traversalból
+ * létrejövő nagyobb hurok nem fizeti ki újra a korábban már jóváírt cellát.
+ * Valódi új kör viszont új creditet ad. A credit NEM defense: nincs 5-nél
+ * levágva, mert például egy rivális 5× cellára 6 találat végül saját 2× állapotot
+ * eredményez (4 áttörés + lopás + 1 megerősítés).
  */
-export function resolveCompactEmptyWorldClaims(
+export function buildCompactClaimCredits(
   loops: readonly DetectedLoop[],
-  actorId: string,
   cfg: GameplayConfig = DEFAULT_GAMEPLAY,
-): CompactEmptyWorldResult {
+): CompactClaimCredits | null {
   const compactLoops = loops.filter(hasCompactInterior);
-  if (compactLoops.length === 0) {
-    return { claim: null, claimedCells: new Set(), claimedCellCount: 0, preview: null };
-  }
+  if (compactLoops.length === 0) return null;
 
   const parentResolution = compactLoops[0]!.compactInterior!.parentResolution;
   if (
@@ -70,18 +81,8 @@ export function resolveCompactEmptyWorldClaims(
     throw new Error('A compact hurkok parent felbontása nem egységes.');
   }
 
-  /**
-   * `parentStates` csak akkor él, ha a parent minden res12 gyereke azonos
-   * defense/credit állapotban van. Részleges metszésnél az adott parentet
-   * legfeljebb 49 gyerekre bontjuk a `fineStates` mapben.
-   *
-   * `fineParents` külön index: ettől egy 40 000 parentből álló Balaton-belsőn
-   * nem kell 40 000 × 49 gyereket legenerálni csak azért, hogy megkérdezzük,
-   * van-e részleges override. Gyereklista kizárólag VALÓDI részleges metszésnél
-   * készül.
-   */
-  const parentStates = new Map<CellId, CompactState>();
-  const fineStates = new Map<CellId, CompactState>();
+  const parentStates = new Map<CellId, CompactCreditState>();
+  const fineStates = new Map<CellId, CompactCreditState>();
   const fineParents = new Set<CellId>();
 
   for (const loop of loops) {
@@ -92,18 +93,16 @@ export function resolveCompactEmptyWorldClaims(
       }
     }
 
-    // Fal + pontos határsáv. A két halmaz a compact full parentektől diszjunkt.
+    // Fal + pontos határsáv. A compact full parentektől geometriailag diszjunkt,
+    // de több egymást átfedő hurok miatt később lehet parent/fine override.
     for (const cell of loop.wall) applyFineCell(cell, loop.fromIndex, loop.toIndex);
     for (const cell of loop.interior) applyFineCell(cell, loop.fromIndex, loop.toIndex);
   }
 
-  const defenseCounts = Array.from({ length: cfg.MAX_DEFENSE }, () => 0);
-  const parentPreviewFine = new Map<CellId, number>();
-  const finePreview = new Map<CellId, number>();
-
-  // Parenteknél a fine override-ok felülírhatják az alapállapotot. Az ilyen
-  // override-ok számát levonjuk a parent bulk darabszámából.
+  const parents = new Map<CellId, number>();
+  const cells = new Map<CellId, number>();
   const overridesPerParent = new Map<CellId, number>();
+
   for (const cell of fineStates.keys()) {
     const parent = cellToParent(cell, parentResolution);
     if (parentStates.has(parent)) {
@@ -112,79 +111,19 @@ export function resolveCompactEmptyWorldClaims(
   }
 
   let cellCount = 0;
-  let weightedCells = 0;
-
   for (const [parent, state] of parentStates) {
     const fullCount = Number(cellToChildrenSize(parent, cfg.H3_RESOLUTION));
-    const overrideCount = overridesPerParent.get(parent) ?? 0;
-    const bulkCount = Math.max(0, fullCount - overrideCount);
-    if (bulkCount > 0) {
-      defenseCounts[state.defense - 1] = (defenseCounts[state.defense - 1] ?? 0) + bulkCount;
-      cellCount += bulkCount;
-      weightedCells += bulkCount * multiplierFor(state.defense, cfg);
-      parentPreviewFine.set(parent, state.defense);
-    }
+    const bulkCount = Math.max(0, fullCount - (overridesPerParent.get(parent) ?? 0));
+    if (bulkCount <= 0) continue;
+    parents.set(parent, state.credits);
+    cellCount += bulkCount;
   }
-
   for (const [cell, state] of fineStates) {
-    defenseCounts[state.defense - 1] = (defenseCounts[state.defense - 1] ?? 0) + 1;
+    cells.set(cell, state.credits);
     cellCount += 1;
-    weightedCells += multiplierFor(state.defense, cfg);
-    finePreview.set(cell, state.defense);
   }
 
-  if (cellCount === 0) {
-    return { claim: null, claimedCells: new Set(), claimedCellCount: 0, preview: null };
-  }
-
-  /**
-   * Üres világban a VÉGSŐ fate minden egyedi cellára `free`: az aktivitás előtt
-   * egyik sem volt a játékosé. A köztes ismételt hurkok a defense-et emelik,
-   * de a mergeClaims normál útja is `free`-ként könyvelné a végső sorsot.
-   */
-  const counts: Record<CellFate, number> = {
-    free: cellCount,
-    reclaimed: 0,
-    stolen: 0,
-    breakthrough: 0,
-  };
-
-  // A finom explicit map a claim kompatibilitásához marad meg. A teljes
-  // parentek szándékosan NINCSENEK itt kibontva.
-  const updates = new Map<CellId, CellOwnership>();
-  const fates = new Map<CellId, CellFate>();
-  for (const [cell, defense] of finePreview) {
-    updates.set(cell, { owner: actorId, defense });
-    fates.set(cell, 'free');
-  }
-
-  const claim: ClaimResult = {
-    updates,
-    fates,
-    counts,
-    stolenFrom: {},
-    breakthroughFrom: {},
-    weightedClaimM2: weightedCells * cfg.CELL_AREA_M2,
-    gainedM2: cellCount * cfg.CELL_AREA_M2,
-  };
-
-  // A Mapboxnak nem küldünk ki tízezrével olyan H3 cellákat, amelyeket maga
-  // a H3 hierarchia veszteségmentesen egyetlen parentté tud összevonni.
-  const renderParents = compactDefenseMap(parentPreviewFine);
-  const renderFine = compactDefenseMap(finePreview);
-
-  return {
-    claim,
-    claimedCells: new Set(finePreview.keys()),
-    claimedCellCount: cellCount,
-    preview: {
-      parentResolution,
-      parents: renderParents,
-      cells: renderFine,
-      defenseCounts,
-      cellCount,
-    },
-  };
+  return { parentResolution, parents, cells, cellCount };
 
   function applyFullParent(parent: CellId, fromIndex: number, toIndex: number): void {
     const parentState = parentStates.get(parent);
@@ -192,29 +131,29 @@ export function resolveCompactEmptyWorldClaims(
 
     if (!hasFineState) {
       if (parentState === undefined) {
-        parentStates.set(parent, { defense: 1, creditedAt: toIndex });
+        parentStates.set(parent, { credits: 1, creditedAt: toIndex });
         return;
       }
       if (fromIndex >= parentState.creditedAt) {
         parentStates.set(parent, {
-          defense: Math.min(parentState.defense + 1, cfg.MAX_DEFENSE),
+          credits: parentState.credits + 1,
           creditedAt: toIndex,
         });
       }
       return;
     }
 
-    // Részleges korábbi állapot: CSAK ezt az egy parentet bontjuk ki.
+    // Részleges korábbi credit: CSAK ezt az egy parentet bontjuk 49 res12-re.
     const children = cellToChildren(parent, cfg.H3_RESOLUTION);
     parentStates.delete(parent);
     fineParents.add(parent);
     for (const child of children) {
       const previous = fineStates.get(child) ?? parentState;
       if (previous === undefined) {
-        fineStates.set(child, { defense: 1, creditedAt: toIndex });
+        fineStates.set(child, { credits: 1, creditedAt: toIndex });
       } else if (fromIndex >= previous.creditedAt) {
         fineStates.set(child, {
-          defense: Math.min(previous.defense + 1, cfg.MAX_DEFENSE),
+          credits: previous.credits + 1,
           creditedAt: toIndex,
         });
       } else if (!fineStates.has(child)) {
@@ -230,18 +169,105 @@ export function resolveCompactEmptyWorldClaims(
     const previous = previousFine ?? parentState;
 
     if (previous === undefined) {
-      fineStates.set(cell, { defense: 1, creditedAt: toIndex });
+      fineStates.set(cell, { credits: 1, creditedAt: toIndex });
       fineParents.add(parent);
       return;
     }
     if (fromIndex < previous.creditedAt) return;
 
     fineStates.set(cell, {
-      defense: Math.min(previous.defense + 1, cfg.MAX_DEFENSE),
+      credits: previous.credits + 1,
       creditedAt: toIndex,
     });
     fineParents.add(parent);
   }
+}
+
+/**
+ * Nagy hurok(ka)t üres világban úgy könyvel el, hogy a homogén belső parentek
+ * nem bomlanak több millió res12 Map-be.
+ *
+ * Ez a LAB geometriai probe és a szerver GEOMETRIA-PROBE útja. A többplayeres
+ * LAB a fenti credit mapet az aktuális hierarchikus sandbox worldre alkalmazza.
+ */
+export function resolveCompactEmptyWorldClaims(
+  loops: readonly DetectedLoop[],
+  actorId: string,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+): CompactEmptyWorldResult {
+  const credits = buildCompactClaimCredits(loops, cfg);
+  if (!credits || credits.cellCount === 0) {
+    return { claim: null, claimedCells: new Set(), claimedCellCount: 0, preview: null };
+  }
+
+  const defenseCounts = Array.from({ length: cfg.MAX_DEFENSE }, () => 0);
+  const parentPreviewFine = new Map<CellId, number>();
+  const finePreview = new Map<CellId, number>();
+  const finePerParent = new Map<CellId, number>();
+
+  for (const cell of credits.cells.keys()) {
+    const parent = cellToParent(cell, credits.parentResolution);
+    if (credits.parents.has(parent)) {
+      finePerParent.set(parent, (finePerParent.get(parent) ?? 0) + 1);
+    }
+  }
+
+  let weightedCells = 0;
+  for (const [parent, creditCount] of credits.parents) {
+    const defense = Math.min(Math.max(creditCount, 1), cfg.MAX_DEFENSE);
+    const fullCount = Number(cellToChildrenSize(parent, cfg.H3_RESOLUTION));
+    const bulkCount = Math.max(0, fullCount - (finePerParent.get(parent) ?? 0));
+    if (bulkCount <= 0) continue;
+    defenseCounts[defense - 1] = (defenseCounts[defense - 1] ?? 0) + bulkCount;
+    weightedCells += bulkCount * multiplierFor(defense, cfg);
+    parentPreviewFine.set(parent, defense);
+  }
+
+  for (const [cell, creditCount] of credits.cells) {
+    const defense = Math.min(Math.max(creditCount, 1), cfg.MAX_DEFENSE);
+    defenseCounts[defense - 1] = (defenseCounts[defense - 1] ?? 0) + 1;
+    weightedCells += multiplierFor(defense, cfg);
+    finePreview.set(cell, defense);
+  }
+
+  const counts: Record<CellFate, number> = {
+    free: credits.cellCount,
+    reclaimed: 0,
+    stolen: 0,
+    breakthrough: 0,
+  };
+
+  // A ClaimResult kompatibilitás miatt itt csak a finom cellák explicit update-ek.
+  // A parent ownershipet a többplayeres LAB külön hierarchikus worldként tartja.
+  const updates = new Map<CellId, CellOwnership>();
+  const fates = new Map<CellId, CellFate>();
+  for (const [cell, defense] of finePreview) {
+    updates.set(cell, { owner: actorId, defense });
+    fates.set(cell, 'free');
+  }
+
+  const claim: ClaimResult = {
+    updates,
+    fates,
+    counts,
+    stolenFrom: {},
+    breakthroughFrom: {},
+    weightedClaimM2: weightedCells * cfg.CELL_AREA_M2,
+    gainedM2: credits.cellCount * cfg.CELL_AREA_M2,
+  };
+
+  return {
+    claim,
+    claimedCells: new Set(finePreview.keys()),
+    claimedCellCount: credits.cellCount,
+    preview: {
+      parentResolution: credits.parentResolution,
+      parents: compactDefenseMap(parentPreviewFine),
+      cells: compactDefenseMap(finePreview),
+      defenseCounts,
+      cellCount: credits.cellCount,
+    },
+  };
 }
 
 /**
