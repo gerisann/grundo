@@ -25,7 +25,8 @@
     "backfill:rivals": "tsx src/scripts/backfillRivals.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts",
     "inspect:push": "tsx src/scripts/inspectPushTokens.ts",
-    "probe:apns": "tsx src/scripts/probeApns.ts"
+    "probe:apns": "tsx src/scripts/probeApns.ts",
+    "probe:apns:key": "tsx src/scripts/probeApnsKey.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",
