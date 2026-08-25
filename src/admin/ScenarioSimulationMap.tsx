@@ -153,12 +153,29 @@ export function ScenarioSimulationMap(props: Props) {
     setSource(map, PLAYER_HEADS, playerHeadCollection(props.tracks));
   }, [ready, props.tracks, props.resetToken]);
 
-  // A sandbox world — a legdrágább forrás.
+  /**
+   * A sandbox world + az aktuális SOLO claim vizuális előnézete.
+   *
+   * A Player teszt `result`-ja futás közben is inkrementálisan frissül. Eddig a
+   * térkép kizárólag a valódi sandbox worldöt rajzolta, ezért az 1×/2×/3×
+   * defense-változás csak a futás VÉGÉN jelent meg. Debughoz ez pont a fontos
+   * pillanatot rejtette el.
+   *
+   * Itt nem commitolunk semmit: a result végállapotát csak a GeoJSON építésekor
+   * vetítjük rá a worldre. A valódi sandbox state továbbra is változatlan.
+   * Az engine maga legfeljebb MAX_LIVE_ENGINE_FRAMES alkalommal frissül egy
+   * solo futás alatt, ezért a drága world rebuild is ehhez a ritkább ütemhez
+   * kötődik, nem minden nyers GPS mintához.
+   */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    setSource(map, WORLD, props.showClaims ? worldCollection(props.world, props.ownerColors) : empty());
-  }, [ready, props.world, props.ownerColors, props.showClaims]);
+    setSource(
+      map,
+      WORLD,
+      props.showClaims ? worldCollection(props.world, props.ownerColors, props.result) : empty(),
+    );
+  }, [ready, props.world, props.ownerColors, props.result, props.showClaims]);
 
   // Hurokgeometria és H3 háló az aktuális eredményből.
   useEffect(() => {
@@ -308,16 +325,44 @@ function playerHeadCollection(tracks: readonly LabMapTrack[]): GeoJSON.FeatureCo
   return { type: 'FeatureCollection', features };
 }
 
-function worldCollection(world: OwnershipMap, colors: ReadonlyMap<string, string>): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
-  if (world.size > MAX_WORLD_FEATURES) return empty();
+function worldCollection(
+  world: OwnershipMap,
+  colors: ReadonlyMap<string, string>,
+  result: ProcessResult | null,
+): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  const previewUpdates = result?.claim?.updates;
+  const projectedSize = world.size + (previewUpdates?.size ?? 0);
+  if (projectedSize > MAX_WORLD_FEATURES) return empty();
+
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  const rendered = new Set<CellId>();
+
+  /**
+   * A claim update felülírja az ugyanahhoz a cellához tartozó world állapotot.
+   * Így a futás közbeni preview ugyanazt az 1×/2×/... végállapotot mutatja,
+   * amelyet az engine az addigi útvonalprefixből éppen kiszámolt.
+   */
   for (const [cell, ownership] of world) {
+    const preview = previewUpdates?.get(cell) ?? ownership;
+    rendered.add(cell);
+    features.push(cellFeature(cell, {
+      owner: preview.owner,
+      defense: preview.defense,
+      color: colors.get(preview.owner) ?? '#8b5cf6',
+    }));
+  }
+
+  // Üres worldnél — tipikusan az első Player tesztnél — minden megszerzett
+  // cella csak a claim update-ban létezik, ezért azokat külön hozzá kell adni.
+  for (const [cell, ownership] of previewUpdates ?? []) {
+    if (rendered.has(cell)) continue;
     features.push(cellFeature(cell, {
       owner: ownership.owner,
       defense: ownership.defense,
       color: colors.get(ownership.owner) ?? '#8b5cf6',
     }));
   }
+
   return { type: 'FeatureCollection', features };
 }
 
