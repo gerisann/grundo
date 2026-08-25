@@ -192,13 +192,37 @@ Amibe beleütközött:
 
 ---
 
+# 5.3 ÉLESÍTÉS A VALÓS RÖGZÍTÉSRE — MEGTÖRTÉNT
+
+Geri a `#13` végén elfogadta a modellt, és kérte az élesítést. Az eredmény:
+
+**A szemantika már mindenütt közös volt.** Az éles rögzítés (`src/screens/TrackingScreen.tsx`) és a szerveroldali mentés (`server/src/lib/activityCommit.ts`) is a közös `processActivity`-t hívja, ahogy a LAB is. Nem volt „LAB-only" ág.
+
+**Amit át kellett állítani, az a TELJESÍTMÉNY.** Az éles felület minden ötödik cellánál a teljes nyomvonalat újraszámolta. Mérve, városi útvonalon:
+
+| útvonal | teljes `processActivity` | ebből geometria | ebből claim + körüljárás |
+|---|---|---|---|
+| ~4 km | 139 ms | 128 ms | 11 ms (körüljárás 9) |
+| ~11 km | 197 ms | 164 ms | 33 ms (körüljárás 18) |
+| ~20 km | 337 ms | 289 ms | 48 ms (körüljárás 34) |
+
+A költség java a geometria újraépítése, nem a körüljárás. A `TrackingScreen` mostantól `IncrementalActivityGeometry`-t használ, ugyanúgy, mint a LAB: **frissítésenként átlag 29 ms, legrosszabb 64 ms**.
+
+A gyorsítótár a rögzítés azonosságához van kötve (`activityId` + az első pont időbélyege). Az `update()` magától újraépít, ha az új nyomvonal nem a régi folytatása — de ha valaki ugyanarról a pontról indít új futást, az első cellák véletlenül egyezhetnének, és akkor az előző futás hurkai bennragadnának.
+
+**Kötelező egyezés.** Az `incrementalGeometry.test.ts` mostantól nem csak a geometriát, hanem a TELJES eredményt (minden claim-cella, hurokszám, GP) is összeveti az élő és a kötegelt út között, három forgatókönyvön. Ha ez a kettő eltérne, a felhasználó azt látná, hogy „a telefonon más területet írt, mint amit végül kaptam".
+
+**Ellenőrzés:** 520 teszt zöld, `tsc` tiszta, build lefut, a felület hibamentesen indul. A `LabE2eTrackingScreen` a VALÓDI `TrackingScreen`-t ágyazza be, tehát a LAB sandbox-futás pontosan ezt a kódot járja be.
+
+---
+
 # 6. AMI MÉG NYITOTT
 
 0. **A bezárásszám 5 a rajz szerinti 6 helyett** (2.2 vége). Csak a LAB-panel számlálóját érinti, a játékeredményt nem. Valószínűleg a szálszabály (5.1) rendezné.
 1. **A szálszabály befejezése** (5.1). Konkrét maradék: laponként egy fölös bezárás a `loopDetection.test.ts` `overlap-aware` eseteiben és a `claim.test.ts` négykörös tesztjében.
 2. **Nyomvonal-vékonyítás** (5.2).
 3. **A körüljárás inkrementálissá tétele.** Ma minden előnézet-ütemben újraszámol: 836 cellás nyomvonalon 26 ms. Hosszú aktivitáson ez nőni fog. A szögösszeg szakaszonként additív, tehát régiónként eltárolható és az új szakaszokkal frissíthető.
-4. **Production compact út.** A `claimCredits` / res9 blokkos ág **NEM kapta meg** az új szemantikát — a `HANDOFF_..._LAB_E2E.md` 9. pontja szerint ez a helyes sorrend. Az `applyClaimCredits()` (`src/game/claimCredits.ts`) már most is „N jóváírás egy cellára" alakú, tehát a körüljárás oda természetesen beköthető, ha a normál út stabil.
+4. **Production compact út — EZ MOST MÁR SÜRGŐSEBB.** A `buildCompactClaimCredits()` (`src/game/compactClaim.ts`) továbbra is a régi, index-alapú `creditedAt` heurisztikával számol, tehát a nagy hurkokra ugyanaz az irányfüggés áll fenn, amit a normál úton megszüntettünk. Ez nem elméleti: egy 5 km oldalú kör (25 km²) már compact, és azt egy bringás valóban megteszi. Jó hír, hogy olcsón átvezethető: a körüljárás egy összefüggő régión belül állandó, ezért a teljes parenteknek elég EGYSZER kiszámolni a középpontjukra — nem kell res12-re bontani. A `claimCredits` / res9 blokkos ág — a `HANDOFF_..._LAB_E2E.md` 9. pontja szerint ez a helyes sorrend. Az `applyClaimCredits()` (`src/game/claimCredits.ts`) már most is „N jóváírás egy cellára" alakú, tehát a körüljárás oda természetesen beköthető, ha a normál út stabil.
 5. **Éles ellenőrzés.** A `#13` munkája nincs éles adaton mérve. Backend deploy csak a szálszabály lezárása után.
 
 ---
