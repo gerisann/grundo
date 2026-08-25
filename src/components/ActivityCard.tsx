@@ -51,7 +51,27 @@ export function ActivityCard({
   const mapUrl = mapFailed ? null : routeImageUrl(item.route, { theme });
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
   const title = item.title ?? activityTitle(item.type, item.startedAt);
+  /**
+   * A hexagon-előnézet cellái — CSAK KINYITOTT ÁLLAPOTBAN számolva.
+   *
+   * ⚠️ A `hexesVisible` őr nem mikrooptimalizálás, hanem a feed betöltési
+   * idejének nagyságrendje. A visszaesési ág a TELJES játékmotort futtatja
+   * (hurokdetektálás + flood fill) — ugyanazt a számítást, amit a szerver
+   * végez mentéskor. A `useMemo` viszont a rendereléskor fut le, nem akkor,
+   * amikor az eredményre szükség van; a hexagonok pedig alapból REJTVE
+   * vannak, tehát a kártyák túlnyomó többségénél az eredmény a szemétbe ment.
+   *
+   * MÉRVE (2026-08-25, éles feed, 20 kártya): a Home-ra visszalépéstől a
+   * kártyák megjelenéséig 21,9 MÁSODPERC telt el — miközben az
+   * `/api/activities` válasz 334 ms alatt megérkezett. A különbség teljes
+   * egészében ez a húsz motorfuttatás volt a főszálon.
+   *
+   * A visszaesési ág maga is csak átmenet: az `activityCells` mezőt a mentés
+   * 2026-08-23 óta írja, de a korábbi aktivitásokon nincs meg (mérve: 0/20),
+   * ezért futott mindegyiknél a drága ág.
+   */
   const previewCells = useMemo(() => {
+    if (!hexesVisible) return [];
     if (item.activityCells?.length) return item.activityCells;
     try {
       const points = decodePolyline(item.route).map((point) => ({ ...point, t: 0 }));
@@ -67,10 +87,10 @@ export function ActivityCard({
     } catch {
       return [];
     }
-  }, [item.activityCells, item.author.uid, item.distanceM, item.route, item.type]);
+  }, [hexesVisible, item.activityCells, item.author.uid, item.distanceM, item.route, item.type]);
   const previewTrack = useMemo(
-    () => decodePolyline(item.route).map((point) => ({ ...point, t: 0 })),
-    [item.route],
+    () => (hexesVisible ? decodePolyline(item.route).map((point) => ({ ...point, t: 0 })) : []),
+    [hexesVisible, item.route],
   );
 
   /*
