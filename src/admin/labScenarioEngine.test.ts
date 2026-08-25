@@ -5,8 +5,10 @@ import type { GpsSimulationConfig, SimulationWaypoint } from '@/tracking/simulat
 import {
   countPlayerCells,
   runLabScenario,
+  runLabScenarioAsync,
   type LabPhaseRun,
   type LabScenarioDefinition,
+  type LabScenarioProgress,
 } from './labScenarioEngine';
 
 function perfectConfig(seed: number): GpsSimulationConfig {
@@ -28,6 +30,11 @@ function perfectConfig(seed: number): GpsSimulationConfig {
 
 function route(sideM = 220): SimulationWaypoint[] {
   return squareWaypoints(ORIGIN, sideM).map((point) => ({ ...point }));
+}
+
+/** 2400 m oldalú négyzet: ~1570 GPS minta és ~510 H3 cella, tehát darabolódik. */
+function bigRun(id: string, playerId: string, seed = 11): LabPhaseRun {
+  return { id, playerId, route: route(2_400), config: perfectConfig(seed), startOffsetMs: 0 };
 }
 
 function run(id: string, playerId: string, startOffsetMs = 0, seed = 1): LabPhaseRun {
@@ -120,5 +127,46 @@ describe('multi-player LAB phase engine', () => {
       if (player.id === winner) continue;
       expect(countPlayerCells(outcome.ownership, player.id)).toBe(0);
     }
+  });
+});
+
+describe('darabolt scenario-futtatás', () => {
+  it('az aszinkron futtatás pontosan ugyanazt a világot adja, mint a szinkron', async () => {
+    const scenario: LabScenarioDefinition = {
+      players: [
+        { id: 'A', name: 'Player A' },
+        { id: 'B', name: 'Player B' },
+      ],
+      phases: [
+        // Az első run szándékosan hosszú: csak ekkora útvonalon lép működésbe a
+        // mintavétel- és a cella-darabolás is, tehát ez teszteli a `yield`
+        // pontokat. A rövidebbek a phase-ek közti állapotátadást fedik.
+        { id: 'p1', name: 'Foglalás', runs: [bigRun('a-1', 'A'), run('b-1', 'B', 30_000, 2)] },
+        { id: 'p2', name: 'Második kör', runs: [run('a-2', 'A', 0, 3)] },
+      ],
+    };
+
+    const sync = runLabScenario(scenario);
+
+    const progress: LabScenarioProgress[] = [];
+    const async = await runLabScenarioAsync(scenario, new Map(), (item) => progress.push(item));
+
+    // A világ minden cellája egyezik — a darabolás nem befolyásolja az eredményt.
+    expect([...async.ownership.entries()].sort()).toEqual([...sync.ownership.entries()].sort());
+
+    // A hurok- és claim-számok is futásonként egyeznek.
+    const summarize = (outcome: typeof sync) => outcome.phases.flatMap((phase) => phase.runs.map((item) => ({
+      playerId: item.playerId,
+      commitOrder: item.commitOrder,
+      loops: item.result.loops.length,
+      free: item.result.claim?.counts.free ?? 0,
+      stolen: item.result.claim?.counts.stolen ?? 0,
+      cells: item.result.claimedCellCount,
+    })));
+    expect(summarize(async)).toEqual(summarize(sync));
+
+    // És tényleg darabokban futott, nem egyetlen blokkban.
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.some((item) => item.stage === 'committing')).toBe(true);
   });
 });

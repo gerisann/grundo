@@ -21,12 +21,13 @@ import {
 import type { ActivityType, OwnershipMap } from '@/types';
 import {
   applyClaimToWorld,
-  runLabScenario,
+  runLabScenarioAsync,
   type LabPhase,
   type LabPhaseOutcome,
   type LabPhaseRun,
   type LabPlayer,
   type LabScenarioOutcome,
+  type LabScenarioProgress,
 } from './labScenarioEngine';
 import {
   processLabActivity,
@@ -40,6 +41,8 @@ import './simulation-lab-scenario.css';
 const STORAGE_KEY = 'grundo.lab.scenarios.v2';
 const MAX_LIVE_ENGINE_FRAMES = 160;
 const MAX_LIVE_TRACK_FRAMES = 480;
+/** Ennél sűrűbben nem frissítjük az előkészítés haladásjelzőjét. */
+const PREPARE_PROGRESS_INTERVAL_MS = 100;
 const PLAYER_COLORS = ['#8b5cf6', '#22c55e', '#f97316', '#38bdf8', '#ef4444', '#eab308', '#ec4899', '#14b8a6', '#a3e635', '#f43f5e'];
 
 type PlaybackRate = '1' | '10' | '100' | 'max';
@@ -77,8 +80,10 @@ export function SimulationLabScenarioScreen() {
   const [phaseStatus, setPhaseStatus] = useState<PhaseStatus>('idle');
   const [phaseError, setPhaseError] = useState<string | null>(null);
   const [phaseComputeMs, setPhaseComputeMs] = useState<number | null>(null);
+  const [phasePrepare, setPhasePrepare] = useState<LabScenarioProgress | null>(null);
   const phaseTimer = useRef<number | null>(null);
   const phaseWallStart = useRef(0);
+  const phaseRunToken = useRef(0);
 
   const [soloRecorder, setSoloRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-solo'));
   const [soloEngineRecorder, setSoloEngineRecorder] = useState<RecorderState>(() => createRecorder('ride', 'lab-solo-engine'));
@@ -213,6 +218,9 @@ export function SimulationLabScenarioScreen() {
     : 0;
   const phaseBusy = phaseStatus === 'preparing' || phaseStatus === 'running';
   const busy = soloRunning || phaseBusy;
+  const preparePlayerName = phasePrepare
+    ? players.find((player) => player.id === phasePrepare.playerId)?.name ?? phasePrepare.playerId
+    : null;
 
   useEffect(() => () => {
     void soloSource.current?.stop();
@@ -244,10 +252,13 @@ export function SimulationLabScenarioScreen() {
   function invalidatePhasePreview() {
     settleRunningPhase();
     stopPhaseTimer();
+    // Egy még futó, darabolt előkészítés eredménye ne kerüljön ki utólag.
+    phaseRunToken.current += 1;
     setPhasePlayback(null);
     setPhaseStatus('idle');
     setPhaseError(null);
     setPhaseComputeMs(null);
+    setPhasePrepare(null);
   }
 
   function updateActiveRun(mutator: (run: LabPhaseRun) => LabPhaseRun) {
@@ -417,30 +428,57 @@ export function SimulationLabScenarioScreen() {
     }
 
     const phase: LabPhase = { ...activePhase, runs };
+    /*
+      A phase-számítás mostantól darabolt és `await`-el, ezért közben a
+      felhasználó tud kattintani (player-váltás, world nullázás, szerkesztés).
+      A token azt biztosítja, hogy egy közben érvénytelenített futás eredménye
+      már ne kerüljön ki a felületre.
+    */
+    const token = phaseRunToken.current + 1;
+    phaseRunToken.current = token;
+    const isStale = () => phaseRunToken.current !== token;
+
     setPhasePlayback(null);
     setPhaseError(null);
     setPhaseComputeMs(null);
+    setPhasePrepare(null);
     setPhaseStatus('preparing');
     setRunResetToken((value) => value + 1);
 
-    // A headless phase-számítás szinkron. Egy frame-et direkt visszaadunk a
-    // böngészőnek, hogy a „Phase előkészítése…” állapot még a nehéz számítás
-    // előtt ténylegesen kirajzolódjon.
+    // Egy frame-et direkt visszaadunk a böngészőnek, hogy a „Phase
+    // előkészítése…” állapot még a nehéz számítás előtt kirajzolódjon.
     await nextPaint();
+    if (isStale()) return;
 
     let outcome: LabScenarioOutcome;
     const computeStarted = performance.now();
     try {
-      outcome = runLabScenario({ players, phases: [phase], tieBreakSeed }, world);
+      let lastProgressAt = 0;
+      outcome = await runLabScenarioAsync(
+        { players, phases: [phase], tieBreakSeed },
+        world,
+        (progress) => {
+          // A generátor sűrűn jelez. Minden jelzésből React render lenne,
+          // percre pontos haladásra viszont itt semmi szükség.
+          const now = performance.now();
+          if (now - lastProgressAt < PREPARE_PROGRESS_INTERVAL_MS) return;
+          lastProgressAt = now;
+          if (!isStale()) setPhasePrepare(progress);
+        },
+      );
     } catch (error) {
+      if (isStale()) return;
       const message = errorMessage(error);
       console.error('[GRUNDO LAB] Phase failed', error);
       setPhaseComputeMs(performance.now() - computeStarted);
+      setPhasePrepare(null);
       setPhaseStatus('error');
       setPhaseError(message);
       return;
     }
+    if (isStale()) return;
     setPhaseComputeMs(performance.now() - computeStarted);
+    setPhasePrepare(null);
 
     const phaseOutcome = outcome.phases[0];
     if (!phaseOutcome) {
@@ -529,12 +567,14 @@ export function SimulationLabScenarioScreen() {
 
   function resetWorld() {
     stopPhaseTimer();
+    phaseRunToken.current += 1;
     setWorld(new Map());
     setPhasePlayback(null);
     setPhaseHistory([]);
     setPhaseStatus('idle');
     setPhaseError(null);
     setPhaseComputeMs(null);
+    setPhasePrepare(null);
     resetSoloRun();
   }
 
@@ -633,7 +673,7 @@ export function SimulationLabScenarioScreen() {
               <Button variant="secondary" onClick={resetSoloRun} disabled={phaseBusy}>Run reset</Button>
               <Button variant="secondary" onClick={resetWorld} disabled={phaseBusy}>World nullázása</Button>
             </div>
-            <PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} />
+            <PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} prepare={phasePrepare} playerName={preparePlayerName} />
           </section>
 
           <section className="lab-section"><div className="lab-section__title">Scenario mentés</div><input className="lab-input" value={scenarioName} onChange={(event) => setScenarioName(event.target.value)} /><Button variant="secondary" onClick={saveScenario} disabled={busy}>Scenario mentése</Button>
@@ -653,7 +693,7 @@ export function SimulationLabScenarioScreen() {
 
         <aside className="lab-panel lab-panel--debug" aria-hidden={!rightPanelOpen}>
           <section className="lab-side-header"><div><div className="lab-kicker">LIVE DEBUG</div><h2>World / Phase</h2></div><button type="button" className="lab-panel-collapse" onClick={() => setRightPanelOpen(false)}>›</button></section>
-          <section className="lab-side-section"><div className="lab-section__title">Phase állapot</div><PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} compact />{phasePlayback ? <div className="lab-phase-runs">{phasePlayback.phase.runs.map((run) => { const player = players.find((item) => item.id === run.playerId); const state = phaseRunState(run, phasePlayback.simNow); return <div key={run.runId} className={`lab-phase-run lab-phase-run--${state}`}><i style={{ background: playerColor(players, run.playerId) }} /><strong>{player?.name ?? run.playerId}</strong><span>{phaseRunStateLabel(state)}</span></div>; })}</div> : null}</section>
+          <section className="lab-side-section"><div className="lab-section__title">Phase állapot</div><PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} prepare={phasePrepare} playerName={preparePlayerName} compact />{phasePlayback ? <div className="lab-phase-runs">{phasePlayback.phase.runs.map((run) => { const player = players.find((item) => item.id === run.playerId); const state = phaseRunState(run, phasePlayback.simNow); return <div key={run.runId} className={`lab-phase-run lab-phase-run--${state}`}><i style={{ background: playerColor(players, run.playerId) }} /><strong>{player?.name ?? run.playerId}</strong><span>{phaseRunStateLabel(state)}</span></div>; })}</div> : null}</section>
           <section className="lab-side-section"><div className="lab-section__title">World</div><div className="lab-world-list">{players.map((player, index) => <div key={player.id}><i style={{ background: PLAYER_COLORS[index % PLAYER_COLORS.length] }} /><strong>{player.name}</strong><span>{worldTotals.get(player.id)?.cells ?? 0} cella</span></div>)}</div></section>
           <section className="lab-side-section"><div className="lab-section__title">Aktív player</div><div className="lab-stats"><Stat label="Útvonal" value={`${routeKm.toFixed(2)} km`} /><Stat label="GPS minták" value={String(generated.samples.length)} /><Stat label="Recorder táv" value={`${(soloRecorder.distanceM / 1000).toFixed(2)} km`} /><Stat label="Bezárások" value={String(gameResult?.loops.length ?? 0)} /><Stat label="Új / lopott" value={String(newCells)} /><Stat label="Lopott" value={String(claim?.counts.stolen ?? 0)} /><Stat label="Áttörés" value={String(claim?.counts.breakthrough ?? 0)} /><Stat label="GP" value={formatGp(gameResult?.gp.total ?? 0)} /></div></section>
           <section className="lab-side-section"><div className="lab-debug-card__head"><strong>Védelmi szint</strong><span>{ownedCells} saját cella</span></div><div className="lab-defense-counts">{defenseCounts.map((count, index) => <div key={index}><i className={`lab-defense lab-defense--${index + 1}`}>{index + 1}</i><span>{count} cella</span></div>)}</div></section>
@@ -790,12 +830,23 @@ function formatMs(ms: number): string {
   return `${(ms / 1_000).toFixed(ms < 10_000 ? 2 : 1)} s`;
 }
 
+/** Az előkészítés durva haladása: playerenként két szakasz, rögzítés és commit. */
+function preparePercent(prepare: LabScenarioProgress | null): number {
+  if (!prepare || prepare.runCount === 0) return 12;
+  const done = prepare.stage === 'recording'
+    ? prepare.runIndex
+    : prepare.runCount + prepare.runIndex;
+  return Math.max(6, Math.min(96, Math.round((done / (prepare.runCount * 2)) * 100)));
+}
+
 function PhaseStatusPanel({
   status,
   progress,
   error,
   computeMs,
   playback,
+  prepare,
+  playerName,
   compact = false,
 }: {
   status: PhaseStatus;
@@ -803,16 +854,27 @@ function PhaseStatusPanel({
   error: string | null;
   computeMs: number | null;
   playback: PhasePlayback | null;
+  prepare: LabScenarioProgress | null;
+  playerName: string | null;
   compact?: boolean;
 }) {
   if (status === 'idle' && !playback && !error) return null;
+  const preparing = status === 'preparing';
+  const barWidth = preparing ? preparePercent(prepare) : progress;
   return (
     <div className={`lab-phase-status lab-phase-status--${status}${compact ? ' lab-phase-status--compact' : ''}`} role="status" aria-live="polite">
       <div className="lab-phase-status__head">
         <strong>{phaseStatusLabel(status)}</strong>
-        <span>{status === 'preparing' ? 'engine számítás…' : `${progress}%`}</span>
+        <span>{preparing ? `${barWidth}%` : `${progress}%`}</span>
       </div>
-      <div className="lab-phase-progress" aria-hidden="true"><i style={{ width: `${status === 'preparing' ? 12 : progress}%` }} /></div>
+      <div className="lab-phase-progress" aria-hidden="true"><i style={{ width: `${barWidth}%` }} /></div>
+      {preparing ? (
+        <small>
+          {prepare
+            ? `${playerName ?? prepare.playerId} · ${prepare.stage === 'recording' ? 'GPS rögzítés' : 'terület elszámolás'} (${prepare.runIndex + 1}/${prepare.runCount})`
+            : 'engine számítás…'}
+        </small>
+      ) : null}
       {error ? <p className="lab-phase-error">{error}</p> : null}
       {!error && computeMs !== null ? <small>Engine előkészítés: {formatMs(computeMs)}</small> : null}
       {!error && playback ? <small>Szimulált idő: {formatMs(Math.max(0, playback.simNow - playback.simStart))} / {formatMs(Math.max(0, playback.simEnd - playback.simStart))}</small> : null}
