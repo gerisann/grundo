@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "grundo-emulator",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:emulator"],
+      "port": 5173
     }
   ]
 }

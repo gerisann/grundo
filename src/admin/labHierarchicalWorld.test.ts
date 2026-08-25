@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { getResolution } from 'h3-js';
+import { cellToChildren, cellToChildrenSize, cellToParent, getResolution, latLngToCell } from 'h3-js';
 import { buildActivityGeometry } from '@/game';
+import { DEFAULT_GAMEPLAY } from '@/config/gameplay';
 import { buildTrace, ORIGIN, squareWaypoints } from '@/game/fixtures';
 import type { OwnershipMap } from '@/types';
 import {
   countLabPlayerCells,
+  countLabPlayerDefense,
   processLabActivity,
+  summarizeLabWorld,
 } from './labHierarchicalWorld';
 
 function apply(world: OwnershipMap, result: ReturnType<typeof processLabActivity>): void {
@@ -77,5 +80,42 @@ describe('hierarchical multiplayer LAB world', () => {
     expect(aAfter).toBeLessThan(aBefore);
     expect(aAfter + bAfter).toBe(aBefore);
     expect([...world.keys()].filter((cell) => getResolution(cell) < 12).length).toBe(parentEntriesBefore);
+  });
+});
+
+describe('summarizeLabWorld', () => {
+  it('egy bejárásból ugyanazt adja, mint a playerenkénti számlálás', () => {
+    const gameplayRes = DEFAULT_GAMEPLAY.H3_RESOLUTION;
+    const parentRes = gameplayRes - 2;
+    const fine = latLngToCell(ORIGIN.lat, ORIGIN.lng, gameplayRes);
+    const parent = cellToParent(fine, parentRes);
+    const childCount = Number(cellToChildrenSize(parent, gameplayRes));
+    const overrides = cellToChildren(parent, gameplayRes).slice(0, 7);
+
+    // Homogén parent A-nál 2× védelemmel, benne 7 res12 override B-nél 1×-en.
+    const world: OwnershipMap = new Map();
+    world.set(parent, { owner: 'A', defense: 2 });
+    for (const cell of overrides) world.set(cell, { owner: 'B', defense: 1 });
+
+    const totals = summarizeLabWorld(world);
+    const a = totals.get('A');
+    const b = totals.get('B');
+
+    expect(a?.cells).toBe(childCount - overrides.length);
+    expect(b?.cells).toBe(overrides.length);
+    expect(a?.byDefense[1]).toBe(childCount - overrides.length);
+    expect(a?.byDefense[0]).toBe(0);
+    expect(b?.byDefense[0]).toBe(overrides.length);
+
+    // A védelmi bontás összege sosem térhet el a teljes cellaszámtól.
+    expect(a?.byDefense.reduce((sum, value) => sum + value, 0)).toBe(a?.cells);
+    expect(b?.byDefense.reduce((sum, value) => sum + value, 0)).toBe(b?.cells);
+
+    // A publikus, playerenkénti számlálók ugyanezt kell adják.
+    expect(countLabPlayerCells(world, 'A')).toBe(a?.cells);
+    expect(countLabPlayerCells(world, 'B')).toBe(b?.cells);
+    expect(countLabPlayerDefense(world, 'A', 2)).toBe(a?.cells);
+    expect(countLabPlayerDefense(world, 'B', 1)).toBe(b?.cells);
+    expect(countLabPlayerCells(world, 'nincs-ilyen')).toBe(0);
   });
 });

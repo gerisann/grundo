@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
-import { IncrementalActivityGeometry, processActivityGeometry, type ProcessResult } from '@/game';
+import { DEFAULT_GAMEPLAY } from '@/config/gameplay';
+import { IncrementalActivityGeometry, type ProcessResult } from '@/game';
 import { formatGp } from '@/lib/format';
 import {
   applySample,
@@ -20,8 +21,6 @@ import {
 import type { ActivityType, OwnershipMap } from '@/types';
 import {
   applyClaimToWorld,
-  countPlayerCells,
-  countPlayerDefense,
   runLabScenario,
   type LabPhase,
   type LabPhaseOutcome,
@@ -29,6 +28,11 @@ import {
   type LabPlayer,
   type LabScenarioOutcome,
 } from './labScenarioEngine';
+import {
+  processLabActivity,
+  summarizeLabWorld,
+  type LabWorldPlayerTotals,
+} from './labHierarchicalWorld';
 import { ScenarioSimulationMap, type LabMapTrack } from './ScenarioSimulationMap';
 import './simulation-lab.css';
 import './simulation-lab-scenario.css';
@@ -103,16 +107,34 @@ export function SimulationLabScenarioScreen() {
   const engineStride = Math.max(1, Math.ceil(generated.samples.length / MAX_LIVE_ENGINE_FRAMES));
   const trackStride = Math.max(1, Math.ceil(generated.samples.length / MAX_LIVE_TRACK_FRAMES));
 
+  // A `phasePlayback` objektum minden lejátszási frame-nél új példány. Ahol csak
+  // az érdekes, hogy fut-e phase, ezt a boolean-t használjuk — így a rá épülő
+  // memók nem értékelődnek újra frame-enként.
+  const phaseActive = phasePlayback !== null;
+
   const soloVisibleRaw = useMemo(
     () => generated.samples.slice(0, Math.min(deliveredRawCount, generated.samples.length)),
     [generated.samples, deliveredRawCount],
   );
 
+  /**
+   * Solo („Player teszt") előnézet.
+   *
+   * A `processLabActivity` kell ide, nem a core `processActivityGeometry`: a
+   * sandbox world vegyes felbontású, és a core csak exact res12 Mapet ért. Core
+   * hívással egy res10 parentben álló birtok szabadnak látszana, nagy hurkot
+   * pedig a compact guard eldobna — a preview némán eltűnne.
+   *
+   * Futó phase alatt az eredményt úgyis a commitolt run adja, ezért ilyenkor
+   * hozzá sem kezdünk: a world a lejátszás alatt többször frissül, és ez a memo
+   * különben minden frissítésre újraszámolná a teljes solo aktivitást.
+   */
   const soloResult = useMemo<ProcessResult | null>(() => {
+    if (phaseActive) return null;
     if (soloEngineRecorder.points.length < 2) return null;
     try {
       const geometry = soloGeometry.current.update(soloEngineRecorder.points);
-      return processActivityGeometry({
+      return processLabActivity({
         points: soloEngineRecorder.points,
         type: config.activityType,
         distanceKm: soloEngineRecorder.distanceM / 1000,
@@ -125,7 +147,7 @@ export function SimulationLabScenarioScreen() {
       console.warn('[GRUNDO LAB] Solo preview failed', error);
       return null;
     }
-  }, [soloEngineRecorder.points, soloEngineRecorder.distanceM, config.activityType, activePlayerId, world]);
+  }, [phaseActive, soloEngineRecorder.points, soloEngineRecorder.distanceM, config.activityType, activePlayerId, world]);
 
   const phaseTracks = useMemo<LabMapTrack[]>(() => {
     if (!phasePlayback) return [];
@@ -145,19 +167,42 @@ export function SimulationLabScenarioScreen() {
     return committed?.result ?? null;
   }, [phasePlayback, activePlayerId, soloResult]);
 
-  const visibleTracks = phasePlayback
-    ? phaseTracks
-    : [{ playerId: activePlayerId, color: activeColor, raw: soloVisibleRaw, accepted: soloRecorder.points }];
+  /**
+   * A térkép propjai memoizálva.
+   *
+   * A `ScenarioSimulationMap` forrásonként külön effektben frissít, de az
+   * effektek referencia szerint hasonlítanak. Új tömb minden rendernél azt
+   * jelentené, hogy egy billentyűleütés a GPS-mezőkben is újraépíti a teljes
+   * world GeoJSON-t.
+   */
+  const soloTracks = useMemo<LabMapTrack[]>(
+    () => [{ playerId: activePlayerId, color: activeColor, raw: soloVisibleRaw, accepted: soloRecorder.points }],
+    [activePlayerId, activeColor, soloVisibleRaw, soloRecorder.points],
+  );
+  const visibleTracks = phaseActive ? phaseTracks : soloTracks;
 
-  const mapRoutes = activePhase.runs.map((run) => ({
-    playerId: run.playerId,
-    color: playerColor(players, run.playerId),
-    route: run.route,
-  }));
+  const mapRoutes = useMemo(
+    () => activePhase.runs.map((run) => ({
+      playerId: run.playerId,
+      color: playerColor(players, run.playerId),
+      route: run.route,
+    })),
+    [activePhase, players],
+  );
   const ownerColors = useMemo(
     () => new Map(players.map((player, index) => [player.id, PLAYER_COLORS[index % PLAYER_COLORS.length]!])),
     [players],
   );
+
+  // Minden player cellaszáma és védelmi bontása EGY world-bejárásból. Korábban
+  // playerenként és védelmi szintenként külön futott, rendernként újra.
+  const worldTotals = useMemo(() => summarizeLabWorld(world), [world]);
+  // Birtok nélküli playernél is ki kell rajzolni mind a MAX_DEFENSE sort, nullával.
+  const emptyTotals = useMemo<LabWorldPlayerTotals>(
+    () => ({ cells: 0, byDefense: Array.from({ length: DEFAULT_GAMEPLAY.MAX_DEFENSE }, () => 0) }),
+    [],
+  );
+  const activeTotals = worldTotals.get(activePlayerId) ?? emptyTotals;
 
   const phaseProgress = phasePlayback
     ? phasePlayback.simEnd <= phasePlayback.simStart
@@ -174,7 +219,30 @@ export function SimulationLabScenarioScreen() {
     if (phaseTimer.current !== null) window.clearInterval(phaseTimer.current);
   }, []);
 
+  /**
+   * Futó lejátszás lezárása a VÉGÁLLAPOTRA.
+   *
+   * A lejátszás vizuális: a timer a commitoknak csak azt a részét alkalmazta a
+   * worldre, ami az addigi szimulált időben befejeződött. Ha megszakításkor
+   * egyszerűen megállnánk, a sandbox world félig commitolt állapotban maradna,
+   * és a következő phase már abból indulna — csendben, jelzés nélkül. Ezért a
+   * megszakítás is a teljes `outcome.ownership`-et írja ki.
+   *
+   * @returns igaz, ha volt futó lejátszás, amit le kellett zárni.
+   */
+  function settleRunningPhase(): boolean {
+    const playback = phasePlayback;
+    if (phaseTimer.current === null || !playback) return false;
+    stopPhaseTimer();
+    setWorld(new Map(playback.outcome.ownership));
+    setPhasePlayback({ ...playback, simNow: playback.simEnd });
+    setPhaseHistory((history) => [...history, playback.phase]);
+    setPhaseStatus('done');
+    return true;
+  }
+
   function invalidatePhasePreview() {
+    settleRunningPhase();
     stopPhaseTimer();
     setPhasePlayback(null);
     setPhaseStatus('idle');
@@ -387,15 +455,28 @@ export function SimulationLabScenarioScreen() {
     setPhaseStatus('running');
     phaseWallStart.current = performance.now();
     const rate = Number(playbackRate);
+    let appliedCommits = 0;
     phaseTimer.current = window.setInterval(() => {
       const simNow = Math.min(simEnd, simStart + (performance.now() - phaseWallStart.current) * rate);
-      const nextWorld = new Map(playback.baseWorld);
-      for (const run of phaseOutcome.runs
-        .filter((item) => item.finishedAt <= simNow)
-        .sort((a, b) => a.commitOrder - b.commitOrder)) {
-        applyClaimToWorld(nextWorld, run.result);
+
+      /**
+       * A world csak akkor változik, amikor egy újabb run BEFEJEZŐDÖTT.
+       *
+       * Korábban minden 50 ms-os frame újraépítette a teljes ownership Mapet, a
+       * térkép pedig vele együtt a teljes world GeoJSON-t — akkor is, ha közben
+       * egyetlen commit sem történt. Több tízezer cellás worldnél ez volt a
+       * lejátszás alatti akadás fő oka.
+       */
+      const finished = phaseOutcome.runs.filter((item) => item.finishedAt <= simNow);
+      if (finished.length !== appliedCommits) {
+        appliedCommits = finished.length;
+        const nextWorld = new Map(playback.baseWorld);
+        for (const run of [...finished].sort((a, b) => a.commitOrder - b.commitOrder)) {
+          applyClaimToWorld(nextWorld, run.result);
+        }
+        setWorld(nextWorld);
       }
-      setWorld(nextWorld);
+
       setPhasePlayback((current) => current ? { ...current, simNow } : current);
       if (simNow >= simEnd) {
         stopPhaseTimer();
@@ -412,8 +493,9 @@ export function SimulationLabScenarioScreen() {
   }
 
   function stopPhasePlayback() {
+    if (settleRunningPhase()) return;
     stopPhaseTimer();
-    setPhaseStatus((current) => current === 'running' || current === 'preparing' ? 'idle' : current);
+    setPhaseStatus((current) => current === 'preparing' ? 'idle' : current);
   }
 
   function resetSoloRun() {
@@ -468,8 +550,8 @@ export function SimulationLabScenarioScreen() {
   const claim = gameResult?.claim;
   const routeKm = routeDistanceM(route) / 1000;
   const newCells = (claim?.counts.free ?? 0) + (claim?.counts.stolen ?? 0);
-  const ownedCells = countPlayerCells(world, activePlayerId);
-  const defenseCounts = [1, 2, 3, 4, 5].map((defense) => countPlayerDefense(world, activePlayerId, defense));
+  const ownedCells = activeTotals.cells;
+  const defenseCounts = activeTotals.byDefense;
   const loopDiagnostics = gameResult?.diagnostics.loops;
   const shellClassName = ['lab-shell', !leftPanelOpen ? 'lab-shell--left-hidden' : '', !rightPanelOpen ? 'lab-shell--right-hidden' : ''].filter(Boolean).join(' ');
 
@@ -555,7 +637,7 @@ export function SimulationLabScenarioScreen() {
         <aside className="lab-panel lab-panel--debug" aria-hidden={!rightPanelOpen}>
           <section className="lab-side-header"><div><div className="lab-kicker">LIVE DEBUG</div><h2>World / Phase</h2></div><button type="button" className="lab-panel-collapse" onClick={() => setRightPanelOpen(false)}>›</button></section>
           <section className="lab-side-section"><div className="lab-section__title">Phase állapot</div><PhaseStatusPanel status={phaseStatus} progress={phaseProgress} error={phaseError} computeMs={phaseComputeMs} playback={phasePlayback} compact />{phasePlayback ? <div className="lab-phase-runs">{phasePlayback.phase.runs.map((run) => { const player = players.find((item) => item.id === run.playerId); const state = phaseRunState(run, phasePlayback.simNow); return <div key={run.runId} className={`lab-phase-run lab-phase-run--${state}`}><i style={{ background: playerColor(players, run.playerId) }} /><strong>{player?.name ?? run.playerId}</strong><span>{phaseRunStateLabel(state)}</span></div>; })}</div> : null}</section>
-          <section className="lab-side-section"><div className="lab-section__title">World</div><div className="lab-world-list">{players.map((player, index) => <div key={player.id}><i style={{ background: PLAYER_COLORS[index % PLAYER_COLORS.length] }} /><strong>{player.name}</strong><span>{countPlayerCells(world, player.id)} cella</span></div>)}</div></section>
+          <section className="lab-side-section"><div className="lab-section__title">World</div><div className="lab-world-list">{players.map((player, index) => <div key={player.id}><i style={{ background: PLAYER_COLORS[index % PLAYER_COLORS.length] }} /><strong>{player.name}</strong><span>{worldTotals.get(player.id)?.cells ?? 0} cella</span></div>)}</div></section>
           <section className="lab-side-section"><div className="lab-section__title">Aktív player</div><div className="lab-stats"><Stat label="Útvonal" value={`${routeKm.toFixed(2)} km`} /><Stat label="GPS minták" value={String(generated.samples.length)} /><Stat label="Recorder táv" value={`${(soloRecorder.distanceM / 1000).toFixed(2)} km`} /><Stat label="Bezárások" value={String(gameResult?.loops.length ?? 0)} /><Stat label="Új / lopott" value={String(newCells)} /><Stat label="Lopott" value={String(claim?.counts.stolen ?? 0)} /><Stat label="Áttörés" value={String(claim?.counts.breakthrough ?? 0)} /><Stat label="GP" value={formatGp(gameResult?.gp.total ?? 0)} /></div></section>
           <section className="lab-side-section"><div className="lab-debug-card__head"><strong>Védelmi szint</strong><span>{ownedCells} saját cella</span></div><div className="lab-defense-counts">{defenseCounts.map((count, index) => <div key={index}><i className={`lab-defense lab-defense--${index + 1}`}>{index + 1}</i><span>{count} cella</span></div>)}</div></section>
           <section className="lab-side-section lab-side-section--loops"><div className="lab-debug-card__head"><strong>Hurokdiagnosztika</strong><span>{loopDiagnostics?.successful.length ?? 0} / {loopDiagnostics?.rejected.length ?? 0}</span></div><div className="lab-loop-list">{loopDiagnostics?.successful.map((item, index) => <div key={`ok-${index}`} className="lab-loop-row lab-loop-row--ok"><strong>#{index + 1} ELFOGADVA</strong><span>{item.fromIndex}→{item.toIndex}</span><span>fal {item.wallCells}</span><span>belső {item.interiorCells}</span></div>)}{loopDiagnostics?.rejected.map((item, index) => <div key={`bad-${index}`} className="lab-loop-row lab-loop-row--bad"><strong>ELUTASÍTVA</strong><span>{item.reason}</span><span>{item.fromIndex}→{item.toIndex}</span></div>)}</div></section>
@@ -630,9 +712,25 @@ function persistScenarios(items: SavedScenario[]) {
   }
 }
 
+/**
+ * Egy kirajzolásnyi szünet, hogy a „Phase előkészítése…" állapot még a nehéz
+ * szinkron számítás előtt látszódjon.
+ *
+ * ⚠️ A `requestAnimationFrame` HÁTTÉRBE TETT LAPON NEM TÜZEL. Önmagában
+ * használva a phase sosem indult el, ha a felhasználó indítás után átváltott
+ * másik böngészőlapra — a gomb örökre „Phase előkészítése…" maradt. A timeout
+ * ezért nem kényelmi tartalék, hanem kilépési út.
+ */
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
-    requestAnimationFrame(() => window.setTimeout(resolve, 0));
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    requestAnimationFrame(() => window.setTimeout(done, 0));
+    window.setTimeout(done, 250);
   });
 }
 

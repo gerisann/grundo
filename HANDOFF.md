@@ -1,10 +1,25 @@
 # GRUNDO — Claude handoff
 
-> Frissítve: **2026-08-25**  
+> Frissítve: **2026-08-25** (a `GRUNDO #11` beszélgetés végén)  
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo`  
 > GitHub: `gerisann/grundo`  
 > Ág: **`main`**  
-> Kód-baseline a handoff frissítése előtt: **`1770a743` — `ci: scope app and server Vitest runs correctly`**
+> Kód-baseline a handoff frissítése előtt: **`505fe31` — `docs: refresh Claude handoff`**
+
+## A FUTÓ MUNKATERV (Geri, 2026-08-25)
+
+Öt lépés, ebben a sorrendben. A `#11` az 1–2. pontot végezte el.
+
+1. ✅ **A teljes új Simulation LAB kód átolvasása** — a kódtérkép a 6. szakaszban.
+2. ◐ **Funkcionális és UI hibák javítása** — az első kör kész (lásd 1. szakasz);
+   a maradék nyitott tételek a 14. szakaszban vannak felsorolva.
+3. ☐ **Optimalizálás** — ne legyen fölösleges számítás, és ne fagyjon/lassuljon
+   nagy területnél vagy sok playeres, több phase-es futásnál.
+4. ☐ **A területszerzés, hurok, szintlépés és rablás logikájának finomhangolása.**
+5. ☐ **A LAB futás ráültetése az éles felületre**: éles frontenden indított
+   aktivitás mellé ugyanazzal a userrel LAB phase indul, a LAB adatai mennek az
+   éles appnak (ő valóságnak hiszi), és a valódi felületi hibák részletes logba
+   kerülnek.
 
 ## 0. START HERE
 
@@ -18,39 +33,49 @@
 
 ## 1. JELENLEGI ELLENŐRZÖTT ÁLLAPOT
 
-A legfrissebb GitHub Actions futás a `1770a743` kód-baseline-on **teljesen zöld**:
-
-- app tesztek: ✅
-- app TypeScript/Vite build: ✅
-- server tesztek: ✅
-- server build: ✅
-
-A user külön, lokálisan/Cloud Shellben lefuttatta az app-only teszteket is:
+Helyben, a `#11` végén mérve:
 
 ```text
-Test Files  30 passed (30)
-Tests       302 passed (302)
-Failures    0
-Errors      0
+npx tsc --noEmit         → OK
+npx vitest run --dir src → 30 fájl, 303 teszt, 0 bukó
 ```
 
-App-only teszt parancs:
+A CI-t a `.github/workflows/ci.yml` külön `app` és `server` jobra bontja. A root `npm test` korábban összeszedett server teszteket is rossz dependency-környezettel; ezért lett rendesen szétválasztva. **Push után nézd meg mindkét jobot.**
 
-```bash
-npx vitest run --dir src
-```
+### Amit a `#11` javított a LAB-ban
 
-A CI-t a `.github/workflows/ci.yml` külön `app` és `server` jobra bontja. A root `npm test` korábban összeszedett server teszteket is rossz dependency-környezettel; ezért lett rendesen szétválasztva.
+Öt hiba, mindegyik élőben, helyi emulátoros környezetben visszaigazolva:
 
-### Legutóbbi fontos stabilizálás
+| Jel | Mi volt | Hol |
+|---|---|---|
+| F1 | A solo („Player teszt") előnézet a **core** `processActivityGeometry`-t hívta a vegyes felbontású sandbox worlddel. res10 parentben álló birtok szabadnak látszott, nagy huroknál pedig a compact guard dobott, amit a `catch` lenyelt → néma, üres preview. Most `processLabActivity` fut. | `SimulationLabScenarioScreen.tsx` |
+| F2 | Lejátszás közbeni **player-/phase-váltás félig commitolt worldöt hagyott** — a végleges `outcome.ownership` sosem került ki. A következő phase már a hibás világból indult. Most a megszakítás lezárja a phase-t a végállapotra (`settleRunningPhase`). | `SimulationLabScenarioScreen.tsx` |
+| — | A **„Phase indítása" sosem indult el háttérbe tett böngészőlapon**: a `nextPaint()` `requestAnimationFrame`-re várt, ami rejtett lapon nem tüzel, a gomb örökre „Phase előkészítése…" maradt. Most timeout is kilépteti. *(Ez mérés közben derült ki, nem szerepelt az eredeti listán.)* | `SimulationLabScenarioScreen.tsx` |
+| P1–P3 | A térkép egyetlen `sync()`-je **mind a 9 forrást** újraépítette bármelyik prop változására, a képernyő pedig memoizálatlan tömböket adott át → minden render teljes world-GeoJSON újraépítés, és minden waypoint-marker DOM-cseréje. Most forrásonként külön effekt, és a markerek pozíciót frissítenek újraépítés helyett. | `ScenarioSimulationMap.tsx` |
+| P2 | A lejátszás timere **50 ms-onként** újraépítette a teljes ownership Mapet akkor is, ha közben egyetlen run sem fejeződött be. Most csak új commitnál. | `SimulationLabScenarioScreen.tsx` |
+| P4 | A solo preview memo futó phase alatt is kiértékelődött (a `world` a függősége), pedig az eredményét eldobtuk. | `SimulationLabScenarioScreen.tsx` |
+| P5 | `countLabPlayerCells` / `countLabPlayerDefense` playerenként ÉS védelmi szintenként külön járta be a worldöt — 10 playernél 15 teljes bejárás rendernként. Helyette `summarizeLabWorld()`, egy passzal, memoizálva. | `labHierarchicalWorld.ts` |
 
-A Vitest korábban több száz GPS objektumot írt ki diffként. Ez **egy darab** MAX-playback teszt hibája volt: `window.setTimeout` Node alatt nem létezett, a replay 128 minta után megszakadt, Vitest pedig kiírta az összes hiányzó sample-t. Javítva környezetfüggetlen `globalThis.setTimeout` / `globalThis.clearTimeout` használatra.
+### A mérés (ne hidd el mérés nélkül, de ezt megmértük)
 
-Commit:
+Helyi emulátoros LAB, 3 player × 1400 m-es négyzet (5,6 km, 908 GPS minta
+fejenként, átfedő területek), 100× lejátszás, `PerformanceObserver('longtask')`.
+A javítások előtti számhoz ugyanez a kód futott, csak a `nextPaint` kilépési
+úttal — különben rejtett lapon el sem indult volna.
 
-```text
-e66482a  fix: make GPS simulation playback environment neutral
-```
+| | előtte | utána (2 futás) |
+|---|---|---|
+| teljes lefutás | 13 832 ms | 11 446 / 11 186 ms |
+| **total blocking time** | **4 211 ms** | **1 512 / 1 299 ms** |
+| leghosszabb blokkoló task | 2 139 ms | 1 096 / 840 ms |
+| végeredmény (P1/P2/P3 cella) | 804 / 3766 / 6485 | 804 / 3766 / 6485 |
+
+A végeredmény bitre azonos → a javítások viselkedéstartók. A blokkolás nagyjából
+**harmadára** esett, és ez a világ még csak ~11 000 cellás; a `worldCollection`
+plafonja 60 000 feature, tehát nagyobb világon az arány nő.
+
+⚠️ A maradék ~1,1 s blokkolás **nem** a lejátszás, hanem a phase indításakor
+futó szinkron `runLabScenario`. Ez a 3. pont (optimalizálás) következő célpontja.
 
 ---
 
@@ -291,14 +316,34 @@ A jelenlegi fő képernyő:
 src/admin/SimulationLabScenarioScreen.tsx
 ```
 
-`src/admin/SimulationLabScreen.tsx` jelenleg csak vékony wrapper.
+`src/admin/SimulationLabScreen.tsx` egyetlen soros re-export wrapper.
+
+### A LAB öt rétege (`#11`-ben végigolvasva)
+
+| Réteg | Fájl | Mit csinál |
+|---|---|---|
+| Képernyő | `src/admin/SimulationLabScenarioScreen.tsx` | teljes állapot: playerek, phase-ek, solo run, phase playback, scenario mentés |
+| Térkép | `src/admin/ScenarioSimulationMap.tsx` | 9 Mapbox forrás/réteg, waypoint-markerek |
+| Phase-motor | `src/admin/labScenarioEngine.ts` | headless: recorderek → finish-sorrendű commitok → world |
+| Vegyes world | `src/admin/labHierarchicalWorld.ts` | res10 parent + res12 override, compact claim, frontier cleanup |
+| GPS | `src/tracking/simulationSource.ts` | route → mért telemetry, `PositionSource` lejátszó |
+
+⚠️ **Két adatút van, és ez a leggyakoribb hibaforrás:** a *phase* futás a
+`processLabActivity`-n megy (érti a compact parenteket), a *solo* preview pedig
+ugyanezen kell menjen. A core `processActivityGeometry` csak exact res12
+ownership Mapet ért — LAB worldre közvetlenül hívni hiba (lásd F1 az 1.
+szakaszban).
+
+⚠️ **`src/admin/SimulationMap.tsx` (602 sor) HOLT KÓD** — sehonnan nincs
+importálva, a `SimulationLabScreen.tsx` a scenario-képernyőre mutat. A `#11`
+szándékosan nem törölte (nem volt a kért hatókörben); ha hozzáérsz a LAB-hoz,
+törölhető.
 
 Fontos fájlok:
 
 ```text
 src/admin/SimulationLabScenarioScreen.tsx
 src/admin/ScenarioSimulationMap.tsx
-src/admin/SimulationMap.tsx
 src/admin/labScenarioEngine.ts
 src/admin/labScenarioEngine.test.ts
 src/admin/labHierarchicalWorld.ts
@@ -343,6 +388,20 @@ Hosszú replaynél korábban minden GPS fix újraküldte a teljes piros/zöld Li
 2497089  perf: bound LAB live engine recomputation
 b85bae8  perf: bound LAB track rendering work
 ```
+
+### ⚠️ Térkép-invariánsok — ezeket ne vond vissza
+
+A `#11` óta a `ScenarioSimulationMap` **forrásonként külön effektben** frissít.
+Ne olvaszd vissza egyetlen `sync()`-be: a drága forrás (world GeoJSON, hurkok)
+csak akkor épülhet újra, ha az adata ténylegesen változott. Konkrétan:
+
+- a képernyő **memoizálva** adja át a `tracks` és `routes` tömböket — memoizálás
+  nélkül minden render teljes world-GeoJSON újraépítést jelent;
+- a `world` forrás effektje csak `world` / `ownerColors` / `showClaims` változásra fut;
+- a waypoint-markerek azonos pontszámnál **pozíciót frissítenek**, nem épülnek újra;
+- a lejátszás timere csak akkor ír új worldöt, ha egy újabb run befejeződött;
+- a stílusváltás (téma) eldobja a forrásokat — ezt a `ready` állapot kezeli, és
+  minden forrás-effekt függ tőle.
 
 ---
 
@@ -617,6 +676,21 @@ A final save maradhat batch/server-authoritative, mert az csak egyszer fut.
 
 ## 14. KÖVETKEZŐ KONKRÉT VALIDÁCIÓK
 
+### 0. NYITOTT LAB-HIBÁK — a `#11` felderítette, de NEM javította
+
+Ezek a munkaterv 2. pontjának hátralévő tételei. Mind kódolvasásból származik,
+és mind reprodukálható a `/admin/lab`-on.
+
+| Jel | Hol | Mi a baj |
+|---|---|---|
+| F3 | `labHierarchicalWorld.ts` → `applyCredits` | 0 kredittel ismeretlen cellára `{owner: actorId, defense: 1}`-et ad vissza — nulla jóváírásból tulajdon lesz. Ma nem érhető el hívási úton, de aknamező. |
+| F4 | `labHierarchicalWorld.ts` → `processCompactLabActivity` | Üres compact kreditnél a fallback **üres ownershippel** dolgozik, tehát minden cella `free`-nek könyvelődne. Szintén védekező ág, de rossz irányba téved. |
+| U1 | `SimulationLabScenarioScreen.tsx` → `NumberField` | A mező nem üríthető (`Number('') === 0`), és nem klampol `min`/`max`-ra — a kijelzett érték eltérhet a ténylegesen szimulálttól, mert klampolni csak a generátor `normalizeConfig`-ja klampol. |
+| U2 | ugyanott | Minden billentyűleütés `invalidatePhasePreview()` + `resetSoloRun()` — gépelés közben elszáll a futás eredménye. |
+| U3 | ugyanott → `removeActivePlayer` | A „Player törlése" **az egész sandbox worldöt nullázza**, figyelmeztetés nélkül. |
+| P6 | `ScenarioSimulationMap.tsx` → `loopCollection` | Nincs plafonja, pedig a `worldCollection`-nek és `gridCollection`-nek van. Egy 177 km-es hurok fala ~9 400 res12 cella. |
+| P7 | `SimulationLabScenarioScreen.tsx` → `runPhase` | A phase indításakor futó `runLabScenario` **szinkron és blokkoló** (3 × 5,6 km futásnál ~1,1 s). Ez a maradék blokkolás fő forrása. |
+
 ### A. Bonyolult 11 pontos route
 
 A user vizuális számítása szerint a tesztroute-nak **4 fizikai closure-t** kell adnia, nem 9-et:
@@ -757,6 +831,8 @@ server/src/routes/activities.ts
 Legfrissebb releváns commitok, újabbtól visszafelé:
 
 ```text
+abd5122   Simulation LAB hibajavitas es gyorsitas
+505fe31   docs: refresh Claude handoff
 1770a743  ci: scope app and server Vitest runs correctly
 6a83294   test: remove temporary multi-lap diagnostic
 075f7ff   test: remove temporary spur diagnostic
@@ -819,3 +895,29 @@ A jelenlegi motor sok egymásra épülő, teszttel rögzített gameplay-szabály
 8. push után nézd a GitHub Actions app + server jobot.
 
 A cél nem az, hogy minden matematikai ciklust gameplay huroknak nevezzünk, hanem hogy a valós mozgásból intuitív, stabil, reprodukálható területfoglalás legyen.
+
+### MODELLJAVASLAT a következő menetre
+
+A munkaterv **3. pontja (optimalizálás)** és **4. pontja (terület/hurok/szint/rablás
+finomhangolás)** egyaránt algoritmus- és mérés-jellegű → **Opus, emelt mélység**.
+A 2. pont maradéka (U1–U3 felületi hibák) önmagában **Sonnet**, normál mélység —
+ha csak azok jönnek, nem kell erősebb modell.
+
+### A LAB ÉLŐ ELLENŐRZÉSE HELYBEN — ez most már működik
+
+A `#11` óta a LAB kattintással is tesztelhető helyben. Amit tudni kell:
+
+1. A `.env.local`-ban **kell `VITE_MAPBOX_TOKEN`** — enélkül a LAB csak a
+   „hiányzik a token" helyőrzőt mutatja, és útvonalat sem lehet rakni.
+   (A fájl `.gitignore`-olt, tokenhez Geritől kérj.)
+2. Emulátorok: `firebase.cmd emulators:start --only auth,firestore --project demo-grundo`
+   (Git Bashben elé a Java PATH exportja kell).
+3. `server/` → `npm run seed:emulator`, majd **a seed user nem admin**:
+   `GOOGLE_CLOUD_PROJECT=demo-grundo FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npm run role:set -- --email geri@grundo.local --role owner --apply`
+4. `server/` → `npm run dev:emulator`; gyökérből `npm run dev:emulator`
+   (`.claude/launch.json` → `grundo-emulator`).
+5. Böngészőben: `await __grundoDevSignIn()`, majd `/admin/lab`.
+6. Scenario-t **nem kell kattintással** megrajzolni: a képernyő a
+   `localStorage['grundo.lab.scenarios.v2']` kulcsból tölt, ide közvetlenül
+   beírható egy kész `SavedScenario` (players / phases / runs route + config).
+   Így reprodukálható méréshez pontosan ugyanaz a bemenet állítható elő.

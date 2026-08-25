@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { cellToBoundary, cellToLatLng, gridDisk } from 'h3-js';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
@@ -51,59 +51,28 @@ const REJECTED = 'lab-scenario-rejected';
 const MAX_GRID_CELLS = 12_000;
 const MAX_WORLD_FEATURES = 60_000;
 
+/**
+ * A LAB térképe.
+ *
+ * ⚠️ FORRÁSONKÉNT KÜLÖN EFFEKT. Korábban egyetlen `sync()` frissítette mind a
+ * kilenc forrást, bármelyik prop változására. Phase-lejátszás közben ez azt
+ * jelentette, hogy egy nyomvonal-frame is újraépítette a teljes world
+ * GeoJSON-t — több tízezer poligont, mindegyikhez `cellToBoundary` hívással.
+ * Ne vond össze őket újra: a drága forrás (world, hurkok) csak akkor épülhet
+ * újra, ha az adata tényleg változott.
+ */
 export function ScenarioSimulationMap(props: Props) {
   const { theme } = useThemeContext();
   const container = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<mapboxgl.Marker[]>([]);
+  const markerEditable = useRef(props.editable);
   const latest = useRef(props);
   const appliedTheme = useRef(theme);
-  const styleSyncPending = useRef(false);
+  // A stílus (újra)betöltése eldobja a forrásokat és a rétegeket. Amíg ez nem
+  // igaz, egyik forrás-effekt sem írhat; ha újra igazzá válik, mind újrafut.
+  const [ready, setReady] = useState(false);
   latest.current = props;
-
-  function scheduleSync(map: mapboxgl.Map) {
-    if (styleSyncPending.current) return;
-    styleSyncPending.current = true;
-    map.once('style.load', () => {
-      styleSyncPending.current = false;
-      if (mapRef.current === map) sync(map);
-    });
-  }
-
-  function sync(map: mapboxgl.Map) {
-    const state = latest.current;
-    syncMarkers(map, state.activeRoute, markers, state.editable, state.onMoveWaypoint);
-    if (!map.isStyleLoaded()) {
-      scheduleSync(map);
-      return;
-    }
-    addLayers(map);
-    setSource(map, ACTIVE_ROUTE, lineCollection([{ points: state.activeRoute, color: state.activeColor }]));
-    setSource(map, OTHER_ROUTES, lineCollection(state.routes
-      .filter((item) => item.route !== state.activeRoute)
-      .map((item) => ({ points: item.route, color: item.color }))));
-    setSource(map, RAW_TRACKS, lineCollection(state.tracks.map((track) => ({ points: track.raw, color: track.color }))));
-    setSource(map, ACCEPTED_TRACKS, lineCollection(state.tracks.map((track) => ({ points: track.accepted, color: track.color }))));
-    setSource(map, PLAYER_HEADS, playerHeadCollection(state.tracks));
-    setSource(map, WORLD, state.showClaims ? worldCollection(state.world, state.ownerColors) : empty());
-    setVisible(map, `${WORLD}-fill`, state.showClaims);
-    setVisible(map, `${WORLD}-line`, state.showClaims);
-    setVisible(map, `${WORLD}-labels`, state.showClaims);
-    setVisible(map, `${GRID}-line`, state.showGrid);
-    setVisible(map, `${LOOPS}-fill`, state.showLoops);
-    setVisible(map, `${LOOPS}-wall`, state.showLoops);
-    setVisible(map, REJECTED, state.showLoops);
-
-    if (!state.result) {
-      setSource(map, GRID, empty());
-      setSource(map, LOOPS, empty());
-      setSource(map, REJECTED, empty());
-      return;
-    }
-    setSource(map, GRID, state.showGrid ? gridCollection(state.result) : empty());
-    setSource(map, LOOPS, loopCollection(state.result));
-    setSource(map, REJECTED, rejectedCollection(state.result));
-  }
 
   useEffect(() => {
     if (!mapboxConfigured || !container.current || mapRef.current) return;
@@ -122,7 +91,10 @@ export function ScenarioSimulationMap(props: Props) {
     const observer = new ResizeObserver(() => map.resize());
     observer.observe(container.current);
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
-    map.on('load', () => sync(map));
+    map.on('load', () => {
+      addLayers(map);
+      setReady(true);
+    });
     map.on('click', (event) => {
       if (!latest.current.editable) return;
       const target = event.originalEvent.target as HTMLElement | null;
@@ -131,28 +103,95 @@ export function ScenarioSimulationMap(props: Props) {
     });
     return () => {
       observer.disconnect();
-      styleSyncPending.current = false;
       for (const marker of markers.current) marker.remove();
       markers.current = [];
       map.remove();
       mapRef.current = null;
+      setReady(false);
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map) sync(map);
-  }, [props.activeRoute, props.activeColor, props.routes, props.tracks, props.world, props.ownerColors,
-    props.result, props.showGrid, props.showLoops, props.showClaims, props.resetToken, props.editable]);
-
-  useEffect(() => {
-    const map = mapRef.current;
     if (!map || appliedTheme.current === theme) return;
     appliedTheme.current = theme;
-    styleSyncPending.current = false;
+    setReady(false);
     map.setStyle(mapStyleFor(theme));
-    scheduleSync(map);
+    map.once('style.load', () => {
+      if (mapRef.current !== map) return;
+      addLayers(map);
+      setReady(true);
+    });
   }, [theme]);
+
+  // Aktív útvonal.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    setSource(map, ACTIVE_ROUTE, lineCollection([{ points: props.activeRoute, color: props.activeColor }]));
+  }, [ready, props.activeRoute, props.activeColor]);
+
+  // A többi player referencia-útvonala.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    setSource(map, OTHER_ROUTES, lineCollection(props.routes
+      .filter((item) => item.route !== props.activeRoute)
+      .map((item) => ({ points: item.route, color: item.color }))));
+  }, [ready, props.routes, props.activeRoute]);
+
+  // Nyers és elfogadott nyomvonalak + a playerek pillanatnyi pozíciója.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    setSource(map, RAW_TRACKS, lineCollection(props.tracks.map((track) => ({ points: track.raw, color: track.color }))));
+    setSource(map, ACCEPTED_TRACKS, lineCollection(props.tracks.map((track) => ({ points: track.accepted, color: track.color }))));
+    setSource(map, PLAYER_HEADS, playerHeadCollection(props.tracks));
+  }, [ready, props.tracks, props.resetToken]);
+
+  // A sandbox world — a legdrágább forrás.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    setSource(map, WORLD, props.showClaims ? worldCollection(props.world, props.ownerColors) : empty());
+  }, [ready, props.world, props.ownerColors, props.showClaims]);
+
+  // Hurokgeometria és H3 háló az aktuális eredményből.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    if (!props.result) {
+      setSource(map, GRID, empty());
+      setSource(map, LOOPS, empty());
+      setSource(map, REJECTED, empty());
+      return;
+    }
+    setSource(map, GRID, props.showGrid ? gridCollection(props.result) : empty());
+    setSource(map, LOOPS, loopCollection(props.result));
+    setSource(map, REJECTED, rejectedCollection(props.result));
+  }, [ready, props.result, props.showGrid]);
+
+  // Réteg-láthatóság: olcsó, nem érinti a forrásokat.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    setVisible(map, `${WORLD}-fill`, props.showClaims);
+    setVisible(map, `${WORLD}-line`, props.showClaims);
+    setVisible(map, `${WORLD}-labels`, props.showClaims);
+    setVisible(map, `${GRID}-line`, props.showGrid);
+    setVisible(map, `${LOOPS}-fill`, props.showLoops);
+    setVisible(map, `${LOOPS}-wall`, props.showLoops);
+    setVisible(map, REJECTED, props.showLoops);
+  }, [ready, props.showGrid, props.showLoops, props.showClaims]);
+
+  // Waypoint-markerek. A stílustól függetlenek (DOM overlay), ezért `ready` itt
+  // csak az első kirajzolás időzítéséhez kell.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    syncMarkers(map, props.activeRoute, markers, props.editable, markerEditable,
+      (index, point) => latest.current.onMoveWaypoint(index, point));
+  }, [ready, props.activeRoute, props.editable]);
 
   if (!mapboxConfigured) {
     return <div className="lab-map lab-map--missing">A route editorhez hiányzik a <code>VITE_MAPBOX_TOKEN</code>.</div>;
@@ -329,9 +368,24 @@ function syncMarkers(
   route: readonly SimulationWaypoint[],
   holder: { current: mapboxgl.Marker[] },
   editable: boolean,
+  appliedEditable: { current: boolean },
   onMove: (index: number, point: SimulationWaypoint) => void,
 ) {
+  // Azonos pontszámnál és változatlan szerkeszthetőségnél elég a pozíciót
+  // frissíteni. A teljes újraépítés minden rendernél DOM-cserét jelentett — a
+  // sorszámozott pontok lejátszás közben láthatóan villogtak tőle.
+  if (holder.current.length === route.length && appliedEditable.current === editable) {
+    route.forEach((point, index) => {
+      const marker = holder.current[index];
+      if (!marker) return;
+      const at = marker.getLngLat();
+      if (at.lat !== point.lat || at.lng !== point.lng) marker.setLngLat([point.lng, point.lat]);
+    });
+    return;
+  }
+
   for (const marker of holder.current) marker.remove();
+  appliedEditable.current = editable;
   holder.current = route.map((point, index) => {
     const element = document.createElement('button');
     element.type = 'button';

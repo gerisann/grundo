@@ -77,9 +77,71 @@ export function labWorldOwnershipAt(
   return undefined;
 }
 
+/** Egy player res12-egyenértékű összesítése a vegyes felbontású worldben. */
+export interface LabWorldPlayerTotals {
+  /** Összes birtokolt res12-egyenértékű cella. */
+  cells: number;
+  /** Védelmi szintenkénti bontás; a 0. elem az 1× védelem. */
+  byDefense: number[];
+}
+
+/**
+ * A teljes sandbox world összesítése EGYETLEN bejárásból.
+ *
+ * Playerenként és védelmi szintenként külön számolva ez tíz playernél
+ * rendernként tizenöt teljes world-bejárás volt, res12 cellánként akár tizenkét
+ * `cellToParent` hívással. Ugyanaz az információ egy passzal is kijön, és a
+ * hívó egyszer memoizálhatja.
+ */
+export function summarizeLabWorld(
+  world: OwnershipMap,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+): Map<string, LabWorldPlayerTotals> {
+  const totals = new Map<string, LabWorldPlayerTotals>();
+
+  function add(owner: string, defense: number, amount: number): void {
+    if (amount === 0) return;
+    let entry = totals.get(owner);
+    if (!entry) {
+      entry = { cells: 0, byDefense: Array.from({ length: cfg.MAX_DEFENSE }, () => 0) };
+      totals.set(owner, entry);
+    }
+    entry.cells += amount;
+    const index = defense - 1;
+    if (index >= 0 && index < entry.byDefense.length) {
+      entry.byDefense[index] = (entry.byDefense[index] ?? 0) + amount;
+    }
+  }
+
+  const fine: CellId[] = [];
+  for (const [cell, ownership] of world) {
+    const resolution = getResolution(cell);
+    if (resolution < cfg.H3_RESOLUTION) {
+      add(
+        ownership.owner,
+        ownership.defense,
+        Number(cellToChildrenSize(cell, cfg.H3_RESOLUTION)),
+      );
+    } else if (resolution === cfg.H3_RESOLUTION) {
+      fine.push(cell);
+    }
+  }
+
+  // Az exact res12 override elveszi az örökölt parent egy celláját, és a saját
+  // állapotát teszi a helyére.
+  for (const cell of fine) {
+    const inherited = inheritedParentOwnership(world, cell);
+    if (inherited !== undefined) add(inherited.owner, inherited.defense, -1);
+    const exact = world.get(cell)!;
+    add(exact.owner, exact.defense, 1);
+  }
+
+  return totals;
+}
+
 /** Egy mixed-resolution world res12-egyenértékű cellaszáma player szerint. */
 export function countLabPlayerCells(world: OwnershipMap, playerId: string): number {
-  return countWorldState(world, (ownership) => ownership.owner === playerId);
+  return summarizeLabWorld(world).get(playerId)?.cells ?? 0;
 }
 
 /** Egy mixed-resolution world res12-egyenértékű cellaszáma player + defense szerint. */
@@ -88,10 +150,7 @@ export function countLabPlayerDefense(
   playerId: string,
   defense: number,
 ): number {
-  return countWorldState(
-    world,
-    (ownership) => ownership.owner === playerId && ownership.defense === defense,
-  );
+  return summarizeLabWorld(world).get(playerId)?.byDefense[defense - 1] ?? 0;
 }
 
 function processCompactLabActivity(
@@ -426,33 +485,6 @@ function compactDefenseMap(source: ReadonlyMap<CellId, number>): Map<CellId, num
     for (const cell of compactCells(cells)) result.set(cell, defense);
   }
   return result;
-}
-
-function countWorldState(
-  world: OwnershipMap,
-  predicate: (ownership: CellOwnership) => boolean,
-): number {
-  let count = 0;
-
-  // Parentek teljes tömege.
-  for (const [cell, ownership] of world) {
-    const resolution = getResolution(cell);
-    if (resolution >= DEFAULT_GAMEPLAY.H3_RESOLUTION) continue;
-    if (predicate(ownership)) {
-      count += Number(cellToChildrenSize(cell, DEFAULT_GAMEPLAY.H3_RESOLUTION));
-    }
-  }
-
-  // Exact res12 override-ok: ha parentet írnak felül, előbb levonjuk az örökölt
-  // cellát, majd hozzáadjuk az exact állapotot.
-  for (const [cell, ownership] of world) {
-    if (getResolution(cell) !== DEFAULT_GAMEPLAY.H3_RESOLUTION) continue;
-    const inherited = inheritedParentOwnership(world, cell);
-    if (inherited !== undefined && predicate(inherited)) count -= 1;
-    if (predicate(ownership)) count += 1;
-  }
-
-  return count;
 }
 
 function inheritedParentOwnership(
