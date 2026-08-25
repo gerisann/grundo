@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from './AdminLayout';
+import { AdminAccessGate } from './AdminAccessGate';
 import { AdminHomeScreen } from './AdminHomeScreen';
 import { GameplayScreen } from './GameplayScreen';
 import { ModifiersScreen } from './ModifiersScreen';
@@ -12,10 +13,10 @@ import { LabE2eTrackingScreen } from './LabE2eTrackingScreen';
 export default function AdminArea() {
   return (
     <Routes>
-      {/* Fullscreen: ugyanazt a tracking kompozíciót akarjuk látni, mint a
-          játékosnál, admin sidebar/header nélkül. A jogosultságot továbbra is
-          az egész /admin terület kapuja védi. */}
-      <Route path="lab/e2e/:sessionId" element={<LabE2eTrackingScreen />} />
+      <Route
+        path="lab/e2e/:sessionId"
+        element={<AdminAccessGate><LabE2eTrackingScreen /></AdminAccessGate>}
+      />
 
       <Route element={<AdminLayout />}>
         <Route index element={<AdminHomeScreen />} />
