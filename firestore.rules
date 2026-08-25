@@ -99,30 +99,63 @@ service cloud.firestore {
         'units', 'body', 'timezone', 'cellColor', 'updatedAt'
       ]) && cellColorAllowed();
 
-      allow create, delete: if false;
+      allow create, delete: if false;  // regisztráció és törlés szerveroldalról
 
+      // Privát beállítások — kizárólag a tulajdonosnak.
       match /private/{docId} {
         allow read, write: if isSelf(uid);
       }
 
+      // Közösségi gráf: a kapcsolatokat a szerver írja (számlálók miatt),
+      // a kliens csak olvassa.
       match /following/{targetUid} { allow read: if signedIn(); allow write: if false; }
       match /followers/{sourceUid} { allow read: if signedIn(); allow write: if false; }
 
+      // Tiltás és némítás.
+      //
+      // ⚠️ FIGYELEM: ez a `blocks` a felhasználó-TILTÁS, nem a rács. A
+      // rács-blokk mutató szándékosan külön névtérben van (`blockIndex`),
+      // mert az a felhasználó képernyőjét szolgálja — ha a rács-mutató is
+      // itt lenne, a saját területét törölhetné le a térképéről.
+      //
+      // ⚠️ A TILTÁS ÍRÁSA 2026-08-20 óta SZERVEROLDALI. Két oka van:
+      // a művelet ilyenkor bontja a követéseket és a függő kéréseket is
+      // (`routes/users.ts` → block), és megírja a `blockedBy` tükröt, amiből
+      // a feed a MÁSIK irányt szűri. Egy közvetlen kliens-írás mindkettőt
+      // kihagyná, és a tiltás csak félig működne. A kliens az API-t hívja,
+      // közvetlenül eddig sem írta.
       match /blocks/{targetUid} {
         allow read: if isSelf(uid);
         allow write: if false;
       }
 
+      // Ki tiltott ENGEM — a szerver által írt tükör. Csak olvasható, és csak
+      // a tulajdonosnak: ez a lista mondja meg a feednek, kinek az
+      // aktivitásait ne mutassa.
       match /blockedBy/{sourceUid} {
         allow read: if isSelf(uid);
         allow write: if false;
       }
 
+      // Riválisok — kitől vettél el területet, és ki tőled.
+      //
+      // ⚠️ CSAK A TULAJDONOS OLVASHATJA, a `followers`/`following`-gal
+      // ellentétben. Egy idegen rivális-listája megmutatná, kitől szokott
+      // veszíteni — vagyis készen adna egy célpontlistát. Ez nem publikus
+      // közösségi gráf, hanem a saját összecsapás-történeted.
+      //
+      // Az írás szerveroldali: a számok növelése az aktivitás feldolgozásából
+      // jön (`lib/rivals.ts`), és a KLIENS SOSEM ÍR JÁTÉKADATOT (AGENTS.md
+      // 5. szabály) — egy kliens-írás itt tetszőleges rivalitást és
+      // tetszőleges mezőszámot hazudhatna.
       match /rivals/{otherUid} {
         allow read: if isSelf(uid);
         allow write: if false;
       }
 
+      // Mely rács-blokkokban van cellája? Szerveroldali mutató, rétegenként
+      // egy dokumentum. A tulajdonos olvashatja (a saját területképernyője
+      // ebből dolgozik), írni senki nem írhatja.
       match /blockIndex/{layer} {
         allow read: if isSelf(uid) || isAdmin();
         allow write: if false;
@@ -133,6 +166,8 @@ service cloud.firestore {
       match /passport/{iso}     { allow read: if signedIn(); allow write: if false; }
     }
 
+    // Felhasználónév-foglalás: csak olvasható (az egyediséget a szerver
+    // tranzakcióban kezeli).
     match /usernames/{name} {
       allow read: if true;
       allow write: if false;
@@ -151,24 +186,57 @@ service cloud.firestore {
       }
 
       allow get, list: if signedIn() && visibleToMe();
+
+      // A kliens csak a saját aktivitása leíró mezőit szerkesztheti.
+      // A nyomvonal, a metrikák, a claim, a GP és a trust szerveroldali.
+      // A leíró mezők szerkesztése a PATCH /api/activities/:id végponton megy.
+      //
+      // A `photos` azért NEM maradhat kliensről írható: a hivatkozás
+      // útvonal-előtagját a szerver ellenőrzi (`activities/{uid}/{activityId}/`),
+      // különben bárki behivatkozhatná más felhasználó fájljait a saját
+      // aktivitásába. A szabály nyelve ilyen ellenőrzésre nem alkalmas.
       allow update: if false;
+
+      // Létrehozás és törlés a szerveren keresztül (feldolgozás + területvisszavonás).
       allow create, delete: if false;
 
+      // ── A TELJES, LEVÁGATLAN NYOMVONAL ──
+      // Külön dokumentum, mert a Firestore-szabályok nem tudnak mezőszinten
+      // szűrni: ha a fő dokumentumban lenne, bárki elolvashatná, aki az
+      // aktivitást látja — és ezzel a privát zóna értelmét vesztené.
       match /private/{docId} {
         allow read: if isSelf(get(/databases/$(database)/documents/activities/$(activityId)).data.userId)
                     || isAdmin();
         allow write: if false;
       }
 
+      /**
+       * A darabolt foglalás részeredményei — BELSŐ KÖNYVELÉS.
+       *
+       * Csoportonként egy dokumentum, determinisztikus azonosítóval; ebből
+       * áll össze a végén a GP és az összesítő. A kliensnek semmi dolga vele,
+       * és nem is szabad írnia: abból hamis területelszámolás lenne.
+       */
       match /claimParts/{groupId} {
         allow read, write: if false;
       }
 
+      // A kedvelés a SZERVEREN keresztul megy (POST/DELETE /api/activities/:id/like).
+      //
+      // MIÉRT nem írhatja a kliens közvetlenül, ha csak a saját dokumentumáról
+      // van szó? Mert a kedvelés KÉT dolgot változtat: ezt az aldokumentumot és
+      // az aktivitás `likeCount` mezőjét. Az utóbbit a kliens nem írhatja
+      // (lásd az `update` szabályt fent), tehát közvetlen írásnál a kettő
+      // szétcsúszna: a szív tele lenne, a számláló nulla.
       match /likes/{uid} {
         allow read: if signedIn();
         allow write: if false;
       }
 
+      // A hozzászólásírás is a szerveren megy — ugyanaz az ok, mint a
+      // kedvelésnél: a `commentCount` az aktivitás dokumentumán él, és azt a
+      // kliens nem írhatja. Ráadásul a moderáció (szűrés, jelentés,
+      // sebességkorlát) is oda tartozik majd, nem a kliensbe.
       match /comments/{commentId} {
         allow read: if signedIn();
         allow write: if false;
@@ -177,7 +245,9 @@ service cloud.firestore {
 
     // ── A JÁTÉKTÉR — kliensről soha nem írható ────────────────────────────
 
+    // A hexrács cellatulajdonlása (res 9 blokkokban).
     match /grid/{blockId}          { allow read: if signedIn(); allow write: if false; }
+    // Származtatott zónák (összefüggő birtokfoltok) a megjelenítéshez.
     match /zones/{zoneId}          { allow read: if signedIn(); allow write: if false; }
     match /territoryEvents/{id} {
       allow read: if signedIn()
@@ -188,17 +258,22 @@ service cloud.firestore {
       allow read: if signedIn() && (isSelf(resource.data.userId) || isAdmin());
       allow write: if false;
     }
+    // A napi soft cap tranzakciós állapota belső könyvelési adat.
     match /dailyGp/{entryId}       { allow read, write: if false; }
     match /leaderboards/{board}/entries/{rank} {
       allow read: if signedIn();
       allow write: if false;
     }
 
+    // A bizalmi pontszám SOHA nem kerülhet kliensre — sem a szám, sem a
+    // részjelek. A felhasználó csak az aktivitáson lévő verdiktet látja.
     match /activityTrust/{activityId} {
       allow read: if isAdmin();
       allow write: if false;
     }
 
+    // A részletes játékmenet-auditot kizárólag a szerver API-ja adja vissza
+    // szerepkör-ellenőrzés után. Közvetlen kliensolvasásra nincs szükség.
     match /activityAudits/{activityId} {
       allow read, write: if false;
     }
@@ -209,6 +284,8 @@ service cloud.firestore {
       allow get, list: if signedIn()
         && (resource.data.visibility == 'public'
             || exists(/databases/$(database)/documents/clubs/$(clubId)/members/$(request.auth.uid)));
+      // Létrehozás, szerkesztés, tagfelvétel: szerveroldalon (Pro-ellenőrzés,
+      // meghívókód generálás, tagszámlálók).
       allow write: if false;
 
       match /members/{uid}      { allow read: if signedIn(); allow write: if false; }
@@ -220,7 +297,7 @@ service cloud.firestore {
       }
     }
 
-    match /inviteCodes/{code} { allow read, write: if false; }
+    match /inviteCodes/{code} { allow read, write: if false; }  // csak szerver
 
     // ── challenges ────────────────────────────────────────────────────────
 
@@ -229,7 +306,7 @@ service cloud.firestore {
       allow write: if false;
       match /participants/{uid} {
         allow read: if signedIn();
-        allow write: if false;
+        allow write: if false;  // a csatlakozás és a haladás szerveroldali
       }
     }
 
@@ -237,7 +314,16 @@ service cloud.firestore {
 
     match /notifications/{uid}/items/{itemId} {
       allow read: if isSelf(uid);
+      // A felhasználó csak olvasottnak jelölheti.
       allow update: if isSelf(uid) && onlyChanges(['read']);
+      /*
+        TÖRÖLNI SZABAD, LÉTREHOZNI NEM.
+
+        Az értesítés keletkezése a szerveré (`createNotification` — az az
+        egyetlen kapu, ami a felhasználó kapcsolóit nézi), a saját listája
+        viszont a felhasználóé: az értesítés-lapon a kártyát jobbra húzva
+        vagy a fejléc „összes törlése" gombjával takaríthat.
+      */
       allow delete: if isSelf(uid);
       allow create: if false;
     }
@@ -263,6 +349,7 @@ service cloud.firestore {
     // ── reports ───────────────────────────────────────────────────────────
 
     match /reports/{reportId} {
+      // A bejelentő létrehozhatja, de utána nem látja és nem módosítja.
       allow create: if signedIn()
         && isSelf(request.resource.data.reporterId)
         && request.resource.data.category in
@@ -278,6 +365,7 @@ service cloud.firestore {
 
     match /equipment/{itemId} {
       allow read: if signedIn();
+      // A km-gyűjtés szerveroldali, a leíró mezők a felhasználóé.
       allow create: if isSelf(request.resource.data.userId);
       allow update: if isSelf(resource.data.userId)
                     && onlyChanges(['name', 'type', 'targetKm', 'active', 'retiredAt']);
@@ -295,12 +383,13 @@ service cloud.firestore {
     match /badges/{badgeId}       { allow read: if signedIn(); allow write: if false; }
     match /subscriptions/{uid}    { allow read: if isSelf(uid); allow write: if false; }
     match /connectors/{uid}/{provider} {
+      // A tokenek Secret Managerben vannak; itt csak státusz.
       allow read: if isSelf(uid);
       allow write: if false;
     }
     match /devices/{uid}/tokens/{token} {
       allow read: if isSelf(uid);
-      allow write: if isSelf(uid);
+      allow write: if isSelf(uid);  // FCM token regisztráció
     }
 
     // ── konfiguráció és napló ─────────────────────────────────────────────
@@ -308,12 +397,28 @@ service cloud.firestore {
     match /appConfig/{docId}  { allow read: if signedIn(); allow write: if false; }
     match /adminAudit/{docId} { allow read: if isAdmin();  allow write: if false; }
 
+    /**
+     * A konfiguráció verziótörténete — csak adminnak.
+     *
+     * A hatályos értékeket mindenki olvashatja (kell is: a szabálymagyarázó
+     * felület ebből dolgozik), de hogy MIKOR MIT állítottunk át, az üzemeltetői
+     * információ.
+     */
     match /appConfig/{docId}/versions/{version} {
       allow read: if isAdmin();
       allow write: if false;
     }
 
+    /**
+     * Modifierek — időszakos szorzók.
+     *
+     * SZÁNDÉKOSAN OLVASHATÓ mindenkinek: a játékosnak látnia kell, hol és
+     * meddig érvényes a bónusz, különben az akciónak nincs értelme. Írni
+     * kizárólag szerverről lehet — a `from`/`to` és a `value` játékadat.
+     */
     match /modifiers/{modifierId} { allow read: if signedIn(); allow write: if false; }
+
+    // Üzemeltetési adat: napi használati aggregátum és a job-futások naplója.
     match /metricsDaily/{day}    { allow read: if isAdmin(); allow write: if false; }
     match /rolloverRuns/{runId}  { allow read: if isAdmin(); allow write: if false; }
 
