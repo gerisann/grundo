@@ -571,8 +571,9 @@ function areaColor(
   owner: string,
   ownerColors: MapViewProps['ownerColors'],
 ): string {
-  const chosen = owner ? ownerColors?.[owner] : undefined;
-  if (chosen !== undefined) return cellColorHex(chosen);
+  // Valós tulajdonosnál mindig a profil színe dönt. Ha egy régi usernek még
+  // nincs cellColor mezője, a cellColorHex az alapértelmezett palettaszínt adja.
+  if (owner) return cellColorHex(ownerColors?.[owner]);
   if (role === 'rival' && defense === 5) return cssColor(RIVAL_MAX_COLOR);
   return cssColor(ROLE_COLOR[role]);
 }
