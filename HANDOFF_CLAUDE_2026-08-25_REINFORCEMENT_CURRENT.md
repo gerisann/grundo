@@ -71,6 +71,31 @@ Két külön hiba volt benne, és külön javítás kellett rájuk:
 
 **(b) Túl korai védelem.** A régi terület három oldalát újrafutva a szögösszeg ~1,75 teljes kör, ami KEREKÍTVE már 2. Emiatt ugrott a védelem 280 GPS-ponttal a nagy kör bezárása előtt. Mostantól lefelé csonkolunk egy kis ráhagyással (`FULL_TURN_TOLERANCE`), és a valaha elért LEGNAGYOBB szögelfordulást nézzük — így egy hazasétálás sem tudja visszatekerni azt, amit a játékos már körbejárt.
 
+## 2.2 A 43 lépéses folyamatábra — AZ ELŐJEL VOLT A HIBA
+
+Geri lépésről lépésre megrajzolta, mit vár egy négykörös útvonaltól három dobozzal (A bal felső, B jobb felső, C bal alsó). Elvárt végállapot: **A = 3×, B = 2×, C = 2×**.
+
+A mérés `C = 1×`-et adott. Az ok nem a hurokdetektorban volt:
+
+- az 1., 3. és 4. kör **óramutató szerint** halad (−1 mindegyik),
+- a 2. kör, ami a C dobozt zárja, **ellenkezőleg** (+1).
+
+A C dobozra a 2. kör `+1`, a 4. kör `−1` — az ELŐJELES összegük nulla. A körüljárást addig előjeles szögösszegként számoltuk, ezért a két ellentétes irányú kör kioltotta egymást.
+
+**A javítás:** a `windingCounts()` nem szögösszeget ad vissza, hanem egy racsnit — valahányszor a szögelfordulás az utolsó jóváírás óta összegyűjt egy teljes kört BÁRMELYIK IRÁNYBAN, az egy bekerítés. Ez egyszerre oldja meg az előjel-kioltást, a félig megtett kört (nem lép a racsni) és a kör utáni elsétálást (a racsni nem számol vissza).
+
+A javítás után minden lépés stimmel:
+
+| folyamatábra | elvárt | mért |
+|---|---|---|
+| 7. lépés (16%) | 1. hurok, A = 1× | 17% |
+| 13. lépés (30%) | 2. hurok, C = 1× | 30% |
+| 25. lépés (58%) | B = 1×, majd A = 2× | 54% / 59% |
+| 37. lépés (86%) | A = 3×, B = 2× | 79% / 84% |
+| 43. lépés (100%) | C = 2× | 100% |
+
+**NYITOTT:** a bezárásszám 5, Geri számozása 6-ot ír. A 3. és a 4. kör felső szakaszát a detektor egyetlen, A+B-t együtt bekerítő hurokként könyveli, nem kettőként (előbb B, aztán A). A védelmi eredményt és az időzítést ez nem befolyásolja — a jóváírásokat a körüljárás adja, nem a bezárások száma —, de a LAB-panel számlálója ettől eltér a rajztól.
+
 ---
 
 # 3. HOGYAN MŰKÖDIK
@@ -80,7 +105,7 @@ Két külön hiba volt benne, és külön javítás kellett rájuk:
 `windingCounts(path, cells)` → cellánként a körüljárási szám abszolút értéke.
 
 - **Nyitott nyomvonal, záró húr NÉLKÜL.** Egy zárt görbe szögösszege pontos egész többszöröse a teljes körnek. Záró húrral egy hosszú hazasétálás hamis körüljárást vinne be — mérve emiatt esett ki két cella egy bezárt területből.
-- **Futó maximum, lefelé csonkolva.** Nem kerekítünk: egy félig megtett kör szögösszege is elérheti a következő egész közelét (~1,75), és kerekítve idő előtt emelné a védelmet. A valaha elért legnagyobb szögelfordulást tartjuk, `FULL_TURN_TOLERANCE` ráhagyással — így a kör utáni elsétálás sem tekerhet vissza.
+- **Racsni, nem szögösszeg.** Valahányszor a szögelfordulás az utolsó jóváírás óta összegyűjt egy teljes kört — bármelyik irányban —, az egy bekerítés. Ez három hibát old meg egyszerre: az ellentétes irányú körök nem oltják ki egymást (2.2), egy félig megtett kör nem lép (~0,75 körnél a racsni áll), és a kör utáni elsétálás nem tekerhet vissza. A `FULL_TURN_TOLERANCE` ráhagyás azért kell, mert a nyom vége nem mindig pontosan a kezdőcellában van.
 - **Régiónként számolunk, nem cellánként.** A görbén kívüli, egymással szomszédos cellák körüljárási száma szükségképpen azonos. Ez nem közelítés, hanem ugyanaz az eredmény olcsóbban: 836 cellás nyomvonal + 3544 claim-cella **66 ms → 26 ms**.
 - **A falcellák örökölnek.** Egy falcella közepe RAJTA van a görbén, ezért a szögösszege nem konvergál egész értékhez: mérve a falcellák harmada-fele fél-egész közelében állt, 0 és 7 közötti szórással. Ezek a legközelebbi, görbén kívüli szomszédaiktól kapják a legnagyobb értéket — a fal ahhoz a régióhoz tartozik, amelyiket határolja. A keresés 3 gyűrűig tágul, mert a nyomvonal helyenként 2–3 cella vastag (lásd 5.2).
 
@@ -125,7 +150,9 @@ Lefedve: 7.1 (ismételt kör 1–5×, GPS-zajjal három maggal), 7.2 (növekvő 
 
 Külön blokk fedi Geri „3 box" rajzát (2.1): három bezárás, a védelem csak a harmadiknál nő, mindkét bejárási irányban.
 
-**Állapot: `npm test` → 515 zöld, 119 kihagyva. `npx tsc --noEmit` tiszta. `npm run build` lefut. Szerver: 165 zöld.**
+Külön blokk fedi a 43 lépéses folyamatábrát (2.2): a végállapot mindkét irányban, és a szintek sorrendje prefixenként.
+
+**Állapot: `npm test` → 517 zöld, 119 kihagyva. `npx tsc --noEmit` tiszta. `npm run build` lefut. Szerver: 165 zöld.**
 
 ---
 
@@ -167,6 +194,7 @@ Amibe beleütközött:
 
 # 6. AMI MÉG NYITOTT
 
+0. **A bezárásszám 5 a rajz szerinti 6 helyett** (2.2 vége). Csak a LAB-panel számlálóját érinti, a játékeredményt nem. Valószínűleg a szálszabály (5.1) rendezné.
 1. **A szálszabály befejezése** (5.1). Konkrét maradék: laponként egy fölös bezárás a `loopDetection.test.ts` `overlap-aware` eseteiben és a `claim.test.ts` négykörös tesztjében.
 2. **Nyomvonal-vékonyítás** (5.2).
 3. **A körüljárás inkrementálissá tétele.** Ma minden előnézet-ütemben újraszámol: 836 cellás nyomvonalon 26 ms. Hosszú aktivitáson ez nőni fog. A szögösszeg szakaszonként additív, tehát régiónként eltárolható és az új szakaszokkal frissíthető.

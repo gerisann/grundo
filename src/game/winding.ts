@@ -78,26 +78,40 @@ function projectPath(path: readonly CellId[]): ProjectedPath | null {
 }
 
 /**
- * A pont körül VALAHA elért legnagyobb szögelfordulás, teljes körökben.
+ * Hányszor tett meg a nyomvonal egy TELJES kört a pont körül.
  *
- * Három dolgot old meg egyszerre, és mindhárom mért esetből jött:
+ * Nem a szögösszeget adjuk vissza, hanem egy racsnit: valahányszor a
+ * szögelfordulás az utolsó jóváírás óta összegyűjt egy teljes kört — BÁRMELYIK
+ * IRÁNYBAN —, az egy bekerítés.
  *
- * 1. **Nincs záró húr.** Egy zárt görbe szögösszege pontosan egész többszöröse a
- *    teljes körnek. Húrral lezárva egy hosszú hazasétálás hamis körüljárást
- *    vinne be — emiatt esett ki két cella egy bezárt területből.
+ * Négy dolgot old meg egyszerre, és mindegyik mért esetből jött:
  *
- * 2. **A farok nem tekerhet vissza.** Ha a nyom a kör után elsétál, a szögösszeg
- *    csökkenhet. Amit a játékos egyszer körbejárt, azt egy hazasétálás nem
- *    veheti el: két kör + 1,7 km elsétálás után a cellák egy része 2× helyett
- *    1×-en maradt. Ezért a FUTÓ MAXIMUMOT tartjuk.
+ * 1. **Az ellentétes irányú körök nem olthatják ki egymást.** Ez volt a
+ *    legmakacsabb hiba. Egy négykörös útvonalon a második kör az óramutatóval
+ *    ellentétesen ment, a negyedik vele egyezően; az előjeles összegük nulla,
+ *    ezért az érintett doboz 2× helyett 1×-en maradt. A játékszabály szerint
+ *    viszont mindkettő egy-egy érvényes bekerítés.
  *
- * 3. **Az irány nem számít.** Abszolút értéket nézünk, tehát a bejárás
- *    megfordítása nem változtat semmit.
+ * 2. **Egy félig megtett kör nem számít.** A régi terület három oldalát
+ *    újrafutva a szögösszeg ~0,75 kör; a racsni ilyenkor nem lép. Kerekítéssel
+ *    a védelem 280 GPS-ponttal a kör bezárása előtt ugrott.
+ *
+ * 3. **A farok nem vehet vissza semmit.** A racsni csak felfelé számol, tehát
+ *    az elsétálás nem tudja visszatekerni a már megtett kört.
+ *
+ * 4. **Az irány nem számít.** A bejárás megfordítása minden szögkülönbség
+ *    előjelét megfordítja, a teljes körök számát nem.
+ *
+ * A `FULL_TURN_TOLERANCE` ráhagyás azért kell, mert a nyom vége nem mindig
+ * pontosan a kezdőcellában van, és ilyenkor a zárás egy-két cellányi hézagja
+ * hiányozna a teljes körből.
  */
-function turnsAround(projected: ProjectedPath, cx: number, cy: number): number {
+function encirclementsAround(projected: ProjectedPath, cx: number, cy: number): number {
   const { xs, ys } = projected;
+  const threshold = TAU * (1 - FULL_TURN_TOLERANCE);
   let total = 0;
-  let peak = 0;
+  let anchor = 0;
+  let laps = 0;
   let ax = xs[0]! - cx;
   let ay = ys[0]! - cy;
 
@@ -105,12 +119,15 @@ function turnsAround(projected: ProjectedPath, cx: number, cy: number): number {
     const bx = xs[i]! - cx;
     const by = ys[i]! - cy;
     total += Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
-    const reached = Math.abs(total);
-    if (reached > peak) peak = reached;
     ax = bx;
     ay = by;
+
+    while (Math.abs(total - anchor) >= threshold) {
+      laps += 1;
+      anchor += Math.sign(total - anchor) * TAU;
+    }
   }
-  return peak / TAU;
+  return laps;
 }
 
 /**
@@ -132,6 +149,14 @@ function turnsAround(projected: ProjectedPath, cx: number, cy: number): number {
  * legközelebbi, görbén kívüli szomszédaik közül a legnagyobb értéket öröklik —
  * a fal ahhoz a régióhoz tartozik, amelyiket határolja.
  */
+function cellX(cell: CellId, mPerDegLng: number): number {
+  return cellToLatLng(cell)[1] * mPerDegLng;
+}
+
+function cellY(cell: CellId): number {
+  return cellToLatLng(cell)[0] * M_PER_DEG_LAT;
+}
+
 export function windingCounts(
   path: readonly CellId[],
   cells: Iterable<CellId>,
@@ -147,11 +172,8 @@ export function windingCounts(
   const onPath = new Set<CellId>(path);
   const { mPerDegLng } = projected;
 
-  const turnsAt = (cell: CellId): number => {
-    const [lat, lng] = cellToLatLng(cell);
-    const turns = turnsAround(projected, lng * mPerDegLng, lat * M_PER_DEG_LAT);
-    return Math.floor(turns + FULL_TURN_TOLERANCE);
-  };
+  const turnsAt = (cell: CellId): number =>
+    encirclementsAround(projected, cellX(cell, mPerDegLng), cellY(cell));
 
   // ── 1. A görbén kívüli cellák régiónként ────────────────────────────────
   const offPath: CellId[] = [];

@@ -8,6 +8,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { latLngToCell } from 'h3-js';
+import { DEFAULT_GAMEPLAY } from '@/config/gameplay';
 import { buildTrace, offset, ORIGIN, squareWaypoints } from './fixtures';
 import { processActivity, IncrementalActivityGeometry, processActivityGeometry } from './index';
 import type { CellId, OwnershipMap, TracePoint } from '@/types';
@@ -399,5 +401,91 @@ describe('3 box — a rajz szerinti forgatókönyv', () => {
     // A bezárásszám sosem lépi túl a hármat.
     for (const step of timeline) expect(step.closures).toBeLessThanOrEqual(3);
     expect(timeline[timeline.length - 1]!.maxDefense).toBe(2);
+  });
+});
+
+/**
+ * Geri 43 lépéses folyamatábrája (2026-08-25) — négy kör, három doboz.
+ *
+ * Rács (S = egy doboz oldala):
+ *   A: x 0..1, y 1..2 (bal felső) · B: x 1..2, y 1..2 (jobb felső)
+ *   C: x 0..1, y 0..1 (bal alsó)
+ *
+ * A LÉNYEG, amit ez a teszt véd: a 2. kör az óramutatóval ELLENTÉTESEN megy, a
+ * 4. kör vele EGYEZŐEN. Előjeles szögösszeggel a kettő kioltja egymást, és a C
+ * doboz 2× helyett 1×-en marad. A körüljárást ezért teljes körökben, iránytól
+ * függetlenül számoljuk.
+ */
+describe('folyamatábra — négy kör, három doboz', () => {
+  const S = 200;
+  const at = (x: number, y: number) => offset(ORIGIN, x * S, y * S);
+
+  function fourLaps() {
+    return [
+      // 1. kör: A doboz
+      at(0, 1), at(0, 2), at(1, 2), at(1, 1), at(0, 1),
+      // 2. kör: C doboz — az óramutatóval ELLENTÉTESEN
+      at(0, 0), at(1, 0), at(1, 1), at(0, 1),
+      // 3. kör: a felső sor — B új, A megerősítve
+      at(0, 2), at(2, 2), at(2, 1), at(1, 1), at(0, 1),
+      // 4. kör: újra a felső sor, majd külön a C doboz
+      at(0, 2), at(2, 2), at(2, 1), at(1, 1), at(0, 1),
+      at(0, 0), at(1, 0), at(1, 1), at(0, 1),
+    ];
+  }
+
+  /** Egy doboz közepének védelmi szintje. */
+  function boxLevel(state: OwnershipMap, x: number, y: number): number {
+    const centre = at(x, y);
+    const cell = latLngToCell(centre.lat, centre.lng, DEFAULT_GAMEPLAY.H3_RESOLUTION) as CellId;
+    const held = state.get(cell);
+    return held?.owner === ME ? held.defense : 0;
+  }
+
+  it('a végállapot A=3×, B=2×, C=2× — mindkét bejárási irányban', () => {
+    for (const points of [buildTrace(fourLaps()), reversed(buildTrace(fourLaps()))]) {
+      const state = after(run(points));
+      expect(boxLevel(state, 0.5, 1.5)).toBe(3); // A
+      expect(boxLevel(state, 1.5, 1.5)).toBe(2); // B
+      expect(boxLevel(state, 0.5, 0.5)).toBe(2); // C
+    }
+  });
+
+  it('a szintek a folyamatábra sorrendjében nőnek, egyik sem lép túl', () => {
+    const points = buildTrace(fourLaps());
+    const geometry = new IncrementalActivityGeometry();
+    const reached = { a: 0, b: 0, c: 0 };
+    let cReachedTwoAt = 1;
+
+    for (let cut = 25; cut <= points.length; cut += 25) {
+      const preview = processActivityGeometry(
+        {
+          points: points.slice(0, cut), type: 'run', distanceKm: 4.2, actorId: ME,
+          ownership: new Map(), streakDays: 0, gpEarnedToday: 0,
+        },
+        geometry.update(points.slice(0, cut)),
+      );
+      const state = after(preview);
+      const a = boxLevel(state, 0.5, 1.5);
+      const b = boxLevel(state, 1.5, 1.5);
+      const c = boxLevel(state, 0.5, 0.5);
+
+      // Egyik doboz sem léphet a végleges szintje fölé, és nem eshet vissza.
+      expect(a).toBeLessThanOrEqual(3);
+      expect(b).toBeLessThanOrEqual(2);
+      expect(c).toBeLessThanOrEqual(2);
+      expect(a).toBeGreaterThanOrEqual(reached.a);
+      expect(b).toBeGreaterThanOrEqual(reached.b);
+      expect(c).toBeGreaterThanOrEqual(reached.c);
+
+      if (c === 2 && reached.c < 2) cReachedTwoAt = cut / points.length;
+      reached.a = a;
+      reached.b = b;
+      reached.c = c;
+    }
+
+    expect(reached).toEqual({ a: 3, b: 2, c: 2 });
+    // A C doboz második megerősítése a legutolsó kör vége — nem korábban.
+    expect(cReachedTwoAt).toBeGreaterThan(0.9);
   });
 });
