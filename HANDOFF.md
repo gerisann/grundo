@@ -153,6 +153,21 @@ feltöltés ELŐTT eldönthető, hogy egy kulcs jó-e. Az APNs a hitelesítést 
 device token előtt ellenőrzi, ezért hamis tokennel is működik a próba:
 `BadDeviceToken` = a hitelesítés átment.
 
+### ⚠️ Két token, egy értesítés — ez NEM hiba
+
+A javítás után az `npm run probe:apns` mindkét regisztrált iOS tokenre `HTTP
+200`-at adott, a telefonra viszont csak EGY értesítés érkezett. Ez helyes:
+
+- a két token **külön app-telepítéshez** tartozik (eltérő FCM instance ID, a
+  token `:` előtti része), tipikusan újratelepítés után;
+- csak az egyik mögött van élő app, a másik árva;
+- az FCM az árvára is `200`-at ad, mert az APNs csak késleltetve jelzi vissza,
+  hogy a telepítés eltűnt.
+
+Amikor visszajelzi, a `deliverPush` a `registration-token-not-registered` ágon
+**magától törli** a tokent. Nincs teendő, és NE írj rá kliensoldali
+„egy user = egy token" szabályt: az elvenné a több eszköz lehetőségét.
+
 ### Ami a kód oldalán maradt
 
 - `/admin` áttekintő → **Push-diagnosztika** kártya: teszt-értesítés a saját
