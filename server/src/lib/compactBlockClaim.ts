@@ -184,6 +184,30 @@ function resolveExpandedBlock(
 }
 
 /**
+ * Igaz, ha a work a blokk MINDEN res12 gyerekét közvetlen claimként érinti.
+ *
+ * A gyakori út teljes res10 parentekből áll, ezért csak hét bejegyzést néz.
+ * A ritka, finom határsávval teljesen kitöltött parentnél legfeljebb a blokk
+ * 343 res12 gyerekét ellenőrzi. Ezt a frontier cleanup használja arra, hogy a
+ * homogén compact belső blokkokat SOHA ne bontsa ki feleslegesen.
+ */
+export function compactWorkCoversWholeBlock(
+  work: CompactBlockWork,
+  cfg: GameplayConfig = DEFAULT_GAMEPLAY,
+): boolean {
+  const parents = cellToChildren(work.blockParent, work.claimParentResolution) as CellId[];
+  if (parents.length === 0) return false;
+
+  for (const parent of parents) {
+    if ((work.parentCredits.get(parent) ?? 0) > 0) continue;
+    const fineChildren = cellToChildren(parent, cfg.H3_RESOLUTION) as CellId[];
+    if (fineChildren.length === 0) return false;
+    if (!fineChildren.every((cell) => (work.fineCredits.get(cell) ?? 0) > 0)) return false;
+  }
+  return true;
+}
+
+/**
  * Akkor ad creditet, ha a claim a blokk MINDEN res10 gyermekét teljesen és
  * AZONOS credit-számmal lefedi, exact finom kivétel nélkül.
  */
