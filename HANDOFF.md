@@ -1,6 +1,9 @@
 # GRUNDO — Claude handoff
 
 > Frissítve: **2026-08-25** (a `GRUNDO #11` beszélgetés végén)  
+> Kiegészítve: **2026-08-25** — compact backend bekötés (`4a9978f`), majd a
+> küldetés-detektor javítása (`3b7a5f1`). A két munka párhuzamos beszélgetésben
+> futott; a sorszámozásukat Geri tudja rendbe tenni.  
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo`  
 > GitHub: `gerisann/grundo`  
 > Ág: **`main`**  
@@ -39,6 +42,20 @@ Helyben, a `#11` végén mérve:
 npx tsc --noEmit         → OK
 npx vitest run --dir src → 30 fájl, 303 teszt, 0 bukó
 ```
+
+Újramérve `3b7a5f1`-en (küldetés-detektor javítás után):
+
+```text
+npx tsc --noEmit                        → OK
+npx tsc -p server/tsconfig.json --noEmit → OK
+npx vitest run --dir src                → 31 fájl, 315 teszt, 0 bukó
+npx vitest run --dir server             → 165 zöld, 11 emulátoros fájl kihagyva
+missionEvaluate.emulator.test.ts        → 7/7 zöld (előtte 4 bukó)
+```
+
+⚠️ A `server/tsconfig.json` **kizárja a `*.test.ts`-eket**, ezért a szerveroldali
+tesztek típushibái NEM buknak el `tsc`-n. A küldetés-teszt hónapokig hiányos
+`ShapedCandidate` objektumot épített anélkül, hogy bárhol látszott volna.
 
 A CI-t a `.github/workflows/ci.yml` külön `app` és `server` jobra bontja. A root `npm test` korábban összeszedett server teszteket is rossz dependency-környezettel; ezért lett rendesen szétválasztva. **Push után nézd meg mindkét jobot.**
 
@@ -253,6 +270,40 @@ A flood-fill / fal-pruning utility-k maradtak:
 ```text
 src/game/loops.ts
 ```
+
+### ⚠️ KÉT AZONOS NEVŰ DETEKTOR — ez már egyszer élesben elcsúszott
+
+A `loops.ts`-ben **ott maradt a `detectLoopsDetailed` RÉGI változata**, és a
+`src/game/index.ts` `5cf6362` (2026-08-24, „use overlap-aware loop detector")
+óta a `loopDetection.ts`-belit exportálja **ugyanazon a néven**. Az explicit
+re-export elfedi a `export * from './loops'`-ból jövőt:
+
+- aki a **`src/game`**-ből importál → az ÉLES detektort kapja;
+- aki közvetlenül a **`src/game/loops`**-ból → a leváltottat, némán.
+
+Mért eltérés egy 220 m-es `simpleLoop` fixture-ön: ugyanannál a H3
+kontaktfoltnál a régi a **legkorábbi** kaput választja (`fromIndex 0`, fal 57),
+az éles a legfrissebbet (`fromIndex 1`, fal 56). A belső mindkettőnél 130 →
+**187 vs. 186 cella**.
+
+Ez élesben is elcsúszott: a `server/src/routes/missions.ts` a régi detektorral
+formálta a jelölteket, majd az `evaluateCandidate` az élessel értékelte ki.
+Ott épp bővebb halmaz jött ki (fölös ownership-olvasás), de fordítva a küldetés
+**szabadnak hinne olyan cellákat, amikre nem is töltött be birtokviszonyt** —
+vagyis rossz zsákmányt ígérne. A `missionEvaluate.emulator.test.ts` négy bukó
+tesztje pontosan ezt fogta meg, csak a rossz oldalon: nem a motor tévedett, a
+teszt mérte a saját várakozását leváltott kóddal.
+
+**Javítva `3b7a5f1`-ben**: egy közös belépőpont,
+`missionEvaluate.shapeCandidateCells()`, ami a `buildActivityGeometry`-ből
+(= a mentés geometriájából) adja a jelölt celláit; a route és a teszt is ezt
+hívja. A `loops.ts` régi függvénye fölé figyelmeztető komment került.
+
+**Nyitva maradt**: a régi `detectLoopsDetailed` továbbra is importálható, mert a
+`geometry.test.ts` és a `claim.test.ts` kifejezetten annak a szabályait rögzíti.
+Amíg ott van, a csapda újranyílhat. A takarítás első kérdése: azok a tesztek
+melyik detektort hivatottak védeni? Ha az éleset, migrálni kell őket, és a
+`loops.ts`-ből törölhető a `detectLoopsDetailed` / `detectLoops`.
 
 ### Inkrementális detector
 
@@ -1000,6 +1051,8 @@ server/src/lib/activityCommit.ts
 server/src/lib/activityChunked.ts
 server/src/lib/grid.ts
 server/src/routes/activities.ts
+server/src/lib/missionEvaluate.ts
+server/src/routes/missions.ts
 
 .github/workflows/ci.yml
 ```
@@ -1011,6 +1064,9 @@ server/src/routes/activities.ts
 Legfrissebb releváns commitok, újabbtól visszafelé:
 
 ```text
+3b7a5f1   Küldetés: az éles hurokdetektor cellái
+4a9978f   Compact foglalás bekötése az éles mentésbe
+f5ccba0   docs: hand off LAB E2E and compact production work to Claude
 abd5122   Simulation LAB hibajavitas es gyorsitas
 505fe31   docs: refresh Claude handoff
 1770a743  ci: scope app and server Vitest runs correctly
@@ -1082,6 +1138,10 @@ A munkaterv **3. pontja (optimalizálás)** és **4. pontja (terület/hurok/szin
 finomhangolás)** egyaránt algoritmus- és mérés-jellegű → **Opus, emelt mélység**.
 A 2. pont maradéka (U1–U3 felületi hibák) önmagában **Sonnet**, normál mélység —
 ha csak azok jönnek, nem kell erősebb modell.
+
+A `loops.ts` régi detektorának kitakarítása (3. szakasz vége) szintén **Opus**:
+nem átnevezés, hanem annak eldöntése, hogy a `geometry.test.ts` /
+`claim.test.ts` szabályai melyik detektorra vonatkoznak.
 
 ### A LAB ÉLŐ ELLENŐRZÉSE HELYBEN — ez most már működik
 
