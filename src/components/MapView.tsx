@@ -7,6 +7,7 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import { smoothBearing, trackBearing } from '@/lib/heading';
+import { cellsToAreaPolygons } from '@/lib/hexAreas';
 import type { HexRole } from './HexMap';
 import {
   RIVAL_MAX_COLOR,
@@ -104,6 +105,18 @@ export interface MapViewProps {
 const TRACK_SOURCE = 'grundo-track';
 const GHOST_SOURCE = 'grundo-ghost';
 const CELL_SOURCE = 'grundo-cells';
+/** Az összevont, egybefüggő területek — távolról ez képviseli a birtokot. */
+const AREA_SOURCE = 'grundo-areas';
+
+/**
+ * Ez alatt a zoom alatt a CELLÁK nem látszanak, csak az összevont terület.
+ *
+ * Nem esztétikai finomhangolás: távolról a cellahatárok úgyis összefolynak,
+ * a több ezer poligon viszont ott bukik el, ahol a Mapbox csempénkénti
+ * méretkorlátja csendben eldob feature-öket. Az összevont terület ugyanazt
+ * mutatja, töredék adatból.
+ */
+const CELL_DETAIL_MIN_ZOOM = 15;
 
 /**
  * A hatszög-forrás beállításai — mindkettőre szükség van, és mindkettő
@@ -399,6 +412,7 @@ export function MapView({
     if (instance === null || !ready.current) return;
     // Ez a legdrágább frissítés: több ezer H3-poligont építhet. Külön
     // hatásban van, hogy egy új GPS-pont ne építse újra az összes cellát.
+    syncAreaData(instance, layers);
     syncCellData(instance, layers);
   }, [layers]);
 
@@ -623,29 +637,80 @@ function fitTrackOnce(
    ═══════════════════════════════════════════════════════════════════ */
 
 function addLayers(instance: mapboxgl.Map): void {
+  /**
+   * AZ ÖSSZEVONT TERÜLET — ez a réteg megy legalulra, minden zoomon.
+   *
+   * A cellarétegek ELŐTT kerül be, hogy a hatszöghatárok fölé rajzolódjanak,
+   * amikor közelről mindkettő látszik.
+   */
+  if (!instance.getSource(AREA_SOURCE)) {
+    instance.addSource(AREA_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
+    instance.addLayer({
+      id: `${AREA_SOURCE}-fill`,
+      type: 'fill',
+      source: AREA_SOURCE,
+      paint: {
+        'fill-color': ['get', 'color'],
+        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.2],
+      },
+    });
+    instance.addLayer({
+      id: `${AREA_SOURCE}-line`,
+      type: 'line',
+      source: AREA_SOURCE,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        // A birtok KÜLSŐ határa hangsúlyos: ez rajzolja ki a terület alakját
+        // akkor is, amikor egyetlen cellahatár sem látszik.
+        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.2, 15, 2, 18, 2.6],
+        'line-opacity': 0.9,
+      },
+    });
+  }
+
   if (!instance.getSource(CELL_SOURCE)) {
     instance.addSource(CELL_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
     instance.addLayer({
       id: `${CELL_SOURCE}-fill`,
       type: 'fill',
       source: CELL_SOURCE,
+      // Csak közelről: távolról az összevont terület képviseli a birtokot.
+      minzoom: CELL_DETAIL_MIN_ZOOM,
       paint: {
         // A szín a jellemzőből jön, hogy egyetlen réteg elég legyen minden
         // szerephez — különben szerepenként külön forrás és réteg kellene.
         'fill-color': ['get', 'color'],
-        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.2],
+        /**
+         * A cellakitöltés KÖZELRŐL IS HALVÁNY marad.
+         *
+         * A tömör kitöltést már az összevont területréteg adja; ha a cellák
+         * ugyanazt az alfát tennék rá még egyszer, a két réteg összeadódna, és
+         * a birtok közelről sötétebb lenne, mint távolról.
+         */
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], CELL_DETAIL_MIN_ZOOM, 0, 16.5, 0.08],
       },
     });
     instance.addLayer({
       id: `${CELL_SOURCE}-line`,
       type: 'line',
       source: CELL_SOURCE,
+      minzoom: CELL_DETAIL_MIN_ZOOM,
       paint: {
         'line-color': ['get', 'color'],
         'line-width': 1.2,
         // A szabad háttérháló sokkal halványabb, az aktív/foglalt cellák
-        // határa viszont továbbra is egyértelmű marad.
-        'line-opacity': ['coalesce', ['get', 'lineOpacity'], 0.85],
+        // határa viszont továbbra is egyértelmű marad. A rács a zoom-küszöb
+        // fölött fokozatosan úszik be, nem pattan.
+        'line-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          CELL_DETAIL_MIN_ZOOM,
+          0,
+          16.5,
+          ['coalesce', ['get', 'lineOpacity'], 0.85],
+        ],
       },
     });
     /**
@@ -718,9 +783,65 @@ function syncData(
   ghostTrack: MapViewProps['ghostTrack'],
   layers: MapViewProps['layers'],
 ): void {
+  syncAreaData(instance, layers);
   syncCellData(instance, layers);
   syncTrackData(instance, track);
   syncGhostData(instance, ghostTrack);
+}
+
+/**
+ * Az ÖSSZEVONT területpoligonok előállítása.
+ *
+ * Szerepenként és védelmi szintenként egy csoport, mert az összevonás csak
+ * azonos kinézetű cellákon végezhető el — két különböző szintű mező nem
+ * olvadhat egy poligonba, hiszen más az átlátszóságuk.
+ *
+ * A szabad háttérháló (`free`) SZÁNDÉKOSAN kimarad: az nem birtok, hanem
+ * tájékozódási rács, és csak közelről látszik.
+ *
+ * ⚠️ A CSOPORTKULCS MA NEM TARTALMAZZA A TULAJDONOST. Ez most helyes, mert
+ * minden rivális ugyanazt a színt kapja — két szomszédos rivális területe
+ * amúgy is megkülönböztethetetlen. Amint a felhasználók SAJÁT SZÍNT
+ * választhatnak, a kulcsba fel kell venni az `owner`-t is, különben két
+ * különböző játékos területe egyetlen, rossz színű poligonná olvad össze.
+ */
+function syncAreaData(instance: mapboxgl.Map, layers: MapViewProps['layers']): void {
+  const areaSource = instance.getSource(AREA_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+  if (!areaSource) return;
+
+  const groups = new Map<string, { role: HexRole; defense: number; cells: CellId[] }>();
+  for (const layer of layers ?? []) {
+    if (!isTerritoryRole(layer.role)) continue;
+    for (const entry of layer.cells) {
+      const cell = typeof entry === 'string' ? entry : entry.cell;
+      const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
+      const key = `${layer.role}:${defense}`;
+      const existing = groups.get(key);
+      if (existing) existing.cells.push(cell);
+      else groups.set(key, { role: layer.role, defense, cells: [cell] });
+    }
+  }
+
+  const features = [];
+  for (const { role, defense, cells } of groups.values()) {
+    const coordinates = cellsToAreaPolygons(cells);
+    if (coordinates.length === 0) continue;
+    const color = role === 'rival' && defense === 5
+      ? cssColor(RIVAL_MAX_COLOR)
+      : cssColor(ROLE_COLOR[role]);
+    features.push({
+      type: 'Feature' as const,
+      properties: {
+        color,
+        // A védelmi szint ITT lesz láthatóvá: minél erősebb a mező, annál
+        // tömörebb a kitöltés. Így a szint távolról is leolvasható, anélkül
+        // hogy egyetlen cellahatárt ki kellene rajzolni.
+        opacity: cssNumber(`--defense-alpha-${defense}`, 0.2),
+      },
+      geometry: { type: 'MultiPolygon' as const, coordinates },
+    });
+  }
+  areaSource.setData({ type: 'FeatureCollection', features });
 }
 
 function syncCellData(
@@ -734,7 +855,7 @@ function syncCellData(
       for (const entry of layer.cells) {
         const cell = typeof entry === 'string' ? entry : entry.cell;
         const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
-        const territory = layer.role === 'rival' || layer.role === 'interior' || layer.role === 'stolen';
+        const territory = isTerritoryRole(layer.role);
         const color = layer.role === 'rival' && defense === 5
           ? cssColor(RIVAL_MAX_COLOR)
           : cssColor(ROLE_COLOR[layer.role]);
@@ -815,6 +936,16 @@ function syncGhostData(instance: mapboxgl.Map, ghostTrack: MapViewProps['ghostTr
           : [],
     });
   }
+}
+
+/**
+ * Birtok-e ez a szerep?
+ *
+ * A `trail` a rögzítés közbeni nyom, a `free` a tájékozódási háttérháló —
+ * egyik sem birtok, tehát egyiket sem vonjuk össze területpoligonná.
+ */
+function isTerritoryRole(role: HexRole): boolean {
+  return role === 'rival' || role === 'interior' || role === 'stolen';
 }
 
 function clampDefense(value: number): 1 | 2 | 3 | 4 | 5 {

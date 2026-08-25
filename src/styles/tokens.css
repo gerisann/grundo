@@ -322,11 +322,21 @@
    nem érdemes támadni.
    ═══════════════════════════════════════════════════════════════════ */
 
+/*
+  ⚠️ AZ 1-ES SZINT KORÁBBAN 0 VOLT, vagyis a frissen szerzett terület
+  kitöltés nélkül, csak vékony cellahatárokkal látszott. Éles adaton mérve a
+  látható nézet 93 cellája MIND 1-es szintű volt — a felhasználó joggal
+  látott „foltokban eltűnő" területet: nem tűnt el, hanem sosem volt kirajzolva.
+
+  A skála mostantól egyenletes, és a szint távolról is leolvasható a
+  telítettségből. Az 5-ös szint szándékosan majdnem tömör: az a maximálisan
+  megerősített erőd, és ott a térkép eltakarása a helyes üzenet.
+*/
 :root {
-  --defense-alpha-1: 0;
-  --defense-alpha-2: 0.15;
-  --defense-alpha-3: 0.5;
-  --defense-alpha-4: 0.9;
+  --defense-alpha-1: 0.2;
+  --defense-alpha-2: 0.4;
+  --defense-alpha-3: 0.6;
+  --defense-alpha-4: 0.8;
   --defense-alpha-5: 1;
 }
 
