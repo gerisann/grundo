@@ -5,26 +5,36 @@ const VERSION = 1;
 
 export type LabE2ePlaybackRate = '1' | '10' | '100' | 'max';
 
+export interface LabE2ePlayerRef {
+  id: string;
+  name: string;
+}
+
 export interface LabE2eSession {
   version: 1;
   id: string;
+  /** Több E2E run ugyanebbe a scenarióba commitolhat. */
+  sandboxId: string;
   createdAt: number;
   scenarioName: string;
   phaseId: string;
   phaseName: string;
   playerId: string;
   playerName: string;
+  players: LabE2ePlayerRef[];
   route: SimulationWaypoint[];
   config: GpsSimulationConfig;
   playbackRate: LabE2ePlaybackRate;
 }
 
 export interface CreateLabE2eSessionInput {
+  sandboxId: string;
   scenarioName: string;
   phaseId: string;
   phaseName: string;
   playerId: string;
   playerName: string;
+  players: readonly LabE2ePlayerRef[];
   route: readonly SimulationWaypoint[];
   config: GpsSimulationConfig;
   playbackRate: LabE2ePlaybackRate;
@@ -34,9 +44,8 @@ export interface CreateLabE2eSessionInput {
  * Az E2E tracking session kizárólag a BÖNGÉSZŐBEN él.
  *
  * Nem kerül URL-be több száz waypoint, és nem kerül Firestore-ba sem csak
- * azért, hogy két admin képernyő között átadjuk. A szerverre majd maga a
- * recorder küldi a NYERS, recorder által elfogadott pontokat a LAB sandbox
- * activity endpointnak — ugyanúgy, ahogy productionben az aktivitásfeltöltés.
+ * azért, hogy két admin képernyő között átadjuk. Maga a recorder a kiválasztott
+ * sandbox worldbe commitol; production activity endpointot nem hív.
  */
 export function createLabE2eSession(input: CreateLabE2eSessionInput): LabE2eSession {
   const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -45,12 +54,14 @@ export function createLabE2eSession(input: CreateLabE2eSessionInput): LabE2eSess
   const session: LabE2eSession = {
     version: VERSION,
     id,
+    sandboxId: input.sandboxId,
     createdAt: Date.now(),
     scenarioName: input.scenarioName,
     phaseId: input.phaseId,
     phaseName: input.phaseName,
     playerId: input.playerId,
     playerName: input.playerName,
+    players: input.players.map((player) => ({ ...player })),
     route: input.route.map((point) => ({ ...point })),
     config: { ...input.config },
     playbackRate: input.playbackRate,
@@ -68,6 +79,8 @@ export function loadLabE2eSession(id: string): LabE2eSession | null {
     if (
       value.version !== VERSION
       || value.id !== id
+      || typeof value.sandboxId !== 'string'
+      || !Array.isArray(value.players)
       || !Array.isArray(value.route)
       || value.route.length < 2
       || !value.config
