@@ -50,6 +50,10 @@ const LOOPS = 'lab-scenario-loops';
 const REJECTED = 'lab-scenario-rejected';
 const MAX_GRID_CELLS = 12_000;
 const MAX_WORLD_FEATURES = 60_000;
+// A hurokrétegnek eddig nem volt plafonja, pedig a másik két cellarétegnek van.
+// Egy 177 km-es hurok fala ~9 400 res12 cella, tehát az bőven alatta marad — ez
+// a korlát a patologikus eseteket fogja meg, nem a valódi nagy hurkot.
+const MAX_LOOP_FEATURES = 40_000;
 
 /**
  * A LAB térképe.
@@ -333,11 +337,12 @@ function gridCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSO
 
 function loopCollection(result: ProcessResult): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-  result.loops.forEach((loop, index) => {
+  for (const [index, loop] of result.loops.entries()) {
     for (const parent of loop.compactInterior?.fullParents ?? []) features.push(cellFeature(parent, { kind: 'interior', loop: index + 1 }));
     for (const cell of loop.interior) features.push(cellFeature(cell, { kind: 'interior', loop: index + 1 }));
     for (const cell of loop.wall) features.push(cellFeature(cell, { kind: 'wall', loop: index + 1 }));
-  });
+    if (features.length > MAX_LOOP_FEATURES) return empty();
+  }
   return { type: 'FeatureCollection', features };
 }
 

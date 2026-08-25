@@ -11,8 +11,8 @@
 Öt lépés, ebben a sorrendben. A `#11` az 1–2. pontot végezte el.
 
 1. ✅ **A teljes új Simulation LAB kód átolvasása** — a kódtérkép a 6. szakaszban.
-2. ◐ **Funkcionális és UI hibák javítása** — az első kör kész (lásd 1. szakasz);
-   a maradék nyitott tételek a 14. szakaszban vannak felsorolva.
+2. ✅ **Funkcionális és UI hibák javítása** — mind a tíz felderített hiba javítva
+   és élőben visszaigazolva (lásd 1. szakasz).
 3. ☐ **Optimalizálás** — ne legyen fölösleges számítás, és ne fagyjon/lassuljon
    nagy területnél vagy sok playeres, több phase-es futásnál.
 4. ☐ **A területszerzés, hurok, szintlépés és rablás logikájának finomhangolása.**
@@ -44,7 +44,7 @@ A CI-t a `.github/workflows/ci.yml` külön `app` és `server` jobra bontja. A r
 
 ### Amit a `#11` javított a LAB-ban
 
-Öt hiba, mindegyik élőben, helyi emulátoros környezetben visszaigazolva:
+Tíz hiba, mindegyik élőben, helyi emulátoros környezetben visszaigazolva:
 
 | Jel | Mi volt | Hol |
 |---|---|---|
@@ -55,6 +55,13 @@ A CI-t a `.github/workflows/ci.yml` külön `app` és `server` jobra bontja. A r
 | P2 | A lejátszás timere **50 ms-onként** újraépítette a teljes ownership Mapet akkor is, ha közben egyetlen run sem fejeződött be. Most csak új commitnál. | `SimulationLabScenarioScreen.tsx` |
 | P4 | A solo preview memo futó phase alatt is kiértékelődött (a `world` a függősége), pedig az eredményét eldobtuk. | `SimulationLabScenarioScreen.tsx` |
 | P5 | `countLabPlayerCells` / `countLabPlayerDefense` playerenként ÉS védelmi szintenként külön járta be a worldöt — 10 playernél 15 teljes bejárás rendernként. Helyette `summarizeLabWorld()`, egy passzal, memoizálva. | `labHierarchicalWorld.ts` |
+| F3 | `applyCredits` **nulla jóváírásnál gazdátlan cellára tulajdont adott** (`{owner: actorId, defense: 1}`). Most `undefined`-ot ad, és a hívók kihagyják a cellát. | `labHierarchicalWorld.ts` |
+| F4 | Üres compact kreditnél a visszaesés **üres ownershippel** hívta a core-t → minden cella `free`-nek könyvelődött volna, néma adatromlásként. Most beszédes hibát dob. | `labHierarchicalWorld.ts` |
+| U1 | A GPS-mezőket **nem lehetett kiüríteni** (`Number('') === 0`), és nem klampoltak `min`/`max`-ra — a mező mást mutatott, mint amivel a szimuláció számolt. Most helyi vázlatállapot, commit blurön/Enteren, klampolással; Escape eldobja. | `SimulationLabScenarioScreen.tsx` |
+| U2 | Minden billentyűleütés `invalidatePhasePreview()` + `resetSoloRun()`-t váltott ki — gépelés közben elszállt a futás eredménye, és újragenerálódott a teljes GPS-sor. Az U1 vázlatállapota ezt is megszünteti. | ugyanott |
+| U3 | A „Player törlése" **az egész sandbox worldöt nullázta**. Most csak a törölt player celláit szabadítja fel; a többiek területe és védelme marad. | ugyanott |
+| P6 | `loopCollection`-nek nem volt feature-plafonja, pedig a `worldCollection`-nek és `gridCollection`-nek van. Most `MAX_LOOP_FEATURES`. | `ScenarioSimulationMap.tsx` |
+| — | `src/admin/SimulationMap.tsx` (602 sor) **holt kód volt**, sehonnan nem importálva. Törölve. | — |
 
 ### A mérés (ne hidd el mérés nélkül, de ezt megmértük)
 
@@ -333,11 +340,6 @@ src/admin/SimulationLabScenarioScreen.tsx
 ugyanezen kell menjen. A core `processActivityGeometry` csak exact res12
 ownership Mapet ért — LAB worldre közvetlenül hívni hiba (lásd F1 az 1.
 szakaszban).
-
-⚠️ **`src/admin/SimulationMap.tsx` (602 sor) HOLT KÓD** — sehonnan nincs
-importálva, a `SimulationLabScreen.tsx` a scenario-képernyőre mutat. A `#11`
-szándékosan nem törölte (nem volt a kért hatókörben); ha hozzáérsz a LAB-hoz,
-törölhető.
 
 Fontos fájlok:
 
@@ -676,20 +678,14 @@ A final save maradhat batch/server-authoritative, mert az csak egyszer fut.
 
 ## 14. KÖVETKEZŐ KONKRÉT VALIDÁCIÓK
 
-### 0. NYITOTT LAB-HIBÁK — a `#11` felderítette, de NEM javította
+### 0. NYITOTT LAB-HIBÁK
 
-Ezek a munkaterv 2. pontjának hátralévő tételei. Mind kódolvasásból származik,
-és mind reprodukálható a `/admin/lab`-on.
+A munkaterv **2. pontja lezárult** — az ott felderített hibák (F1–F4, U1–U3,
+P1–P6) mind javítva, lásd az 1. szakaszt. Ami nyitva maradt:
 
 | Jel | Hol | Mi a baj |
 |---|---|---|
-| F3 | `labHierarchicalWorld.ts` → `applyCredits` | 0 kredittel ismeretlen cellára `{owner: actorId, defense: 1}`-et ad vissza — nulla jóváírásból tulajdon lesz. Ma nem érhető el hívási úton, de aknamező. |
-| F4 | `labHierarchicalWorld.ts` → `processCompactLabActivity` | Üres compact kreditnél a fallback **üres ownershippel** dolgozik, tehát minden cella `free`-nek könyvelődne. Szintén védekező ág, de rossz irányba téved. |
-| U1 | `SimulationLabScenarioScreen.tsx` → `NumberField` | A mező nem üríthető (`Number('') === 0`), és nem klampol `min`/`max`-ra — a kijelzett érték eltérhet a ténylegesen szimulálttól, mert klampolni csak a generátor `normalizeConfig`-ja klampol. |
-| U2 | ugyanott | Minden billentyűleütés `invalidatePhasePreview()` + `resetSoloRun()` — gépelés közben elszáll a futás eredménye. |
-| U3 | ugyanott → `removeActivePlayer` | A „Player törlése" **az egész sandbox worldöt nullázza**, figyelmeztetés nélkül. |
-| P6 | `ScenarioSimulationMap.tsx` → `loopCollection` | Nincs plafonja, pedig a `worldCollection`-nek és `gridCollection`-nek van. Egy 177 km-es hurok fala ~9 400 res12 cella. |
-| P7 | `SimulationLabScenarioScreen.tsx` → `runPhase` | A phase indításakor futó `runLabScenario` **szinkron és blokkoló** (3 × 5,6 km futásnál ~1,1 s). Ez a maradék blokkolás fő forrása. |
+| P7 | `SimulationLabScenarioScreen.tsx` → `runPhase` | A phase indításakor futó `runLabScenario` **szinkron és blokkoló** (3 × 5,6 km futásnál ~1,1 s, hosszabb útvonalnál lineárisan több). Ez a maradék blokkolás egyetlen forrása, és a 3. pont első célpontja. |
 
 ### A. Bonyolult 11 pontos route
 

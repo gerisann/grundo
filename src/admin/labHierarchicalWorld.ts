@@ -160,7 +160,20 @@ function processCompactLabActivity(
 ): ProcessResult {
   const credits = buildCompactClaimCredits(geometry.loops, cfg);
   if (!credits || credits.cellCount === 0) {
-    return processActivityGeometry({ ...input, ownership: new Map() }, geometry);
+    /*
+      Ide csak akkor jutunk, ha a geometria compact hurkot jelez, a compact
+      kredit-építő mégsem talált egyetlen cellát sem — vagyis a két oldal
+      ellentmond egymásnak.
+
+      A korábbi visszaesés ÜRES ownershippel hívta tovább a core-t. Az néma
+      adatromlás: üres világban minden cella `free`, tehát a LAB azt írta volna
+      ki, hogy a játékos egy már birtokolt területet szabadon foglalt el. Egy
+      diagnosztikai eszközben a hangos hiba a helyes válasz.
+    */
+    throw new Error(
+      'Compact hurok érkezett, de nem keletkezett hozzá compact claim kredit. '
+      + 'Ez motorhiba — ne a LAB worldön javítsd.',
+    );
   }
 
   const world = input.ownership;
@@ -205,6 +218,9 @@ function processCompactLabActivity(
   for (const [parent, parentCredits] of credits.parents) {
     const beforeParent = labWorldOwnershipAt(world, parent);
     const afterParent = applyCredits(beforeParent, input.actorId, parentCredits, cfg);
+    // Nulla jóváírás gazdátlan parenten: nincs mit írni. A benne lévő finom
+    // cellákat a lenti, `credits.cells` fölötti kör így is feldolgozza.
+    if (afterParent === undefined) continue;
     updates.set(parent, afterParent);
 
     const overrides = new Set<CellId>();
@@ -226,6 +242,7 @@ function processCompactLabActivity(
       const cellCredits = credits.cells.get(cell) ?? parentCredits;
       const beforeCell = labWorldOwnershipAt(world, cell);
       const afterCell = applyCredits(beforeCell, input.actorId, cellCredits, cfg);
+      if (afterCell === undefined) continue;
       updates.set(cell, afterCell);
       handledFine.add(cell);
       accountFinal(cell, beforeCell, afterCell, 1);
@@ -243,6 +260,7 @@ function processCompactLabActivity(
     if (handledFine.has(cell)) continue;
     const before = labWorldOwnershipAt(world, cell);
     const after = applyCredits(before, input.actorId, cellCredits, cfg);
+    if (after === undefined) continue;
     updates.set(cell, after);
     accountFinal(cell, before, after, 1);
     if (after.owner === input.actorId) {
@@ -427,15 +445,22 @@ function materializeFineOwnership(
   return { ownership, scope };
 }
 
-/** N azonos claim-jóváírás hatása egy cellára, iteráció nélkül. */
+/**
+ * N azonos claim-jóváírás hatása egy cellára, iteráció nélkül.
+ *
+ * ⚠️ Nulla jóváírásnál `undefined`-ot ad vissza, ha a cella eddig gazdátlan
+ * volt. Korábban ilyenkor `{owner: actorId, defense: 1}` jött ki: nulla
+ * jóváírásból tulajdon lett. A hívónak ilyenkor nincs mit írnia — hagyja ki a
+ * cellát.
+ */
 function applyCredits(
   before: CellOwnership | undefined,
   actorId: string,
   credits: number,
   cfg: GameplayConfig,
-): CellOwnership {
+): CellOwnership | undefined {
   const hits = Math.max(0, Math.trunc(credits));
-  if (hits === 0) return before ?? { owner: actorId, defense: 1 };
+  if (hits === 0) return before;
 
   if (before === undefined) {
     return { owner: actorId, defense: Math.min(hits, cfg.MAX_DEFENSE) };

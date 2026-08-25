@@ -306,14 +306,31 @@ export function SimulationLabScenarioScreen() {
 
   function removeActivePlayer() {
     if (players.length <= 1) return;
-    const remaining = players.filter((player) => player.id !== activePlayerId);
+    const removedId = activePlayerId;
+    const remaining = players.filter((player) => player.id !== removedId);
     setPlayers(remaining);
     setPhases((current) => current.map((phase) => ({
       ...phase,
-      runs: phase.runs.filter((run) => run.playerId !== activePlayerId),
+      runs: phase.runs.filter((run) => run.playerId !== removedId),
     })));
+
+    /*
+      Korábban ez `resetWorld()`-öt hívott, vagyis egy player törlése az EGÉSZ
+      sandbox worldöt eldobta — figyelmeztetés nélkül, a többiek birtokával
+      együtt. Elég a törölt player celláit felszabadítani; a többi player
+      területe és védelme érintetlen marad.
+    */
+    setWorld((current) => {
+      const next = new Map(current);
+      for (const [cell, ownership] of current) {
+        if (ownership.owner === removedId) next.delete(cell);
+      }
+      return next;
+    });
+
     setActivePlayerId(remaining[0]!.id);
-    resetWorld();
+    invalidatePhasePreview();
+    resetSoloRun();
   }
 
   function renameActivePlayer(name: string) {
@@ -807,6 +824,24 @@ function LayerToggle({ label, checked, onChange }: { label: string; checked: boo
   return <label className={`lab-layer-toggle${checked ? ' lab-layer-toggle--on' : ''}`}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
 }
 
+/**
+ * Számmező helyi vázlatállapottal.
+ *
+ * Két hibát old meg egyszerre:
+ *
+ * 1. Vezérelt mezőként a kiürítés `Number('') === 0`-ra fordult, tehát a mezőt
+ *    nem lehetett letörölni, hogy új értéket írjunk bele — a 0 azonnal
+ *    visszaugrott.
+ * 2. Minden billentyűleütés azonnal a scenario-állapotba ment, ami
+ *    érvényteleníti a phase previewt és nullázza a futást. Gépelés közben
+ *    elszállt az eredmény, és minden leütés újragenerálta a teljes GPS-sort.
+ *
+ * Ezért a gépelés csak a vázlatot írja; az érték elhagyáskor vagy Enterre
+ * kerül be, `min`/`max` közé klampolva. Escape eldobja a vázlatot. Klampolni
+ * azért kell itt is, mert eddig csak a generátor `normalizeConfig`-ja vágta le
+ * a tartományon kívüli értéket — a mező mást mutatott, mint amivel a
+ * szimuláció ténylegesen számolt.
+ */
 function NumberField({
   label,
   value,
@@ -826,7 +861,44 @@ function NumberField({
   onChange(value: number): void;
   disabled?: boolean;
 }) {
-  return <label className="lab-number"><span>{label}</span><span className="lab-number__control"><input type="number" value={value} min={min} max={max} step={step} disabled={disabled} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) onChange(next); }} />{suffix ? <small>{suffix}</small> : null}</span></label>;
+  const [draft, setDraft] = useState<string | null>(null);
+
+  function commit(raw: string) {
+    setDraft(null);
+    const parsed = Number(raw);
+    // Üres vagy értelmezhetetlen bevitel: marad a korábbi érték.
+    if (raw.trim() === '' || !Number.isFinite(parsed)) return;
+    const clamped = Math.min(max, Math.max(min, parsed));
+    if (clamped !== value) onChange(clamped);
+  }
+
+  return (
+    <label className="lab-number">
+      <span>{label}</span>
+      <span className="lab-number__control">
+        <input
+          type="number"
+          value={draft ?? String(value)}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={(event) => commit(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              event.currentTarget.blur();
+            } else if (event.key === 'Escape') {
+              setDraft(null);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {suffix ? <small>{suffix}</small> : null}
+      </span>
+    </label>
+  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
