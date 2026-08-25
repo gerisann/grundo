@@ -115,6 +115,22 @@ export interface SequentialLoopClaimResult {
 
 /**
  * A detektált hurkok celláit időrendben írja jóvá.
+ *
+ * A HURKOK ÉRVÉNYESSÉGÉRŐL KIZÁRÓLAG a hurokdetektor dönt. Mire ide ér egy
+ * `DetectedLoop`, az már átment a minimumhossz-, belsőterület-, sliver- és
+ * traversal-duplikációs szűrőkön. Itt ezért nem szabad még egyszer teljes
+ * hurkokat/cellákat eldobni pusztán attól, hogy a path-indexük átfed egy
+ * korábbi bezárással: egy nagyobb, valóban új bekerítés épp természetesen
+ * visszanyúlhat egy korábbi falhoz.
+ *
+ * Van viszont egy fontos időbeli szabály. Ha egy nagy külső traversal KÖZBEN
+ * egy kisebb hurok új cellát szerez, a külső hurok későbbi bezárása ezt az
+ * új cellát nem erősítheti meg azonnal. +1 defense csak arra a saját cellára
+ * jár, amely már az adott hurok traversalének KEZDETEKOR is a játékosé volt.
+ *
+ * Ezért cellánként azt jegyezzük meg, MIKOR került az aktuális aktivitásban
+ * az actorhoz. Az aktivitás előtt már saját celláknak nincs ilyen timestampje:
+ * azok minden érvényes új bekerítésből reinforcementet kaphatnak.
  */
 export function resolveSequentialLoopClaims(
   loops: readonly DetectedLoop[],
@@ -125,7 +141,14 @@ export function resolveSequentialLoopClaims(
   const running: OwnershipMap = new Map(ownership);
   const claimedCells = new Set<CellId>();
   const perLoop: ClaimResult[] = [];
-  const creditedAt = new Map<CellId, number>();
+
+  /**
+   * Cella → annak a bezárásnak a `toIndex`-e, amelyben a cella ebben az
+   * aktivitásban az actor tulajdonába került (`free` vagy `stolen`).
+   *
+   * A már az aktivitás előtt saját cellák szándékosan hiányoznak a Mapből.
+   */
+  const actorAcquiredAt = new Map<CellId, number>();
 
   for (const loop of loops) {
     if (hasCompactInterior(loop)) {
@@ -140,19 +163,42 @@ export function resolveSequentialLoopClaims(
     for (const cell of cells) {
       claimedCells.add(cell);
 
-      const previousCreditAt = creditedAt.get(cell);
-      if (previousCreditAt === undefined || loop.fromIndex >= previousCreditAt) {
-        eligible.add(cell);
+      const held = running.get(cell);
+      const acquiredAt = actorAcquiredAt.get(cell);
+
+      /**
+       * Csak az actor SAJÁT, az adott traversal KÖZBEN megszerzett celláját
+       * hagyjuk ki ebből a később záródó befoglaló hurokból.
+       *
+       * - kezdetkor már saját → reinforcement jár;
+       * - rivális → az új érvényes hurok új támadás, tehát jár a hit;
+       * - szabad → megszerzés jár;
+       * - korábbi traversalban megszerzett saját → reinforcement jár;
+       * - ugyanezen traversal közben kis hurokkal megszerzett saját → nem jár
+       *   még egy azonnali reinforcement.
+       */
+      if (
+        held?.owner === actorId
+        && acquiredAt !== undefined
+        && acquiredAt > loop.fromIndex
+      ) {
+        continue;
       }
+
+      eligible.add(cell);
     }
 
     const result = resolveClaim(eligible, running, actorId, cfg);
     for (const [cell, nextOwnership] of result.updates) {
       running.set(cell, nextOwnership);
     }
-    for (const cell of eligible) {
-      creditedAt.set(cell, loop.toIndex);
+
+    for (const [cell, fate] of result.fates) {
+      if (fate === 'free' || fate === 'stolen') {
+        actorAcquiredAt.set(cell, loop.toIndex);
+      }
     }
+
     perLoop.push(result);
   }
 
