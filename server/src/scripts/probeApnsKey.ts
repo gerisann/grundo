@@ -59,6 +59,23 @@ if (!privateKey.includes('BEGIN PRIVATE KEY')) {
   process.exit(1);
 }
 
+/*
+  A fájlnév és a Key ID elcsúszása a leggyakoribb hiba — és pont ugyanazt az
+  `InvalidProviderToken` választ adja, mint a valódi konfigurációs hiba, tehát
+  némán félrevisz. Az Apple `AuthKey_<KEYID>.p8` néven adja a fájlt, így ez
+  ellenőrizhető.
+*/
+const fileName = KEY_PATH.split(/[\\/]/).pop() ?? '';
+const fileKeyId = /^AuthKey_([A-Za-z0-9]+)\.p8$/.exec(fileName)?.[1];
+if (fileKeyId && fileKeyId.toUpperCase() !== KEY_ID.toUpperCase()) {
+  console.error('');
+  console.error(`⚠️  A fájlnév ${fileKeyId} kulcsra utal, de a megadott Key ID ${KEY_ID}.`);
+  console.error('   Ez a kettő nem tartozik össze — az APNs ilyenkor InvalidProviderToken-t ad,');
+  console.error('   függetlenül attól, hogy a Team ID jó-e. Javítsd az egyiket, és futtasd újra.');
+  console.error('');
+  process.exit(1);
+}
+
 function base64url(input: Buffer | string): string {
   return Buffer.from(input)
     .toString('base64')
