@@ -17,7 +17,7 @@
  */
 
 import { GAMEPLAY, type GameplayConfig } from '../../../src/config/gameplay';
-import { processActivity } from '../../../src/game';
+import { buildActivityGeometry, loopCells, processActivity } from '../../../src/game';
 import { blockIdFor } from './gridMath';
 import type { ActivityType, CellId, Layer, OwnershipMap, TracePoint } from '../../../src/types';
 import type { MissionCandidate } from '../../../src/game/missions';
@@ -34,6 +34,32 @@ export interface ShapedCandidate {
   uTurns: number;
   /** Rövid visszatérő hurok vagy háromoldalas dobozkerülő. */
   shortDetours: number;
+}
+
+/**
+ * A jelölt bezárásainak cellái — PONTOSAN azzal a geometriával, amit a mentés
+ * is futtat.
+ *
+ * ⚠️ NE hívj itt `detectLoopsDetailed`-et a `src/game/loops`-ból. Abban a
+ * modulban a hurokdetektor LEVÁLTOTT változata él tovább; a `src/game`
+ * belépőpont a `loopDetection`-belire cseréli (5cf6362, 2026-08-24). Aki
+ * közvetlenül a `loops`-ból importált, csendben a régi detektorral számolt: a
+ * küldetés más cellahalmazt ígért, mint amit a `processActivity` jóváír.
+ * Mérve: egy 220 m-es fixture-körnél 187 cella a régivel, 186 az élessel — a
+ * két detektor más kaput választ ugyanannál a H3 kontaktfoltnál.
+ *
+ * Ezért van EGY közös hely: a route és a teszt is innen kapja a cellákat.
+ */
+export function shapeCandidateCells(points: readonly TracePoint[]): {
+  loopCount: number;
+  cells: Set<CellId>;
+} {
+  const geometry = buildActivityGeometry(points);
+  const cells = new Set<CellId>();
+  for (const loop of geometry.loops) {
+    for (const cell of loopCells(loop)) cells.add(cell);
+  }
+  return { loopCount: geometry.loops.length, cells };
 }
 
 export interface EvaluateContext {

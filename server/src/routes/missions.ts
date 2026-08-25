@@ -10,11 +10,11 @@ import {
   limitByBlocks,
   ownedBlockIds,
   MAX_OWNERSHIP_BLOCKS,
+  shapeCandidateCells,
   type ShapedCandidate,
 } from '../lib/missionEvaluate';
 import { decodePolyline } from '../../../src/game/polyline';
-import { layerOf, traceToCellPath } from '../../../src/game/cells';
-import { detectLoopsDetailed, loopCells } from '../../../src/game/loops';
+import { layerOf } from '../../../src/game/cells';
 import {
   countShortDetours,
   countUTurns,
@@ -236,13 +236,13 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
       const points = routeToTracePoints(entry.route, coordinates);
 
       try {
-        const { path } = traceToCellPath(points);
-        const loops = detectLoopsDetailed(path).loops;
-        if (loops.length === 0) continue; // nem zár kört: nincs mit ajánlani
+        // A cellákat a MENTÉS geometriája adja, nem külön detektor — lásd
+        // `shapeCandidateCells`. Enélkül a küldetés mást ígér, mint amit az
+        // `evaluateCandidate` ugyanabból a nyomvonalból kiszámol.
+        const { loopCount, cells } = shapeCandidateCells(points);
+        if (loopCount === 0) continue; // nem zár kört: nincs mit ajánlani
         closedLoops += 1;
 
-        const cells = new Set<CellId>();
-        for (const loop of loops) for (const cell of loopCells(loop)) cells.add(cell);
         withLoops.push({
           bearing: entry.bearing,
           distanceKm,

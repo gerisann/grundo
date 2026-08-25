@@ -149,6 +149,23 @@ function findBridges(neighbours: ReadonlyMap<CellId, readonly CellId[]>): Set<st
   return bridges;
 }
 
+/**
+ * ⚠️ LEVÁLTOTT DETEKTOR — ÉLES KÓDBÓL NE HÍVD.
+ *
+ * A `src/game` belépőpont 5cf6362 (2026-08-24) óta a `loopDetection.ts`
+ * átfedéskezelő detektorát exportálja `detectLoopsDetailed` néven, ami
+ * ELFEDI ezt az azonos nevű, régebbi változatot. Aki közvetlenül ebből a
+ * modulból importál, csendben a régi szabályok szerint számol tovább.
+ *
+ * Mért eltérés: ugyanannál a H3 kontaktfoltnál ez a változat a LEGKORÁBBI
+ * kaput választja, az élő detektor a legfrissebbet — egy 220 m-es
+ * fixture-körnél 57 vs. 56 falcella. A `routes/missions` emiatt hónapokig
+ * más cellahalmazt ígért, mint amit a `processActivity` jóváírt
+ * (`missionEvaluate.shapeCandidateCells`, 2026-08-25).
+ *
+ * Ami még használja: `geometry.test.ts` és `claim.test.ts` — azok
+ * kifejezetten ennek a változatnak a szabályait rögzítik.
+ */
 export function detectLoopsDetailed(path: readonly CellId[]): {
   loops: DetectedLoop[];
   diagnostics: LoopDiagnostics;

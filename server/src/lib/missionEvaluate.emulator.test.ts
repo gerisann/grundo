@@ -29,19 +29,11 @@ describe.skipIf(!EMULATOR)('Küldetés-kiértékelés — valódi Firestore elle
   let db: FirebaseFirestore.Firestore;
   let loadOwnership: typeof import('./grid').loadOwnership;
   let evaluate: typeof import('./missionEvaluate');
-  let traceToCellPath: typeof import('../../../src/game/cells').traceToCellPath;
-  let detectLoopsDetailed: typeof import('../../../src/game/loops').detectLoopsDetailed;
-  let loopCells: typeof import('../../../src/game/loops').loopCells;
 
   beforeAll(async () => {
     db = (await import('./firebase')).db;
     loadOwnership = (await import('./grid')).loadOwnership;
     evaluate = await import('./missionEvaluate');
-    const cells = await import('../../../src/game/cells');
-    const loops = await import('../../../src/game/loops');
-    traceToCellPath = cells.traceToCellPath;
-    detectLoopsDetailed = loops.detectLoopsDetailed;
-    loopCells = loops.loopCells;
   });
 
   beforeEach(async () => {
@@ -49,18 +41,26 @@ describe.skipIf(!EMULATOR)('Küldetés-kiértékelés — valódi Firestore elle
     await fetch(url, { method: 'DELETE' });
   });
 
-  /** Szintetikus jelölt: fixture-hurokból, ahogy a Directions adná. */
+  /**
+   * Szintetikus jelölt: fixture-hurokból, ahogy a Directions adná.
+   *
+   * ⚠️ A cellákat UGYANAZ a `shapeCandidateCells` adja, amit a `routes/missions`
+   * használ — nem külön detektor. Amíg a teszt maga hívta a `src/game/loops`
+   * `detectLoopsDetailed`-jét, a saját várakozását a LEVÁLTOTT detektorral
+   * számolta (187 cella a 186 helyett), és négy teszt bukott azon, hogy a motor
+   * helyesen számol. Ha itt valaha újra saját geometria kerül, a teszt megint
+   * önmagát méri, nem a motort.
+   */
   function shape(points: TracePoint[], bearing = 0, distanceKm = 3): ShapedCandidate {
-    const { path } = traceToCellPath(points);
-    const loops = detectLoopsDetailed(path).loops;
-    const cells = new Set<CellId>();
-    for (const loop of loops) for (const cell of loopCells(loop)) cells.add(cell);
+    const { cells } = evaluate.shapeCandidateCells(points);
     return {
       bearing,
       distanceKm,
       polyline: encodePolyline(points),
       points,
       cells,
+      uTurns: 0,
+      shortDetours: 0,
     };
   }
 
