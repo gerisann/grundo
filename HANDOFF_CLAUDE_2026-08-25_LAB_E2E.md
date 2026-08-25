@@ -66,8 +66,46 @@ npm run test:emulator
 
 ⚠️ **A `#12` MODELLJAVASLATA A KÖVETKEZŐ MENETRE:** ha az E2E LAB izolációja
 (10.B) vagy a hiányzó emulátoros esetek jönnek, **Sonnet** elég — meglévő minta
-kiterjesztése. Ha a stress/perf mérés (10.A/7) vagy a `missionEvaluate`
-cellaszám-anomáliája, akkor **Opus**: mért anomália hibakeresése.
+kiterjesztése. Ha a stress/perf mérés (10.A/7) vagy az ismételt körök
+szabálykérdése (7.9), akkor **Opus**: mért anomália, illetve játékegyensúly.
+
+---
+
+## A `#12` MENET TOVÁBBI EREDMÉNYEI (2026-08-25)
+
+A compact backend után Geri négy felületi ügyet jelzett. Három lezárult:
+
+| # | Ügy | Állapot | Commit |
+|---|---|---|---|
+| 1 | Feed 8–10 s betöltés | ✅ | `2bc2f52` |
+| 2 | Térkép foltokban eltűnő terület | ✅ | `a855774` |
+| 4 | Cellaszín-választás (16 + 8 Pro) | ✅ | `eeeecfc` |
+| 3 | LAB E2E hurok/szint anomália | ◐ mérve, döntés kell | lásd 7.9 |
+
+**1. Feed — MÉRVE:** a nézetváltás utáni visszatéréstől a kártyák
+megjelenéséig **21,9 másodperc**, miközben az `/api/activities` válasz
+**334 ms** alatt megérkezett. Az ok az `ActivityCard` `previewCells` memója
+volt: ha az aktivitáson nincs `activityCells` mező (mérve: 0/20 éles
+aktivitáson), a kártya a TELJES játékmotort futtatta a nyomvonalon —
+kártyánként, a főszálon, olyan adatért, ami alapból rejtve van. Egy kártya
+mért költsége 87–478 ms.
+⚠️ **Ami nyitva maradt:** a feed továbbra sem használ TanStack Queryt (a
+`useActivities` kézi `useState`/`useEffect`), ezért minden nézetváltás újra
+lekér. A `staleTime: 30_000` a `main.tsx`-ben rá nem érvényesül.
+
+**2. Térkép — MÉRVE:** a `--defense-alpha-1` értéke **0** volt, tehát az 1-es
+szintű terület sosem volt kirajzolva (éles nézetben mind a 93 látható cella
+ilyen volt). Emellett a cellánkénti poligonok a Mapbox csempénkénti
+méretkorlátjába futottak. Megoldás: `cellsToMultiPolygon` összevonás
+szerep+szint+tulajdonos szerint, cellarács csak 15-ös zoom fölött,
+átlátszóság 20-40-60-80-100%.
+
+**4. Színválasztás:** az alapértelmezett `purple` hexkódja megegyezik a
+korábbi `--territory-own` tokennel, tehát senki térképe nem változik magától.
+⚠️ **A Pro-zár a `firestore.rules`-ban van, de NINCS tesztelve** — a
+projektben egyetlen Firestore-szabály teszt sincs (`@firebase/rules-unit-testing`
+nincs a függőségek között). Külön menetnek való; a `cellColorAllowed()`
+működése ma csak annyiban bizonyított, hogy az emulátor betölti a szabályt.
 
 A build egyetlen figyelmeztetése a régóta ismert nagy Mapbox chunk:
 
@@ -891,6 +929,79 @@ UI warning/error
 ```
 
 Ez még nincs kiépítve.
+
+---
+
+# 7.9 ⚠️ ISMÉTELT KÖRÖK VÉDELMI SZINTJE — MÉRVE, NYITOTT
+
+Geri jelezte: négyszer bekerítette ugyanazt a területet a LAB E2E-ben, a
+cellák mégis csak **2-es szintre** jutottak. A `#12` menet ezt megmérte, és a
+gyanú **nem igazolódott** a motorra:
+
+| Mérés | Hurok-indexek | Max szint |
+|---|---|---|
+| 4 kör, TÖKÉLETES nyomvonal (azonos waypointok) | `1→48 48→96 96→144 144→191` | **4** ✅ |
+| 5 kör, tökéletes | `… 192→239` | **5** ✅ |
+| 4 kör, SZIMULÁLT GPS (5 különböző seed) | `1→70 70→147 147→228 228→308` | **4** ✅ |
+
+Zajmentesen és zajjal is helyes: az indexek hézagmentesen követik egymást, a
+defense 5-ig épül. **A motor és a traversal-credit szabály tehát jó.**
+
+### Ahol viszont elromlik
+
+Geri LAB-futásának diagnosztikája:
+
+```text
+#1  1→47   fal 47  belső 89
+#2  18→72  fal 55  belső 105
+#3  51→112 fal 62  belső 132
+#4  80→144 fal 65  belső 157
+```
+
+Két árulkodó jel:
+
+1. **Az indexek ÁTFEDNEK** (`#2` fromIndexe 18 < `#1` toIndexe 47).
+2. **A belső cellaszám NŐ** hurkonként: 89 → 105 → 132 → 157.
+
+A második azt jelenti, hogy a körök **nem fedték egymást**: egyre nagyobbak
+voltak (spirális/eltolt körözés), nem ugyanaz a fizikai hurok négyszer.
+
+Ilyenkor a bezárás pontja a KORÁBBI kör nyomvonalára esik vissza, ezért a
+`fromIndex` visszanyúlik, és a traversal-credit szabály
+(`loop.fromIndex >= cellCreditedAt`, lásd `resolveSequentialLoopClaims`)
+kihagy krediteket:
+
+```text
+#1  1→47   → credit,      creditedAt = 47
+#2  18→72  → 18 < 47  → NINCS credit
+#3  51→112 → 51 >= 47 → credit, creditedAt = 112
+#4  80→144 → 80 < 112 → NINCS credit
+```
+
+Négy körből **két** credit — pontosan a panaszolt 2-es szint.
+
+### ⚠️ AMI ITT DÖNTÉST IGÉNYEL, NEM KÓDOT
+
+A jelenlegi szabály a `docs/`-ban nincs leírva, a HANDOFF 4. szakasza viszont
+igen, és **szándékos**: egy nagyobb kompozit hurok ne fizesse ki újra a már
+bekerített kisebb területet (figure-eight eset). A spirális körözés viszont
+ugyanebbe a szűrőbe esik, pedig ott VALÓDI új traversal történt.
+
+A kettőt meg lehet különböztetni (a `#2` hurok toIndexe 25 ponttal a `#1`
+toIndexe után van, tehát új szakasz keletkezett), de **ez játékegyensúlyt
+érintő szabálymódosítás**, és az `AGENTS.md` szerint nem improvizálható:
+el kell dönteni, mi a kívánt viselkedés, ha valaki egyre nagyobb köröket ír le
+ugyanazon terület köré.
+
+**A következő menet ezzel kezdjen**, és döntéssel, ne kóddal.
+
+### A másik két bejelentés ugyanebből a körből
+
+- **„Belassul a második körnél"** — ez a 7.2 pont ismert oka: a
+  `TrackingScreen` live preview minden új H3-cellánál a TELJES addigi
+  nyomvonalon futtatja a batch `processActivity()`-t. A LAB-ban már van
+  `IncrementalActivityGeometry` minta hozzá.
+- **„Lemarad a hexagon-kirajzolás az útvonaltól"** — ugyanennek a tünete.
 
 ---
 
