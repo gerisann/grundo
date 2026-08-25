@@ -1,7 +1,8 @@
 import { createContext, useContext, type ReactNode } from 'react';
-import { useRecorder, type RecorderApi } from './useRecorder';
+import { useRecorder, type RecorderApi, type RecorderOptions } from './useRecorder';
 import { useAuth } from './AuthProvider';
 import { useTrackingCloudSync, type SyncedTrackingState } from '@/tracking/cloudSync';
+import type { PositionSource } from '@/tracking/types';
 
 /**
  * A rögzítés az ALKALMAZÁS szintjén él, nem a rögzítés képernyőjén.
@@ -26,10 +27,30 @@ export function useRecorderContext(): RecorderContextApi {
   return value;
 }
 
-export function RecorderProvider({ children }: { children: ReactNode }) {
-  const recorder = useRecorder();
+export interface RecorderProviderProps {
+  children: ReactNode;
+  /** Alapból valódi browser/native GPS; LAB-ban SimulationPositionSource. */
+  source?: PositionSource;
+  /** Alapból production storage/uploader; LAB-ban izolált memória + sandbox. */
+  options?: RecorderOptions;
+  /**
+   * A valódi appban több eszköz közt szinkronizál. LAB-ban kötelezően false:
+   * egy szimuláció nem írhat a user production `private/tracking` dokumentumába.
+   */
+  cloudSync?: boolean;
+}
+
+export function RecorderProvider({
+  children,
+  source,
+  options,
+  cloudSync = true,
+}: RecorderProviderProps) {
+  const recorder = useRecorder(source, options);
   const { user } = useAuth();
-  const remoteState = useTrackingCloudSync(user?.uid, recorder.state);
+  // A hook mindig ugyanabban a sorrendben fut; kikapcsolva egyszerűen nem kap
+  // uid-t, ezért sem listenert, sem Firestore-írást nem hoz létre.
+  const remoteState = useTrackingCloudSync(cloudSync ? user?.uid : undefined, recorder.state);
   return (
     <RecorderContext.Provider value={{ ...recorder, remoteState }}>
       {children}
