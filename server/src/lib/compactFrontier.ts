@@ -3,7 +3,7 @@ import { DEFAULT_GAMEPLAY, type GameplayConfig } from '../../../src/config/gamep
 import { findStolenFrontierReassignments } from '../../../src/game/frontierCleanup';
 import type { CellId, CellOwnership, Layer, OwnershipMap } from '../../../src/types';
 import { compactWorkCoversWholeBlock, type CompactBlockWork } from './compactBlockClaim';
-import { BLOCK_RESOLUTION, blockIdFor } from './gridMath';
+import { blockIdFor } from './gridMath';
 
 export interface CompactFrontierSeeds {
   /** Exact stolen res12 cellák mixed/részleges blokkokból. */
@@ -99,18 +99,17 @@ export function materializeCompactFrontierSeeds(
  * korrekciót. A közvetlen compact claim cellákat nem írhatja felül.
  */
 export function resolveCompactFrontier(
+  layer: Layer,
   ownership: OwnershipMap,
   stolenSeeds: Iterable<CellId>,
   works: ReadonlyMap<string, CompactBlockWork>,
-  actorId: string,
   cfg: GameplayConfig = DEFAULT_GAMEPLAY,
 ): Map<CellId, CellOwnership> {
   return findStolenFrontierReassignments({
     stolenSeeds,
     ownershipAt: (cell) => ownership.get(cell),
     isDirectlyClaimed: (cell) => {
-      const blockId = blockIdForFromFine(cell, works);
-      const work = works.get(blockId);
+      const work = works.get(blockIdFor(layer, cell));
       if (!work) return false;
       const parent = cellToParent(cell, work.claimParentResolution) as CellId;
       return (work.fineCredits.get(cell) ?? 0) > 0 || (work.parentCredits.get(parent) ?? 0) > 0;
@@ -118,12 +117,4 @@ export function resolveCompactFrontier(
     scope: new Set(ownership.keys()),
     gameplayResolution: cfg.H3_RESOLUTION,
   });
-
-  function blockIdForFromFine(cell: CellId, all: ReadonlyMap<string, CompactBlockWork>): string {
-    const blockParent = cellToParent(cell, BLOCK_RESOLUTION) as CellId;
-    for (const [id, work] of all) {
-      if (work.blockParent === blockParent) return id;
-    }
-    return blockIdFor('foot', cell).replace(/^foot_/, '');
-  }
 }
