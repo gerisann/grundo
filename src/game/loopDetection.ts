@@ -23,8 +23,6 @@ interface AcceptedLoopRecord {
 interface ClosureBlock {
   /** Az éppen lezárt régió. Amíg benne/peremén haladunk, nincs új kompozit closure. */
   loop: DetectedLoop;
-  /** A tényleges kapu környezete — teljes új kör után itt engedjük újra a repeat closure-t. */
-  gate: Set<CellId>;
   acceptedAt: number;
 }
 
@@ -101,12 +99,28 @@ export class IncrementalLoopDetector {
         Math.floor(this.closureBlock.loop.wall.size * 0.75),
       );
       const repeatReady = i - this.closureBlock.acceptedAt >= minimumRepeatSteps;
+      const inClosureZone = insideClosureZone(cell, this.closureBlock.loop);
 
-      // Ha egy teljes új lap után visszaértünk az eredeti kapuhoz, nem kell
-      // kilépni a closure zone-ból: ez a szándékos multi-lap defense-eset.
-      if (repeatReady && this.closureBlock.gate.has(cell)) {
+      /**
+       * Egy teljesen új traversal NEM kötődhet az előző closure eredeti
+       * kapucellájához. Ugyanazt a fizikai területet ellenkező irányból, GPS-
+       * jitterrel vagy egy cellával kijjebb bejárva természetesen más ponton
+       * érinthetjük meg először.
+       *
+       * Korábban csak `gate.has(cell)` oldotta fel a blokkot. Emiatt ugyanaz a
+       * nagy külső kör egyik irányban bezárt, a másikban viszont a végső
+       * kontaktot a closure zone egyszerűen lenyelte.
+       *
+       * Ha már közel egy teljes új falhossznyi traversal elkészült, a lezárt
+       * régió BÁRMELY valódi kontaktja új closure-jelölt lehet. A normál
+       * candidate + sliver + traversal-duplicate szűrők továbbra is eldöntik,
+       * hogy ebből ténylegesen érvényes új hurok lesz-e.
+       */
+      if (repeatReady && inClosureZone) {
         this.closureBlock = null;
-      } else if (insideClosureZone(cell, this.closureBlock.loop)) {
+        // Szándékosan NEM return: a mostani kontakt maga lehet az új hurok
+        // bezárási pontja, ezért ezen a cellán már lefuttatjuk a jelöltkeresést.
+      } else if (inClosureZone) {
         noteVisit(this.seenAt, cell, i);
         return false;
       } else {
@@ -219,7 +233,6 @@ export class IncrementalLoopDetector {
       this.accepted.push({ loop: candidate, toIndex: i });
       this.closureBlock = {
         loop: candidate,
-        gate: gateZone(this.path[previous]!, cell),
         acceptedAt: i,
       };
       noteVisit(this.seenAt, cell, i);
@@ -319,13 +332,6 @@ function clusterCandidateIndices(candidates: ReadonlySet<number>): number[] {
   }
   result.push(clusterNewest);
   return result;
-}
-
-function gateZone(a: CellId, b: CellId): Set<CellId> {
-  const zone = new Set<CellId>();
-  for (const cell of gridDisk(a, 1)) zone.add(cell);
-  for (const cell of gridDisk(b, 1)) zone.add(cell);
-  return zone;
 }
 
 /**
