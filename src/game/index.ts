@@ -113,24 +113,37 @@ export interface SequentialLoopClaimResult {
   running: OwnershipMap;
 }
 
+interface ReinforcementCredit {
+  fromIndex: number;
+  toIndex: number;
+  wallSize: number;
+}
+
 /**
  * A detektált hurkok celláit időrendben írja jóvá.
  *
  * A HURKOK ÉRVÉNYESSÉGÉRŐL KIZÁRÓLAG a hurokdetektor dönt. Mire ide ér egy
  * `DetectedLoop`, az már átment a minimumhossz-, belsőterület-, sliver- és
- * traversal-duplikációs szűrőkön. Itt ezért nem szabad még egyszer teljes
- * hurkokat/cellákat eldobni pusztán attól, hogy a path-indexük átfed egy
- * korábbi bezárással: egy nagyobb, valóban új bekerítés épp természetesen
- * visszanyúlhat egy korábbi falhoz.
+ * traversal-duplikációs szűrőkön. A különböző closure-ok ezért mind jogosan
+ * szerezhetnek új területet.
  *
- * Van viszont egy fontos időbeli szabály. Ha egy nagy külső traversal KÖZBEN
- * egy kisebb hurok új cellát szerez, a külső hurok későbbi bezárása ezt az
- * új cellát nem erősítheti meg azonnal. +1 defense csak arra a saját cellára
- * jár, amely már az adott hurok traversalének KEZDETEKOR is a játékosé volt.
+ * A reinforcementhez viszont két időbeli korlát van:
  *
- * Ezért cellánként azt jegyezzük meg, MIKOR került az aktuális aktivitásban
- * az actorhoz. Az aktivitás előtt már saját celláknak nincs ilyen timestampje:
- * azok minden érvényes új bekerítésből reinforcementet kaphatnak.
+ * 1. Ha egy nagy külső traversal KÖZBEN egy kisebb hurok új cellát szerez, a
+ *    külső hurok későbbi bezárása ezt az új cellát nem erősítheti meg azonnal.
+ *    +1 defense csak arra a saját cellára jár, amely már az adott traversal
+ *    kezdetekor is a játékosé volt.
+ *
+ * 2. Ugyanazon fizikai traversal egymásba kapcsolódó, ÁTFEDŐ closure-ai ugyanazt
+ *    a már saját cellát sem erősíthetik többször. Ilyen volt a LAB-ban a
+ *    #5 150→220 és #6 164→258: a második már az első lezárása előtt elindult,
+ *    és utána csak 38 új step készült. A #6 új területre továbbra is hathat,
+ *    de a #5-ben már megerősített cellára nem ad még egy +1-et.
+ *
+ * Egy valódi új lapot nem szűrünk: ha az előző reinforcement óta legalább az
+ * előző hurok falának ~75%-át újra bejárta a játékos, az új traversal-credit.
+ * Ez ugyanaz a nagyságrendi kapu, amit a loop-detektor a repeat closure-nél is
+ * használ, ezért a H3 kapu-jitter nem teszi törékennyé a szabályt.
  */
 export function resolveSequentialLoopClaims(
   loops: readonly DetectedLoop[],
@@ -142,13 +155,10 @@ export function resolveSequentialLoopClaims(
   const claimedCells = new Set<CellId>();
   const perLoop: ClaimResult[] = [];
 
-  /**
-   * Cella → annak a bezárásnak a `toIndex`-e, amelyben a cella ebben az
-   * aktivitásban az actor tulajdonába került (`free` vagy `stolen`).
-   *
-   * A már az aktivitás előtt saját cellák szándékosan hiányoznak a Mapből.
-   */
+  /** Cella → mikor került ebben az aktivitásban az actorhoz. */
   const actorAcquiredAt = new Map<CellId, number>();
+  /** Cella → az utolsó jogos reinforcement traversal metaadata. */
+  const lastReinforcement = new Map<CellId, ReinforcementCredit>();
 
   for (const loop of loops) {
     if (hasCompactInterior(loop)) {
@@ -166,23 +176,21 @@ export function resolveSequentialLoopClaims(
       const held = running.get(cell);
       const acquiredAt = actorAcquiredAt.get(cell);
 
-      /**
-       * Csak az actor SAJÁT, az adott traversal KÖZBEN megszerzett celláját
-       * hagyjuk ki ebből a később záródó befoglaló hurokból.
-       *
-       * - kezdetkor már saját → reinforcement jár;
-       * - rivális → az új érvényes hurok új támadás, tehát jár a hit;
-       * - szabad → megszerzés jár;
-       * - korábbi traversalban megszerzett saját → reinforcement jár;
-       * - ugyanezen traversal közben kis hurokkal megszerzett saját → nem jár
-       *   még egy azonnali reinforcement.
-       */
+      // Az adott nagy traversal közben frissen megszerzett saját cella nem
+      // kaphat azonnal még egy reinforcementet a későbbi enclosing closure-tól.
       if (
         held?.owner === actorId
         && acquiredAt !== undefined
         && acquiredAt > loop.fromIndex
       ) {
         continue;
+      }
+
+      if (held?.owner === actorId) {
+        const previousCredit = lastReinforcement.get(cell);
+        if (previousCredit && sameTraversalReinforcement(previousCredit, loop, cfg)) {
+          continue;
+        }
       }
 
       eligible.add(cell);
@@ -196,6 +204,12 @@ export function resolveSequentialLoopClaims(
     for (const [cell, fate] of result.fates) {
       if (fate === 'free' || fate === 'stolen') {
         actorAcquiredAt.set(cell, loop.toIndex);
+      } else if (fate === 'reclaimed') {
+        lastReinforcement.set(cell, {
+          fromIndex: loop.fromIndex,
+          toIndex: loop.toIndex,
+          wallSize: Math.max(1, loop.wall.size),
+        });
       }
     }
 
@@ -203,6 +217,26 @@ export function resolveSequentialLoopClaims(
   }
 
   return { running, claimedCells, perLoop };
+}
+
+function sameTraversalReinforcement(
+  previous: ReinforcementCredit,
+  current: DetectedLoop,
+  cfg: GameplayConfig,
+): boolean {
+  // Ha az új closure csak az előző lezárása után indul, biztosan új traversal.
+  if (current.fromIndex >= previous.toIndex) return false;
+
+  const minimumRepeatSteps = Math.max(
+    cfg.MIN_LOOP_STEPS,
+    Math.floor(previous.wallSize * 0.75),
+  );
+
+  // Átfedő intervallum önmagában nem elég a tiltáshoz: a detektor kapu-jittere
+  // egy valódi új kör kezdetét is néhány indexszel visszahúzhatja. Ha az előző
+  // closure óta már közel egy teljes falhossznyi új step készült, új lapnak
+  // tekintjük és új reinforcement jár.
+  return current.toIndex - previous.toIndex < minimumRepeatSteps;
 }
 
 /** Egyszeri/batch geometriaépítés — szerver végleges feldolgozásához is ezt használjuk. */
