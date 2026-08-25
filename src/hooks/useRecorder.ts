@@ -35,6 +35,7 @@ import {
   prepareForRestore,
   restoreStrategy,
   type PersistedRun,
+  type RunStore,
 } from '@/tracking/storage';
 import {
   TrackingError,
@@ -49,6 +50,36 @@ import {
   installLifecycleDiagnostics,
   readLastLifecycleEvent,
 } from '@/tracking/lifecycle';
+
+export interface RecorderUploadInput {
+  activityId: string;
+  type: ActivityType;
+  points: RecorderState['points'];
+  startedAt: number;
+  endedAt: number;
+  movingMs: number;
+}
+
+export interface RecorderUploadResult {
+  summary: ActivitySummary;
+  duplicate?: boolean;
+}
+
+export type RecorderUploader = (input: RecorderUploadInput) => Promise<RecorderUploadResult>;
+
+/**
+ * Injektálható környezet a recorder köré.
+ *
+ * Normál appban minden mező elhagyható: natív/browser GPS, IndexedDB,
+ * production API és restore marad az alap. A LAB ugyanazt a recordert kapja,
+ * de memória-store-ral és sandbox uploaderrel, ezért nem tudja sem a valódi
+ * félbehagyott futást, sem a production activity endpointot megérinteni.
+ */
+export interface RecorderOptions {
+  store?: RunStore;
+  uploader?: RecorderUploader;
+  restoreSavedRun?: boolean;
+}
 
 export interface RecorderApi {
   state: RecorderState;
@@ -100,12 +131,15 @@ export type UploadState =
   | { status: 'done'; summary: ActivitySummary; duplicate: boolean }
   | { status: 'error'; message: string; retryable: boolean };
 
-export function useRecorder(source?: PositionSource): RecorderApi {
+export function useRecorder(source?: PositionSource, options: RecorderOptions = {}): RecorderApi {
   const positionSource = useMemo<PositionSource>(
     () => source ?? (isNativeApp() ? new NativePositionSource() : new BrowserPositionSource()),
     [source],
   );
-  const persister = useMemo(() => createRunPersister(defaultRunStore()), []);
+  const runStore = useMemo(() => options.store ?? defaultRunStore(), [options.store]);
+  const persister = useMemo(() => createRunPersister(runStore), [runStore]);
+  const restoreSavedRun = options.restoreSavedRun !== false;
+  const uploader = options.uploader;
 
   const stateRef = useRef<RecorderState>(createRecorder('run'));
   const [state, setState] = useState<RecorderState>(stateRef.current);
@@ -179,10 +213,10 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   }, []);
 
   useEffect(() => {
+    if (!restoreSavedRun) return;
     let cancelled = false;
     void (async () => {
-      const store = defaultRunStore();
-      const saved: PersistedRun | null = await store.read().catch(() => null);
+      const saved: PersistedRun | null = await runStore.read().catch(() => null);
       if (cancelled || saved === null) return;
 
       const strategy = restoreStrategy(saved, Date.now(), isNativeApp());
@@ -204,7 +238,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
         setResumableNotice(describeResumeCause(readLastLifecycleEvent(), currentNavigationType()));
         return;
       }
-      await store.clear().catch(() => undefined);
+      await runStore.clear().catch(() => undefined);
     })().catch((err: unknown) => {
       if (!cancelled) {
         setError(
@@ -217,7 +251,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
     return () => {
       cancelled = true;
     };
-  }, [acquireWakeLock, attach, persister]);
+  }, [acquireWakeLock, attach, persister, restoreSavedRun, runStore]);
 
   /**
    * Leiratkozás a lap elhagyásakor.
@@ -267,7 +301,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
   const uploadActivity = useCallback(async () => {
     const current = stateRef.current;
     if (current.status !== 'finished' || current.points.length < 2) return;
-    if (!apiConfigured) {
+    if (!uploader && !apiConfigured) {
       setUpload({
         status: 'error',
         message: 'A háttérszolgáltatás nincs beállítva, a mentés nem megy.',
@@ -276,24 +310,26 @@ export function useRecorder(source?: PositionSource): RecorderApi {
       return;
     }
 
+    const input: RecorderUploadInput = {
+      activityId: current.id,
+      type: current.type,
+      points: current.points,
+      startedAt: current.startedAt ?? Date.now(),
+      endedAt: current.endedAt ?? Date.now(),
+      // A lezárt rögzítésnél az `endedAt` már megvan, tehát a „most"
+      // paraméternek nincs szerepe — de a függvény kéri.
+      movingMs: movingMsOf(current, current.endedAt ?? Date.now()),
+    };
+
     setUpload({ status: 'sending' });
     try {
-      const result = await api.uploadActivity({
-        activityId: current.id,
-        type: current.type,
-        points: current.points,
-        startedAt: current.startedAt ?? Date.now(),
-        endedAt: current.endedAt ?? Date.now(),
-        // A lezárt rögzítésnél az `endedAt` már megvan, tehát a „most"
-        // paraméternek nincs szerepe — de a függvény kéri.
-        movingMs: movingMsOf(current, current.endedAt ?? Date.now()),
-      });
+      const result = uploader ? await uploader(input) : await api.uploadActivity(input);
       setUpload({
         status: 'done',
         summary: result.summary,
         duplicate: result.duplicate === true,
       });
-      // A mentett rögzítést nem kell tovább őrizni: a szerveren már megvan.
+      // A mentett rögzítést nem kell tovább őrizni: a szerveren/sandboxban már megvan.
       await persister.clear();
     } catch (err) {
       /**
@@ -311,7 +347,7 @@ export function useRecorder(source?: PositionSource): RecorderApi {
         retryable,
       });
     }
-  }, [persister]);
+  }, [persister, uploader]);
 
   const finish = useCallback(async () => {
     await positionSource.stop();
