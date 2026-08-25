@@ -24,7 +24,8 @@
     "backfill:area-windows": "tsx src/scripts/backfillAreaWindows.ts",
     "backfill:rivals": "tsx src/scripts/backfillRivals.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts",
-    "inspect:push": "tsx src/scripts/inspectPushTokens.ts"
+    "inspect:push": "tsx src/scripts/inspectPushTokens.ts",
+    "probe:apns": "tsx src/scripts/probeApns.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",

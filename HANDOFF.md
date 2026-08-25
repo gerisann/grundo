@@ -145,22 +145,53 @@ sem — sem feloldott, sem zárolt képernyőn.
    ID-vel; a `DEVELOPMENT_TEAM` és a Firebase `teamId` egyaránt `HFS68TZMCH`;
    az `aps-environment` Debugon `development`, Release-en `production`.
 
-### A teendő — Firebase Console, nem kód
+### Az APNs kulcs FEL VAN töltve — a pontos ok más
 
-Firebase Console → **Project settings → Cloud Messaging → Apple app
-configuration** (`app.grundo.ios`):
+⚠️ Az első következtetésem („nincs feltöltve a kulcs") HIBÁS VOLT. A Firebase
+Console → Cloud Messaging → Apple app configuration alatt ott van a
+**Development** és a **Production APNs auth key** is, mindkettő
+`Key ID: 9BGTAPANR8`, `Team ID: HFS68TZMCH`.
 
-- Tölts fel egy **APNs Auth Key (.p8)** fájlt, a hozzá tartozó **Key ID**-vel és
-  a **Team ID**-vel (`HFS68TZMCH`). A kulcsot az Apple Developer portálon
-  (Certificates, Identifiers & Profiles → Keys) kell létrehozni, **Apple Push
-  Notifications service (APNs)** engedéllyel.
-- **Az Auth Key a helyes választás, nem a tanúsítvány.** Egy `.p8` kulcs
-  development és production APNs környezetre EGYARÁNT jó. Ha most tanúsítvány
-  van feltöltve, az a legvalószínűbb ok: a Debug build `development`, a
-  TestFlight `production` környezetre kér tokent, és a rossz környezetű
-  tanúsítvány pontosan ezt az „Invalid APNs credential" hibát adja.
-- Ha már van feltöltött kulcs: ellenőrizd, hogy a Key ID egyezik a fájlnévbe
-  írt azonosítóval, és hogy a kulcsot nem vonták vissza az Apple portálon.
+A tényleges okot az FCM v1 HTTP API adta meg, ami az Admin SDK által elnyelt
+részletet is visszaadja (`npm run probe:apns`):
+
+```json
+{ "@type": "…v1.ApnsError", "statusCode": 403, "reason": "InvalidProviderToken" }
+```
+
+Ez **az Apple saját válasza**, mindkét iOS tokenre. Jelentése szűk: a JWT
+provider-token, amit a Firebase a `.p8` kulccsal ír alá, nem hitelesíthető.
+
+**Amit ez kizár:**
+
+- nem `BadDeviceToken` → nincs development/production környezet-ütközés;
+- nem `DeviceTokenNotForTopic` → a bundle ID jó;
+- a device token és a kliensoldal rendben van.
+
+**Ami maradt, sorrendben:**
+
+1. A Firebase-be BEGÉPELT Key ID nem ahhoz a `.p8` fájlhoz tartozik, amit
+   feltöltöttek. A Firebase a feltöltött kulccsal ír alá, de a begépelt Key
+   ID-t teszi a JWT fejlécébe; az Apple ez alapján keresi a kulcsot, és a
+   szignatúra nem stimmel. Mindkét sorban ugyanaz a Key ID áll, tehát egy
+   elgépelés mindkettőt egyformán elrontja.
+2. A kulcsot visszavonták az Apple Developer portálon. A Firebase ettől még
+   mutatja a sort — csak tárolja, amit feltöltöttek.
+3. A kulcson nincs bekapcsolva az *Apple Push Notifications service (APNs)*.
+
+**Teendő:** Apple Developer portál → Certificates, Identifiers & Profiles →
+Keys: létezik-e még a `9BGTAPANR8`, nincs-e visszavonva, van-e rajta APNs. Ha
+bármelyik nem stimmel, új kulcs APNs-sel, `.p8` letöltés, a Firebase-ben
+mindkét sor törlése, majd feltöltés a portálon LÁTHATÓ Key ID-vel. Ha a kulcs
+rendben van, akkor a fájl és a begépelt Key ID nem tartozik össze — ugyanaz a
+teendő.
+
+⚠️ **Tanulság a következő agentnek:** az Admin SDK `messaging/third-party-auth-error`
+üzenete („Invalid APNs credential") NEM elég a diagnózishoz — abból nem derül
+ki, hogy hiányzik, visszavonták, vagy rossz környezetű a kulcs. A `probe:apns`
+az FCM v1 REST API-t hívja, ami a `details` tömbben visszaadja az APNs saját
+`reason` mezőjét. Ez a különbség egy tippelgetős kör és egy pontos válasz
+között.
 
 ### A visszamérés — egy kattintás
 
@@ -783,7 +814,7 @@ P1–P6) mind javítva, lásd az 1. szakaszt. Ami nyitva maradt:
 | Jel | Hol | Mi a baj |
 |---|---|---|
 | P8 | `src/game` claim-pipeline | A phase-előkészítés maradék blokkolása futásonként EGY szelet: a `processLabActivity` claim-számítása (3 playeres terhelésen ~500 ms medián). Darabolni csak a claim-pipeline inkrementálissá tételével lehetne — ez már a játékmotort érinti, nem a LAB-ot, ezért külön döntés kell hozzá. |
-| P9 | `SimulationLabScenarioScreen.tsx` → `runPhase` | Ugyanannak a phase-nek az ÚJRAFUTTATÁSA (a defense-építés fő munkamenete) mindig újragenerálja a GPS-t és újra lejátssza a recordert, pedig a route és a config változatlan. Előkészített futások gyorsítótárazása a „fölösleges számítás" felén segítene. Nincs megmérve, mekkora a hányad. |
+| ~~P9~~ | — | **ELVETVE, mérés alapján.** Az előkészített futások gyorsítótárazása szóba jött, de a bontás szerint a GPS-generálás 0,7% és a recorder-visszajátszás 0,9% — összesen **1,6%**. Nem éri meg. A 3 playeres, 1400 m-es terhelésen a bontás: hurokgeometria 37%, claim 61%. A claim 776 ms-jából **641 ms a `materializeFineOwnership` scope-építése** (19 502 hurokcellára `gridDisk(cell, 2)`, 21 524 egyedi cella) — ez `labHierarchicalWorld.ts`, tehát LAB-kód, a `src/game` átszabása NÉLKÜL is támadható. Ez a 3. pont következő igazi célpontja, nem a P8. |
 | P10 | `SimulationLabScenarioScreen.tsx` | A `phaseHistory` minden lefuttatott phase TELJES kimenetét megtartja (GPS-minták, recorder-pontok, claim Mapek). Sok futás után ez érezhető memória- és GC-terhelés — az ismételt méréseknél a futásidő futásról futásra romlott. |
 
 ### A. Bonyolult 11 pontos route
