@@ -259,6 +259,12 @@ A normál ownership szabály `src/game/claim.ts`-ban ugyanazon ownernél defense
 
 ## 3. HUROKDETEKTOR — AKTUÁLIS MODELL
 
+> ⚠️ **2026-08-25 (`GRUNDO #13`) óta a VÉDELEM nem innen jön.** A hurokdetektor
+> azt dönti el, MELY cellák kerülnek szóba; azt, hogy egy cella HÁNY jóváírást
+> kap, a körüljárási szám adja (`src/game/winding.ts`). A detektor maga
+> változatlan. Részletek és mérések:
+> `HANDOFF_CLAUDE_2026-08-25_REINFORCEMENT_CURRENT.md`.
+
 A detector külön modulban van:
 
 ```text
@@ -391,6 +397,12 @@ A diagnosztikai tesztfájlok ideiglenesen bekerültek, majd törölve lettek:
 ---
 
 ## 4. TRAVERSAL CREDIT — MIÉRT NEM DUPLÁZZUK A NESTED TERÜLETET
+
+> ⚠️ **A szabály érvényes, a MEGVALÓSÍTÁSA 2026-08-25 (`GRUNDO #13`) óta más.**
+> Az alábbi index-alapú `creditedAt` / `sameTraversalReinforcement` heurisztikák
+> törölve: a bejárás irányától függtek. A nested terület dupla jóváírása ma
+> KÖVETKEZMÉNY — a frissen szerzett cellát a nyom pontosan egyszer kerülte meg.
+> Lásd `HANDOFF_CLAUDE_2026-08-25_REINFORCEMENT_CURRENT.md` 3.3.
 
 A figure-eight / összetett route egyik valódi modellhibája ez volt:
 

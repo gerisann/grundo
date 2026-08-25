@@ -1,640 +1,182 @@
-# GRUNDO — Claude handoff: reinforcement / loop detection CURRENT checkpoint
+# GRUNDO — reinforcement / loop detection · AKTUÁLIS ÁLLAPOT
 
-> Frissítve: **2026-08-25 este**  
-> Repo: `gerisann/grundo`  
-> Ág: **`main`**  
-> A dokumentum írásakor a kód checkpointja: **`ecc56d43432ffc8e2dbcf3728659c77667f1175f`**  
-> Előzmény / architekturális háttér: `HANDOFF_CLAUDE_2026-08-25_LAB_E2E.md`  
-> **FONTOS:** az előző handoff `7.9 ISMÉTELT KÖRÖK VÉDELMI SZINTJE — MÉRVE, NYITOTT` része gameplay-döntés szempontjából **ELAVULT**. A szabályt Geri azóta részletesen eldöntötte; ezt a dokumentumot tekintsd elsődlegesnek.
+> Frissítve: **2026-08-25, GRUNDO #13 vége**
+> Repo: `gerisann/grundo` · Ág: **`main`**
+> Előzmény: `HANDOFF_CLAUDE_2026-08-25_LAB_E2E.md` (compact backend, LAB E2E, production architektúra — **továbbra is érvényes**)
+> Ez a fájl **teljesen felülírja** a korábbi, azonos nevű dokumentumot.
 
 ---
 
 # 0. START HERE
 
-1. Olvasd el először az `AGENTS.md`-t.
-2. Utána ezt a fájlt olvasd végig.
-3. A régi `HANDOFF_CLAUDE_2026-08-25_LAB_E2E.md` továbbra is fontos a compact backend, LAB E2E és production architektúra miatt, de a reinforcement/loop témában az itt leírt szabályok felülírják a régi 7.9-et.
-4. A legutóbbi `ecc56d4` CI-je zöld volt:
-   - app test ✅
-   - app build ✅
-   - server test ✅
-   - server build ✅
-5. A jelenlegi reinforcement munka **LAB/browser oldalon van tesztelve**. A legutóbbi core módosításokat Geri csak `deploy.sh frontend`-del vitte ki a LAB teszthez. Ne feltételezd, hogy a production Cloud Run backend ugyanezen HEAD-en fut.
-6. A compact/nagy-hurok production kreditmodellre a mostani új reinforcement-szemantikát **még nem vezettük át véglegesen**. Előbb a normál res12/LAB viselkedést kell stabilizálni.
+1. `AGENTS.md` végig.
+2. Ez a fájl.
+3. A `#13` menet **megoldotta** a bejelentett fő hibát (irányfüggő védelem, túl korai megerősítés). A nyitott pontok a 6. fejezetben.
 
 ---
 
-# 1. A GAMEPLAY-SZABÁLY MÁR ELDŐLT — NE NYISD ÚJRA
+# 1. EGY MONDATBAN
 
-A fő elv:
-
-> **Mindig az számít, hogy létrejött-e egy valódi, a loop-generálási szabályoknak megfelelő új bekerítés.**
-
-Ha egy új érvényes hurok részben vagy teljesen átfedi a játékos korábbi saját területét, az átfedés **nem kizáró ok**.
-
-## 1.1 Saját terület reinforcement
-
-Ha egy új érvényes hurok bezárul:
-
-- a hurok traversalének **kezdetekor már saját** cellák, amelyek az új hurok belsejében vannak → **defense +1**, max 5;
-- a hurok traversalének kezdetekor szabad cellák → megszerzés 1×;
-- idegen cellák → normál steal / breakthrough szabály;
-- egy korábban már saját cella újra és újra erősíthető valódi új traversalekkel:
-
-```text
-1× → 2× → 3× → 4× → 5×
-```
-
-Ez akkor is igaz, ha a következő kör:
-
-- 10–20 méterrel kijjebb fut;
-- részben más nyomvonalat használ;
-- nagyobb területet zár;
-- csak **egy cellával nagyobb teljes külső kört** ír le.
-
-Egy teljes, egy cellával kijjebb futó új lap **érvényes reinforcement traversal**. Ezt ne keverd össze az egy cella vastag lokális GPS-sliverekkel.
-
-## 1.2 A már megszerzett terület lehet egy új hurok fala
-
-A saját terület / saját korábbi nyomvonal használható egy későbbi kisebb hurok egyik oldalaként.
-
-Példa:
-
-```text
-korábbi kék terület széle + új külső piros nyom
-→ közöttük kis sárga lobe záródik
-→ a sárga rész megszerezhető 1×-en
-```
-
-Ez önmagában teljesen jogos, ha a kis lobe megfelel a loop-validációs szabályoknak.
-
-## 1.3 A nagy külső hurok nem veszhet el a köztes kis hurkok miatt
-
-Ha a játékos a korábbi saját terület körül egy nagyobb külső kört jár be, az út közben a saját falhoz való visszaérintések / GPS-jitter miatt több kisebb hurok is bezárulhat.
-
-**Ezek a kis hurkok NEM akadályozhatják meg a végső nagy külső hurok felismerését.**
-
-Ha a teljes új külső traversal végül bezárul, akkor annak a huroknak is létre kell jönnie és hatnia kell a korábbi belső területre.
-
-## 1.4 Kritikus baseline-szabály: a traversal KÖZBEN megszerzett cella nem erősödik azonnal
-
-Ez Geri külön, explicit döntése.
-
-Ha egy nagy külső traversal közben kisebb hurkok új cellákat szereznek, akkor a később bezáródó nagy hurok **nem adhat ezekre még egy azonnali +1 defense-et**.
-
-Példa:
-
-```text
-A nagy traversal kezdetekor:
-KÉK = már saját, defense 1
-SÁRGA = szabad
-
-menet közben kis lobe:
-SÁRGA → saját, defense 1
-
-végül bezárul a teljes nagy külső kör:
-KÉK 1 → 2      ✅
-SÁRGA marad 1  ✅
-```
-
-Tehát a hurok reinforcement-baseline-ja az ownership állapota **a hurok traversalének kezdetekor**.
-
-## 1.5 Ugyanazon fizikai traversal köztes closure-ai nem farmolhatják a defense-et
-
-Egyetlen nagy fizikai körbejárás közben több egymásba kapcsolódó / kompozit closure keletkezhet.
-
-Ezek:
-
-- szerezhetnek külön új területeket;
-- de ugyanazt a traversal előtt már saját cellát **nem erősíthetik többször**.
-
-A kívánt végső szemantika:
-
-> ugyanazon fizikai traversal-epizódban egy pre-existing saját cella legfeljebb **egy** reinforcement-creditet kapjon.
-
-**És a credit időpontja is számít:** a defense-emelkedésnek annál a closure-nál kell megtörténnie, amelyik ténylegesen befejezi a releváns nagy körbezárást — nem egy korábbi részclosure-nál.
-
-## 1.6 Irányfüggetlenség
-
-Azonos fizikai geometriára ugyanazt az eredményt kell kapni:
-
-- óramutató járásával megegyező irány;
-- ellenkező irány.
-
-A loop érvényessége, a végső nagy enclosing loop megléte és a defense-kreditek **nem függhetnek a bejárás irányától**.
-
-## 1.7 GPS-zaj
-
-Valós GPS-zaj:
-
-- generálhat extra kis hurokjelölteket;
-- mozgathatja a H3 kontaktpontokat / gate-eket;
-- nem szabad, hogy emiatt a teljes fizikai külső lap eltűnjön;
-- nem szabad, hogy végtelen / mikro-loop defense farm keletkezzen.
-
-A meglévő minimum-loop / sliver / duplicate szabályokat meg kell őrizni vagy javítani, de **nem úgy**, hogy valódi új teljes traversaleket eldobunk.
+A védelem mostantól **nem a bezárások számából** jön, hanem abból, hogy a nyomvonal hányszor **kerülte meg** az adott cellát (körüljárási szám, `src/game/winding.ts`). A hurokdetektor változatlanul azt dönti el, MELY cellák kerülnek szóba; a körüljárás azt, HÁNYSZOR.
 
 ---
 
-# 2. A RAJZOKBÓL RÖGZÍTETT KONKRÉT ESETEK
+# 2. MIÉRT EZ A MEGOLDÁS — A MÉRÉS
 
-Geri három külön rajzzal pontosította a szabályt.
+A hiba oka az volt, hogy a bezárások száma **nem a fizikai körök száma**. A H3-rácson egy kifelé táguló spirál minden sarokérintésénél levezethető egy újabb, nagyobb kompozit ciklus, és ez a bejárás irányától függ.
 
-## 2.1 Egyszerű egymás utáni hurkok
+Három körös spirál, 35 m/kör, védelmi hisztogram:
 
-- első hurok: saját 1×;
-- külön második hurok: más terület 1×;
-- harmadik nagyobb hurok részben újrafedi az elsőt:
-  - korábbi saját rész → 2×;
-  - újonnan bekerített rész → 1×.
+| | oda | vissza |
+|---|---|---|
+| **régi motor** | `{1:191, 2:79, 3:224}` | `{1:496}` ← a védelem teljesen eltűnt |
+| **körüljárással** | `{1:159, 2:120, 3:215}` | `{1:160, 2:121, 3:215}` |
 
-## 2.2 Egy cellával nagyobb új teljes kör
+Négy növekvő lap, 25 m/kör:
 
-Egy már birtokolt terület körül pontosan egy cellával kijjebb futó teljes új lap:
+| | oda | vissza |
+|---|---|---|
+| **régi motor** | `{1:151,2:66,3:54,4:154}` | `{1:173,2:73,3:195}` ← nincs 4× |
+| **körüljárással** | `{1:136,2:87,3:58,4:144}` | `{1:152,2:87,3:58,4:144}` |
 
-- ugyanúgy új érvényes hurok;
-- korábbi belső saját cellák → +1 defense;
-- új külső gyűrű → 1×.
+Valódi irányfüggetlenség (azonos lapsorrend, ellenkező forgásirány) — ez a 7.6 szerinti teszt:
 
-## 2.3 Szabálytalan külső út + lokális kis hurkok + végső nagy hurok
+| kör/lap | CW | CCW |
+|---|---|---|
+| azonos lap 4× | `{4:154}` | `{4:154}` |
+| 12 m | `{1:8, 4:226}` | `{1:9, 4:226}` |
+| 18 m | `{1:32, 4:246}` | `{1:32, 4:246}` |
+| 25 m | `{1:110,2:118,3:60,4:148}` | `{1:114,2:115,3:60,4:148}` |
 
-A szabálytalan külső nyom menet közben kis hurkokat generálhat a régi saját fal és az új nyom között.
-
-- kis hurkok új sárga részei → jogosan 1×;
-- a végén a teljes piros külső nyom önmagában bezár egy nagy hurkot;
-- a nagy hurok a traversal előtt már meglévő kék belső területet → +1 defense;
-- a traversal közben megszerzett sárga részek → **nem** kapnak +1-et ugyanettől a nagy huroktól.
-
----
-
-# 3. AMIT CHATGPT A CLAUDE-LIMIT ALATT MÓDOSÍTOTT
-
-## 3.1 Cellaszín rendszer — elkészült és működik
-
-Claude eredeti 16+8 implementációja után tovább lett fejlesztve.
-
-### Normál színek — 16
-
-```text
-#DDC3A1
-#E1A344
-#D1712F
-#BD505C
-#E06E70
-#CB5043
-#8F3A40
-#76462D
-#566F49
-#418D7A
-#315F89
-#5B4A69
-#2D5653
-#709EAA
-#7F7F7F
-#2E2E2E
-```
-
-### Pro színek — 12
-
-```text
-#2879FD
-#00E4FE
-#01FEA9
-#FF6000
-#FFD502
-#E3FF00
-#01FF1F
-#FD012F
-#FF00A8
-#027501
-#0D034D
-#7C00FF
-```
-
-### UI
-
-- normál 16 szín méhsejt/hexagon blokkban;
-- külön 12 Pro hexagon blokk;
-- hover / touch-hold preview: az adott blokk összes cellája ideiglenesen a hoverelt színre vált;
-- Pro blokk külön kezelve;
-- Pro mentési szabály 12 színre bővítve.
-
-### Térkép
-
-- minden játékos saját választott színével jelenik meg;
-- rivális terület külső piros körvonala megmarad;
-- bezoomolt egyedi H3 cellák is a tulajdonos választott színét használják, nem fix lila/piros role-színt;
-- régi profil `cellColor` nélkül fallbacket kap (`#DDC3A1`).
-
-### Docker build regresszió
-
-A backend új `src/lib/cellColors.ts` importja miatt a Cloud Build elhasalt, mert a Dockerfile nem másolta be a fájlt.
-
-Javítás:
-
-```text
-8a15c80 Backend build: cellaszín modul másolása
-```
-
-`server/Dockerfile`:
-
-```dockerfile
-COPY src/lib/cellColors.ts ./src/lib/cellColors.ts
-```
-
-A cellaszín munka utáni checkpoint egyik releváns commitja:
-
-```text
-9b6965e Régi profilok alapértelmezett cellaszíne
-```
-
-Ez a terület jelenleg nem blokkoló.
+**A védelmi szintek minden mért esetben azonosak.** A cellaszámok pár cellával eltérnek: a megfordított nyom H3-kvantálása más — ez a rács határa, nem a szabályé.
 
 ---
 
-# 4. REINFORCEMENT IMPLEMENTÁCIÓ — EDDIGI COMMITOK
+# 3. HOGYAN MŰKÖDIK
 
-A régi `creditedAt` logikát azért kezdtük bontani, mert a spirális / nagyobb átfedő köröket minden második alkalommal kidobta.
+## 3.1 `src/game/winding.ts`
 
-Releváns commitlánc:
+`windingCounts(path, cells)` → cellánként a körüljárási szám abszolút értéke.
 
-```text
-9b21df4 Gameplay: érvényes átfedő hurkok reinforcementje
-acee963 Teszt: nested hurok reinforcement baseline
-5094516 LAB teszt: nagy hurok és köztes kis hurkok
-495f52b Teszt: átfedő closure ugyanazon traversalben csak egyszer erősít
-49beba1 Gameplay: átfedő closure-ok egyszeri reinforcementje
-7f545ec8 LAB: élő defense előnézet futás közben
-ecc56d4 Loop detector: irányfüggetlen repeat closure feloldás
+- **Nyitott nyomvonal, záró húr NÉLKÜL.** Egy zárt görbe szögösszege pontos egész többszöröse a teljes körnek; a nyitva hagyott farok legfeljebb fél kört tud hozzátenni, tehát a kerekítés visszaadja a valódi értéket. Záró húrral egy hosszú hazasétálás hamis körüljárást vinne be — mérve emiatt esett ki két cella egy bezárt területből.
+- **Régiónként számolunk, nem cellánként.** A görbén kívüli, egymással szomszédos cellák körüljárási száma szükségképpen azonos. Ez nem közelítés, hanem ugyanaz az eredmény olcsóbban: 836 cellás nyomvonal + 3544 claim-cella **66 ms → 26 ms**.
+- **A falcellák örökölnek.** Egy falcella közepe RAJTA van a görbén, ezért a szögösszege nem konvergál egész értékhez: mérve a falcellák harmada-fele fél-egész közelében állt, 0 és 7 közötti szórással. Ezek a legközelebbi, görbén kívüli szomszédaiktól kapják a legnagyobb értéket — a fal ahhoz a régióhoz tartozik, amelyiket határolja. A keresés 3 gyűrűig tágul, mert a nyomvonal helyenként 2–3 cella vastag (lásd 5.2).
+
+## 3.2 `resolveLoopClaims()` — `src/game/index.ts`
+
+A `resolveSequentialLoopClaims` helyére lépett. **Szignatúra-változás: kapja a `path`-t is.**
+
+```
+claimedCells = az összes hurok cellájának uniója
+turns        = windingCounts(path, claimedCells)
+
+cellánként a jóváírások száma:
+  ownedAtStart ? turns : max(1, turns)      — 2 × MAX_DEFENSE-re vágva
 ```
 
-## 4.1 `resolveSequentialLoopClaims` jelenlegi iránya
+- Ami **nem a miénk** az aktivitás elején, azon a bezárás önmagában jár egy művelettel (megszerzés / áttörés) — ez a bekerítés következménye.
+- A **védelem** növelése kizárólag a tényleges körüljárásból jön, ezért a már saját cellának nincs ilyen alapjuttatása.
+- A jóváírásokat a **későbbi** bezárásokhoz rendeljük (a megerősítés ott jár, ahol a kör ténylegesen bezárult), az **első megszerzést** viszont az elsőhöz (ott foglaltuk el a területet). A `perLoop` tömb indexben továbbra is a `loops`-hoz igazodik — az `activityAudit.ts` erre épül.
 
-Fájl:
+## 3.3 A két időbeli szabály KÖVETKEZMÉNY LETT, nem külön kód
 
-```text
-src/game/index.ts
-```
+- **1.4** (a traversal közben szerzett cella nem erősödik azonnal): a frissen szerzett cellát a nyom pontosan egyszer kerülte meg → egy jóváírás → marad 1×.
+- **1.5** (átfedő closure-ok nem farmolnak): hiába négy kompozit ciklus, a körüljárás egy.
 
-Bejött:
+A `creditedAt` / `actorAcquiredAt` / `lastReinforcement` / `sameTraversalReinforcement` heurisztikák **mind törölve**. Az `ecc56d4`-ig tartó láncban leírt „first wins" probléma megszűnt.
 
-```text
-actorAcquiredAt[cell]
-```
+## 3.4 Az élő előnézet időzítése
 
-Ez azt követi, hogy egy cella mikor került az adott aktivitáson belül az actorhoz, hogy a traversal közben megszerzett cella ne kapjon azonnali enclosing reinforcementet.
-
-Bejött továbbá:
-
-```text
-lastReinforcement[cell]
-```
-
-és a `sameTraversalReinforcement(...)` heurisztika, hogy ugyanazon átfedő traversal-epizódban ne kapjon ugyanaz a saját cella kétszer +1-et.
-
-Ez a végső cellaszinteket több tesztben megjavította, **de a jelenlegi megoldás szemantikailag még nem jó**, mert `first wins` jellegű: a korábbi részclosure kapja meg a reinforcementet, a későbbi enclosing closure pedig csak nem kap még egyet.
-
-Geri live previewval kimérte, hogy ez túl korán emeli a defense-et.
-
-## 4.2 LAB live defense preview
-
-Commit:
-
-```text
-7f545ec8 LAB: élő defense előnézet futás közben
-```
-
-Fájl:
-
-```text
-src/admin/ScenarioSimulationMap.tsx
-```
-
-A `Player teszt` futása közben a `ProcessResult.claim.updates` vizuálisan rávetül a sandbox worldre, így a cellák `1×/2×/3×...` értéke már menet közben látszik.
-
-Ez debug preview, nem commit.
-
-**Ezzel vált láthatóvá a jelenlegi fő timing-hiba.**
-
-## 4.3 `closureBlock` gate lazítás — legutóbbi kísérlet
-
-Commit:
-
-```text
-ecc56d4 Loop detector: irányfüggetlen repeat closure feloldás
-```
-
-Fájl:
-
-```text
-src/game/loopDetection.ts
-```
-
-Korábban a repeat closure csak az előző closure konkrét eredeti gate-zónájánál oldhatta fel a blockot.
-
-A módosítás után kellően hosszú új traversal esetén az előző lezárt régió bármely `insideClosureZone(...)` kontaktja feloldhatja a blockot és ugyanazon cellán már lefut a candidate search.
-
-**FONTOS: ez a módosítás NEM oldotta meg véglegesen az irányfüggést / timingot. A legutóbbi manuális teszt után a hiba továbbra is reprodukálható.**
+A körüljárás a **path prefixből** számolódik, ezért az előnézet magától jó pillanatban vált: amíg a játékos nem futotta körbe a régi területet, a körüljárás 0, tehát nincs megerősítés. A `7.5` teszt ezt prefixenként végigméri, és megköveteli, hogy a védelem soha ne ugorjon a végérték fölé és ne is essen vissza.
 
 ---
 
-# 5. JELENLEGI FŐ HIBA — EZT KELL CLAUDE-NAK ÁTVENNIE
+# 4. TESZTEK
 
-## 5.1 Az eredmény irányfüggő
+**`src/game/reinforcement.test.ts` — új, 319 sor, VALÓDI geometriával.**
 
-Geri ugyanazt a fizikai kétfedéses / nagy enclosing geometriát két ellentétes bejárási irányban futtatta le.
+A korábbi `overlappingReinforcement.test.ts` és `loopClaimCredit.test.ts` **törölve**: kézzel gyártott `DetectedLoop` objektumokkal dolgoztak (`wall-small-0`, `blue-existing`), és emiatt index-heurisztikákat rögzítettek, nem geometriát. Az irányfüggő hibát épp ezért egyik sem fogta meg.
 
-Az eredmény eltért.
+Lefedve: 7.1 (ismételt kör 1–5×, GPS-zajjal három maggal), 7.2 (növekvő lapok), 7.3 (egy cellával nagyobb lap), 7.4 (köztes lebeny + záró nagy hurok), 7.5 (élő előnézet időzítése), 7.6 (irányfüggetlenség), 7.8 (nyolcas), 7.9 (sliver + korridor anti-farm), a nyomvonal végi elsétálás, rivális terület, kifelé tartó spirál.
 
-Egy irányban például:
+`src/admin/labReinforcement.test.ts` átírva valódi nyomvonalra (üres `cellPath`-szal gyártott hurkokkal a körüljárás nem mérhető).
 
-```text
-370 saját cella
-4 closure
-242 cella 1×
-128 cella 2×
-0 cella 3×
-```
-
-Másik irányban ugyanennek megfelelő geometriára:
-
-```text
-372 saját cella
-6 closure
-6 cella 1×
-244 cella 2×
-122 cella 3×
-```
-
-A különbség nem elfogadható. A semanticsnak irányfüggetlennek kell lennie.
-
-## 5.2 Volt olyan fordított irányú futás is, ahol a végső nagy hurok EL SEM KÉSZÜLT
-
-Diagnosztika egy ilyen futásnál:
-
-```text
-#1 0→46   fal 47   belső 81
-#2 36→81  fal 46   belső 89
-#3 24→115 fal 91   belső 175
-#4 47→138 fal 92   belső 278
-```
-
-A várható végső nagy enclosing closure nem jelent meg külön olyan módon, hogy a teljes korábbi belső terület megkapja a reinforcementet.
-
-Ez bizonyítja, hogy nem csak claim-credit könyvelési kérdésről van szó: a **loop detection / closure episode state machine** is problémás.
-
-## 5.3 A defense még mindig TÚL KORÁN emelkedik
-
-A live defense previewban Geri látta:
-
-- a nagy külső kör még nincs befejezve;
-- de a bal felső és jobb felső korábbi területek már `2→3`, illetve `1→2` szintre váltanak;
-- ez egy köztes closure pillanatában történik;
-- a kívánt szabály szerint ez a reinforcement csak a releváns nagy enclosing traversal **tényleges befejezésekor** járna.
-
-Tehát a jelenlegi `sameTraversalReinforcement` csak a **dupla creditet** fogja meg, de nem a **helyes credit-időpontot**.
-
-## 5.4 Korábbi konkrét #5/#6 reprodukció
-
-Egy korábbi LAB futásban:
-
-```text
-#5: 150→220
-#6: 164→258
-```
-
-A `#6` már a `#5` lezárása előtt elindult.
-
-Korábban ez okozta:
-
-```text
-bal felső: 2 → 3 → 4   (hibás dupla reinforcement)
-jobb felső: 1 → 2 → 3  (hibás dupla reinforcement)
-bal alsó: 1 → 2        (helyes)
-```
-
-A `49beba1` ezt végállapot szinten megfogta, így a kívánt végállapot előállhatott:
-
-```text
-bal felső: 3×
-jobb felső: 2×
-bal alsó: 2×
-```
-
-**De** a live preview bizonyította, hogy a felső régiók reinforcementje a `#5`-nél történik meg, nem a végső nagy `#6`-nál. Ez továbbra is hibás.
+**Állapot: `npm test` → 513 zöld, 119 kihagyva. `npx tsc --noEmit` tiszta. `npm run build` lefut. Szerver: 165 zöld.**
 
 ---
 
-# 6. MI LENNE A HELYES ARCHITEKTURÁLIS IRÁNY
+# 5. GERI KÉT ÚJ JAVASLATA A #13 MENETBŐL
 
-Ne tekintsd ezt kötelező implementációnak; előbb olvasd végig a detektort és a teszteket. De a probléma lényege:
+## 5.1 Szálszabály — MEGVIZSGÁLVA, MÉRVE, EGYELŐRE NEM LANDOLT
 
-A jelenlegi megoldás a closure-okat azonnal könyveli, ezért amikor egy részclosure megjelenik, még **nem tudja**, hogy ugyanazon folyamatban később egy nagyobb enclosing closure fogja-e lezárni ugyanazt a fizikai traversalt.
+> „Amikor bezárunk egy hurkot, akkor attól a ponttól egy új szál jöjjön létre, amit egészen addig követünk, ameddig az a szál nem zárja be önmagát, és azt tekintsük egy újabb huroknak, aminek defense-t kell pluszolnia."
 
-A helyes semantics valószínűleg nem oldható meg pusztán egy újabb `if (index...)` dedupe-pal.
+Megépítettem és végigmértem. **Sok helyen javít, de még nem kész.**
 
-Érdemes explicit fogalmakban gondolkodni:
+Amit hozott (a régi detektorhoz képest, irány-eltérés a foglalt cellaszámban):
 
-```text
-closure candidate
-physical traversal episode
-partial/local closure
-final/enclosing closure
-reinforcement entitlement
-reinforcement commit point
-```
+| eset | régi detektor | szálszabállyal |
+|---|---|---|
+| növekvő lapok 18 m | 10,5% | **1,2%** |
+| növekvő lapok 35 m | 11,8% | **0,8%** |
+| spirál 12 m | 10,4% | **0,4%** |
 
-A kulcs:
+Amibe beleütközött:
 
-- az új területet egy köztes kis/local closure akár azonnal megszerezheti;
-- a traversal előtt már saját cellák reinforcementje viszont lehet, hogy **pending** marad az adott physical traversal episode végéig / enclosing closure-ig;
-- ha ugyanazon episode később nagyobb enclosing closure-t ad, akkor ott commitolódik a +1;
-- ugyanaz a saját cella egy episode-ban max egyszer;
-- egy valódi következő lap új episode → új +1;
-- a megoldásnak incremental/live preview kompatibilisnek kell maradnia.
+1. **Ütközik az 1.2-es szabállyal** („a már megszerzett terület lehet egy új hurok fala"). A szó szerinti alak — „a bezárás után minden korábbi index tilos" — a kifelé tartó spirált tönkretette (34% és 38% irány-eltérés), és megbuktatta a `loopDetection.test.ts` erre írt tesztjét.
+2. A helyes alak a **hurok-kivágás**: a bezárás kivágja magát a szálból, de a KAPU ELŐTTI rész nyitva marad. Enélkül egy nagy kör közben bezáruló kis lebeny elviszi a nagy kört (a `7.4` teszt kék területe 2× helyett 1×-en maradt) — ez pontosan az 1.3-as szabály sérülése.
+3. A hurok-kivágás viszont túl megengedő: a bezárás utáni kilógó érintés újra hurkot csinál. Erre a legjobb, geometriailag tiszta feltétel, amit találtam: **egy bezárás falának legalább a fele frissen bejárt szakasz legyen** (`MIN_FRESH_WALL_SHARE = 0.5`). Ez a fal SAJÁT tulajdonsága, nem index-ablak, tehát nem irányfüggő. A 20/40/100 m-es rávezető teszteket megjavította, de a `loopDetection.test.ts` és a `claim.test.ts` néhány esetében még maradt egy fölös bezárás laponként.
 
-Ezt Geri gameplay-szabálya alapján kell megoldani, nem pusztán a jelenlegi heurisztikát foltozni.
+**A félkész változat elmentve:** `_archive/loopDetection.szalszabaly-kiserlet.ts`. Tartalmazza a `consumed[]` hurok-kivágást, az `acceptedWallCells` 1.2-kivételt és a `MIN_FRESH_WALL_SHARE` szabályt.
 
----
+**Fontos:** a körüljárás nélkül ez a szabály nem oldotta volna meg a bejelentett hibát, a körüljárással viszont a hiba enélkül IS megoldott. A szálszabály tehát **finomítás, nem alapkő** — nyugodtan lehet külön menet.
 
-# 7. KÖTELEZŐ REGRESSZIÓS TESZTEK A KÖVETKEZŐ FIXHEZ
+## 5.2 Nyomvonal-vékonyítás — JÓ ÖTLET, NEM KEZDTEM EL
 
-A fixet ne csak egy LAB screenshot alapján készítsd.
+> „Menet közben ne 2–3 cellaszélességgel haladjunk a GPS-pontatlanság miatt, hanem redukáljuk 1 cella vastagságra az irány és a sebesség alapján leginkább valószínű cella megtartásával."
 
-Minimum:
+**Ez a mostani munka egyik mért fájdalompontját célozza.** A `winding.ts`-ben azért kell 3 gyűrűig tágítani a fal-öröklést, mert a nyomvonal helyenként 2–3 cella vastag. Egy 1 cella vastag nyom ezen felül kevesebb ál-kontaktot, kevesebb sliver-jelöltet és szimmetrikusabb oda-vissza eredményt adna.
 
-## 7.1 Ugyanaz a loop N-szer
-
-```text
-1× → 2× → 3× → 4× → 5×
-```
-
-Perfect + GPS-noise fixture-rel.
-
-## 7.2 Egyre nagyobb teljes lapok
-
-Minden új teljes lap a korábbi közös belső cellákat +1-ezi.
-
-A cellaszám nőhet, az új gyűrű 1×.
-
-## 7.3 Egy cellával nagyobb teljes második lap
-
-Érvényes reinforcement, nem sliver/duplicate.
-
-## 7.4 Nested local lobes + final enclosing loop
-
-Traversal elején:
-
-```text
-BLUE = saját 1×
-YELLOW = free
-```
-
-Menet közben local lobes:
-
-```text
-YELLOW → saját 1×
-```
-
-Final enclosing closure:
-
-```text
-BLUE → 2×
-YELLOW → marad 1×
-```
-
-## 7.5 Ugyanazon physical traversal overlapping closure-ok
-
-A `150→220` / `164→258` jellegű eset:
-
-- ugyanaz a pre-existing saját cella csak egyszer +1;
-- **a +1 a final enclosing closure időpontjában jelenjen meg**, ne a partial closure-nál.
-
-## 7.6 Irányfüggetlenség
-
-Ugyanazt a waypoint-geometriát futtasd:
-
-```text
-forward
-reverse
-```
-
-Elvárás:
-
-- azonos semantic closure set / equivalens claimed region;
-- azonos defense histogram;
-- azonos végső ownership;
-- a final enclosing reinforcement mindkét irányban létrejön.
-
-Nem szükséges, hogy a nyers `fromIndex/toIndex` számok numerikusan azonosak legyenek; a játékeredmény legyen azonos.
-
-## 7.7 GPS-noise / gate jitter
-
-Legalább több seed.
-
-A final enclosing loop ne tűnjön el csak azért, mert a kapucella 1–2 H3 cellát mozdul.
-
-## 7.8 Figure-eight / külön fizikai hurkok
-
-Ne olvaszd össze külön, valódi fizikai hurkokat egyetlen episode-dá.
-
-## 7.9 Sliver / corridor anti-farm
-
-Továbbra se adjon defense-et:
-
-- ugyanazon úton oda-vissza;
-- szomszédos cellasor;
-- egysoros H3 sliver;
-- GPS self-touch.
+**Miért nem most:** a `traceToCellPath()` a `src/game/cells.ts`-ben van, közös a szerverrel, és MINDEN számot elmozdít (terület, GP, fixture-elvárások, éles adat). Ha ugyanabban a menetben megy be, mint a megerősítés-átállás, egyik mérés sem értelmezhető. Külön menet, előtte-utána méréssel.
 
 ---
 
-# 8. LAB DEBUG — AMI MOST MÁR HASZNÁLHATÓ
+# 6. AMI MÉG NYITOTT
 
-A Scenario LAB jobb oldali panelen:
-
-- closure count;
-- `fromIndex→toIndex`;
-- fal cellaszám;
-- belső cellaszám;
-- defense histogram;
-- GPS filter reject count.
-
-A `7f545ec8` óta a térképi cellákon **futás közben** látszik az aktuális projected `1×/2×/3×` defense.
-
-Ez kritikus: a következő fixnél ne csak a végállapotot nézd, hanem azt a pillanatot is, amikor a defense először változik.
-
-A kívánt timing regresszió így ellenőrizhető:
-
-```text
-partial/local closure előtt: 2×
-partial/local closure után:  2×   ← reinforcement még NEM jár
-final enclosing closure után: 3×  ← itt jár
-```
+1. **A szálszabály befejezése** (5.1). Konkrét maradék: laponként egy fölös bezárás a `loopDetection.test.ts` `overlap-aware` eseteiben és a `claim.test.ts` négykörös tesztjében.
+2. **Nyomvonal-vékonyítás** (5.2).
+3. **A körüljárás inkrementálissá tétele.** Ma minden előnézet-ütemben újraszámol: 836 cellás nyomvonalon 26 ms. Hosszú aktivitáson ez nőni fog. A szögösszeg szakaszonként additív, tehát régiónként eltárolható és az új szakaszokkal frissíthető.
+4. **Production compact út.** A `claimCredits` / res9 blokkos ág **NEM kapta meg** az új szemantikát — a `HANDOFF_..._LAB_E2E.md` 9. pontja szerint ez a helyes sorrend. Az `applyClaimCredits()` (`src/game/claimCredits.ts`) már most is „N jóváírás egy cellára" alakú, tehát a körüljárás oda természetesen beköthető, ha a normál út stabil.
+5. **Éles ellenőrzés.** A `#13` munkája nincs éles adaton mérve. Backend deploy csak a szálszabály lezárása után.
 
 ---
 
-# 9. FONTOS: PRODUCTION / COMPACT
+# 7. AMIT NE CSINÁLJ
 
-A mostani reinforcement munka a normál `resolveSequentialLoopClaims` és `IncrementalLoopDetector` vonalat érinti.
-
-A production compact backend külön infrastruktúrával rendelkezik (`claimCredits`, res9 block planner/group claim/frontier/chunked commit).
-
-**Ne vezess át félkész semanticsot a compact production útra addig, amíg a normál LAB regressziós mátrix nem zöld.**
-
-Ha a normál szabály stabil:
-
-1. ugyanazt a reinforcement-credit semanticsot formalizáld közös primitívben, amennyire lehet;
-2. compact pathon ugyanazt az eredményt kell kapni materializáció nélkül;
-3. utána emulator E2E + stress.
+- Ne told vissza az index-alapú heurisztikákat (`creditedAt`, `sameTraversalReinforcement`, `closureBlock` 75%-os ablak). Mind a bejárás irányától függött; ez volt a hiba forrása.
+- Ne írj tesztet kézzel gyártott `DetectedLoop`-ból nyomvonal nélkül. A megerősítés geometriából jön, tehát nyomvonal nélkül nincs mit mérni.
+- Ne vezesd át a szemantikát a compact production útra, amíg a 6.1 nyitva van.
 
 ---
 
-# 10. DEPLOY / BUILD ÁLLAPOT
+# 8. MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-A legutóbbi checkpoint:
-
-```text
-ecc56d43432ffc8e2dbcf3728659c77667f1175f
-```
-
-A hozzá tartozó CI végül teljesen zöld lett.
-
-A LAB tesztekhez Geri frontend deployt használt:
-
-```bash
-cd ~/grundo
-~/grundo/scripts/deploy.sh frontend
-```
-
-A mostani gameplay-core módosításokat **ne tekintsd production backend deploynak**.
-
-Teljes backend deploy csak akkor jöjjön, ha a szabály stabil és a server tesztek / emulator kapu rendben vannak.
+| feladat | javaslat |
+|---|---|
+| Szálszabály befejezése (6.1) | **Opus, emelt mélység** — geometriai döntés, mérés kell hozzá |
+| Nyomvonal-vékonyítás (6.2) | **Opus, emelt mélység** — közös modul, minden számot elmozdít |
+| Inkrementális körüljárás (6.3) | **Sonnet**, normál — meglévő képlet gyorsítótárazása |
+| Compact átvezetés (6.4) | **Opus**, emelt mélység |
 
 ---
 
-# 11. LEGELSŐ KÖVETKEZŐ FELADAT CLAUDE-NAK
+# 9. FÁJLOK, AMIKET A KÖVETKEZŐ AGENTNEK ISMERNIE KELL
 
-**Ne UI-val kezdj. Ne compacttal kezdj. Ne új gameplay-döntést kérj.**
-
-Első feladat:
-
-> A normál res12 loop detection + reinforcement pipeline-t tedd irányfüggetlenné és időben helyessé úgy, hogy a partial/local closure-ok megszerezhessék a saját új területüket, de ugyanazon physical traversal pre-existing saját területének +1 defense-e csak egyszer és a tényleges final/enclosing closure-nál könyvelődjön.
-
-Közben kötelező megőrizni:
-
-- repeated full lap reinforcement;
-- one-cell-larger full lap reinforcement;
-- traversal-start baseline;
-- local lobe claim;
-- sliver/jitter anti-farm;
-- GPS noise tolerancia;
-- figure-eight külön hurkai.
-
-**A jelenlegi `first wins` reinforcement heurisztika nem végleges megoldás.**
-
----
-
-# 12. RÖVID ÁLLAPOT EGY MONDATBAN
-
-**A gameplay-szabály már egyértelmű: minden valódi új teljes bekerítés erősíti a traversal kezdetekor már saját, újra bekerített cellákat, miközben a traversal közbeni kis hurkokkal frissen megszerzett cellák nem kapnak az enclosing looptól azonnali +1-et; a jelenlegi motor végállapotot néha már jól ad, de a reinforcementet túl korai partial closure-nál könyveli, és ugyanaz a geometria ellenkező bejárási irányban továbbra is eltérő closure/defense eredményt ad — ezt kell most algoritmikusan rendbe tenni.**
+| fájl | mi van benne |
+|---|---|
+| `src/game/winding.ts` | a körüljárási szám, a régiónkénti számolással és a fal-örökléssel |
+| `src/game/index.ts` → `resolveLoopClaims()` | a jóváírások száma és hurkokhoz rendelése |
+| `src/game/reinforcement.test.ts` | a teljes szabálykészlet valódi geometriával |
+| `src/game/loopDetection.ts` | a detektor — **változatlan**, a `9b2a898` állapotában |
+| `_archive/loopDetection.szalszabaly-kiserlet.ts` | a befejezetlen szálszabály |
+| `src/game/claimCredits.ts` | „N jóváírás egy cellára" — a compact út beköthető pontja |

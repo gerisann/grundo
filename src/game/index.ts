@@ -12,6 +12,7 @@ export * from './loops';
 export * from './loopInterior';
 export * from './compactClaim';
 export * from './frontierCleanup';
+export * from './winding';
 export {
   detectLoops,
   detectLoopsDetailed,
@@ -31,6 +32,7 @@ import {
   type CompactClaimPreview,
 } from './compactClaim';
 import { cleanupStolenFrontierOrphans } from './frontierCleanup';
+import { windingCounts } from './winding';
 import { mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
@@ -104,139 +106,159 @@ export interface ProcessResult {
   };
 }
 
-export interface SequentialLoopClaimResult {
+export interface LoopClaimResolution {
   /** A geometriai bezárások teljes uniója — audit/scope célra. */
   claimedCells: Set<CellId>;
-  /** A ténylegesen jóváírt hurkonkénti claim eredmények. */
+  /** A ténylegesen jóváírt hurkonkénti claim eredmények. Indexben a `loops`-hoz igazítva. */
   perLoop: ClaimResult[];
   /** A hurkok után kialakult átmeneti ownership. */
   running: OwnershipMap;
 }
 
-interface ReinforcementCredit {
-  fromIndex: number;
-  toIndex: number;
-  wallSize: number;
-}
-
 /**
- * A detektált hurkok celláit időrendben írja jóvá.
+ * A detektált hurkok celláit írja jóvá — cellánként annyiszor, ahányszor a
+ * játékos ténylegesen körbejárta őket.
  *
- * A HURKOK ÉRVÉNYESSÉGÉRŐL KIZÁRÓLAG a hurokdetektor dönt. Mire ide ér egy
- * `DetectedLoop`, az már átment a minimumhossz-, belsőterület-, sliver- és
- * traversal-duplikációs szűrőkön. A különböző closure-ok ezért mind jogosan
- * szerezhetnek új területet.
+ * ── MIÉRT NEM A BEZÁRÁSOK SZÁMA DÖNT ─────────────────────────────────────
  *
- * A reinforcementhez viszont két időbeli korlát van:
+ * Kézenfekvő lenne minden bezárásnál +1 védelmet adni a bezárt saját cellákra.
+ * Ez azonban azt méri, hányszor talált a detektor hurkot, nem azt, hányszor
+ * futotta körbe a játékos a területet. A kettő a H3-rácson látványosan eltér:
+ * egy kifelé táguló spirál minden sarokérintésénél levezethető egy újabb,
+ * nagyobb kompozit ciklus. Ugyanarra a HÁROM fizikai körre mérve hat bezárás
+ * jött ki az egyik irányban és kettő a másikban — és a védelem eszerint lett
+ * `{1:191, 2:79, 3:224}`, illetve `{1:496}`. Ugyanaz a futás, más eredmény.
  *
- * 1. Ha egy nagy külső traversal KÖZBEN egy kisebb hurok új cellát szerez, a
- *    külső hurok későbbi bezárása ezt az új cellát nem erősítheti meg azonnal.
- *    +1 defense csak arra a saját cellára jár, amely már az adott traversal
- *    kezdetekor is a játékosé volt.
+ * Ezért a jóváírások számát a `windingCounts()` adja: az irány megfordítása a
+ * körüljárási számnak csak az előjelét fordítja meg, a nagyságát nem.
  *
- * 2. Ugyanazon fizikai traversal egymásba kapcsolódó, ÁTFEDŐ closure-ai ugyanazt
- *    a már saját cellát sem erősíthetik többször. Ilyen volt a LAB-ban a
- *    #5 150→220 és #6 164→258: a második már az első lezárása előtt elindult,
- *    és utána csak 38 új step készült. A #6 új területre továbbra is hathat,
- *    de a #5-ben már megerősített cellára nem ad még egy +1-et.
+ * ── A KÉT IDŐBELI SZABÁLY, AMI EBBŐL KÖVETKEZIK ──────────────────────────
  *
- * Egy valódi új lapot nem szűrünk: ha az előző reinforcement óta legalább az
- * előző hurok falának ~75%-át újra bejárta a játékos, az új traversal-credit.
- * Ez ugyanaz a nagyságrendi kapu, amit a loop-detektor a repeat closure-nél is
- * használ, ezért a H3 kapu-jitter nem teszi törékennyé a szabályt.
+ * 1. Ha egy nagy külső traversal KÖZBEN egy kisebb hurok új cellát szerez, azt
+ *    a külső hurok később nem erősíti meg. Nem kell külön szabály: a frissen
+ *    megszerzett cellát a nyomvonal pontosan EGYSZER kerülte meg, tehát egy
+ *    jóváírást kap — a megszerzést.
+ *
+ * 2. Ugyanazon fizikai traversal átfedő, egymásba kapcsolódó bezárásai sem
+ *    adhatnak többszörös védelmet ugyanarra a cellára. Ez is következmény: hiába
+ *    négy kompozit ciklus, a körüljárás egy.
+ *
+ * A jóváírásokat a KÉSŐBBI bezárásokhoz rendeljük, mert a +1 ott jár, ahol a
+ * játékos ténylegesen befejezte az újabb körbejárást — nem egy korábbi
+ * részbezárásnál. Az első megszerzés viszont az ELSŐ olyan bezáráshoz tartozik,
+ * amelyik a cellát körbezárta: azt a területet ott foglaltuk el.
  */
-export function resolveSequentialLoopClaims(
+export function resolveLoopClaims(
   loops: readonly DetectedLoop[],
+  path: readonly CellId[],
   ownership: OwnershipMap,
   actorId: string,
   cfg: GameplayConfig = DEFAULT_GAMEPLAY,
-): SequentialLoopClaimResult {
+): LoopClaimResolution {
   const running: OwnershipMap = new Map(ownership);
   const claimedCells = new Set<CellId>();
-  const perLoop: ClaimResult[] = [];
 
-  /** Cella → mikor került ebben az aktivitásban az actorhoz. */
-  const actorAcquiredAt = new Map<CellId, number>();
-  /** Cella → az utolsó jogos reinforcement traversal metaadata. */
-  const lastReinforcement = new Map<CellId, ReinforcementCredit>();
+  /** Cella → mely hurkok zárták körbe, időrendben. */
+  const membership = new Map<CellId, number[]>();
 
-  for (const loop of loops) {
+  for (let index = 0; index < loops.length; index += 1) {
+    const loop = loops[index]!;
     if (hasCompactInterior(loop)) {
       throw new Error(
         'Compact hurok valódi ownership mellett blokkos claim-feldolgozást igényel.',
       );
     }
-
-    const cells = loopCells(loop);
-    const eligible = new Set<CellId>();
-
-    for (const cell of cells) {
+    for (const cell of loopCells(loop)) {
       claimedCells.add(cell);
-
-      const held = running.get(cell);
-      const acquiredAt = actorAcquiredAt.get(cell);
-
-      // Az adott nagy traversal közben frissen megszerzett saját cella nem
-      // kaphat azonnal még egy reinforcementet a későbbi enclosing closure-tól.
-      if (
-        held?.owner === actorId
-        && acquiredAt !== undefined
-        && acquiredAt > loop.fromIndex
-      ) {
-        continue;
-      }
-
-      if (held?.owner === actorId) {
-        const previousCredit = lastReinforcement.get(cell);
-        if (previousCredit && sameTraversalReinforcement(previousCredit, loop, cfg)) {
-          continue;
-        }
-      }
-
-      eligible.add(cell);
+      const visits = membership.get(cell);
+      if (visits) visits.push(index);
+      else membership.set(cell, [index]);
     }
-
-    const result = resolveClaim(eligible, running, actorId, cfg);
-    for (const [cell, nextOwnership] of result.updates) {
-      running.set(cell, nextOwnership);
-    }
-
-    for (const [cell, fate] of result.fates) {
-      if (fate === 'free' || fate === 'stolen') {
-        actorAcquiredAt.set(cell, loop.toIndex);
-      } else if (fate === 'reclaimed') {
-        lastReinforcement.set(cell, {
-          fromIndex: loop.fromIndex,
-          toIndex: loop.toIndex,
-          wallSize: Math.max(1, loop.wall.size),
-        });
-      }
-    }
-
-    perLoop.push(result);
   }
+
+  const winding = windingCounts(path, claimedCells);
+  // Egy 5-ös védelmű rivális cellához négy áttörés, egy elvétel és négy saját
+  // megerősítés kell — ennél többre semmilyen futás nem tud hivatkozni.
+  const maxPasses = cfg.MAX_DEFENSE * 2;
+  const schedule: Map<CellId, number>[] = loops.map(() => new Map<CellId, number>());
+
+  for (const [cell, visits] of membership) {
+    const ownedAtStart = ownership.get(cell)?.owner === actorId;
+    const turns = winding.get(cell) ?? 0;
+
+    /**
+     * Ami nem a miénk, azon a bezárás önmagában jár egy művelettel: a
+     * megszerzés és az áttörés a bekerítés következménye. A VÉDELEM növelése
+     * viszont kizárólag a tényleges körüljárásból jön — ezért a már saját
+     * cellának nincs ilyen alapjuttatása.
+     */
+    let remaining = Math.min(ownedAtStart ? turns : Math.max(1, turns), maxPasses);
+    if (remaining <= 0) continue;
+
+    const first = visits[0]!;
+    const last = visits[visits.length - 1]!;
+
+    if (!ownedAtStart) {
+      addPass(schedule[first]!, cell);
+      remaining -= 1;
+    }
+
+    const floor = ownedAtStart ? 0 : 1;
+    for (let k = visits.length - 1; remaining > 0 && k >= floor; k -= 1) {
+      addPass(schedule[visits[k]!]!, cell);
+      remaining -= 1;
+    }
+
+    // Kevesebb bezárás, mint körüljárás: a spirált a detektor néha egyetlen
+    // nagy ciklusba vonja össze. A maradékot a lezáró bezárás viszi el.
+    if (remaining > 0) addPass(schedule[last]!, cell, remaining);
+  }
+
+  const perLoop = schedule.map((planned) => applyPasses(planned, running, actorId, cfg));
 
   return { running, claimedCells, perLoop };
 }
 
-function sameTraversalReinforcement(
-  previous: ReinforcementCredit,
-  current: DetectedLoop,
+function addPass(target: Map<CellId, number>, cell: CellId, by = 1): void {
+  target.set(cell, (target.get(cell) ?? 0) + by);
+}
+
+/**
+ * Egy hurokhoz beütemezett jóváírások végrehajtása.
+ *
+ * A legtöbb cella egyszer szerepel, ilyenkor ez egyetlen `resolveClaim` hívás.
+ * A többszörös eset a ritka: ott körönként fogy a hátralék, és a hurok
+ * auditsora az összevont eredmény lesz.
+ */
+function applyPasses(
+  planned: ReadonlyMap<CellId, number>,
+  running: OwnershipMap,
+  actorId: string,
   cfg: GameplayConfig,
-): boolean {
-  // Ha az új closure csak az előző lezárása után indul, biztosan új traversal.
-  if (current.fromIndex >= previous.toIndex) return false;
+): ClaimResult {
+  const before: OwnershipMap = new Map();
+  for (const cell of planned.keys()) {
+    const held = running.get(cell);
+    if (held) before.set(cell, held);
+  }
 
-  const minimumRepeatSteps = Math.max(
-    cfg.MIN_LOOP_STEPS,
-    Math.floor(previous.wallSize * 0.75),
-  );
+  const parts: ClaimResult[] = [];
+  const pending = new Map(planned);
 
-  // Átfedő intervallum önmagában nem elég a tiltáshoz: a detektor kapu-jittere
-  // egy valódi új kör kezdetét is néhány indexszel visszahúzhatja. Ha az előző
-  // closure óta már közel egy teljes falhossznyi új step készült, új lapnak
-  // tekintjük és új reinforcement jár.
-  return current.toIndex - previous.toIndex < minimumRepeatSteps;
+  while (pending.size > 0) {
+    const batch = new Set<CellId>(pending.keys());
+    const result = resolveClaim(batch, running, actorId, cfg);
+    for (const [cell, nextOwnership] of result.updates) running.set(cell, nextOwnership);
+    parts.push(result);
+
+    for (const [cell, count] of [...pending]) {
+      if (count <= 1) pending.delete(cell);
+      else pending.set(cell, count - 1);
+    }
+  }
+
+  if (parts.length === 1) return parts[0]!;
+  return mergeClaims(parts, before, actorId, cfg);
 }
 
 /** Egyszeri/batch geometriaépítés — szerver végleges feldolgozásához is ezt használjuk. */
@@ -353,13 +375,14 @@ export function processActivityGeometry(
     };
   }
 
-  const sequential = resolveSequentialLoopClaims(
+  const resolution = resolveLoopClaims(
     loops,
+    path,
     input.ownership,
     input.actorId,
     cfg,
   );
-  const { claimedCells, perLoop } = sequential;
+  const { claimedCells, perLoop } = resolution;
 
   const mergedClaim =
     perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId, cfg) : null;
