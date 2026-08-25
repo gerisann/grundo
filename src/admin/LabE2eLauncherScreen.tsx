@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
 import type { LabPhase, LabPlayer } from './labScenarioEngine';
@@ -44,8 +44,6 @@ export function LabE2eLauncherScreen() {
   function launch() {
     if (!scenario || !phase || !run || !player || run.route.length < 2) return;
     const session = createLabE2eSession({
-      // Egy elmentett scenario minden E2E runja ugyanazt a sandbox worldöt
-      // építi. Így Player 2 valóban rá tud támadni Player 1 korábbi foglalására.
       sandboxId: scenario.id,
       scenarioName: scenario.name,
       phaseId: phase.id,
@@ -135,7 +133,7 @@ export function LabE2eLauncherScreen() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label style={{ display: 'grid', gap: 6 }}>
       <span style={{ fontSize: 12, fontWeight: 700, opacity: .65 }}>{label}</span>
