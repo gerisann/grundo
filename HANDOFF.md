@@ -849,6 +849,25 @@ Per-activity vizualizációnál a történelmi `free/stolen` cell-fate tárolás
 
 ## 16. TELEPÍTÉS
 
+### ⚠️ Cloud Shell: a projektbeállítás elveszhet
+
+Visszatérő csapda (2026-08-25-én is megfogott). A build ilyenkor el sem indul:
+
+```text
+ERROR: (gcloud.builds.submit) The required property [project] is not currently set.
+```
+
+Ez NEM a `cloudbuild.yaml` hibája — a session vesztette el a projektet.
+Megoldás egyszer, a session elején:
+
+```bash
+gcloud config set project grundo
+```
+
+⚠️ És mindig ellenőrizd, hogy van-e mit telepíteni: a `git pull` „Already up to
+date" üzenete önmagában nem bizonyítja, hogy a friss kódon állsz. A
+`git -C ~/grundo log --oneline -1` mutassa ugyanazt a commitot, amit felküldtél.
+
 ### Frontend / Firebase Hosting
 
 ```bash
