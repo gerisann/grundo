@@ -117,97 +117,49 @@ elvittünk — plusz jön hozzá a szerializálás a worker oldalán. **Ne prób
 
 ---
 
-## 1.5 iOS PUSH — DIAGNÓZIS (2026-08-25)
+## 1.5 iOS PUSH — MEGOLDVA (2026-08-25)
 
-**A hiba oka megvan, és NEM kódban van.**
+**Tünet volt:** weben és PWA-ban megérkeztek az értesítések, iOS-en a
+bekapcsolás után sem — sem feloldott, sem zárolt képernyőn.
 
-Tünet: weben és PWA-ban megérkeznek az értesítések, iOS-en a bekapcsolás után
-sem — sem feloldott, sem zárolt képernyőn.
+**Az ok:** a Firebase-projekt APNs auth key bejegyzésében a feltöltött `.p8`
+fájl NEM ahhoz a Key ID-hez tartozott, amit mellé begépeltek. A Firebase ezzel
+a párral írja alá a JWT provider-tokent, az Apple pedig a Key ID alapján keresi
+ki a kulcsot — a szignatúra így sosem stimmelt.
 
-### Amit mértünk
+**A javítás:** új APNs auth key (`M4M77Z3H2P`) az Apple portálon, a régi két
+Firebase-sor törlése, és az új kulcs feltöltése a HELYES Key ID + Team ID
+(`HFS68TZMCH`) párral.
 
-1. **A token regisztrálódik.** Éles Firestore, `devices/{uid}/tokens`:
-   két `platform: 'ios'` token, 142 karakter, aznap frissítve. A kliens és a
-   natív oldal tehát rendben van. (`cd server && npm run inspect:push`)
-2. **A küldés elindul, és az FCM utasítja el.** Cloud Run stderr:
+### A mérési lánc — ezt érdemes megjegyezni
 
-   ```text
-   [push] <uid> ios token küldése elhasalt:
-   messaging/third-party-auth-error Invalid APNs credential.
-   ```
+| Lépés | Eszköz | Eredmény |
+|---|---|---|
+| Regisztrálódik-e iOS token? | `npm run inspect:push` | Igen, 2 db — a kliens és a natív oldal rendben |
+| Mit mond a szerver? | Cloud Run stderr | `messaging/third-party-auth-error` — de ez NEM elég diagnózisnak |
+| Miért utasítja el az APNs? | `npm run probe:apns` (FCM v1 REST) | `ApnsError 403 InvalidProviderToken` |
+| A kulcs maga jó-e? | `npm run probe:apns:key` (közvetlen APNs) | Új kulccsal `400 BadDeviceToken` → a hármas HELYES |
+| Megy-e élesben? | `npm run probe:apns` | `HTTP 200` mindkét tokenre |
 
-3. **30 nap alatt 12 ilyen hiba, mind iOS, az első 2026-08-23 19:15-kor** —
-   vagyis az első iOS token regisztrációjakor. Az iOS push tehát SOHA nem
-   működött; ez elmaradt egyszeri beállítás, nem visszaesés. Webes push hiba: 0.
-4. **A repó minden azonosítója egyezik**: bundle `app.grundo.ios` a
-   `capacitor.config.ts`-ben, a `GoogleService-Info.plist`-ben és az Xcode
-   projektben; a Firebase-projektben egyetlen iOS app van ugyanezzel a bundle
-   ID-vel; a `DEVELOPMENT_TEAM` és a Firebase `teamId` egyaránt `HFS68TZMCH`;
-   az `aps-environment` Debugon `development`, Release-en `production`.
+⚠️ **Tanulság:** az Admin SDK `messaging/third-party-auth-error` üzenete
+(„Invalid APNs credential") NEM különbözteti meg a hiányzó, a visszavont és a
+rosszul párosított kulcsot. A `probe:apns` az FCM v1 REST API-t hívja, ami a
+`details` tömbben visszaadja az APNs saját `reason` mezőjét — ez a különbség
+egy tippelgetős kör és egy pontos válasz között. Én az első körben ezt
+elmulasztottam, és tévesen azt írtam, hogy nincs feltöltve a kulcs.
 
-### Az APNs kulcs FEL VAN töltve — a pontos ok más
+⚠️ **A `probe:apns:key` a Firebase-t KIHAGYVA kérdezi meg az Apple-t**, tehát
+feltöltés ELŐTT eldönthető, hogy egy kulcs jó-e. Az APNs a hitelesítést a
+device token előtt ellenőrzi, ezért hamis tokennel is működik a próba:
+`BadDeviceToken` = a hitelesítés átment.
 
-⚠️ Az első következtetésem („nincs feltöltve a kulcs") HIBÁS VOLT. A Firebase
-Console → Cloud Messaging → Apple app configuration alatt ott van a
-**Development** és a **Production APNs auth key** is, mindkettő
-`Key ID: 9BGTAPANR8`, `Team ID: HFS68TZMCH`.
+### Ami a kód oldalán maradt
 
-A tényleges okot az FCM v1 HTTP API adta meg, ami az Admin SDK által elnyelt
-részletet is visszaadja (`npm run probe:apns`):
-
-```json
-{ "@type": "…v1.ApnsError", "statusCode": 403, "reason": "InvalidProviderToken" }
-```
-
-Ez **az Apple saját válasza**, mindkét iOS tokenre. Jelentése szűk: a JWT
-provider-token, amit a Firebase a `.p8` kulccsal ír alá, nem hitelesíthető.
-
-**Amit ez kizár:**
-
-- nem `BadDeviceToken` → nincs development/production környezet-ütközés;
-- nem `DeviceTokenNotForTopic` → a bundle ID jó;
-- a device token és a kliensoldal rendben van.
-
-**Ami maradt, sorrendben:**
-
-1. A Firebase-be BEGÉPELT Key ID nem ahhoz a `.p8` fájlhoz tartozik, amit
-   feltöltöttek. A Firebase a feltöltött kulccsal ír alá, de a begépelt Key
-   ID-t teszi a JWT fejlécébe; az Apple ez alapján keresi a kulcsot, és a
-   szignatúra nem stimmel. Mindkét sorban ugyanaz a Key ID áll, tehát egy
-   elgépelés mindkettőt egyformán elrontja.
-2. A kulcsot visszavonták az Apple Developer portálon. A Firebase ettől még
-   mutatja a sort — csak tárolja, amit feltöltöttek.
-3. A kulcson nincs bekapcsolva az *Apple Push Notifications service (APNs)*.
-
-**Teendő:** Apple Developer portál → Certificates, Identifiers & Profiles →
-Keys: létezik-e még a `9BGTAPANR8`, nincs-e visszavonva, van-e rajta APNs. Ha
-bármelyik nem stimmel, új kulcs APNs-sel, `.p8` letöltés, a Firebase-ben
-mindkét sor törlése, majd feltöltés a portálon LÁTHATÓ Key ID-vel. Ha a kulcs
-rendben van, akkor a fájl és a begépelt Key ID nem tartozik össze — ugyanaz a
-teendő.
-
-⚠️ **Tanulság a következő agentnek:** az Admin SDK `messaging/third-party-auth-error`
-üzenete („Invalid APNs credential") NEM elég a diagnózishoz — abból nem derül
-ki, hogy hiányzik, visszavonták, vagy rossz környezetű a kulcs. A `probe:apns`
-az FCM v1 REST API-t hívja, ami a `details` tömbben visszaadja az APNs saját
-`reason` mezőjét. Ez a különbség egy tippelgetős kör és egy pontos válasz
-között.
-
-### A visszamérés — egy kattintás
-
-A `/admin` áttekintőn van egy **Push-diagnosztika** kártya: teszt-értesítést küld
-a saját eszközeidre, és eszközönként kiírja a NYERS FCM hibakódot a teendővel
-együtt. A kulcs feltöltése után ezzel azonnal látszik, hogy megjavult-e —
-nem kell valódi eseményre várni.
-
-⚠️ Ez a végpont csak a hívó SAJÁT eszközeire küld (`POST /api/admin/push/test`,
-az `uid` a hitelesített hívóé, nem paraméter).
-
-### Amit a kód oldalán tudni kell
-
+- `/admin` áttekintő → **Push-diagnosztika** kártya: teszt-értesítés a saját
+  eszközökre, eszközönként a nyers FCM hibakóddal és a teendővel.
+  Végpont: `POST /api/admin/push/test`, csak a hívó saját eszközeire.
 - A szerver `notification` + `apns.payload.aps.sound` formában küld, tehát az
-  iOS magától kirajzolja az értesítést — nem data-only üzenet, nincs szükség
-  kliensoldali megjelenítésre.
+  iOS magától kirajzolja az értesítést — nem data-only üzenet.
 - A `third-party-auth-error` **nem** törli a tokent. Helyesen: ilyenkor a token
   jó, a projekt beállítása rossz. Csak a `registration-token-not-registered` és
   az `invalid-argument` vezet törléshez.
