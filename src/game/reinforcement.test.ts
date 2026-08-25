@@ -69,6 +69,16 @@ function laps(r0: number, growth: number, count: number, cw = true) {
   return points;
 }
 
+/** Ugyanaz a geometria, ellenkező bejárási irányban. */
+function reversed(points: readonly TracePoint[]): TracePoint[] {
+  const out: TracePoint[] = [];
+  const t0 = points[0]!.t;
+  for (let i = points.length - 1; i >= 0; i -= 1) {
+    out.push({ ...points[i]!, t: t0 + (points.length - 1 - i) * 1000 });
+  }
+  return out;
+}
+
 /** Determinisztikus ál-GPS-zaj: nem `Math.random`, hogy a teszt reprodukálható legyen. */
 function jitter(points: readonly TracePoint[], seed: number, metres = 4): TracePoint[] {
   let state = seed * 2654435761 % 2147483647;
@@ -315,5 +325,79 @@ describe('kifelé tartó spirál', () => {
       const hist = defenceHistogram(after(run(build(cw))));
       expect(hist.get(3)).toBeGreaterThan(100);
     }
+  });
+});
+
+/**
+ * Geri „3 box" rajza (2026-08-25). Ez a menet fő regressziója: a korábbi motor
+ * itt hat bezárást és 3× védelmet adott ott, ahol három bezárás és 2× a helyes.
+ */
+describe('3 box — a rajz szerinti forgatókönyv', () => {
+  const S = 300;
+
+  /** 1..13 pont, pontosan a rajz sorrendjében. */
+  function threeBox() {
+    const p = (x: number, y: number) => offset(ORIGIN, x, y);
+    return [
+      p(0, 0),      // 1  rajt
+      p(0, S),      // 2
+      p(S, S),      // 3
+      p(S, 0),      // 4
+      p(0, 0),      // 5  ← 1. hurok: a KÉK négyzet
+      p(0, -S),     // 6
+      p(S, -S),     // 7
+      p(S, 0),      // 8  ← 2. hurok: a VILÁGOSKÉK négyzet
+      p(0, 0),      // 9
+      p(0, S),      // 10
+      p(2 * S, S),  // 11
+      p(2 * S, 0),  // 12
+      p(S, 0),      // 13
+      p(0, 0),      // ← 3. hurok: KÉK 2× + RÓZSASZÍN 1×
+    ];
+  }
+
+  it('három bezárás, a kétszer bekerített négyzet 2×, a másik kettő 1×', () => {
+    for (const points of [buildTrace(threeBox()), reversed(buildTrace(threeBox()))]) {
+      const result = run(points);
+      expect(result.loops).toHaveLength(3);
+
+      const hist = defenceHistogram(after(result));
+      expect([...hist.keys()].sort()).toEqual([1, 2]);
+      // Két négyzet 1×-en, egy négyzet 2×-en: az arány nagyjából 2:1.
+      const single = hist.get(1)!;
+      const double = hist.get(2)!;
+      expect(double).toBeGreaterThan(250);
+      expect(single / double).toBeGreaterThan(1.7);
+      expect(single / double).toBeLessThan(2.3);
+    }
+  });
+
+  it('a védelem csak a HARMADIK bezárásnál nő, nem a nagy kör közben', () => {
+    const points = buildTrace(threeBox());
+    const geometry = new IncrementalActivityGeometry();
+    const timeline: { closures: number; maxDefense: number }[] = [];
+
+    for (let cut = 40; cut <= points.length; cut += 40) {
+      const preview = processActivityGeometry(
+        {
+          points: points.slice(0, cut), type: 'run', distanceKm: 4.2, actorId: ME,
+          ownership: new Map(), streakDays: 0, gpEarnedToday: 0,
+        },
+        geometry.update(points.slice(0, cut)),
+      );
+      const levels = [...defenceHistogram(after(preview)).keys()];
+      timeline.push({
+        closures: preview.loops.length,
+        maxDefense: levels.length > 0 ? Math.max(...levels) : 0,
+      });
+    }
+
+    // Sehol nem lehet 2× védelem addig, amíg a harmadik hurok be nem zárult.
+    for (const step of timeline) {
+      if (step.closures < 3) expect(step.maxDefense).toBeLessThanOrEqual(1);
+    }
+    // A bezárásszám sosem lépi túl a hármat.
+    for (const step of timeline) expect(step.closures).toBeLessThanOrEqual(3);
+    expect(timeline[timeline.length - 1]!.maxDefense).toBe(2);
   });
 });

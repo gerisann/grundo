@@ -73,6 +73,16 @@ export class IncrementalLoopDetector {
   private readonly accepted: AcceptedLoopRecord[] = [];
   private closureBlock: ClosureBlock | null = null;
 
+  /**
+   * Minden eddig bekerített cella (fal + belső).
+   *
+   * Ahhoz kell, hogy egy KORÁBBI BEZÁRÁS FÖLÉ visszanyúló jelölt csak akkor
+   * számítson új bezárásnak, ha valódi új területet is hoz. Enélkül egy
+   * háromnégyzetes útvonalon megjelent egy negyedik, `belső 503` méretű hurok,
+   * ami pontosan az első két hurok uniója volt — nulla új cellával.
+   */
+  private readonly enclosed = new Set<CellId>();
+
   /** Hány H3 cellát dolgoztunk már fel. */
   get length(): number {
     return this.path.length;
@@ -151,6 +161,7 @@ export class IncrementalLoopDetector {
      * indexkülönbség miatt külön jelöltek maradnak.
      */
     const candidateIndices = clusterCandidateIndices(candidates);
+    const lastClosureAt = this.accepted[this.accepted.length - 1]?.toIndex ?? -1;
 
     for (const previous of candidateIndices) {
       const rawWall = new Set(this.path.slice(previous, i + 1));
@@ -218,6 +229,30 @@ export class IncrementalLoopDetector {
         continue;
       }
 
+      /**
+       * EGY KORÁBBI BEZÁRÁS FÖLÉ VISSZANYÚLVA ÚJ TERÜLET KELL.
+       *
+       * Ha a jelölt kapuja a legutóbbi bezárás ELŐTTRŐL való, akkor a fala már
+       * lezárt szakaszokat fűz össze. Ez lehet jogos — a 03. fejezet engedi,
+       * hogy a saját terület széle egy új hurok fala legyen —, de csak akkor,
+       * ha közben valóban bekerítettünk valami újat.
+       *
+       * Ami NEM esik ide: az ismételt teljes kör. Ott a kapu a legutóbbi bezárás
+       * UTÁNRÓL való (a lapok egymás után futnak), tehát a szabály nem szól bele,
+       * és az ötször megfutott kör továbbra is öt bezárást ad.
+       */
+      if (previous < lastClosureAt && !addsNewGround(candidate, this.accepted, this.enclosed)) {
+        this.rejected.push({
+          reason: 'interior_too_small',
+          fromIndex: previous,
+          toIndex: i,
+          wallCells: candidate.wall.size,
+          interiorCells: loopInteriorCellCount(candidate),
+          prunedCells,
+        });
+        continue;
+      }
+
       // Tényleges új lapnál a bezárás megmarad, de egy 1-2 cellás H3-kapu
       // jitter ne növelje lassan a területet minden körrel.
       candidate = canonicalizeNearIdenticalRepeat(candidate, previous, this.accepted);
@@ -231,6 +266,10 @@ export class IncrementalLoopDetector {
         prunedCells,
       });
       this.accepted.push({ loop: candidate, toIndex: i });
+      for (const wallCell of candidate.wall) this.enclosed.add(wallCell);
+      if (!candidate.compactInterior) {
+        for (const inner of candidate.interior) this.enclosed.add(inner);
+      }
       this.closureBlock = {
         loop: candidate,
         acceptedAt: i,
@@ -392,6 +431,32 @@ function wallsOverlap(a: ReadonlySet<CellId>, b: ReadonlySet<CellId>): boolean {
   const larger = smaller === a ? b : a;
   for (const cell of smaller) {
     if (larger.has(cell)) return true;
+  }
+  return false;
+}
+
+/**
+ * Hoz-e a jelölt olyan belső cellát, amit még egyetlen bezárás sem kerített be.
+ *
+ * A küszöb ugyanaz a `MIN_INTERIOR_CELLS`, amivel a detektor eleve eldönti, hogy
+ * egy hurok érdemi-e — nincs új, önkényes szám a rendszerben.
+ *
+ * Compact huroknál a belsőt nem bontjuk ki res12-re, ezért ott csak annyit
+ * kérdezünk, hogy nem ugyanazt a geometriát látjuk-e újra.
+ */
+function addsNewGround(
+  candidate: DetectedLoop,
+  accepted: readonly AcceptedLoopRecord[],
+  enclosed: ReadonlySet<CellId>,
+): boolean {
+  if (candidate.compactInterior) {
+    return !accepted.some((record) => sameLoopGeometry(candidate, record.loop));
+  }
+  let fresh = 0;
+  for (const cell of candidate.interior) {
+    if (enclosed.has(cell)) continue;
+    fresh += 1;
+    if (fresh >= GAMEPLAY.MIN_INTERIOR_CELLS) return true;
   }
   return false;
 }

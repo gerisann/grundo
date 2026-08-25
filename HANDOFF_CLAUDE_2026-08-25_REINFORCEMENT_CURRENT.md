@@ -11,7 +11,7 @@
 
 1. `AGENTS.md` végig.
 2. Ez a fájl.
-3. A `#13` menet **megoldotta** a bejelentett fő hibát (irányfüggő védelem, túl korai megerősítés). A nyitott pontok a 6. fejezetben.
+3. A `#13` menet **megoldotta** a bejelentett fő hibát (irányfüggő védelem, túl korai megerősítés) és a Geri rajza szerinti „3 box" esetet is (2.1). A nyitott pontok a 6. fejezetben.
 
 ---
 
@@ -50,6 +50,27 @@ Valódi irányfüggetlenség (azonos lapsorrend, ellenkező forgásirány) — e
 
 **A védelmi szintek minden mért esetben azonosak.** A cellaszámok pár cellával eltérnek: a megfordított nyom H3-kvantálása más — ez a rács határa, nem a szabályé.
 
+## 2.1 A „3 box" eset — Geri rajza és két LAB-videó
+
+A rajz: bezárul egy négyzet (KÉK, 1×), alatta egy második (VILÁGOSKÉK, 1×), végül egy nagy külső kör, ami a KÉK-et újra bekeríti (2×) és mellé egy új területet is hoz (RÓZSASZÍN, 1×). **Három bezárás.**
+
+A LAB-videók (2026-08-25 22:17) a JAVÍTÁS ELŐTTI kódot mutatják: **6 bezárás**, védelem `1×:127, 2×:129, 3×:119` — egy teljes négyzet 3×-en, pedig 2× a maximum.
+
+A javítás után, mérve, mindkét bejárási irányban:
+
+```
+pont  400   1 closure  {1:328}        ← KÉK bezárul
+pont  700   2 closure  {1:642}        ← VILÁGOSKÉK bezárul
+pont 1300   3 closure  {1:951}        ← a nagy kör bezárul
+pont 1400   3 closure  {1:628, 2:323} ← KÉK → 2×, RÓZSASZÍN → 1×
+```
+
+Két külön hiba volt benne, és külön javítás kellett rájuk:
+
+**(a) Fölös kompozit bezárás.** A `#5→162, belső 503` hurok pontosan az első két hurok uniója volt, nulla új cellával. A detektor mostantól elutasítja azt a jelöltet, amelyik a LEGUTÓBBI BEZÁRÁS ELÉ nyúl vissza és közben egyetlen új cellát sem kerít be. Az ismételt teljes kört ez nem érinti: ott a kapu a legutóbbi bezárás UTÁNRÓL való, mert a lapok egymás után futnak.
+
+**(b) Túl korai védelem.** A régi terület három oldalát újrafutva a szögösszeg ~1,75 teljes kör, ami KEREKÍTVE már 2. Emiatt ugrott a védelem 280 GPS-ponttal a nagy kör bezárása előtt. Mostantól lefelé csonkolunk egy kis ráhagyással (`FULL_TURN_TOLERANCE`), és a valaha elért LEGNAGYOBB szögelfordulást nézzük — így egy hazasétálás sem tudja visszatekerni azt, amit a játékos már körbejárt.
+
 ---
 
 # 3. HOGYAN MŰKÖDIK
@@ -58,7 +79,8 @@ Valódi irányfüggetlenség (azonos lapsorrend, ellenkező forgásirány) — e
 
 `windingCounts(path, cells)` → cellánként a körüljárási szám abszolút értéke.
 
-- **Nyitott nyomvonal, záró húr NÉLKÜL.** Egy zárt görbe szögösszege pontos egész többszöröse a teljes körnek; a nyitva hagyott farok legfeljebb fél kört tud hozzátenni, tehát a kerekítés visszaadja a valódi értéket. Záró húrral egy hosszú hazasétálás hamis körüljárást vinne be — mérve emiatt esett ki két cella egy bezárt területből.
+- **Nyitott nyomvonal, záró húr NÉLKÜL.** Egy zárt görbe szögösszege pontos egész többszöröse a teljes körnek. Záró húrral egy hosszú hazasétálás hamis körüljárást vinne be — mérve emiatt esett ki két cella egy bezárt területből.
+- **Futó maximum, lefelé csonkolva.** Nem kerekítünk: egy félig megtett kör szögösszege is elérheti a következő egész közelét (~1,75), és kerekítve idő előtt emelné a védelmet. A valaha elért legnagyobb szögelfordulást tartjuk, `FULL_TURN_TOLERANCE` ráhagyással — így a kör utáni elsétálás sem tekerhet vissza.
 - **Régiónként számolunk, nem cellánként.** A görbén kívüli, egymással szomszédos cellák körüljárási száma szükségképpen azonos. Ez nem közelítés, hanem ugyanaz az eredmény olcsóbban: 836 cellás nyomvonal + 3544 claim-cella **66 ms → 26 ms**.
 - **A falcellák örökölnek.** Egy falcella közepe RAJTA van a görbén, ezért a szögösszege nem konvergál egész értékhez: mérve a falcellák harmada-fele fél-egész közelében állt, 0 és 7 közötti szórással. Ezek a legközelebbi, görbén kívüli szomszédaiktól kapják a legnagyobb értéket — a fal ahhoz a régióhoz tartozik, amelyiket határolja. A keresés 3 gyűrűig tágul, mert a nyomvonal helyenként 2–3 cella vastag (lásd 5.2).
 
@@ -101,7 +123,9 @@ Lefedve: 7.1 (ismételt kör 1–5×, GPS-zajjal három maggal), 7.2 (növekvő 
 
 `src/admin/labReinforcement.test.ts` átírva valódi nyomvonalra (üres `cellPath`-szal gyártott hurkokkal a körüljárás nem mérhető).
 
-**Állapot: `npm test` → 513 zöld, 119 kihagyva. `npx tsc --noEmit` tiszta. `npm run build` lefut. Szerver: 165 zöld.**
+Külön blokk fedi Geri „3 box" rajzát (2.1): három bezárás, a védelem csak a harmadiknál nő, mindkét bejárási irányban.
+
+**Állapot: `npm test` → 515 zöld, 119 kihagyva. `npx tsc --noEmit` tiszta. `npm run build` lefut. Szerver: 165 zöld.**
 
 ---
 

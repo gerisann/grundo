@@ -33,6 +33,21 @@ const M_PER_DEG_LAT = 111_320;
 const MAX_INHERIT_RINGS = 3;
 
 /**
+ * Mennyivel lehet kevesebb egy teljes körnél a szögösszeg ahhoz, hogy még
+ * megtett körnek számítson.
+ *
+ * KEREKÍTENI NEM SZABAD. Egy félig megtett kör szögösszege is elérheti a
+ * következő egész közelét: a saját terület három oldalát újrafutva ~1,75 teljes
+ * kör jön ki, ami kerekítve már 2 lenne. Mérve, a háromnégyzetes útvonalon a
+ * védelem emiatt 280 GPS-ponttal a nagy kör bezárása ELŐTT ugrott 2×-re.
+ *
+ * Ezért lefelé csonkolunk, de adunk egy kis ráhagyást: a nyomvonal vége nem
+ * mindig pontosan a kezdőcellában van, és ilyenkor a zárás egy-két cellányi
+ * hézagja hiányozna a teljes körből.
+ */
+const FULL_TURN_TOLERANCE = 0.1;
+
+/**
  * A nyomvonal síkba vetítve, hogy a szögösszeg olcsón számolható legyen.
  *
  * Egy aktivitás néhány km-es kiterjedésű, ezért egy fix referencia-szélességgel
@@ -63,17 +78,26 @@ function projectPath(path: readonly CellId[]): ProjectedPath | null {
 }
 
 /**
- * Előjeles teljes szögelfordulás a pont körül, teljes körökben.
+ * A pont körül VALAHA elért legnagyobb szögelfordulás, teljes körökben.
  *
- * A nyomvonalat NEM zárjuk le húrral. Egy zárt görbe szögösszege pontosan egész
- * többszöröse a teljes körnek, a nyitva hagyott farok pedig legfeljebb fél kört
- * tud hozzátenni — a kerekítés tehát visszaadja a valódi értéket. Záró húrral
- * viszont egy hosszú hazasétálás hamis körüljárást vinne be: mérve emiatt esett
- * ki két cella a bezárt területből.
+ * Három dolgot old meg egyszerre, és mindhárom mért esetből jött:
+ *
+ * 1. **Nincs záró húr.** Egy zárt görbe szögösszege pontosan egész többszöröse a
+ *    teljes körnek. Húrral lezárva egy hosszú hazasétálás hamis körüljárást
+ *    vinne be — emiatt esett ki két cella egy bezárt területből.
+ *
+ * 2. **A farok nem tekerhet vissza.** Ha a nyom a kör után elsétál, a szögösszeg
+ *    csökkenhet. Amit a játékos egyszer körbejárt, azt egy hazasétálás nem
+ *    veheti el: két kör + 1,7 km elsétálás után a cellák egy része 2× helyett
+ *    1×-en maradt. Ezért a FUTÓ MAXIMUMOT tartjuk.
+ *
+ * 3. **Az irány nem számít.** Abszolút értéket nézünk, tehát a bejárás
+ *    megfordítása nem változtat semmit.
  */
 function turnsAround(projected: ProjectedPath, cx: number, cy: number): number {
   const { xs, ys } = projected;
   let total = 0;
+  let peak = 0;
   let ax = xs[0]! - cx;
   let ay = ys[0]! - cy;
 
@@ -81,10 +105,12 @@ function turnsAround(projected: ProjectedPath, cx: number, cy: number): number {
     const bx = xs[i]! - cx;
     const by = ys[i]! - cy;
     total += Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
+    const reached = Math.abs(total);
+    if (reached > peak) peak = reached;
     ax = bx;
     ay = by;
   }
-  return total / TAU;
+  return peak / TAU;
 }
 
 /**
@@ -124,7 +150,7 @@ export function windingCounts(
   const turnsAt = (cell: CellId): number => {
     const [lat, lng] = cellToLatLng(cell);
     const turns = turnsAround(projected, lng * mPerDegLng, lat * M_PER_DEG_LAT);
-    return Math.abs(Math.round(turns));
+    return Math.floor(turns + FULL_TURN_TOLERANCE);
   };
 
   // ── 1. A görbén kívüli cellák régiónként ────────────────────────────────
