@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
+import { useTrackingEnvironment } from '@/tracking/environment';
 import './Dock.css';
 
 /**
@@ -22,37 +23,25 @@ import './Dock.css';
 export function Dock() {
   const navigate = useNavigate();
   const location = useLocation();
+  const trackingEnvironment = useTrackingEnvironment();
   const { state, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
 
-  const onTrackingScreen = location.pathname === '/rogzites';
+  // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
+  // admin útvonalon él. Ilyenkor nem navigálunk el `/rogzites`-re a Play előtt.
+  const onTrackingScreen = location.pathname === '/rogzites' || trackingEnvironment.mode === 'lab';
   const running = state.status === 'recording';
   const paused = state.status === 'paused';
   const done = state.status === 'finished';
   const active = running || paused;
 
-  /**
-   * Mi történjen a középső gombra?
-   *
-   * Ha nem a rögzítés képernyőn állunk, előbb oda visszük a felhasználót —
-   * indítani vakon, a mérés visszajelzése nélkül félrevezető lenne.
-   */
   function primaryAction() {
     if (running) return pause();
     if (paused) return resume();
     if (done) return void discard();
     if (!onTrackingScreen) return navigate('/rogzites');
-    // A választott mozgásforma a rögzítőben él — lásd `pendingType`.
     return void begin();
   }
 
-  /**
-   * A „Új rögzítés" felirat CSAK a rögzítés képernyőn jelenik meg.
-   *
-   * A lezárt rögzítés állapota az egész alkalmazásban él, ezért a felirat
-   * korábban a kezdőlapon is ott volt — ahol viszont értelmetlen: onnan nem
-   * új rögzítést indítani akar a felhasználó, hanem odajutni. Máshol tehát
-   * marad a Play ikon, ami a rögzítés képernyőre visz.
-   */
   const showFinishedLabel = done && onTrackingScreen;
 
   const primaryLabel = running
@@ -91,13 +80,6 @@ export function Dock() {
     </div>
   );
 
-  /**
-   * Rögzítés közben CSAK a három vezérlő látszik.
-   *
-   * A menüpontok ilyenkor nemcsak fölöslegesek, hanem zavaróak is: a
-   * felhasználó futás közben, egy pillantásra nyúl a képernyőhöz, és a
-   * legrosszabb, ami történhet, hogy a Befejezés helyett a Profilt találja el.
-   */
   if (active) {
     return (
       <nav className="dock dock--controls" aria-label="Rögzítés vezérlése">
@@ -125,18 +107,6 @@ export function Dock() {
   );
 }
 
-/**
- * A befejezés NYOMVA TARTÁSSAL megy — két másodpercig.
- *
- * MIÉRT? Mert a Befejezés visszavonhatatlan pont a rögzítésben, és pont ott
- * van, ahol futás közben a hüvelykujj kapkod: a Szünet mellett. Egy téves
- * koppintás a mérés végét jelenti, nem egy visszavonható lépést.
- *
- * A visszajelzés a gomb HÁTTERE: balról jobbra pirosra telik, és a felirat
- * pontosan ott vált fehérre, ameddig a piros ért — a felső, fehér
- * szövegréteg ugyanarra a szélességre van vágva, mint a kitöltés. Így a két
- * réteg együtt mozog, nem külön animációként.
- */
 const FINISH_HOLD_MS = 2000;
 
 function FinishButton({ onFinish }: { onFinish: () => void }) {
@@ -145,7 +115,6 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
   const frame = useRef(0);
   const startedAt = useRef(0);
 
-  // A kilépő komponens ne hagyjon futó animációs kérést maga után.
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   function start() {
@@ -172,9 +141,6 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
     if (!holding.current) return;
     holding.current = false;
     cancelAnimationFrame(frame.current);
-    // Nullára áll, és MOST már animálva: a `--holding` osztály lekerül róla,
-    // azzal együtt a `transition: none` is. Így a félbehagyott nyomás
-    // visszafolyik, nem ugrik.
     setProgress(0);
   }
 
@@ -185,14 +151,11 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
       className={`dock__side dock__side--right dock__finish${
         progress > 0 ? ' dock__finish--holding' : ''
       }`}
-      /* Nyomva tartásnál a böngésző saját gesztusai (szöveg kijelölés,
-         helyi menü, görgetés) csak zavarnának. */
       onPointerDown={start}
       onPointerUp={cancel}
       onPointerLeave={cancel}
       onPointerCancel={cancel}
       onContextMenu={(event) => event.preventDefault()}
-      /* Billentyűzetről ugyanígy: a lenyomás indít, az elengedés megszakít. */
       onKeyDown={(event) => {
         if (event.key === ' ' || event.key === 'Enter') {
           event.preventDefault();
@@ -205,7 +168,6 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
     >
       <span className="dock__finish-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
       <span className="dock__finish-label">Befejezés</span>
-      {/* Ugyanaz a felirat fehéren, a kitöltés széléig vágva. */}
       <span
         className="dock__finish-label dock__finish-label--filled"
         style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
@@ -225,9 +187,6 @@ function PauseIcon() {
     </svg>
   );
 }
-
-/* Az ikonok inline SVG-k, hogy ne kelljen ikonkészletet behúzni a belépő
-   csomagba. Ha később ikonkönyvtár kell, ezek cserélhetők. */
 
 const stroke = {
   fill: 'none',
