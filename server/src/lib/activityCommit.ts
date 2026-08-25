@@ -38,7 +38,10 @@ import {
   PUBLIC_ROUTE_VERSION,
 } from './publicRoute';
 import { computeTrustScore } from '../trust/score';
+import { buildCompactBlockPlan } from './compactBlockPlan';
+import type { CompactBlockWork } from './compactBlockClaim';
 import { processActivity } from '../../../src/game';
+import { buildCompactClaimCredits } from '../../../src/game/compactClaim';
 import { layerOf } from '../../../src/game/cells';
 import { levelFor } from '../../../src/game/levels';
 import { distanceM } from '../../../src/game/geo';
@@ -161,6 +164,22 @@ export interface ActivityPlan extends ActivityInput {
    * tizenötször futna le a legdrágább számítás.
    */
   loops: DetectedLoop[];
+  /**
+   * COMPACT hurok esetén a res9 blokkonkénti claim-munka; különben `null`.
+   *
+   * ⚠️ EZ NEM KÉNYELMI GYORSÍTÓTÁR, hanem a compact út EGYETLEN forrása arról,
+   * hogy mely blokkokat érinti a foglalás. A `candidateCells` compact huroknál
+   * SZÁNDÉKOSAN csak a falat és a pontos határsávot tartalmazza — a belsőt a
+   * `compactInterior` parentjei képviselik, épp azért, hogy egy több tíz km²-es
+   * kör ne bomoljon több tízezer res12 cellára.
+   *
+   * MÉRVE (5×5 km-es kör, 81 023 res12 cella): a `candidateCells` 5 220 elem,
+   * amiből az orphan-scope 98 blokkot ad — a claim viszont VALÓJÁBAN 270
+   * blokkot érint. A hiányzó 172 blokk a hurok belseje. Ha a darabolt út a
+   * cellákból számolt blokklistából dolgozna, a terület kétharmada némán
+   * elveszne.
+   */
+  compactWorks: Map<string, CompactBlockWork> | null;
 }
 
 /**
@@ -225,15 +244,33 @@ export function planActivity(input: ActivityInput): ActivityPlan {
   // a tranzakcióba, ezért konkurens mentésnél a Firestore friss állapottal
   // próbálja újra az árva mező szabályát is.
   const orphanScope = expandCellScope(candidateCells, 2);
-  const blockIds = [...blocksFor(layer, orphanScope).keys()];
+
+  /**
+   * A COMPACT BLOKKTERV — a hurok belsejét is beleértve.
+   *
+   * A creditek ownership-függetlenek (tisztán a traversalból következnek),
+   * ezért ugyanide tartoznak, mint a geometria: egyszer számoljuk ki, és a
+   * darabolt út csoportonként csak a birtoklási döntést ismétli meg belőlük.
+   */
+  const compactCredits = buildCompactClaimCredits(probe.loops);
+  const compactWorks = compactCredits ? buildCompactBlockPlan(layer, compactCredits) : null;
+
   /**
    * ITT MÁR NINCS MÉRETKORLÁT.
    *
    * Ami nem fér egyetlen tranzakcióba, azt a darabolt út veszi át
    * (`commitChunkedActivity`). A méret önmagában nem lehet ok arra, hogy
    * valakinek elvesszen a köre. A gyors és a darabolt út közül a hívó a
-   * `fitsOneTransaction()` alapján választ.
+   * `requiresChunkedClaim()` alapján választ.
+   *
+   * COMPACT esetén a blokklista a claim-tervből jön, nem a cellákból: pontosan
+   * azok a blokkok, amelyeket írni fogunk. Az orphan-scope kétgyűrűs
+   * kiterjesztése ilyenkor félrevezető lenne — a claimen kívüli szomszédokat
+   * csak OLVASNI kell, és azt a frontier-fázis a saját scope-jából intézi.
    */
+  const blockIds = compactWorks
+    ? [...compactWorks.keys()]
+    : [...blocksFor(layer, orphanScope).keys()];
 
   const now = new Date();
   const today = gameDay(now);
@@ -246,6 +283,7 @@ export function planActivity(input: ActivityInput): ActivityPlan {
     candidateCells,
     orphanScope,
     blockIds,
+    compactWorks,
     now,
     today,
   };

@@ -27,6 +27,7 @@ import {
   sanitizePublicSummary,
 } from '../lib/activityCommit';
 import { commitChunkedActivity } from '../lib/activityChunked';
+import { requiresChunkedClaim } from '../lib/activityRouting';
 import { evaluateAndAwardBadges } from '../lib/badges';
 import {
   notifyActivityLiked,
@@ -159,10 +160,17 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
      * az a darabolt úton, blokkcsoportonként egy tranzakcióval.
      *
      * A méret önmagában tehát SOHA nem ok arra, hogy elvesszen a kör.
+     *
+     * ⚠️ AZ ÍRÁSSZÁM ÖNMAGÁBAN NEM ELÉG a döntéshez. A compact hurok belseje
+     * parentekben van, nem res12 cellákban, ezért egy több tíz km²-es kör
+     * blokkszáma is bőven a korlát alatt maradhat — a gyors út viszont a
+     * shared motort hívná valódi ownershippel, ami compact hurokra
+     * SZÁNDÉKOSAN dob (`processActivityGeometry` őre). A `requiresChunkedClaim`
+     * ezért a geometriát is nézi, nem csak a méretet.
      */
-    const committed = fitsOneTransaction(plan)
-      ? await db.runTransaction((tx) => commitActivity(tx, plan))
-      : await commitChunkedActivity(plan);
+    const committed = requiresChunkedClaim(plan.loops, fitsOneTransaction(plan))
+      ? await commitChunkedActivity(plan)
+      : await db.runTransaction((tx) => commitActivity(tx, plan));
 
     if (committed.duplicate) {
       return res.json({ activityId, summary: committed.summary, duplicate: true });

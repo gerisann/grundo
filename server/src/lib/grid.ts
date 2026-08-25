@@ -252,6 +252,57 @@ export function writeOwnership(
 }
 
 /**
+ * KÉSZ blokkalakok kiírása — a compact út írófele.
+ *
+ * MIÉRT KÜLÖN A `writeOwnership`-től? Mert a két úton más a bemenet
+ * természete. A `writeOwnership` CELLÁNKÉNTI változásokat kap, és neki kell a
+ * blokkot kibontania, módosítania, majd visszatömörítenie. A compact út ezt
+ * már elvégezte blokkonként (`resolveCompactBlockClaim`) — méghozzá úgy, hogy
+ * a homogén blokkot SOHA nem bontotta ki 343 cellára. Ha itt újra
+ * cellatérképen keresztül írnánk, pontosan azt a materializációt hoznánk
+ * vissza, amiért az egész compact ág létezik.
+ *
+ * A `version` a hívótól jön (a beolvasott blokk `version + 1`-e), ezért az
+ * ütközésvédelem ugyanaz marad, mint a másik úton.
+ */
+export function writeBlocks(
+  tx: FirebaseFirestore.Transaction,
+  layer: Layer,
+  blocks: ReadonlyMap<string, GridBlock>,
+  now: Date,
+  actorId: string,
+): void {
+  for (const [blockId, block] of blocks) {
+    /**
+     * TELJES FELÜLÍRÁS (`merge: false`) — ugyanaz a szabály, mint fent: a
+     * `uniform` mező elhagyása maga a törlés, amikor a blokk vegyessé válik.
+     */
+    const payload: Record<string, unknown> = {
+      layer: block.layer,
+      parent: block.parent,
+      cells: block.uniform ? {} : block.cells,
+      ownerCounts: block.ownerCounts,
+      version: block.version,
+      updatedAt: now,
+    };
+    if (block.uniform) payload.uniform = block.uniform;
+    tx.set(db.collection(COLLECTIONS.grid).doc(blockId), payload, { merge: false });
+  }
+
+  if (blocks.size > 0) {
+    tx.set(
+      db
+        .collection(COLLECTIONS.users)
+        .doc(actorId)
+        .collection(BLOCK_INDEX_COLLECTION)
+        .doc(layer),
+      { layer, blocks: FieldValue.arrayUnion(...blocks.keys()), updatedAt: now },
+      { merge: true },
+    );
+  }
+}
+
+/**
  * A felhasználó blokkjainak azonosítói.
  *
  * Visszaesés a RÉGI, blokkonkénti alkollekcióra: a migráció előtt mentett

@@ -41,16 +41,26 @@
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
+import { gridDisk } from 'h3-js';
 import { COLLECTIONS, db } from './firebase';
 import { badRequest, notFound } from './errors';
 import {
+  blockIdFor,
   blocksFor,
   gameDay,
   localDay,
   ownershipFromBlocks,
   readBlocks,
+  writeBlocks,
   writeOwnership,
 } from './grid';
+import { resolveCompactGroup } from './compactGroupClaim';
+import type { CompactBlockWork } from './compactBlockClaim';
+import {
+  materializeCompactFrontierSeeds,
+  planCompactFrontier,
+  resolveCompactFrontier,
+} from './compactFrontier';
 import {
   advanceStreak,
   boundsOf,
@@ -73,7 +83,13 @@ import { computeActivityGp } from '../../../src/game/scoring';
 import { levelFor } from '../../../src/game/levels';
 import { trimPrivateEnds, type PrivacySettings } from '../../../src/game/privacy';
 import { GAMEPLAY } from '../../../src/config/gameplay';
-import type { CellFate, CellId, ClaimResult, OwnershipMap } from '../../../src/types';
+import type {
+  CellFate,
+  CellId,
+  CellOwnership,
+  ClaimResult,
+  OwnershipMap,
+} from '../../../src/types';
 
 /**
  * Hány blokk kerüljön egy csoportba?
@@ -92,6 +108,41 @@ const BLOCKS_PER_GROUP = 400;
  * tiszta hibaüzenet jön — és ott lesz a helye a valódi sorbaállításnak.
  */
 const MAX_GROUPS = 40;
+
+/**
+ * Ennyi frontier-seedet őrzünk meg csoportonként.
+ *
+ * A seedek a `claimParts/group-N` dokumentumba kerülnek, hogy a frontier fázis
+ * újrafuttatható legyen — a Firestore dokumentumhatára viszont 1 MB. Egy
+ * res12 cellaazonosító ~16 karakter, tehát 20 000 seed ≈ 400 kB: bőven a
+ * korlát alatt, és nagyságrendekkel a valós határsáv fölött.
+ *
+ * ⚠️ Ha egy csoport ennél többet termel, a MARADÉK ELVÉSZ a cleanup számára —
+ * de a birtokviszony, a terület és a GP attól még pontos marad, mert azokat a
+ * `part` számai hordozzák. A cleanup topológiai kozmetika: a részleges
+ * elvégzése rosszabb a teljesnél, de nem hibás állapot. A `seedsTruncated`
+ * jelzi, ha ez megtörtént.
+ */
+const MAX_STOLEN_SEEDS_PER_GROUP = 20_000;
+
+/**
+ * A frontier-korrekció legfeljebb ennyi blokkot ír egyetlen tranzakcióban.
+ *
+ * A cleanup a lopott terület KERÜLETE mentén dolgozik, ami a területnek csak a
+ * gyöke — egy 81 000 cellás foglalásnál néhány tucat blokk. A korlát a szórt,
+ * sokfelé harapó lopás szélső esetét fogja meg, hogy a tranzakció ne szakadjon
+ * félbe a Firestore 500-as határán.
+ */
+const MAX_FRONTIER_BLOCKS = 400;
+
+/**
+ * A frontier-korrekció részdokumentumának azonosítója.
+ *
+ * SZÁNDÉKOSAN nem `group-N` alakú: a seedgyűjtés a csoportrészeken megy végig,
+ * és ki kell tudnia hagyni a saját eredményét — különben egy újrafuttatás a
+ * korábbi korrekciót seedként értelmezné.
+ */
+const FRONTIER_PART_ID = 'frontier';
 
 /** Egy csoport eredménye — ebből áll össze a végén a GP és az összesítő. */
 interface ClaimPart {
@@ -120,16 +171,30 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
   const partsRef = activityRef.collection('claimParts');
 
   /**
+   * A COMPACT ÚT — a hurok belseje parentekben, nem res12 cellákban.
+   *
+   * A `plan.compactWorks` a tervezéskor készül el, és res9 blokkonként mondja
+   * meg, mit kell tenni. Ha megvan, a csoportok NEM a cellalistából dolgoznak:
+   * a belső több tízezer cella soha nem materializálódik.
+   */
+  const works = plan.compactWorks;
+
+  /**
    * Cella → blokk, EGYSZER kiszámolva.
    *
    * Csoportonként el kell dönteni minden hurokcelláról, hogy ehhez a
    * csoporthoz tartozik-e. Ha ezt cellánként külön `blocksFor` hívással
    * kérdeznénk meg, az hurkonként és csoportonként újra lefutna — pont a nagy
    * aktivitásnál, amiért ez a kód egyáltalán létezik. Így egyetlen bejárás.
+   *
+   * A compact úton nincs rá szükség: ott a blokkonkénti munkát a `works` adja,
+   * és az `orphanScope` bejárása puszta pazarlás lenne.
    */
   const blockOfCell = new Map<CellId, string>();
-  for (const [blockId, cells] of blocksFor(layer, orphanScope)) {
-    for (const cell of cells) blockOfCell.set(cell, blockId);
+  if (!works) {
+    for (const [blockId, cells] of blocksFor(layer, orphanScope)) {
+      for (const cell of cells) blockOfCell.set(cell, blockId);
+    }
   }
 
   /* ── 1. FOGLALÁS ────────────────────────────────────────────────── */
@@ -242,8 +307,13 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
 
   if (opening.appliedToGameplay) {
     for (let index = 0; index < groups.length; index += 1) {
-      await applyGroup(plan, groups[index]!, index, partsRef);
+      if (works) await applyCompactGroup(works, groups[index]!, index, partsRef);
+      else await applyGroup(plan, groups[index]!, index, partsRef);
     }
+
+    /* ── 2.5 FRONTIER — csak a compact úton, és csak lopás után ────── */
+
+    if (works) await applyCompactFrontier(works, partsRef);
   }
 
   /* ── 3. KÖNYVZÁRÁS ──────────────────────────────────────────────── */
@@ -334,6 +404,190 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
         gainedM2: merged.gainedM2,
         cells: merged.updates.size,
         writtenCells: updates.size,
+        createdAt: now,
+      });
+    });
+  }
+
+  /* ── belső: egy COMPACT csoport alkalmazása ─────────────────────── */
+
+  /**
+   * Ugyanaz a checkpoint-szerződés, mint a normál csoportnál: determinisztikus
+   * részdokumentum, tehát egy csoport kétszer nem könyvelhet, és egy félbemaradt
+   * mentés folytatható.
+   *
+   * A KÜLÖNBSÉG a bemenetben van. Itt nem cellalistát bontunk blokkokra, hanem
+   * blokkonkénti, előre kiszámolt claim-munkát alkalmazunk — a homogén belső
+   * blokk O(1) átmenettel `uniform` marad, és soha nem esik szét 343 cellára.
+   */
+  async function applyCompactGroup(
+    compactWorks: ReadonlyMap<string, CompactBlockWork>,
+    groupBlocks: string[],
+    index: number,
+    parts: FirebaseFirestore.CollectionReference,
+  ): Promise<void> {
+    const partRef = parts.doc(`group-${index}`);
+
+    await db.runTransaction(async (tx) => {
+      const done = await tx.get(partRef);
+      if (done.exists) return;
+
+      const blocks = await readBlocks(tx, groupBlocks);
+      const resolved = resolveCompactGroup(layer, groupBlocks, blocks, compactWorks, uid, today);
+
+      if (resolved.nextBlocks.size > 0) writeBlocks(tx, layer, resolved.nextBlocks, now, uid);
+
+      tx.set(
+        activityRef,
+        { claimProgress: { done: index + 1, total: groups.length }, updatedAt: now },
+        { merge: true },
+      );
+
+      /**
+       * A FRONTIER-SEEDEK a részdokumentumba kerülnek, nem memóriába.
+       *
+       * A cleanup a csoportok UTÁN fut, egyetlen post-claim snapshotból. Ha a
+       * seedeket csak memóriában tartanánk, egy félbeszakadt és újraindított
+       * mentésnél a már kész csoportok seedjei elvesznének — a cleanup pedig
+       * némán hiányosan futna le.
+       */
+      const seeds = resolved.stolenFineCells;
+      tx.set(partRef, {
+        group: index,
+        counts: resolved.part.counts,
+        stolenFrom: resolved.part.stolenFrom,
+        breakthroughFrom: resolved.part.breakthroughFrom,
+        weightedClaimM2: resolved.part.weightedClaimM2,
+        gainedM2: resolved.part.gainedM2,
+        cells: resolved.part.cells,
+        writtenCells: resolved.nextBlocks.size,
+        stolenFineCells: seeds.slice(0, MAX_STOLEN_SEEDS_PER_GROUP),
+        wholeStolenBlocks: resolved.wholeStolenBlocks,
+        seedsTruncated: seeds.length > MAX_STOLEN_SEEDS_PER_GROUP,
+        createdAt: now,
+      });
+    });
+  }
+
+  /* ── belső: compact frontier-korrekció ──────────────────────────── */
+
+  /**
+   * A lopás után árván maradt peremcellák rendezése — EGY SNAPSHOTBÓL.
+   *
+   * ⚠️ NO CASCADE. Minden döntés ugyanabból a claim UTÁNI állapotból készül, és
+   * egyszerre kerül alkalmazásra. Ha a korrekciók egymásra hatnának, egy
+   * keskeny folyosót a pass visszafelé felfalna.
+   *
+   * ⚠️ A közvetlen claim celláit NEM írja felül — ezt a `resolveCompactFrontier`
+   * `isDirectlyClaimed` őre biztosítja a `works`-ből.
+   *
+   * A cella ahhoz kerül, akinek a legtöbb oldalával érintkezik. Ez LEHET egy
+   * harmadik játékos is: olyankor a rács korrigálódik, de a mentés szereplője
+   * nem kap érte sem területet, sem GP-t — ugyanaz a szabály, mint az
+   * egytranzakciós úton (`cleanupStolenFrontierOrphans`).
+   */
+  async function applyCompactFrontier(
+    compactWorks: ReadonlyMap<string, CompactBlockWork>,
+    parts: FirebaseFirestore.CollectionReference,
+  ): Promise<void> {
+    const existing = await parts.get();
+    const fineCells = new Set<CellId>();
+    const wholeBlocks = new Set<string>();
+    for (const doc of existing.docs) {
+      if (doc.id === FRONTIER_PART_ID) continue;
+      const data = doc.data() as { stolenFineCells?: unknown; wholeStolenBlocks?: unknown };
+      for (const cell of stringArray(data.stolenFineCells)) fineCells.add(cell as CellId);
+      for (const blockId of stringArray(data.wholeStolenBlocks)) wholeBlocks.add(blockId);
+    }
+    // Lopás nélkül nincs mit rendezni — a szabály kizárólag rablás után fut.
+    if (fineCells.size === 0 && wholeBlocks.size === 0) return;
+
+    const frontierPlan = planCompactFrontier(layer, compactWorks, { fineCells, wholeBlocks });
+    const seeds = materializeCompactFrontierSeeds(compactWorks, frontierPlan);
+    if (seeds.size === 0 || frontierPlan.readBlockIds.length === 0) return;
+
+    const partRef = parts.doc(FRONTIER_PART_ID);
+    const readBlockIds = new Set(frontierPlan.readBlockIds);
+
+    await db.runTransaction(async (tx) => {
+      const done = await tx.get(partRef);
+      if (done.exists) return;
+
+      const blocks = await readBlocks(tx, frontierPlan.readBlockIds);
+
+      /**
+       * A SCOPE a ténylegesen BEOLVASOTT cellák halmaza — nem a birtokolt
+       * celláké.
+       *
+       * A motor a gazdátlan cellát is döntési adatnak veszi, ha ismeri; a nem
+       * beolvasottnál viszont tartózkodnia kell. A kettőt csak így lehet
+       * megkülönböztetni, mert a gazdátlan cella az ownership Mapben
+       * SZÁNDÉKOSAN nem szerepel. Két gyűrű kell: a jelöltek a seedek egy
+       * gyűrűjéből jönnek, és mindegyik jelöltnek a saját szomszédait is
+       * ismerni kell.
+       */
+      const scope = new Set<CellId>();
+      for (const seed of seeds) {
+        for (const near of gridDisk(seed, 2)) {
+          const cell = near as CellId;
+          if (readBlockIds.has(blockIdFor(layer, cell))) scope.add(cell);
+        }
+      }
+
+      const ownership = ownershipFromBlocks(layer, scope, blocks, today);
+      const reassignments = resolveCompactFrontier(layer, ownership, scope, seeds, compactWorks);
+
+      const updates = new Map<CellId, CellOwnership>();
+      const counts: Record<CellFate, number> = { free: 0, reclaimed: 0, stolen: 0, breakthrough: 0 };
+      const stolenFrom: Record<string, number> = {};
+      const touchedBlocks = new Set<string>();
+      const defenseOneMultiplier = GAMEPLAY.DEFENSE_MULTIPLIER[0] ?? 1;
+      let weightedClaimM2 = 0;
+      let gainedM2 = 0;
+      let cells = 0;
+      let truncated = false;
+
+      for (const [cell, next] of reassignments) {
+        const previous = ownership.get(cell);
+        if (!previous || previous.owner === next.owner) continue;
+
+        const blockId = blockIdFor(layer, cell);
+        if (!touchedBlocks.has(blockId)) {
+          if (touchedBlocks.size >= MAX_FRONTIER_BLOCKS) {
+            truncated = true;
+            continue;
+          }
+          touchedBlocks.add(blockId);
+        }
+        updates.set(cell, next);
+
+        if (next.owner === uid) {
+          counts.stolen += 1;
+          stolenFrom[previous.owner] = (stolenFrom[previous.owner] ?? 0) + 1;
+          weightedClaimM2 += defenseOneMultiplier * GAMEPLAY.CELL_AREA_M2;
+          gainedM2 += GAMEPLAY.CELL_AREA_M2;
+          cells += 1;
+        }
+      }
+
+      if (updates.size > 0) writeOwnership(tx, layer, updates, blocks, now, uid);
+
+      /**
+       * A rész MINDIG megíródik, üres eredménynél is — ez a checkpoint. Az
+       * alakja megegyezik a csoportokéval, ezért a könyvzárás külön ág nélkül
+       * összegzi.
+       */
+      tx.set(partRef, {
+        group: FRONTIER_PART_ID,
+        counts,
+        stolenFrom,
+        breakthroughFrom: {},
+        weightedClaimM2,
+        gainedM2,
+        cells,
+        writtenCells: updates.size,
+        reassigned: updates.size,
+        truncated,
         createdAt: now,
       });
     });
@@ -556,6 +810,17 @@ function chunk<T>(list: readonly T[], size: number): T[][] {
   const groups: T[][] = [];
   for (let i = 0; i < list.length; i += size) groups.push(list.slice(i, i + size));
   return groups;
+}
+
+/**
+ * Védekező olvasás a tárolt részdokumentumból.
+ *
+ * A mező hiányozhat (normál úton írt rész), és sosem szabad megbízni abban,
+ * hogy a szerkezete ép — egy hibás elem miatt ne dőljön el a frontier fázis.
+ */
+function stringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is string => typeof item === 'string');
 }
 
 function emptyPart(now: Date) {

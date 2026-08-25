@@ -47,6 +47,28 @@ npm run build
 → built in 19.40s
 ```
 
+**A `#12` menet után (2026-08-25, mérve):**
+
+```text
+npm test
+Test Files  51 passed | 11 skipped (62)
+Tests       480 passed | 119 skipped (599)
+0 failing
+
+npm run build
+→ tsc --noEmit OK
+→ built in 19.78s   (egyetlen figyelmeztetés: a régi Mapbox chunk)
+
+npm run test:emulator
+→ 113 passed | 4 failed (117)
+→ a 4 bukó a missionEvaluate suite-ban van, és a main-en IS bukik
+```
+
+⚠️ **A `#12` MODELLJAVASLATA A KÖVETKEZŐ MENETRE:** ha az E2E LAB izolációja
+(10.B) vagy a hiányzó emulátoros esetek jönnek, **Sonnet** elég — meglévő minta
+kiterjesztése. Ha a stress/perf mérés (10.A/7) vagy a `missionEvaluate`
+cellaszám-anomáliája, akkor **Opus**: mért anomália hibakeresése.
+
 A build egyetlen figyelmeztetése a régóta ismert nagy Mapbox chunk:
 
 ```text
@@ -83,7 +105,7 @@ Az eredeti ötpontos tervhez képest:
 | 3. Optimalizálás | ◐ | nagy tételek kész; **P10 `phaseHistory` memória** még nyitott; P8 már core/claim architektúra kérdés |
 | 4. Gameplay finomhangolás | ◐ | sok szabály tesztekkel már lefedett, de a teljes regressziós mátrix még nincs végigfuttatva |
 | 5. LAB az éles UI-n | ◐ | az első **browser-sandbox E2E production UI** implementáció kész és buildel; még nem authoritative backend sandbox |
-| LAB szabályok production backendbe | ◐ | a compact production primitívek elkészültek és teszteltek, de **még nincsenek bekötve az activity route/Firestore commitba** |
+| LAB szabályok production backendbe | ✅ | **`#12`-ben bekötve** — route, compact commit-ág, frontier fázis, 7 emulátoros teszt. Lásd 5. szakasz. |
 
 ---
 
@@ -300,38 +322,81 @@ Továbbá a `commitChunkedActivity()` jelenlegi production útja még nem haszn�
 
 ---
 
-# 5. KÖVETKEZŐ PRODUCTION BACKEND FELADAT — EZ A LEGFONTOSABB
+# 5. PRODUCTION BACKEND — KÉSZ ÉS EMULÁTORON BIZONYÍTOTT (2026-08-25, `#12`)
 
-Claude innen folytassa először.
+Ez a szakasz korábban a legfontosabb NYITOTT feladatot írta le. Elkészült.
 
-## 5.1 Route bekötés
+## 5.0 ⚠️ AMI A TERVBŐL HIÁNYZOTT — a `planActivity` is compact-vak volt
 
-Az `activities.ts` döntését a `requiresChunkedClaim()` szabályra kell vinni.
+Az eredeti terv (5.1 + 5.2) önmagában **nem lett volna elég**, és ezt mérés
+mutatta ki, nem olvasás. Egy 5×5 km-es körön (81 023 res12 cella):
 
-Nem elég csak `fitsOneTransaction(plan)`.
+| | |
+|---|---|
+| `plan.candidateCells` (fal + határsáv) | 5 220 |
+| ebből számolt `plan.blockIds` | 98 |
+| a compact claim VALÓDI blokkszáma | 270 |
+| **a `blockIds`-ből hiányzó blokk** | **172 — a terület 64%-a** |
 
-A `plan` geometriai loopjai alapján compact esetben chunked kell akkor is, ha a compact reprezentáció miatt az explicit cellaszám kicsinek látszik.
+A `commitChunkedActivity` a `plan.blockIds`-ből csoportosít. Ha csak a
+route-predikátumot kötöttük volna be, a nagy kör belsejének kétharmada
+**némán elveszett volna** — hibaüzenet nélkül, mert a mentés sikeresnek
+látszott volna.
 
-## 5.2 `commitChunkedActivity()` compact ág
+Ezért a `planActivity` mostantól compact huroknál a
+`buildCompactClaimCredits` → `buildCompactBlockPlan` láncból veszi a
+blokklistát, és az `ActivityPlan` új mezője a `compactWorks`.
 
-Két eltérő chunked inputot kell kezelni:
+## 5.1 Route bekötés — KÉSZ
 
-```text
-NORMAL LARGE CLAIM
-→ explicit res12 candidate cells
-→ meglévő chunked logika
-
-COMPACT LARGE CLAIM
-→ buildCompactClaimCredits(...)
-→ compactBlockPlan
-→ res9 block work
-→ transaction groups
-→ compactBlockClaim
-→ compact frontier cleanup
-→ closeBooks
+```ts
+const committed = requiresChunkedClaim(plan.loops, fitsOneTransaction(plan))
+  ? await commitChunkedActivity(plan)
+  : await db.runTransaction((tx) => commitActivity(tx, plan));
 ```
 
-A normál chunked pathot feleslegesen ne refaktoráld szét.
+**Miért nem elég az írásszám?** Mérve: a fenti körnél `fitsOneTransaction()`
+`true`-t ad (270 blokk bőven az 500 alatt), tehát a gyors útra ment volna —
+ahol a `processActivityGeometry` őre compact hurokra szándékosan dob. Élesben
+ez 500-as hibát jelentett minden nagy körnél. A predikátum a GEOMETRIÁT nézi.
+
+## 5.2 `commitChunkedActivity()` compact ág — KÉSZ
+
+A háromfázisú szerkezet megmaradt, a 2. fázis ágazik el, és bejött egy 2.5:
+
+```text
+1.   FOGLALÁS      változatlan
+2.   CSOPORTOK     works ? applyCompactGroup : applyGroup
+2.5  FRONTIER      csak compact úton, csak lopás után
+3.   KÖNYVZÁRÁS    változatlan
+```
+
+A normál chunked path **nincs szétrefaktorálva** — a `blockOfCell` térkép
+felépítése is kimarad compact úton, mert ott puszta pazarlás lenne.
+
+Új primitív: `writeBlocks()` a `grid.ts`-ben. A `writeOwnership()` cellánkénti
+változásokat kap és maga bontja/tömöríti a blokkot; a compact ág viszont már
+KÉSZ blokkalakot ad át. Ha itt is cellatérképen mennénk át, pontosan azt a
+materializációt hoznánk vissza, amiért az egész compact ág létezik.
+
+## 5.2.1 A frontier fázis könyvelése
+
+A `claimParts/frontier` részdokumentum alakja MEGEGYEZIK a csoportokéval,
+ezért a `closeBooks` külön ág nélkül összegzi.
+
+⚠️ A frontier a cellát ahhoz adja, akinek a legtöbb oldalával érintkezik — ez
+**lehet harmadik játékos is**. Olyankor a rács korrigálódik, de a mentés
+szereplője nem kap érte sem területet, sem GP-t. Ez szándékosan ugyanaz a
+szabály, mint az egytranzakciós úton (`cleanupStolenFrontierOrphans`).
+
+Két új korlát, mindkettő szélsőséges eset ellen:
+- `MAX_STOLEN_SEEDS_PER_GROUP = 20 000` — a seedek a részdokumentumba kerülnek
+  (hogy egy újraindított mentés ne veszítse el őket), a Firestore-doksi viszont
+  1 MB. Túllépésnél `seedsTruncated: true`.
+- `MAX_FRONTIER_BLOCKS = 400` — a cleanup tranzakciójának írásszáma.
+
+Mindkettőnél a birtokviszony, a terület és a GP **pontos marad**; csak a
+topológiai kozmetika lehet részleges.
 
 ## 5.3 Checkpoint/idempotencia
 
@@ -364,30 +429,50 @@ A direkt claim cellákat nem írhatja felül.
 
 A boundary bulk blokkok child materializációja csak ott történjen, ahol a planner indokolja.
 
-## 5.5 Emulator E2E tesztek
+## 5.5 Emulator E2E tesztek — RÉSZBEN KÉSZ
 
-Mielőtt késznek mondod, minimum:
+Új fájl: `server/src/routes/activitiesCompact.emulator.test.ts` — **7 teszt,
+mind zöld** valódi Firestore ellen (fixture: 5 km oldalú, 20 km kerületű kör,
+30 km/h bringatempóval, hogy a Trust Score-nak is életszerű legyen).
 
-1. compact free capture;
-2. ugyanaz a full traversal másodszor → defense 2;
-3. defense 5-ig ismétlés;
-4. rival defense 1 steal;
-5. rival defense 2+ breakthrough;
-6. több credit ugyanarra a cellára egy activity alatt;
-7. compact steal + frontier orphan cleanup;
-8. partial res9 block mixed ownership;
-9. uniform blokk compact claim után uniform maradjon, ha lehet;
-10. retry/idempotencia;
-11. fast path vs chunked equivalencia kicsi, materializálható referenciaterületen;
-12. nagy stress route — ne legyen milliós res12 materializáció.
+Lefedve az eredeti listából:
 
-Utána:
+| # | Eset | Állapot |
+|---|---|---|
+| 1 | compact free capture | ✅ `claimedCells > 40 000`, a profil számlálója egyezik |
+| 2 | ugyanaz másodszor → reinforce | ✅ `areaGainedM2 === 0`, cellaszám változatlan |
+| 3 | defense 5-ig ismétlés | ✅ hat kör, a rácsban `maxDefense === MAX_DEFENSE` |
+| 4 | rival defense 1 steal | ✅ áldozat számlálója csökken, támadóé nő |
+| 5 | rival defense 2+ breakthrough | ✅ `areaGainedM2 === 0`, egyik cella sem cserél gazdát |
+| 9 | uniform marad uniform | ✅ `uniform > expanded`, tárolt cellák < blokkok×343×0,5 |
+| 10 | retry/idempotencia | ✅ a második kérés semmit nem tesz hozzá |
+| 12 | nincs milliós materializáció | ✅ ugyanaz a mérés, mint a 9-nél |
+
+**Még NINCS lefedve** (a következő menet dolga): 6. több credit ugyanarra a
+cellára egy activityn belül · 7. célzott frontier orphan cleanup ellenőrzés
+(a kód FUT a lopásos tesztben, de a viselkedése nincs külön állítva) ·
+8. partial res9 blokk vegyes tulajdonnal · 11. fast path vs chunked
+ekvivalencia.
+
+### ⚠️ Két buktató, amit MÉRVE találtunk a tesztíráskor
+
+1. **A GP-t ne kösd pontos képlethez nagy fixture-nél.** A kis fixture-ös
+   suite `FIRST_ACTIVITY_BADGE_GP = 70`-nel számol; egy 25 km²-es foglalás a
+   TERÜLETI jelvényküszöböket is átlépi, és **2 450 GP** bónuszt hozott. A
+   helyes teszt relatív: mihez képest nőtt.
+2. **A profil nyers m²-t tárol, az összesítő kerekít.** MÉRVE 0,07 m² eltérés
+   (`24 881 353,07` vs `24 881 353`) — `Math.round()` kell az összevetéshez.
+
+### Ellenőrző parancsok
 
 ```bash
 npm test
 npm run build
 npm run test:emulator
 ```
+
+⚠️ Git Bash-ből az emulátoros parancs elé kell a Java PATH exportja, különben
+félrevezető „Could not spawn java" hiba jön.
 
 ---
 
@@ -919,15 +1004,21 @@ A korábbi 177,6 km compact stress fixture célja:
 
 Ne kezdj random UI-polírozásba. A következő sorrend a legkisebb kockázatú:
 
-### A. Production compact backend befejezése
+### A. Production compact backend — ✅ KÉSZ (`#12`)
 
-1. `activities.ts` → `requiresChunkedClaim()` tényleges használata.
-2. `commitChunkedActivity()` compact ág a már elkészült block plan/group primitivekkel.
-3. compact frontier cleanup Firestore scope/transaction.
-4. closeBooks / summary / GP / victims / audit összevezetés.
-5. unit tesztek.
-6. emulator E2E.
-7. stress/perf mérés.
+1. ✅ `activities.ts` → `requiresChunkedClaim()` tényleges használata.
+2. ✅ `commitChunkedActivity()` compact ág a block plan/group primitívekkel.
+3. ✅ compact frontier cleanup Firestore scope/transaction.
+4. ✅ closeBooks / summary / GP / victims összevezetés (a `part` alak azonos).
+5. ✅ unit tesztek (`compactActivityPlan.test.ts`, 4 teszt).
+6. ◐ emulator E2E — 7 teszt zöld, 4 eset még hátra (lásd 5.5).
+7. ❌ **stress/perf mérés még nincs.** A 177,6 km-es fixture-rel meg kell nézni,
+   hogy a `MAX_GROUPS = 40` és a Cloud Run időkorlát tartja-e. Az 5 km-es kör
+   270 blokk = 1 csoport; a Balaton-kör nagyságrendileg 6 500 blokk = 17 csoport.
+
+**Ami a bekötés közben KIDERÜLT és nem volt a tervben:** a `planActivity` maga
+is compact-vak volt, a blokklistából a terület 64%-a hiányzott. Részletek az
+5.0 szakaszban — érdemes elolvasni, mielőtt bárki hozzányúl ehhez a lánchoz.
 
 ### B. E2E LAB izoláció lezárása
 
@@ -1049,6 +1140,11 @@ A legutóbbi ellenőrzött build/test **ezeken a commitokon** futott zöldre.
 
 ---
 
-# 14. EGYMONDATOS ÁLLAPOT
+# 14. EGYMONDATOS ÁLLAPOT (frissítve: `#12`, 2026-08-25)
 
-**A LAB szabályainak production-kompatibilis compact blokkprimitívjei elkészültek és unit teszteltek, de még nincsenek bekötve az authoritative `/api/activities` chunked Firestore útjába; közben elkészült egy buildelő, admin-gated E2E LAB mód, amely szimulált GPS-szel a valódi production Recorder + TrackingScreen + Dock komponenseket futtatja, de a world/commit még browser-side sandbox, ezért a következő fő feladat a production compact backend befejezése, majd az E2E sandbox átkötése ugyanarra az authoritative backend pipeline-ra.**
+**A compact foglalás mostantól végig a production `/api/activities` útján megy: a `planActivity` a hurok belsejét is beleveszi a blokktervbe (enélkül a terület 64%-a némán elveszett volna), a `requiresChunkedClaim()` a geometria alapján a darabolt útra küldi, a `commitChunkedActivity` compact ága res9 blokkonként O(1) átmenettel könyvel, és egy külön frontier fázis rendezi a lopás utáni árva peremet — hét emulátoros teszt bizonyítja, hogy egy 25 km²-es kör teljes belseje könyvelődik anélkül, hogy a homogén blokkok cellánként materializálódnának; a következő fő feladat az E2E LAB izolációjának lezárása, majd a browser-sandbox átkötése erre az immár kész, authoritative backend pipeline-ra.**
+
+⚠️ **Az emulátoros kapu NEM teljesen zöld, és ez NEM ennek a menetnek a
+műve:** a `server/src/lib/missionEvaluate.emulator.test.ts` négy tesztje a
+`main`-en is bukik (`git stash`-sel ellenőrizve), egy cellányi eltéréssel a
+küldetés-előrejelzés cellaszámában. Külön ügy, külön menet.

@@ -741,46 +741,57 @@ A szerver a kliens previewját nem tekinti authoritative-nak, raw trace-ből új
 
 ---
 
-## 12. KRITIKUS NYITOTT FELADAT: PRODUCTION COMPACT BACKEND
+## 12. PRODUCTION COMPACT BACKEND — BEKÖTVE (2026-08-25)
 
-**EZ MÉG NINCS KÉSZ.**
+**A `/api/activities` compact útja elkészült és emulátoron bizonyított.**
+A korábbi „még nincs kész" állapot ITT ÉRT VÉGET; a részletek a
+`HANDOFF_CLAUDE_2026-08-25_LAB_E2E.md` 5. szakaszában frissítve.
 
-A LAB már tud:
-
-- nagy compact loopot detektálni
-- compact interiorral számolni
-- exact res12-equivalent statokat adni
-- Mapboxon tömören renderelni
-- multi-player compact ownershipet / lopást kezelni
-- részleges compact parentet finom override-dá bontani
-
-A production/chunked backend azonban még nem lett teljesen átállítva hierarchikus compact claimre.
-
-Elsődleges érintett fájlok:
+Érintett fájlok:
 
 ```text
-server/src/lib/activityChunked.ts
-server/src/lib/activityCommit.ts
-server/src/lib/grid.ts
-server/src/lib/gridMath.ts
-server/src/routes/activities.ts
+server/src/lib/activityCommit.ts    planActivity → compactWorks + valódi blokklista
+server/src/lib/activityChunked.ts   compact csoport-ág + frontier fázis
+server/src/lib/grid.ts              writeBlocks — kész blokkalakok kiírása
+server/src/routes/activities.ts     requiresChunkedClaim() bekötve
 ```
 
-A backend tárolási modell már eleve blokkokban dolgozik és tud homogén/uniform állapotokat tömöríteni, de a teljes nagy-hurok pipeline-ban **nem szabad a compact interior parenteket több millió res12 stringgé visszabontani**.
+### ⚠️ A csapda, amit a bekötés közben MÉRTÜNK
 
-A production implementációnak block/bulk módon meg kell őriznie:
+A terv eredetileg csak a route-predikátum bekötését és a commit-ág megírását
+irányozta elő. Mérés (5×5 km-es kör, 81 023 res12 cella) viszont kimutatta,
+hogy a `planActivity` maga is compact-vak volt:
 
-- free
-- reclaimed
-- stolen
-- breakthrough
-- defense 1–5
-- traversal credit
-- frontier orphan cleanup
-- exact res12-equivalent area/GP
-- partial-parent splitet csak ott, ahol tényleg szükséges
+| Amit a terv adott | Érték |
+|---|---|
+| `candidateCells` (fal + határsáv) | 5 220 |
+| ebből számolt `blockIds` | 98 |
+| a claim VALÓDI blokkszáma | 270 |
+| **hiányzó blokk** | **172 (64%)** |
 
-A core-ban szándékosan volt/van guard az unsafe compact ownership feldolgozás ellen. **Ne töröld csak azért, hogy a hiba eltűnjön.** Előbb a teljes blokkos backend útvonalat kell korrektül implementálni.
+A hiányzó blokkok maga a hurok belseje. A puszta route-átirányítás tehát a
+terület kétharmadát némán elvesztette volna, mert a darabolt út is ebből a
+listából csoportosít. Ezért a `planActivity` mostantól compact huroknál a
+`buildCompactClaimCredits` → `buildCompactBlockPlan` láncból veszi a
+blokklistát, és a `compactWorks` a terv része.
+
+**Ugyanez a mérés mutatta meg, miért nem elég a `fitsOneTransaction()`:**
+98 blokknál (sőt 270-nél is) az írásszám bőven a Firestore-korlát alatt van,
+tehát a döntés a GYORS útra esett volna — ahol a shared motor őre compact
+hurokra szándékosan dob. Élesben ez 500-as hibát jelentett minden nagy körnél.
+
+### Amit a core guardról tudni kell
+
+A `processActivityGeometry` őre (`Compact hurok ownership-feldolgozása csak a
+blokkos backend útvonalon engedett`) **a helyén maradt, és maradjon is.** Nem
+azért tűnt el a hiba, mert kivettük, hanem mert a compact aktivitás már nem jut
+el odáig: a `requiresChunkedClaim()` a geometriát nézi, nem csak a méretet.
+
+### Ami block/bulk módon megőrződik
+
+free · reclaimed · stolen · breakthrough · defense 1–5 · traversal credit ·
+frontier orphan cleanup · exact res12-egyenértékű terület és GP · partial-parent
+split csak ott, ahol tényleg szükséges.
 
 ---
 
