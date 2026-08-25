@@ -6,18 +6,9 @@ import { ModifiersScreen } from './ModifiersScreen';
 import { ActivityAuditScreen } from './ActivityAuditScreen';
 import { ReplayScreen } from './ReplayScreen';
 import { SimulationLabScreen } from './SimulationLabScreen';
+import { LabE2eLauncherScreen } from './LabE2eLauncherScreen';
+import { LabE2eTrackingScreen } from './LabE2eTrackingScreen';
 
-/**
- * Az admin terület egyetlen belépési pontja.
- *
- * Alapértelmezett export, mert az `App.tsx` `React.lazy()`-vel tölti be: így az
- * egész terület — a szerkesztők, az audit és a visszajátszó — külön
- * JS-darabban van, amit a játékos böngészője soha nem kér le.
- *
- * A `docs/06` szerinti forma-döntés (lusta `/admin` terület külön alkalmazás
- * helyett) ezen a fájlon áll vagy bukik: ha ide bekerül egy statikus import a
- * játékos-képernyőkből, a szétválasztás megszűnik, és a chunk visszaolvad.
- */
 export default function AdminArea() {
   return (
     <Routes>
@@ -28,6 +19,8 @@ export default function AdminArea() {
         <Route path="aktivitasok" element={<ActivityAuditScreen />} />
         <Route path="visszajatszas" element={<ReplayScreen />} />
         <Route path="lab" element={<SimulationLabScreen />} />
+        <Route path="lab/e2e" element={<LabE2eLauncherScreen />} />
+        <Route path="lab/e2e/:sessionId" element={<LabE2eTrackingScreen />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
     </Routes>
