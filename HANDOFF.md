@@ -849,6 +849,33 @@ Per-activity vizualizációnál a történelmi `free/stolen` cell-fate tárolás
 
 ## 16. TELEPÍTÉS
 
+### Egy paranccsal: `scripts/deploy.sh`
+
+```bash
+~/grundo/scripts/deploy.sh              # backend, majd frontend
+~/grundo/scripts/deploy.sh backend
+~/grundo/scripts/deploy.sh frontend
+~/grundo/scripts/deploy.sh szabalyok
+~/grundo/scripts/deploy.sh indexek
+```
+
+Amit elintéz helyetted:
+
+- beállítja a projektet (lásd a lenti csapdát),
+- `git pull --ff-only`, és kiírja a HEAD commitot, hogy lásd, mit telepítesz,
+- a Mapbox-tokent a `.env.local` `VITE_MAPBOX_TOKEN` értékéből veszi — ugyanaz
+  az érték, amit a backend `MAPBOX_TOKEN`-ként kap (`server/src/lib/directions.ts`
+  fejléce szerint ez szándékosan NEM titok). Felülírható `MAPBOX_TOKEN`
+  környezeti változóval. A tokent sosem írja ki, csak a forrását.
+
+⚠️ **A sorrend a „mindkettő" esetben szándékos: előbb backend, utána
+frontend.** Így egy új végpontot hívó felület sosem ér oda a végpont elé.
+Fordítva a felhasználó 404-et kapna, amíg a backend build tart.
+
+⚠️ A `szabalyok` és az `indexek` NEM része a „mindkettő"-nek — külön kell
+kérni, ha tényleg változott a `firestore.rules`, a `storage.rules` vagy a
+`firestore.indexes.json`.
+
 ### ⚠️ Cloud Shell: a projektbeállítás elveszhet
 
 Visszatérő csapda (2026-08-25-én is megfogott). A build ilyenkor el sem indul:
