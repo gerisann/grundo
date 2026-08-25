@@ -43,6 +43,41 @@ service cloud.firestore {
       return signedIn() && request.auth.token.role in ['owner', 'admin', 'moderator'];
     }
 
+    /**
+     * A választható cellaszínek — a `src/lib/cellColors.ts` tükre.
+     *
+     * ⚠️ KÉT HELYEN ÉL UGYANAZ A LISTA, mert a szabálynyelv nem tud modult
+     * importálni. Ha a paletta bővül, MINDKETTŐT frissíteni kell — különben az
+     * új szín a felületen kiválasztható, de az írás némán elhasal.
+     */
+    function freeCellColors() {
+      return ['purple', 'violet', 'indigo', 'blue', 'sky', 'cyan', 'teal', 'green',
+              'lime', 'yellow', 'amber', 'orange', 'red', 'rose', 'pink', 'slate'];
+    }
+
+    function proCellColors() {
+      return ['electric-purple', 'electric-blue', 'aqua', 'acid-green',
+              'gold', 'coral', 'hot-pink', 'ice'];
+    }
+
+    /**
+     * A PRÉMIUM SZÍN ZÁRJA — ezt a szerver kényszeríti ki, nem a felület.
+     *
+     * A felület elrejti a lakat mögötti színeket, de az csak kényelem: a
+     * Firestore-t bárki hívhatja közvetlenül. A `pro.active` mező
+     * szerveroldali (a felhasználó nem írhatja, lásd a mezőlistát fent),
+     * ezért megbízható forrás a döntéshez.
+     *
+     * Ha a `cellColor` nem is változik ebben az írásban, a szabály nem szól
+     * bele — így a többi profilmező szerkesztése érintetlen marad.
+     */
+    function cellColorAllowed() {
+      return !('cellColor' in request.resource.data.diff(resource.data).affectedKeys())
+        || request.resource.data.cellColor in freeCellColors()
+        || (request.resource.data.cellColor in proCellColors()
+            && resource.data.get('pro', {}).get('active', false) == true);
+    }
+
     // ── users ─────────────────────────────────────────────────────────────
 
     match /users/{uid} {
@@ -60,8 +95,8 @@ service cloud.firestore {
       // pro, status, username) szerveroldali.
       allow update: if isSelf(uid) && onlyChanges([
         'displayName', 'photoURL', 'bio', 'city', 'countryCode',
-        'units', 'body', 'timezone', 'updatedAt'
-      ]);
+        'units', 'body', 'timezone', 'cellColor', 'updatedAt'
+      ]) && cellColorAllowed();
 
       allow create, delete: if false;  // regisztráció és törlés szerveroldalról
 

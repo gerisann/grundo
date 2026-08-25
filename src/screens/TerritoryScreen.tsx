@@ -280,6 +280,8 @@ export function TerritoryScreen() {
                     ]
                   : []
               }
+              /* Mindenki a saját választott színében látszik a térképen. */
+              ownerColors={tiles?.ownerColors}
               position={position}
               follow={false}
               /* Nyitott ranglistánál a pozíció-gomb a lista elé lógna. */

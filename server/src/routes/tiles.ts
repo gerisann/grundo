@@ -9,6 +9,7 @@ import {
   loadUserBlockIds,
   type GridBlock,
 } from '../lib/grid';
+import { isCellColor } from '../../../src/lib/cellColors';
 import { cellsToM2 } from '../../../src/game/cells';
 import { levelFor } from '../../../src/game/levels';
 import { GAMEPLAY } from '../../../src/config/gameplay';
@@ -208,7 +209,10 @@ tilesRouter.get('/', async (req, res, next) => {
       // cellák SZABADOK — a szabad cella nem tárolódik sehol, az a hiánya.
       blocks: blockIds,
       cells,
-      owners: await ownerNames(ownerIds),
+      ...(await ownerProfiles(ownerIds).then(({ names, colors }) => ({
+        owners: names,
+        ownerColors: colors,
+      }))),
       // A háló csak a nézet közepét fedi le — a széleken NEM tudjuk, mi van.
       partial,
     });
@@ -353,15 +357,33 @@ tilesRouter.get('/leaderboard', async (req, res, next) => {
   }
 });
 
-/** A tulajdonosok neve — a térképen látni kell, kié a folt. */
-async function ownerNames(ids: Set<string>): Promise<Record<string, string>> {
+/**
+ * A tulajdonosok neve ÉS választott cellaszíne — a térképen látni kell, kié a
+ * folt, és milyen színben.
+ *
+ * A kettő EGY olvasásból jön: a színért külön körbefordulni pazarlás lenne,
+ * hiszen ugyanazt a felhasználó-dokumentumot kell megnyitni hozzá.
+ *
+ * ⚠️ A színek KÜLÖN mezőként mennek ki, nem az `owners` átalakításával. A
+ * backend külön települ, tehát a válaszának visszafelé kompatibilisnek kell
+ * lennie a már kint lévő webes és iOS kliensekkel — azok az `owners`-t
+ * `Record<string, string>` alakban várják.
+ */
+async function ownerProfiles(
+  ids: Set<string>,
+): Promise<{ names: Record<string, string>; colors: Record<string, string> }> {
   const list = [...ids].slice(0, 50);
-  if (list.length === 0) return {};
+  if (list.length === 0) return { names: {}, colors: {} };
   const refs = list.map((id) => db.collection(COLLECTIONS.users).doc(id));
   const names: Record<string, string> = {};
+  const colors: Record<string, string> = {};
   for (const snapshot of await db.getAll(...refs)) {
     if (!snapshot.exists) continue;
-    names[snapshot.id] = (snapshot.data() as { username?: string }).username ?? 'ismeretlen';
+    const data = snapshot.data() as { username?: string; cellColor?: unknown };
+    names[snapshot.id] = data.username ?? 'ismeretlen';
+    // Érvénytelen vagy hiányzó érték esetén nem küldünk semmit: a kliens
+    // ilyenkor az alapértelmezett színt használja.
+    if (isCellColor(data.cellColor)) colors[snapshot.id] = data.cellColor;
   }
-  return names;
+  return { names, colors };
 }

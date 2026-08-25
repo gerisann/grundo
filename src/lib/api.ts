@@ -157,6 +157,14 @@ export interface Profile {
     distanceKm: { run: number; walk: number; ride: number };
   };
   pro: { active: boolean };
+  /**
+   * A választott cellaszín KULCSA — lásd `src/lib/cellColors.ts`.
+   *
+   * Hiányozhat: aki még nem választott, az alapértelmezett színt kapja. A
+   * hexkód szándékosan NEM tárolódik, hogy a paletta finomhangolása ne
+   * igényeljen adatmigrációt.
+   */
+  cellColor?: string;
   privacy: {
     hideStart: boolean;
     startRadiusM: 50 | 100 | 200;
@@ -357,6 +365,13 @@ export interface TilesResult {
   /** A nézetet lefedő res 9 blokkok — ezekből számoljuk a SZABAD cellákat. */
   blocks?: string[];
   owners: Record<string, string>;
+  /**
+   * uid → választott cellaszín KULCSA (nem hexkód), ha a játékos állított be
+   * ilyet. A hiányzó bejegyzés nem hiba: az alapértelmezett színt jelenti.
+   *
+   * Régebbi backend-verzió egyáltalán nem küldi — ezért opcionális.
+   */
+  ownerColors?: Record<string, string>;
   /**
    * A háló csak a nézet KÖZEPÉT fedi le — a széleken nem tudjuk, mi van.
    * Ilyenkor a felület ne állítsa, hogy ott szabad a terület.

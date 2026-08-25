@@ -8,6 +8,7 @@ import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import { smoothBearing, trackBearing } from '@/lib/heading';
 import { cellsToAreaPolygons } from '@/lib/hexAreas';
+import { cellColorHex } from '@/lib/cellColors';
 import type { HexRole } from './HexMap';
 import {
   RIVAL_MAX_COLOR,
@@ -46,6 +47,13 @@ export interface MapViewProps {
    */
   ghostTrack?: readonly { lat: number; lng: number }[];
   layers?: { role: HexRole; cells: Iterable<CellId | MapHexCell> }[];
+  /**
+   * uid → választott cellaszín kulcsa, a `/api/tiles` válaszából.
+   *
+   * Hiányzó bejegyzésnél a szerep-alapú alapszín marad, tehát az előnézeti és
+   * LAB-nézetek megadás nélkül is helyesen működnek.
+   */
+  ownerColors?: Record<string, string>;
   /** A jelenlegi pozíció. Külön a nyomvonaltól: szünet alatt is mutatjuk. */
   position?: { lat: number; lng: number } | null;
   /** Kövesse-e a térkép a pozíciót. */
@@ -167,6 +175,7 @@ export function MapView({
   track,
   ghostTrack,
   layers,
+  ownerColors,
   position,
   follow = true,
   hideRecenter = false,
@@ -193,10 +202,12 @@ export function MapView({
   const trackRef = useRef(track);
   const ghostTrackRef = useRef(ghostTrack);
   const layersRef = useRef(layers);
+  const ownerColorsRef = useRef(ownerColors);
   const fitTrackRef = useRef(fitTrack);
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
   layersRef.current = layers;
+  ownerColorsRef.current = ownerColors;
   fitTrackRef.current = fitTrack;
   /** Refben, hogy a térkép ne épüljön újra, ha a hívó új függvényt ad. */
   const viewportRef = useRef(onViewport);
@@ -265,7 +276,7 @@ export function MapView({
     instance.on('load', () => {
       ready.current = true;
       addLayers(instance);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current);
       fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
       report(instance);
     });
@@ -377,7 +388,7 @@ export function MapView({
      */
     const restore = () => {
       addLayers(instance);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current);
     };
     instance.once('style.load', restore);
     instance.setStyle(mapStyleFor(theme));
@@ -412,9 +423,11 @@ export function MapView({
     if (instance === null || !ready.current) return;
     // Ez a legdrágább frissítés: több ezer H3-poligont építhet. Külön
     // hatásban van, hogy egy új GPS-pont ne építse újra az összes cellát.
-    syncAreaData(instance, layers);
+    syncAreaData(instance, layers, ownerColors);
     syncCellData(instance, layers);
-  }, [layers]);
+    // A színtérkép is függőség: ha valaki színt vált, a folt átszíneződik
+    // anélkül, hogy a cellák változnának.
+  }, [layers, ownerColors]);
 
   /* ── Pozíció és követés ────────────────────────────────────────── */
 
@@ -661,9 +674,25 @@ function addLayers(instance: mapboxgl.Map): void {
       layout: { 'line-join': 'round' },
       paint: {
         'line-color': ['get', 'color'],
-        // A birtok KÜLSŐ határa hangsúlyos: ez rajzolja ki a terület alakját
-        // akkor is, amikor egyetlen cellahatár sem látszik.
-        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.2, 15, 2, 18, 2.6],
+        /**
+         * A birtok KÜLSŐ határa hangsúlyos: ez rajzolja ki a terület alakját
+         * akkor is, amikor egyetlen cellahatár sem látszik.
+         *
+         * A SAJÁT terület vastagabb vonalat kap. Amióta mindenki a saját
+         * színében látszik, a szín önmagában nem mondja meg, mi az enyém —
+         * két játékos választhat hasonló árnyalatot.
+         */
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          10,
+          ['case', ['get', 'own'], 2.2, 1.2],
+          15,
+          ['case', ['get', 'own'], 3.4, 2],
+          18,
+          ['case', ['get', 'own'], 4.2, 2.6],
+        ],
         'line-opacity': 0.9,
       },
     });
@@ -782,8 +811,9 @@ function syncData(
   track: MapViewProps['track'],
   ghostTrack: MapViewProps['ghostTrack'],
   layers: MapViewProps['layers'],
+  ownerColors: MapViewProps['ownerColors'],
 ): void {
-  syncAreaData(instance, layers);
+  syncAreaData(instance, layers, ownerColors);
   syncCellData(instance, layers);
   syncTrackData(instance, track);
   syncGhostData(instance, ghostTrack);
@@ -799,49 +829,82 @@ function syncData(
  * A szabad háttérháló (`free`) SZÁNDÉKOSAN kimarad: az nem birtok, hanem
  * tájékozódási rács, és csak közelről látszik.
  *
- * ⚠️ A CSOPORTKULCS MA NEM TARTALMAZZA A TULAJDONOST. Ez most helyes, mert
- * minden rivális ugyanazt a színt kapja — két szomszédos rivális területe
- * amúgy is megkülönböztethetetlen. Amint a felhasználók SAJÁT SZÍNT
- * választhatnak, a kulcsba fel kell venni az `owner`-t is, különben két
- * különböző játékos területe egyetlen, rossz színű poligonná olvad össze.
+ * ⚠️ A CSOPORTKULCS TARTALMAZZA A TULAJDONOST IS. Enélkül két szomszédos
+ * játékos területe egyetlen poligonná olvadna, és az egyikük színét kapná —
+ * amióta mindenki saját színt választhat, ez látható hiba lenne.
  */
-function syncAreaData(instance: mapboxgl.Map, layers: MapViewProps['layers']): void {
+function syncAreaData(
+  instance: mapboxgl.Map,
+  layers: MapViewProps['layers'],
+  ownerColors: MapViewProps['ownerColors'],
+): void {
   const areaSource = instance.getSource(AREA_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (!areaSource) return;
 
-  const groups = new Map<string, { role: HexRole; defense: number; cells: CellId[] }>();
+  const groups = new Map<
+    string,
+    { role: HexRole; defense: number; owner: string; cells: CellId[] }
+  >();
   for (const layer of layers ?? []) {
     if (!isTerritoryRole(layer.role)) continue;
     for (const entry of layer.cells) {
       const cell = typeof entry === 'string' ? entry : entry.cell;
       const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
-      const key = `${layer.role}:${defense}`;
+      const owner = typeof entry === 'string' ? '' : entry.owner ?? '';
+      const key = `${layer.role}:${defense}:${owner}`;
       const existing = groups.get(key);
       if (existing) existing.cells.push(cell);
-      else groups.set(key, { role: layer.role, defense, cells: [cell] });
+      else groups.set(key, { role: layer.role, defense, owner, cells: [cell] });
     }
   }
 
   const features = [];
-  for (const { role, defense, cells } of groups.values()) {
+  for (const { role, defense, owner, cells } of groups.values()) {
     const coordinates = cellsToAreaPolygons(cells);
     if (coordinates.length === 0) continue;
-    const color = role === 'rival' && defense === 5
-      ? cssColor(RIVAL_MAX_COLOR)
-      : cssColor(ROLE_COLOR[role]);
     features.push({
       type: 'Feature' as const,
       properties: {
-        color,
+        color: areaColor(role, defense, owner, ownerColors),
         // A védelmi szint ITT lesz láthatóvá: minél erősebb a mező, annál
         // tömörebb a kitöltés. Így a szint távolról is leolvasható, anélkül
         // hogy egyetlen cellahatárt ki kellene rajzolni.
         opacity: cssNumber(`--defense-alpha-${defense}`, 0.2),
+        /**
+         * A SAJÁT terület vastagabb körvonalat kap.
+         *
+         * Amióta mindenki a saját színében látszik, a szín önmagában nem
+         * mondja meg, mi az enyém — két játékos választhat hasonló árnyalatot.
+         * A vastagabb határ ettől független jel.
+         */
+        own: role === 'interior' || role === 'stolen',
       },
       geometry: { type: 'MultiPolygon' as const, coordinates },
     });
   }
   areaSource.setData({ type: 'FeatureCollection', features });
+}
+
+/**
+ * Egy területfolt színe.
+ *
+ * A tulajdonos VÁLASZTOTT színe nyer, ha ismerjük. Ez a lényege a
+ * színválasztásnak: a saját szín mindenki térképén ugyanaz.
+ *
+ * Ha nem ismerjük a tulajdonost (LAB, előnézet, régi backend válasza), a
+ * korábbi szerep-alapú színezésre esünk vissza — így a funkció bevezetése
+ * egyetlen meglévő nézetet sem tör el.
+ */
+function areaColor(
+  role: HexRole,
+  defense: number,
+  owner: string,
+  ownerColors: MapViewProps['ownerColors'],
+): string {
+  const chosen = owner ? ownerColors?.[owner] : undefined;
+  if (chosen !== undefined) return cellColorHex(chosen);
+  if (role === 'rival' && defense === 5) return cssColor(RIVAL_MAX_COLOR);
+  return cssColor(ROLE_COLOR[role]);
 }
 
 function syncCellData(
