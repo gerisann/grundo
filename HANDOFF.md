@@ -13,8 +13,8 @@
 1. ✅ **A teljes új Simulation LAB kód átolvasása** — a kódtérkép a 6. szakaszban.
 2. ✅ **Funkcionális és UI hibák javítása** — mind a tíz felderített hiba javítva
    és élőben visszaigazolva (lásd 1. szakasz).
-3. ☐ **Optimalizálás** — ne legyen fölösleges számítás, és ne fagyjon/lassuljon
-   nagy területnél vagy sok playeres, több phase-es futásnál.
+3. ◐ **Optimalizálás** — a render- és térképoldal kész, a phase-számítás
+   darabolva. Ami nyitva maradt, az 14. szakasz 0. pontjában van.
 4. ☐ **A területszerzés, hurok, szintlépés és rablás logikájának finomhangolása.**
 5. ☐ **A LAB futás ráültetése az éles felületre**: éles frontenden indított
    aktivitás mellé ugyanazzal a userrel LAB phase indul, a LAB adatai mennek az
@@ -63,26 +63,57 @@ Tíz hiba, mindegyik élőben, helyi emulátoros környezetben visszaigazolva:
 | P6 | `loopCollection`-nek nem volt feature-plafonja, pedig a `worldCollection`-nek és `gridCollection`-nek van. Most `MAX_LOOP_FEATURES`. | `ScenarioSimulationMap.tsx` |
 | — | `src/admin/SimulationMap.tsx` (602 sor) **holt kód volt**, sehonnan nem importálva. Törölve. | — |
 
-### A mérés (ne hidd el mérés nélkül, de ezt megmértük)
+### A mérések
 
-Helyi emulátoros LAB, 3 player × 1400 m-es négyzet (5,6 km, 908 GPS minta
-fejenként, átfedő területek), 100× lejátszás, `PerformanceObserver('longtask')`.
-A javítások előtti számhoz ugyanez a kód futott, csak a `nextPaint` kilépési
-úttal — különben rejtett lapon el sem indult volna.
+Mindegyik ugyanazon a terhelésen: helyi emulátoros LAB, 3 player × 1400 m-es
+négyzet (5,6 km, 908 GPS minta fejenként, átfedő területek),
+`PerformanceObserver('longtask')`. A világ végeredménye **minden** mérésben
+804 / 3766 / 6485 cella volt — a javítások viselkedéstartók.
 
-| | előtte | utána (2 futás) |
+**1. A térkép- és render-javítások (P1–P5), 100× lejátszás:**
+
+| | előtte | utána |
 |---|---|---|
 | teljes lefutás | 13 832 ms | 11 446 / 11 186 ms |
-| **total blocking time** | **4 211 ms** | **1 512 / 1 299 ms** |
+| total blocking time | 4 211 ms | 1 512 / 1 299 ms |
 | leghosszabb blokkoló task | 2 139 ms | 1 096 / 840 ms |
-| végeredmény (P1/P2/P3 cella) | 804 / 3766 / 6485 | 804 / 3766 / 6485 |
 
-A végeredmény bitre azonos → a javítások viselkedéstartók. A blokkolás nagyjából
-**harmadára** esett, és ez a világ még csak ~11 000 cellás; a `worldCollection`
-plafonja 60 000 feature, tehát nagyobb világon az arány nő.
+⚠️ Ez **egy-egy futás**, nem medián. A szórás ezen a terhelésen nagy (lásd
+lent), tehát az irány megbízható, a pontos szám nem. Ha újra kell mérni, az
+alábbi ismételt protokollt használd.
 
-⚠️ A maradék ~1,1 s blokkolás **nem** a lejátszás, hanem a phase indításakor
-futó szinkron `runLabScenario`. Ez a 3. pont (optimalizálás) következő célpontja.
+**2. A darabolt phase-számítás, 5-5 futás mediánja** (MAX lejátszás, minden
+futás előtt „World nullázása", tehát üres világból):
+
+| | előtte | utána |
+|---|---|---|
+| engine előkészítés | 1 670 ms | 1 760 ms |
+| **leghosszabb blokkoló task** | **1 671 ms** | **525 ms** |
+| total blocking time | 1 956 ms | 795 ms |
+
+A teljes számítás ~5%-kal lassabb — ennyibe kerül a megszakítgatás —, cserébe a
+felület a leghosszabb blokk alatt is reagál, és a haladásjelző mozog.
+
+### ❌ Amit kipróbáltunk és NEM vált be: Web Worker
+
+Kézenfekvőnek tűnt a teljes scenario-számítást worker szálra tenni (a
+`src/game` platformfüggetlen, tehát menne). Meg is épült, működött, a
+haladásjelző is élt — **de mérve rosszabb lett**, ezért vissza lett véve:
+
+| | fő szál, darabolva | worker szálon |
+|---|---|---|
+| engine előkészítés | ~1,2–1,8 s | 1,74–2,04 s |
+| leghosszabb blokkoló task a FŐ szálon | 525 ms | 456–609 ms |
+
+**Miért:** az eredmény (`LabScenarioOutcome`) minden run teljes GPS-mintasorát,
+recorder-pontját és claim `Map`/`Set`-jeit tartalmazza. Ennek a structured
+clone-ja a fő szálon nagyjából annyiba kerül, mint amennyi számítást
+elvittünk — plusz jön hozzá a szerializálás a worker oldalán. **Ne próbáld
+újra anélkül, hogy előbb a visszaadott adatmennyiséget csökkentenéd.**
+
+⚠️ A maradék blokkolás forrása futásonként egyetlen szelet: a
+`processLabActivity` claim-számítása. Az már nem darabolható a játékmotor
+átszabása nélkül.
 
 ---
 
@@ -685,7 +716,9 @@ P1–P6) mind javítva, lásd az 1. szakaszt. Ami nyitva maradt:
 
 | Jel | Hol | Mi a baj |
 |---|---|---|
-| P7 | `SimulationLabScenarioScreen.tsx` → `runPhase` | A phase indításakor futó `runLabScenario` **szinkron és blokkoló** (3 × 5,6 km futásnál ~1,1 s, hosszabb útvonalnál lineárisan több). Ez a maradék blokkolás egyetlen forrása, és a 3. pont első célpontja. |
+| P8 | `src/game` claim-pipeline | A phase-előkészítés maradék blokkolása futásonként EGY szelet: a `processLabActivity` claim-számítása (3 playeres terhelésen ~500 ms medián). Darabolni csak a claim-pipeline inkrementálissá tételével lehetne — ez már a játékmotort érinti, nem a LAB-ot, ezért külön döntés kell hozzá. |
+| P9 | `SimulationLabScenarioScreen.tsx` → `runPhase` | Ugyanannak a phase-nek az ÚJRAFUTTATÁSA (a defense-építés fő munkamenete) mindig újragenerálja a GPS-t és újra lejátssza a recordert, pedig a route és a config változatlan. Előkészített futások gyorsítótárazása a „fölösleges számítás" felén segítene. Nincs megmérve, mekkora a hányad. |
+| P10 | `SimulationLabScenarioScreen.tsx` | A `phaseHistory` minden lefuttatott phase TELJES kimenetét megtartja (GPS-minták, recorder-pontok, claim Mapek). Sok futás után ez érezhető memória- és GC-terhelés — az ismételt méréseknél a futásidő futásról futásra romlott. |
 
 ### A. Bonyolult 11 pontos route
 
