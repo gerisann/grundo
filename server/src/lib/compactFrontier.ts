@@ -97,10 +97,16 @@ export function materializeCompactFrontierSeeds(
 /**
  * A post-claim exact ownership scope-ból kiszámolja a NO-CASCADE frontier
  * korrekciót. A közvetlen compact claim cellákat nem írhatja felül.
+ *
+ * `scope` külön paraméter: a gazdátlan, de BEOLVASOTT cellák szándékosan
+ * hiányoznak az `ownership` Mapből. Ha a Map kulcsait használnánk scope-ként,
+ * a motor ezeket tévesen „nem ismert" celláknak venné, és kihagyna helyes
+ * frontier döntéseket.
  */
 export function resolveCompactFrontier(
   layer: Layer,
   ownership: OwnershipMap,
+  scope: ReadonlySet<CellId>,
   stolenSeeds: Iterable<CellId>,
   works: ReadonlyMap<string, CompactBlockWork>,
   cfg: GameplayConfig = DEFAULT_GAMEPLAY,
@@ -114,7 +120,7 @@ export function resolveCompactFrontier(
       const parent = cellToParent(cell, work.claimParentResolution) as CellId;
       return (work.fineCredits.get(cell) ?? 0) > 0 || (work.parentCredits.get(parent) ?? 0) > 0;
     },
-    scope: new Set(ownership.keys()),
+    scope,
     gameplayResolution: cfg.H3_RESOLUTION,
   });
 }
