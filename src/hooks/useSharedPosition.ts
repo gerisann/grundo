@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useTrackingEnvironment } from '@/tracking/environment';
 
 export interface SharedPosition {
   lat: number;
@@ -29,31 +30,28 @@ const USELESS_ABOVE_M = 3_000;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export function useSharedPosition(uid: string | undefined, enabled = true) {
+  const environment = useTrackingEnvironment();
+  const active = enabled && environment.sharedPositionEnabled !== false;
   const [own, setOwn] = useState<SharedPosition | null>(null);
   const [shared, setShared] = useState<SharedPosition | null>(null);
   const published = useRef(0);
 
-  /* ── A saját fix ─────────────────────────────────────────────── */
-
   useEffect(() => {
-    if (!enabled || typeof navigator === 'undefined' || !navigator.geolocation) return;
+    if (!active || typeof navigator === 'undefined' || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (p) =>
-        setOwn({
-          lat: p.coords.latitude,
-          lng: p.coords.longitude,
-          accuracyM: Number.isFinite(p.coords.accuracy) ? p.coords.accuracy : 99_999,
-          at: p.timestamp || Date.now(),
-        }),
+      (p) => setOwn({
+        lat: p.coords.latitude,
+        lng: p.coords.longitude,
+        accuracyM: Number.isFinite(p.coords.accuracy) ? p.coords.accuracy : 99_999,
+        at: p.timestamp || Date.now(),
+      }),
       () => undefined,
       { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
     );
-  }, [enabled]);
-
-  /* ── A közös fix figyelése ───────────────────────────────────── */
+  }, [active]);
 
   useEffect(() => {
-    if (!enabled || !db || !uid) {
+    if (!active || !db || !uid) {
       setShared(null);
       return;
     }
@@ -77,12 +75,10 @@ export function useSharedPosition(uid: string | undefined, enabled = true) {
       },
       () => setShared(null),
     );
-  }, [enabled, uid]);
-
-  /* ── A jobb fix megosztása ───────────────────────────────────── */
+  }, [active, uid]);
 
   useEffect(() => {
-    if (!enabled || !db || !uid || !own) return;
+    if (!active || !db || !uid || !own) return;
     if (own.accuracyM > USELESS_ABOVE_M) return;
 
     const better = shared === null || own.accuracyM < shared.accuracyM;
@@ -102,9 +98,11 @@ export function useSharedPosition(uid: string | undefined, enabled = true) {
       },
       { merge: true },
     ).catch(() => undefined);
-  }, [enabled, uid, own, shared]);
+  }, [active, uid, own, shared]);
 
-  if (!enabled) return null;
+  if (!active) return environment.initialPosition
+    ? { ...environment.initialPosition, accuracyM: 1, at: Date.now() }
+    : null;
   if (own && own.accuracyM <= GOOD_ENOUGH_M) return own;
   if (shared && Date.now() - shared.at <= MAX_AGE_MS) {
     if (!own || shared.accuracyM < own.accuracyM) return shared;
