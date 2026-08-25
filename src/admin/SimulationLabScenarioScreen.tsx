@@ -154,6 +154,23 @@ export function SimulationLabScenarioScreen() {
     }
   }, [phaseActive, soloEngineRecorder.points, soloEngineRecorder.distanceM, config.activityType, activePlayerId, world]);
 
+  /**
+   * A Player teszt SOLO PREVIEW: a claim várható végállapotát megmutatjuk, de
+   * a sandbox worldöt nem commitoljuk. Így a térkép és a defense stat ugyanazt
+   * a projected ownershipöt látja, mint amit egy phase commit adna, miközben
+   * ismételt Player teszt nem épít tartósan védelmet és nem módosítja a következő
+   * phase kiinduló állapotát.
+   *
+   * Futás közben szándékosan a valódi world marad: egy nagy world másolása és
+   * újrarenderelése minden engine-frame-nél visszahozná a korábbi LAB akadásokat.
+   */
+  const displayWorld = useMemo<OwnershipMap>(() => {
+    if (soloRunning || phaseStatus === 'preparing' || phaseActive || !soloResult) return world;
+    const preview = new Map(world);
+    applyClaimToWorld(preview, soloResult);
+    return preview;
+  }, [soloRunning, phaseStatus, phaseActive, soloResult, world]);
+
   const phaseTracks = useMemo<LabMapTrack[]>(() => {
     if (!phasePlayback) return [];
     return phasePlayback.phase.runs.map((run) => ({
@@ -199,9 +216,10 @@ export function SimulationLabScenarioScreen() {
     [players],
   );
 
-  // Minden player cellaszáma és védelmi bontása EGY world-bejárásból. Korábban
-  // playerenként és védelmi szintenként külön futott, rendernként újra.
-  const worldTotals = useMemo(() => summarizeLabWorld(world), [world]);
+  // Minden player cellaszáma és védelmi bontása EGY world-bejárásból. Player
+  // teszt után a displayWorld a solo claim projected végállapotát tartalmazza;
+  // phase alatt pedig ugyanaz, mint a tényleges sandbox world.
+  const worldTotals = useMemo(() => summarizeLabWorld(displayWorld), [displayWorld]);
   // Birtok nélküli playernél is ki kell rajzolni mind a MAX_DEFENSE sort, nullával.
   const emptyTotals = useMemo<LabWorldPlayerTotals>(
     () => ({ cells: 0, byDefense: Array.from({ length: DEFAULT_GAMEPLAY.MAX_DEFENSE }, () => 0) }),
@@ -688,7 +706,7 @@ export function SimulationLabScenarioScreen() {
             <div className="lab-layer-controls"><LayerToggle label="H3 háló" checked={showGrid} onChange={setShowGrid} /><LayerToggle label="Hurkok" checked={showLoops} onChange={setShowLoops} /><LayerToggle label="Foglalás" checked={showClaims} onChange={setShowClaims} /></div>
             <Button variant="secondary" size="sm" disabled={busy || route.length === 0} onClick={() => setRoute((points) => points.slice(0, -1))}>Utolsó törlése</Button><Button variant="secondary" size="sm" disabled={busy || route.length === 0} onClick={() => setRoute([])}>Útvonal törlése</Button>
           </div></div>
-          <ScenarioSimulationMap activeRoute={route} activeColor={activeColor} routes={mapRoutes} tracks={visibleTracks} world={world} ownerColors={ownerColors} result={gameResult} showGrid={showGrid} showLoops={showLoops} showClaims={showClaims} resetToken={runResetToken} editable={!busy} onAppendWaypoint={(point) => setRoute((points) => [...points, point])} onMoveWaypoint={(index, point) => setRoute((points) => points.map((item, i) => i === index ? point : item))} />
+          <ScenarioSimulationMap activeRoute={route} activeColor={activeColor} routes={mapRoutes} tracks={visibleTracks} world={displayWorld} ownerColors={ownerColors} result={gameResult} showGrid={showGrid} showLoops={showLoops} showClaims={showClaims} resetToken={runResetToken} editable={!busy} onAppendWaypoint={(point) => setRoute((points) => [...points, point])} onMoveWaypoint={(index, point) => setRoute((points) => points.map((item, i) => i === index ? point : item))} />
         </main>
 
         <aside className="lab-panel lab-panel--debug" aria-hidden={!rightPanelOpen}>
