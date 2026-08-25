@@ -24,10 +24,10 @@ RUN npm ci
 COPY src/game ./src/game
 COPY src/config ./src/config
 COPY src/types ./src/types
-# Az értesítések ugyanazt a területformázót használják, mint a kliens. A
-# tsconfig már fordította, de a Docker build-kontextusból eddig kimaradt,
-# ezért a Cloud Build TS2307 hibával állt meg.
+# A backend néhány közös kliensoldali segédmodult is importál. Ezeket külön
+# be kell másolni, mert a Docker build nem másolja automatikusan a teljes src/-t.
 COPY src/lib/format.ts ./src/lib/format.ts
+COPY src/lib/cellColors.ts ./src/lib/cellColors.ts
 COPY server ./server
 
 # Az npm a szülőkönyvtárak node_modules/.bin mappáit is a PATH-ra teszi,
