@@ -94,6 +94,35 @@ futás előtt „World nullázása", tehát üres világból):
 A teljes számítás ~5%-kal lassabb — ennyibe kerül a megszakítgatás —, cserébe a
 felület a leghosszabb blokk alatt is reagál, és a haladásjelző mozog.
 
+**3. Fal-alapú scope-építés a claimben, 5-5 futás mediánja** (ugyanaz a
+protokoll, mint fent):
+
+| | előtte | utána |
+|---|---|---|
+| **engine előkészítés** | **1 760 ms** | **1 080 ms** |
+| leghosszabb blokkoló task | 525 ms | 454 ms |
+| total blocking time | 795 ms | 596 ms |
+
+Node-szinten külön mérve, ugyanezen a terhelésen: a claim **745 → ~225 ms**
+(3,3×), a teljes előkészítés 1 191 → ~700 ms.
+
+Mit csinál: a `materializeFineOwnership` eddig MINDEN hurokcella köré húzott
+két gyűrűt (19 502 db `gridDisk(cell, 2)`). A hurok régiója = fal ∪ belső, és a
+belsőt definíció szerint a fal választja el a külvilágtól — egy belső cella két
+lépésen belül csak olyan külső cellát érhet el, amit a hozzá tartozó falcella
+egy lépésen belül amúgy is elér. Elég tehát **csak a fal köré** gyűrűt húzni,
+és a régió celláit egyszerűen hozzáadni. Az eredmény halmaz bitre azonos; ezt
+öt hurokalakra (négyzet, nagy négyzet, nyolcas, többkörös, önérintő) teszt
+rögzíti.
+
+Mellette: a parent-keresés indexelve. A `labWorldOwnershipAt` cellánként a
+res-1 szinttől nulláig próbálkozott — több tízezer cellánál százezres
+nagyságrendű `cellToParent` hívás, miközben a world tipikusan egyetlen parent
+felbontást használ, gyakran egyet sem.
+
+⚠️ **Ne told vissza „minden cellára" a gyűrűt** azzal az indokkal, hogy úgy
+biztonságosabb. Nem ad több cellát, csak lassabb.
+
 ### ❌ Amit kipróbáltunk és NEM vált be: Web Worker
 
 Kézenfekvőnek tűnt a teljes scenario-számítást worker szálra tenni (a
@@ -780,8 +809,9 @@ P1–P6) mind javítva, lásd az 1. szakaszt. Ami nyitva maradt:
 
 | Jel | Hol | Mi a baj |
 |---|---|---|
-| P8 | `src/game` claim-pipeline | A phase-előkészítés maradék blokkolása futásonként EGY szelet: a `processLabActivity` claim-számítása (3 playeres terhelésen ~500 ms medián). Darabolni csak a claim-pipeline inkrementálissá tételével lehetne — ez már a játékmotort érinti, nem a LAB-ot, ezért külön döntés kell hozzá. |
-| ~~P9~~ | — | **ELVETVE, mérés alapján.** Az előkészített futások gyorsítótárazása szóba jött, de a bontás szerint a GPS-generálás 0,7% és a recorder-visszajátszás 0,9% — összesen **1,6%**. Nem éri meg. A 3 playeres, 1400 m-es terhelésen a bontás: hurokgeometria 37%, claim 61%. A claim 776 ms-jából **641 ms a `materializeFineOwnership` scope-építése** (19 502 hurokcellára `gridDisk(cell, 2)`, 21 524 egyedi cella) — ez `labHierarchicalWorld.ts`, tehát LAB-kód, a `src/game` átszabása NÉLKÜL is támadható. Ez a 3. pont következő igazi célpontja, nem a P8. |
+| P8 | `src/game` claim-pipeline | A phase-előkészítés maradék blokkolása futásonként EGY szelet: a `processLabActivity` claim-számítása. A scope-optimalizálás után ez ~450 ms medián a 3 playeres terhelésen. Tovább darabolni csak a claim-pipeline inkrementálissá tételével lehetne — ez már a játékmotort érinti, nem a LAB-ot, ezért külön döntés kell hozzá. |
+| ~~P9~~ | — | **ELVETVE, mérés alapján.** Az előkészített futások gyorsítótárazása szóba jött, de a bontás szerint a GPS-generálás 0,7% és a recorder-visszajátszás 0,9% — összesen **1,6%**. Nem éri meg. |
+| ~~scope~~ | — | **MEGOLDVA.** A claim 776 ms-jából 641 ms a `materializeFineOwnership` scope-építése volt. Lásd lent a „Fal-alapú scope" szakaszt. |
 | P10 | `SimulationLabScenarioScreen.tsx` | A `phaseHistory` minden lefuttatott phase TELJES kimenetét megtartja (GPS-minták, recorder-pontok, claim Mapek). Sok futás után ez érezhető memória- és GC-terhelés — az ismételt méréseknél a futásidő futásról futásra romlott. |
 
 ### A. Bonyolult 11 pontos route

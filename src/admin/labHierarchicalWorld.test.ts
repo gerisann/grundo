@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { cellToChildren, cellToChildrenSize, cellToParent, getResolution, latLngToCell } from 'h3-js';
-import { buildActivityGeometry } from '@/game';
+import { cellToChildren, cellToChildrenSize, cellToParent, getResolution, gridDisk, latLngToCell } from 'h3-js';
+import { buildActivityGeometry, loopCells } from '@/game';
 import { DEFAULT_GAMEPLAY } from '@/config/gameplay';
-import { buildTrace, ORIGIN, squareWaypoints } from '@/game/fixtures';
+import { buildTrace, figureEight, multiLap, ORIGIN, selfTouch, simpleLoop, squareWaypoints } from '@/game/fixtures';
 import type { OwnershipMap } from '@/types';
 import {
   countLabPlayerCells,
   countLabPlayerDefense,
+  materializeFineOwnership,
   processLabActivity,
   summarizeLabWorld,
 } from './labHierarchicalWorld';
@@ -118,4 +119,44 @@ describe('summarizeLabWorld', () => {
     expect(countLabPlayerDefense(world, 'B', 1)).toBe(b?.cells);
     expect(countLabPlayerCells(world, 'nincs-ilyen')).toBe(0);
   });
+});
+
+describe('materializeFineOwnership', () => {
+  /**
+   * A korábbi változat MINDEN hurokcella köré húzott két gyűrűt. Az új csak a
+   * fal köré — a belső cellákat a fal definíció szerint elválasztja a
+   * külvilágtól, tehát nem adhatnak új cellát. Ez a teszt azt rögzíti, hogy a
+   * két számítás eredménye tényleg azonos; ha valaha eltérne, az azt jelentené,
+   * hogy a hurok belseje nem zárt.
+   */
+  function legacyScope(geometry: ReturnType<typeof buildActivityGeometry>): Set<string> {
+    const scope = new Set<string>();
+    for (const loop of geometry.loops) {
+      for (const cell of loopCells(loop)) {
+        if (getResolution(cell) !== DEFAULT_GAMEPLAY.H3_RESOLUTION) continue;
+        for (const near of gridDisk(cell, 2)) scope.add(near);
+      }
+    }
+    return scope;
+  }
+
+  const fixtures: [string, () => ReturnType<typeof simpleLoop>][] = [
+    ['egyszerű négyzet', () => simpleLoop(200)],
+    ['nagyobb négyzet', () => simpleLoop(600)],
+    ['nyolcas', () => figureEight(160)],
+    ['többkörös', () => multiLap(3, 200)],
+    ['önérintő', () => selfTouch()],
+  ];
+
+  for (const [name, build] of fixtures) {
+    it(`${name}: a fal-alapú scope azonos a teljes felfújással`, () => {
+      const geometry = buildActivityGeometry(build());
+      const legacy = legacyScope(geometry);
+      const { scope } = materializeFineOwnership(new Map(), geometry, DEFAULT_GAMEPLAY);
+
+      expect([...scope].sort()).toEqual([...legacy].sort());
+      // Ha nincs hurok, nincs mit összehasonlítani — az nem bizonyítana semmit.
+      if (geometry.loops.length > 0) expect(scope.size).toBeGreaterThan(0);
+    });
+  }
 });

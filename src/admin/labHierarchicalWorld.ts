@@ -422,7 +422,21 @@ function processCompactLabActivity(
   }
 }
 
-function materializeFineOwnership(
+/**
+ * A claim kétgyűrűs környezetének kiolvasása a vegyes felbontású worldből.
+ *
+ * ⚠️ CSAK A FAL KÖRÉ HÚZUNK GYŰRŰT, nem minden hurokcella köré. A hurok
+ * régiója = fal ∪ belső, és a belső cellákat definíció szerint (flood fill) a
+ * fal választja el a külvilágtól. Egy belső cella két lépésen belül csak
+ * olyan külső cellát érhet el, amit a hozzá tartozó falcella egy lépésen belül
+ * amúgy is elér — tehát a belső cellák felfújása egyetlen új cellát sem ad
+ * hozzá az eredményhez.
+ *
+ * Mérve (3 player, 1400 m négyzet): 19 502 hurokcella helyett néhány száz
+ * falcellára kell `gridDisk`, miközben a `scope` halmaz bitre ugyanaz. A
+ * `labHierarchicalWorld.test.ts` egyenértékűségi tesztje ezt rögzíti.
+ */
+export function materializeFineOwnership(
   world: OwnershipMap,
   geometry: ActivityGeometry,
   cfg: GameplayConfig,
@@ -432,17 +446,58 @@ function materializeFineOwnership(
   for (const loop of geometry.loops) {
     for (const cell of loopCells(loop)) {
       if (getResolution(cell) !== cfg.H3_RESOLUTION) continue;
+      scope.add(cell);
+    }
+    for (const cell of loop.wall) {
+      if (getResolution(cell) !== cfg.H3_RESOLUTION) continue;
       for (const near of gridDisk(cell, 2)) scope.add(near);
     }
   }
 
+  /*
+    A parent-keresést egyszer indexeljük. A `labWorldOwnershipAt` enélkül
+    cellánként a res-1 szinttől nulláig próbálkozik — több tízezer cellánál ez
+    százezres nagyságrendű `cellToParent` hívás, miközben a world tipikusan
+    EGYETLEN parent felbontást használ, gyakran egyet sem.
+  */
+  const parentResolutions = worldParentResolutions(world, cfg);
+
   const ownership: OwnershipMap = new Map();
   for (const cell of scope) {
-    const held = labWorldOwnershipAt(world, cell);
+    const held = ownershipAtWithin(world, cell, parentResolutions);
     if (held !== undefined) ownership.set(cell, held);
   }
 
   return { ownership, scope };
+}
+
+/** A worldben ténylegesen előforduló parent felbontások, finomtól durváig. */
+function worldParentResolutions(world: OwnershipMap, cfg: GameplayConfig): number[] {
+  const found = new Set<number>();
+  for (const cell of world.keys()) {
+    const resolution = getResolution(cell);
+    if (resolution < cfg.H3_RESOLUTION) found.add(resolution);
+  }
+  return [...found].sort((a, b) => b - a);
+}
+
+/** Mint a `labWorldOwnershipAt`, de csak a ténylegesen létező szinteket próbálja. */
+function ownershipAtWithin(
+  world: OwnershipMap,
+  cell: CellId,
+  parentResolutions: readonly number[],
+): CellOwnership | undefined {
+  const exact = world.get(cell);
+  if (exact !== undefined) return exact;
+  if (parentResolutions.length === 0) return undefined;
+
+  const resolution = getResolution(cell);
+  for (const parentRes of parentResolutions) {
+    if (parentRes >= resolution) continue;
+    const held = world.get(cellToParent(cell, parentRes));
+    if (held !== undefined) return held;
+  }
+  return undefined;
 }
 
 /**
