@@ -457,3 +457,59 @@
     text-align: left;
   }
 }
+
+/* ── Push-diagnosztika ──────────────────────────────────────────────── */
+
+.admin-push-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.admin-push-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.admin-push-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-push-list li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.admin-push-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-push-head strong {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.admin-push-head code {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.admin-push--ok {
+  border-color: var(--success);
+}
+
+.admin-push--bad {
+  border-color: var(--danger);
+}

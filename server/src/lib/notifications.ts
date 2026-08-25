@@ -133,6 +133,26 @@ const messaging = getMessaging(adminApp);
 /** Egy `sendEachForMulticast` hívás egyszerre ennyi tokent fogad. */
 const PUSH_CHUNK = 500;
 
+/** Egy eszközre tett kísérlet eredménye — a push-diagnosztika ezt adja vissza. */
+export interface PushAttempt {
+  /** A token MASZKOLVA. Teljes formában sosem kerül válaszba vagy naplóba. */
+  token: string;
+  platform: string;
+  ok: boolean;
+  /** A nyers FCM hibakód, pl. `messaging/third-party-auth-error`. */
+  code: string | null;
+  message: string | null;
+}
+
+/**
+ * A token az eszköz azonosítója: aki megszerzi, push-t küldhet vele.
+ * Ezért sem naplóba, sem HTTP-válaszba nem kerülhet egészben.
+ */
+function maskToken(token: string): string {
+  if (token.length <= 16) return `${token.slice(0, 4)}…`;
+  return `${token.slice(0, 8)}…${token.slice(-6)}`;
+}
+
 /**
  * A regisztrált eszközök: `devices/{uid}/tokens/{token}`.
  *
@@ -140,18 +160,25 @@ const PUSH_CHUNK = 500;
  * projektben. Ez a docs/05 sémája (`{ platform, updatedAt }`), és mivel a
  * kliens ide ír közvetlenül (`firestore.rules` → `allow write: if
  * isSelf(uid)`), a szervernek csak olvasnia kell.
+ *
+ * Az eredményt eszközönként vissza is adja, hogy a push-diagnosztika a NYERS
+ * FCM hibakódot mutathassa. Mérve: az iOS push azért nem érkezett meg, mert az
+ * FCM `messaging/third-party-auth-error / Invalid APNs credential` hibát adott
+ * — ez a Cloud Run stderr naplójában ült, ahová senki nem néz, miközben a
+ * felhasználó sikeres bekapcsolást látott.
  */
-async function sendPush(
+async function deliverPush(
   uid: string,
   payload: { title: string; body: string; data?: Record<string, string> },
-): Promise<void> {
+): Promise<PushAttempt[]> {
   const tokensSnap = await db.collection(COLLECTIONS.devices).doc(uid).collection('tokens').get();
-  if (tokensSnap.empty) return;
+  if (tokensSnap.empty) return [];
   const tokens = tokensSnap.docs.map((doc) => doc.id);
   const tokenPlatforms = new Map(
     tokensSnap.docs.map((doc) => [doc.id, String(doc.data().platform ?? 'unknown')]),
   );
 
+  const attempts: PushAttempt[] = [];
   const invalid: string[] = [];
   for (let index = 0; index < tokens.length; index += PUSH_CHUNK) {
     const chunk = tokens.slice(index, index + PUSH_CHUNK);
@@ -166,16 +193,30 @@ async function sendPush(
       tokens: chunk,
     });
     response.responses.forEach((result, i) => {
-      if (result.success) return;
+      const token = chunk[i]!;
+      const platform = tokenPlatforms.get(token) ?? 'unknown';
+      if (result.success) {
+        attempts.push({ token: maskToken(token), platform, ok: true, code: null, message: null });
+        return;
+      }
       const code = result.error?.code ?? '';
+      const message = result.error?.message ?? '';
+      attempts.push({
+        token: maskToken(token),
+        platform,
+        ok: false,
+        code: code || 'ismeretlen_hiba',
+        message: message || null,
+      });
       console.error(
-        `[push] ${uid} ${tokenPlatforms.get(chunk[i]!) ?? 'unknown'} token küldése elhasalt: ` +
-        `${code || 'ismeretlen_hiba'} ${result.error?.message ?? ''}`,
+        `[push] ${uid} ${platform} token küldése elhasalt: ` +
+        `${code || 'ismeretlen_hiba'} ${message}`,
       );
       // Csak a VÉGLEGESEN érvénytelen tokent töröljük — egy átmeneti hálózati
-      // hiba (pl. `messaging/internal-error`) nem ok a leiratkozásra.
+      // hiba (pl. `messaging/internal-error`) nem ok a leiratkozásra. Az APNs
+      // hitelesítési hiba SEM: ott a token jó, a projekt beállítása rossz.
       if (code.includes('registration-token-not-registered') || code.includes('invalid-argument')) {
-        invalid.push(chunk[i]!);
+        invalid.push(token);
       }
     });
   }
@@ -187,6 +228,30 @@ async function sendPush(
     }
     await batch.commit();
   }
+
+  return attempts;
+}
+
+async function sendPush(
+  uid: string,
+  payload: { title: string; body: string; data?: Record<string, string> },
+): Promise<void> {
+  await deliverPush(uid, payload);
+}
+
+/**
+ * Diagnosztikai teszt-push a HÍVÓ SAJÁT eszközeire.
+ *
+ * Szándékosan ugyanazt az üzenetformát küldi, mint a valódi értesítések — egy
+ * zöld teszt így tényleg azt jelenti, hogy a rendes push is megy. Nem lehet
+ * vele más felhasználónak küldeni: az `uid` a hitelesített hívóé.
+ */
+export async function sendTestPush(uid: string): Promise<PushAttempt[]> {
+  return deliverPush(uid, {
+    title: 'GRUNDO teszt',
+    body: 'Ez egy admin teszt-értesítés. Ha látod, a push működik ezen az eszközön.',
+    data: { screen: 'profile', test: '1' },
+  });
 }
 
 /* ══════════════════════════════════════════════════════════════════

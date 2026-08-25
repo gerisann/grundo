@@ -522,6 +522,21 @@ export interface DevActivityDetail extends DevActivityListItem {
 
 /* ── Admin ──────────────────────────────────────────────────────────────── */
 
+/** Egy eszközre tett push-kísérlet eredménye. A token maszkolva érkezik. */
+export interface AdminPushAttempt {
+  token: string;
+  platform: string;
+  ok: boolean;
+  code: string | null;
+  message: string | null;
+}
+
+export interface AdminPushTest {
+  attempts: AdminPushAttempt[];
+  sent: number;
+  failed: number;
+}
+
 export interface AdminStatus {
   role: string | null;
   /**
@@ -1090,6 +1105,13 @@ export const api = {
   adminStatus: () => request<AdminStatus>('/api/admin/status'),
 
   adminMetrics: (days = 14) => request<AdminMetrics>(`/api/admin/metrics?days=${days}`),
+
+  /**
+   * Teszt-értesítés a saját eszközökre, eszközönkénti nyers FCM hibakóddal.
+   * A push csendben hasal el; enélkül csak a Cloud Run naplójából derülne ki,
+   * miért nem érkezik meg (lásd `server/src/routes/admin.ts` → `/push/test`).
+   */
+  adminTestPush: () => request<AdminPushTest>('/api/admin/push/test', { method: 'POST' }),
 
   adminGameplay: () => request<GameplayState>('/api/admin/gameplay'),
 

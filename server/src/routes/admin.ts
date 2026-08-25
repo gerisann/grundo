@@ -20,6 +20,7 @@ import type { AuthedRequest } from '../../server';
 import { APP_CONFIG_DOCS, COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { getGameplaySnapshot, resetGameplayCache } from '../lib/gameplayConfig';
+import { sendTestPush } from '../lib/notifications';
 import { resetModifierCache } from '../lib/modifiers';
 
 export const adminRouter = Router();
@@ -711,6 +712,37 @@ adminRouter.get('/status', async (req: AuthedRequest, res, next) => {
             errors: lastRun.errors ?? 0,
           }
         : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   Push-diagnosztika
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Teszt-értesítés a BEJELENTKEZETT ADMIN saját eszközeire.
+ *
+ * MIÉRT KELL? Mert a push csendben hasal el. 2026-08-25-én az iOS értesítések
+ * azért nem érkeztek meg, mert az FCM `messaging/third-party-auth-error /
+ * Invalid APNs credential` hibát adott — a token jó volt, a Firebase-projekt
+ * APNs-kulcsa nem. A felhasználó sikeres bekapcsolást látott, a hiba pedig a
+ * Cloud Run stderr naplójában ült. Ez a végpont eszközönként visszaadja a NYERS
+ * FCM hibakódot, tehát a beállítás javítása egy kattintással visszamérhető.
+ *
+ * Csak a saját eszközeire küldhet: az `uid` a hitelesített hívóé, nem paraméter.
+ */
+adminRouter.post('/push/test', async (req: AuthedRequest, res, next) => {
+  try {
+    const uid = req.uid;
+    if (!uid) throw forbidden('Hiányzó azonosítás.');
+    const attempts = await sendTestPush(uid);
+    res.json({
+      attempts,
+      sent: attempts.filter((attempt) => attempt.ok).length,
+      failed: attempts.filter((attempt) => !attempt.ok).length,
     });
   } catch (error) {
     next(error);

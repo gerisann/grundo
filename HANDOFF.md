@@ -117,6 +117,72 @@ elvittünk — plusz jön hozzá a szerializálás a worker oldalán. **Ne prób
 
 ---
 
+## 1.5 iOS PUSH — DIAGNÓZIS (2026-08-25)
+
+**A hiba oka megvan, és NEM kódban van.**
+
+Tünet: weben és PWA-ban megérkeznek az értesítések, iOS-en a bekapcsolás után
+sem — sem feloldott, sem zárolt képernyőn.
+
+### Amit mértünk
+
+1. **A token regisztrálódik.** Éles Firestore, `devices/{uid}/tokens`:
+   két `platform: 'ios'` token, 142 karakter, aznap frissítve. A kliens és a
+   natív oldal tehát rendben van. (`cd server && npm run inspect:push`)
+2. **A küldés elindul, és az FCM utasítja el.** Cloud Run stderr:
+
+   ```text
+   [push] <uid> ios token küldése elhasalt:
+   messaging/third-party-auth-error Invalid APNs credential.
+   ```
+
+3. **30 nap alatt 12 ilyen hiba, mind iOS, az első 2026-08-23 19:15-kor** —
+   vagyis az első iOS token regisztrációjakor. Az iOS push tehát SOHA nem
+   működött; ez elmaradt egyszeri beállítás, nem visszaesés. Webes push hiba: 0.
+4. **A repó minden azonosítója egyezik**: bundle `app.grundo.ios` a
+   `capacitor.config.ts`-ben, a `GoogleService-Info.plist`-ben és az Xcode
+   projektben; a Firebase-projektben egyetlen iOS app van ugyanezzel a bundle
+   ID-vel; a `DEVELOPMENT_TEAM` és a Firebase `teamId` egyaránt `HFS68TZMCH`;
+   az `aps-environment` Debugon `development`, Release-en `production`.
+
+### A teendő — Firebase Console, nem kód
+
+Firebase Console → **Project settings → Cloud Messaging → Apple app
+configuration** (`app.grundo.ios`):
+
+- Tölts fel egy **APNs Auth Key (.p8)** fájlt, a hozzá tartozó **Key ID**-vel és
+  a **Team ID**-vel (`HFS68TZMCH`). A kulcsot az Apple Developer portálon
+  (Certificates, Identifiers & Profiles → Keys) kell létrehozni, **Apple Push
+  Notifications service (APNs)** engedéllyel.
+- **Az Auth Key a helyes választás, nem a tanúsítvány.** Egy `.p8` kulcs
+  development és production APNs környezetre EGYARÁNT jó. Ha most tanúsítvány
+  van feltöltve, az a legvalószínűbb ok: a Debug build `development`, a
+  TestFlight `production` környezetre kér tokent, és a rossz környezetű
+  tanúsítvány pontosan ezt az „Invalid APNs credential" hibát adja.
+- Ha már van feltöltött kulcs: ellenőrizd, hogy a Key ID egyezik a fájlnévbe
+  írt azonosítóval, és hogy a kulcsot nem vonták vissza az Apple portálon.
+
+### A visszamérés — egy kattintás
+
+A `/admin` áttekintőn van egy **Push-diagnosztika** kártya: teszt-értesítést küld
+a saját eszközeidre, és eszközönként kiírja a NYERS FCM hibakódot a teendővel
+együtt. A kulcs feltöltése után ezzel azonnal látszik, hogy megjavult-e —
+nem kell valódi eseményre várni.
+
+⚠️ Ez a végpont csak a hívó SAJÁT eszközeire küld (`POST /api/admin/push/test`,
+az `uid` a hitelesített hívóé, nem paraméter).
+
+### Amit a kód oldalán tudni kell
+
+- A szerver `notification` + `apns.payload.aps.sound` formában küld, tehát az
+  iOS magától kirajzolja az értesítést — nem data-only üzenet, nincs szükség
+  kliensoldali megjelenítésre.
+- A `third-party-auth-error` **nem** törli a tokent. Helyesen: ilyenkor a token
+  jó, a projekt beállítása rossz. Csak a `registration-token-not-registered` és
+  az `invalid-argument` vezet törléshez.
+
+---
+
 ## 2. JÁTÉKMOTOR — ALAPSZABÁLYOK
 
 Fő helyek:

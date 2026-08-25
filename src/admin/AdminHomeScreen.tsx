@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type AdminMetrics, type AdminStatus } from '@/lib/api';
+import { Button } from '@/components/ui';
+import { api, type AdminMetrics, type AdminPushTest, type AdminStatus } from '@/lib/api';
 import { formatArea, formatDistance } from '@/lib/format';
 import { GAMEPLAY } from '@/config/gameplay';
 
@@ -18,6 +19,9 @@ export function AdminHomeScreen() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
+  const [pushTest, setPushTest] = useState<AdminPushTest | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
 
   useEffect(() => {
     api.adminStatus().then(setStatus).catch(() => setStatus(null));
@@ -25,6 +29,19 @@ export function AdminHomeScreen() {
   }, []);
 
   const latest = metrics?.latest ?? null;
+
+  async function runPushTest() {
+    setPushBusy(true);
+    setPushError(null);
+    setPushTest(null);
+    try {
+      setPushTest(await api.adminTestPush());
+    } catch (error) {
+      setPushError(error instanceof Error ? error.message : 'A teszt-értesítés küldése nem sikerült.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   return (
     <div className="admin-page">
@@ -115,6 +132,50 @@ export function AdminHomeScreen() {
       </section>
 
       <section className="admin-card">
+        <h2>Push-diagnosztika</h2>
+        <p className="admin-muted">
+          Teszt-értesítés a SAJÁT eszközeidre. A push csendben tud elhasalni: a felhasználó
+          sikeres bekapcsolást lát, a hiba pedig a szerver naplójában marad. Itt eszközönként
+          látszik a nyers FCM hibakód.
+        </p>
+        <div className="admin-push-actions">
+          <Button variant="secondary" onClick={() => void runPushTest()} disabled={pushBusy}>
+            {pushBusy ? 'Küldés…' : 'Teszt-értesítés küldése'}
+          </Button>
+        </div>
+        {pushError ? <p className="admin-push-error">{pushError}</p> : null}
+        {pushTest && pushTest.attempts.length === 0 ? (
+          <p className="admin-muted">
+            Ehhez a fiókhoz nincs regisztrált eszköz. Kapcsold be az értesítéseket a
+            Beállítások → Értesítések alatt.
+          </p>
+        ) : null}
+        {pushTest && pushTest.attempts.length > 0 ? (
+          <ul className="admin-push-list">
+            {pushTest.attempts.map((attempt) => (
+              <li
+                key={attempt.token}
+                className={attempt.ok ? 'admin-push--ok' : 'admin-push--bad'}
+              >
+                <div className="admin-push-head">
+                  <strong>{attempt.platform}</strong>
+                  <code>{attempt.token}</code>
+                </div>
+                <span>
+                  {attempt.ok
+                    ? 'Az FCM átvette kézbesítésre.'
+                    : `${attempt.code}${attempt.message ? ` — ${attempt.message}` : ''}`}
+                </span>
+                {!attempt.ok && pushHint(attempt.code) ? (
+                  <small className="admin-muted">{pushHint(attempt.code)}</small>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
+      <section className="admin-card">
         <h2>Ami még nincs kész</h2>
         <p className="admin-muted">
           Felhasználókezelés, moderáció és útvonal-jóváhagyás — ezek a következő menetekben
@@ -125,6 +186,30 @@ export function AdminHomeScreen() {
       </section>
     </div>
   );
+}
+
+/**
+ * A leggyakoribb FCM hibakódokhoz a TEENDŐ, nem csak a kód.
+ *
+ * A `third-party-auth-error` mérve is előfordult: 2026-08-25-én emiatt nem
+ * érkezett meg egyetlen iOS push sem, miközben a token érvényes volt és a
+ * webes push működött. Kódból nem javítható — a Firebase-projekt APNs-kulcsát
+ * kell rendbe tenni.
+ */
+function pushHint(code: string | null): string | null {
+  if (!code) return null;
+  if (code.includes('third-party-auth-error')) {
+    return 'Az APNs hitelesítés utasította el. Firebase Console → Project settings → '
+      + 'Cloud Messaging → Apple app configuration: töltsd fel újra az APNs Auth Key-t (.p8), '
+      + 'egyező Key ID és Team ID mellett. A token és a kód rendben van.';
+  }
+  if (code.includes('registration-token-not-registered')) {
+    return 'Az eszköz leiratkozott vagy törölték az appot — a token most már törlődött is.';
+  }
+  if (code.includes('mismatched-credential')) {
+    return 'A token másik Firebase-projekthez tartozik, mint amelyikből küldünk.';
+  }
+  return null;
 }
 
 /** A napszámból olvasható dátum — a napszám UTC `Date.UTC(y,m,d)`-ből jön, tehát UTC-ben formázva helyes. */
