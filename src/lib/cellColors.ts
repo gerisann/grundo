@@ -2,46 +2,47 @@
  * A CELLASZÍN-PALETTA — a felhasználó választott területszíne.
  *
  * KÖZÖS kliens/szerver modul: a profil szerkesztője, a térkép és a Firestore-
- * szabály ugyanebből a listából dolgozik. Ha a paletta két helyen élne, egy új
- * szín felvétele némán érvénytelen értéket engedne be az adatbázisba.
+ * szabály ugyanebből a listából dolgozik. A KULCS tárolódik, nem a hexkód,
+ * ezért a paletta árnyalatai adatmigráció nélkül finomhangolhatók.
  *
- * ⚠️ A KULCS AZ, AMI TÁROLÓDIK, nem a hexkód. Így a paletta finomhangolható
- * (árnyalat, kontraszt, téma) anélkül, hogy a felhasználók adatát migrálni
- * kellene — a `slate` marad `slate`, akkor is, ha holnap sötétebbre vesszük.
- *
- * A kulcs angol, a címke magyar: a kód nyelve angol, a felületé magyar.
+ * A kulcsok kompatibilitási okból maradnak stabilak. A látható színt és a
+ * magyar címkét az itt lévő paletta határozza meg.
  */
 
-/** A 16 alapszín — mindenkinek jár. */
+/** A 16 alapszín — mindenkinek jár. A sorrend a hexagonpaletta sorrendje. */
 export const FREE_CELL_COLORS = {
-  purple: { hex: '#7C3AED', label: 'Lila' },
-  violet: { hex: '#A855F7', label: 'Ibolya' },
-  indigo: { hex: '#4F46E5', label: 'Indigó' },
-  blue: { hex: '#2563EB', label: 'Kék' },
-  sky: { hex: '#0EA5E9', label: 'Égkék' },
-  cyan: { hex: '#06B6D4', label: 'Cián' },
-  teal: { hex: '#0D9488', label: 'Pávakék' },
-  green: { hex: '#16A34A', label: 'Zöld' },
-  lime: { hex: '#65A30D', label: 'Limezöld' },
-  yellow: { hex: '#EAB308', label: 'Sárga' },
-  amber: { hex: '#F59E0B', label: 'Borostyán' },
-  orange: { hex: '#EA580C', label: 'Narancs' },
-  red: { hex: '#DC2626', label: 'Piros' },
-  rose: { hex: '#E11D48', label: 'Rózsa' },
-  pink: { hex: '#DB2777', label: 'Rózsaszín' },
-  slate: { hex: '#475569', label: 'Palaszürke' },
+  purple: { hex: '#DDC3A1', label: 'Bézs' },
+  violet: { hex: '#E1A344', label: 'Aranybarna' },
+  indigo: { hex: '#D1712F', label: 'Réznarancs' },
+  blue: { hex: '#BD505C', label: 'Málnapiros' },
+  sky: { hex: '#E06E70', label: 'Korallrózsaszín' },
+  cyan: { hex: '#CB5043', label: 'Téglapiros' },
+  teal: { hex: '#8F3A40', label: 'Bordó' },
+  green: { hex: '#76462D', label: 'Dióbarna' },
+  lime: { hex: '#566F49', label: 'Olívazöld' },
+  yellow: { hex: '#418D7A', label: 'Türkizzöld' },
+  amber: { hex: '#315F89', label: 'Acélkék' },
+  orange: { hex: '#5B4A69', label: 'Szilvalila' },
+  red: { hex: '#2D5653', label: 'Petrol' },
+  rose: { hex: '#709EAA', label: 'Palakék' },
+  pink: { hex: '#7F7F7F', label: 'Szürke' },
+  slate: { hex: '#2E2E2E', label: 'Antracit' },
 } as const;
 
-/** A 8 prémium szín — csak Pro-előfizetéssel választható. */
+/** A 12 prémium szín — csak Pro-előfizetéssel választható. */
 export const PRO_CELL_COLORS = {
-  'electric-purple': { hex: '#C026FF', label: 'Neonlila' },
-  'electric-blue': { hex: '#00A3FF', label: 'Neonkék' },
-  aqua: { hex: '#00E5C3', label: 'Akvamarin' },
-  'acid-green': { hex: '#76E600', label: 'Méregzöld' },
-  gold: { hex: '#FFB800', label: 'Arany' },
-  coral: { hex: '#FF5A5F', label: 'Korall' },
-  'hot-pink': { hex: '#FF2D95', label: 'Neonpink' },
-  ice: { hex: '#8BE9FD', label: 'Jég' },
+  'electric-blue': { hex: '#2879FD', label: 'Elektromos kék' },
+  aqua: { hex: '#00E4FE', label: 'Neoncián' },
+  ice: { hex: '#01FEA9', label: 'Neonmenta' },
+  coral: { hex: '#FF6000', label: 'Neonnarancs' },
+  gold: { hex: '#FFD502', label: 'Neon arany' },
+  'acid-green': { hex: '#E3FF00', label: 'Savzöld' },
+  'neon-green': { hex: '#01FF1F', label: 'Neonzöld' },
+  'neon-red': { hex: '#FD012F', label: 'Neonpiros' },
+  'hot-pink': { hex: '#FF00A8', label: 'Neonpink' },
+  'deep-green': { hex: '#027501', label: 'Mélyzöld' },
+  'deep-indigo': { hex: '#0D034D', label: 'Mély indigó' },
+  'electric-purple': { hex: '#7C00FF', label: 'Neonlila' },
 } as const;
 
 export type FreeCellColor = keyof typeof FREE_CELL_COLORS;
@@ -53,22 +54,14 @@ export const CELL_COLORS = { ...FREE_CELL_COLORS, ...PRO_CELL_COLORS } as const;
 export const FREE_CELL_COLOR_KEYS = Object.keys(FREE_CELL_COLORS) as FreeCellColor[];
 export const PRO_CELL_COLOR_KEYS = Object.keys(PRO_CELL_COLORS) as ProCellColor[];
 
-/**
- * Az alapértelmezett szín.
- *
- * SZÁNDÉKOSAN a `purple`: a hexkódja (#7C3AED) pontosan megegyezik a korábbi
- * `--territory-own` tokennel, tehát aki nem választ színt, annak a térképe
- * ugyanúgy néz ki, mint a funkció bevezetése előtt.
- */
+/** Az alapértelmezett szín a normál paletta legfelső cellája. */
 export const DEFAULT_CELL_COLOR: FreeCellColor = 'purple';
 
 /**
  * ⚠️ `Object.hasOwn`, NEM az `in` operátor.
  *
- * Az `in` a PROTOTÍPUS-LÁNCOT is nézi, tehát a `'toString'` és a
- * `'constructor'` érvényes színnek számítana. A feloldás ilyenkor egy
- * függvényt adna vissza, aminek nincs `hex` mezője — a térképen `undefined`
- * színnel próbálnánk rajzolni. A teszt ezt el is kapta.
+ * Az `in` a prototípus-láncot is nézi, ezért például a `toString` tévesen
+ * érvényes színnek számítana.
  */
 export function isCellColor(value: unknown): value is CellColor {
   return typeof value === 'string' && Object.hasOwn(CELL_COLORS, value);
@@ -78,13 +71,7 @@ export function isProCellColor(value: unknown): value is ProCellColor {
   return typeof value === 'string' && Object.hasOwn(PRO_CELL_COLORS, value);
 }
 
-/**
- * A tárolt érték feloldása hexkóddá.
- *
- * Védekező: hiányzó, ismeretlen vagy sérült érték esetén az alapértelmezett
- * színt adja. Egy elgépelt kulcs miatt ne tűnjön el valakinek a területe a
- * térképről — a rossz szín is jobb, mint a láthatatlan birtok.
- */
+/** Ismeretlen vagy hiányzó értéknél az alapértelmezett színre esik vissza. */
 export function cellColorHex(value: unknown): string {
   return isCellColor(value) ? CELL_COLORS[value].hex : CELL_COLORS[DEFAULT_CELL_COLOR].hex;
 }

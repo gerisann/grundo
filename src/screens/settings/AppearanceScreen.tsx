@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties, type PointerEvent } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useAuth } from '@/hooks/AuthProvider';
@@ -15,15 +15,6 @@ import {
 import { List, ListRow, ScreenHeader, SegmentedControl, TextField } from '@/components/ui';
 import type { AutoStrategy, ThemeMode } from '@/lib/theme';
 import './cellColor.css';
-
-/**
- * Beállítások → Megjelenés
- *
- * docs/02-funkcionalis-spec.md → Beállítások → Megjelenés
- *
- * Négy mód. A kifejezett választás (Világos / Sötét) mindig felülírja az
- * automatikát; a telefon beállítását csak a „Rendszer szerint" követi.
- */
 
 const MODES: readonly { value: ThemeMode; label: string }[] = [
   { value: 'auto', label: 'Automatikus' },
@@ -44,29 +35,27 @@ const MODE_HINT: Record<ThemeMode, string> = {
   system: 'A telefonod rendszerbeállítását követi.',
 };
 
-/**
- * A TERÜLETED SZÍNE a térképen.
- *
- * Mindenki a saját színében látszik — a tiéd tehát nem csak neked, hanem
- * minden játékosnak ilyen. Ezért nem a helyi témabeállítások közé tartozik,
- * hanem a profilodra mentjük.
- *
- * ⚠️ A PRÉMIUM SZÍNEK ZÁRJÁT NEM EZ A KOMPONENS ŐRZI. Itt csak elhalványítjuk
- * és lakattal jelöljük őket; a tényleges kikényszerítés a `firestore.rules`
- * `cellColorAllowed()` függvényében van, mert a Firestore-t a felület
- * megkerülésével is lehet hívni.
- */
+const FREE_ROWS = [1, 2, 3, 4, 3, 2, 1] as const;
+const PRO_ROWS = [3, 4, 3, 2] as const;
+
+function rows<T>(values: readonly T[], sizes: readonly number[]): T[][] {
+  const result: T[][] = [];
+  let offset = 0;
+  for (const size of sizes) {
+    result.push(values.slice(offset, offset + size));
+    offset += size;
+  }
+  return result;
+}
+
 function CellColorSection() {
   const { user } = useAuth();
   const { profile, reload } = useProfile();
   const isPro = profile?.pro.active === true;
-
-  /**
-   * Optimista helyi állapot: a mentés hálózati kör, a visszajelzésnek viszont
-   * azonnalinak kell lennie. A profil újratöltése utólag igazolja vissza.
-   */
   const stored = isCellColor(profile?.cellColor) ? profile.cellColor : DEFAULT_CELL_COLOR;
   const [selected, setSelected] = useState<CellColor | null>(null);
+  const [freePreview, setFreePreview] = useState<CellColor | null>(null);
+  const [proPreview, setProPreview] = useState<CellColor | null>(null);
   const [error, setError] = useState('');
   const active = selected ?? stored;
 
@@ -82,30 +71,71 @@ function CellColorSection() {
       );
       await reload();
     } catch {
-      // Visszaáll a tárolt értékre — ne mutassunk olyan színt, ami nem ment el.
       setSelected(null);
       setError('Nem sikerült elmenteni a színt. Próbáld meg újra.');
     }
   }
 
-  function swatch(color: CellColor, locked: boolean) {
+  function swatch(
+    color: CellColor,
+    locked: boolean,
+    setPreview: (color: CellColor | null) => void,
+  ) {
     const { hex, label } = CELL_COLORS[color];
     const on = color === active;
+    const endPreview = () => setPreview(null);
+    const pointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType !== 'mouse') setPreview(color);
+    };
+
     return (
       <button
         key={color}
         type="button"
         className={`ccolor__swatch${on ? ' ccolor__swatch--on' : ''}${locked ? ' ccolor__swatch--locked' : ''}`}
         aria-pressed={on}
+        aria-disabled={locked}
         aria-label={locked ? `${label} — Pro-előfizetéssel` : label}
         title={locked ? `${label} — Pro-előfizetéssel` : label}
-        disabled={locked}
+        style={{ '--ccolor': hex } as CSSProperties}
+        onMouseEnter={() => setPreview(color)}
+        onMouseLeave={endPreview}
+        onPointerDown={pointerDown}
+        onPointerUp={endPreview}
+        onPointerCancel={endPreview}
+        onPointerLeave={endPreview}
+        onContextMenu={(event) => event.preventDefault()}
         onClick={() => void choose(color, locked)}
       >
-        <span className="ccolor__fill" style={{ background: hex }} />
+        <span className="ccolor__fill" />
         {locked ? <span className="ccolor__lock" aria-hidden="true">🔒</span> : null}
         {on ? <span className="ccolor__check" aria-hidden="true">✓</span> : null}
       </button>
+    );
+  }
+
+  function honeycomb(
+    colors: readonly CellColor[],
+    shape: readonly number[],
+    preview: CellColor | null,
+    setPreview: (color: CellColor | null) => void,
+    locked: boolean,
+  ) {
+    const style = preview
+      ? ({ '--ccolor-preview': CELL_COLORS[preview].hex } as CSSProperties)
+      : undefined;
+    return (
+      <div
+        className={`ccolor__hive${preview ? ' ccolor__hive--preview' : ''}`}
+        style={style}
+        onMouseLeave={() => setPreview(null)}
+      >
+        {rows(colors, shape).map((row, rowIndex) => (
+          <div className="ccolor__row" key={rowIndex}>
+            {row.map((color) => swatch(color, locked, setPreview))}
+          </div>
+        ))}
+      </div>
     );
   }
 
@@ -113,12 +143,9 @@ function CellColorSection() {
     <>
       <section className="stack stack--tight">
         <div className="label">A területed színe</div>
-        <div className="ccolor__grid">
-          {FREE_CELL_COLOR_KEYS.map((color) => swatch(color, false))}
-        </div>
+        {honeycomb(FREE_CELL_COLOR_KEYS, FREE_ROWS, freePreview, setFreePreview, false)}
         <p className="field__hint">
-          Ebben a színben látszik a területed a térképen — neked és mindenki másnak is. A saját
-          területedet ezen felül vastagabb körvonal jelöli.
+          Ebben a színben látszik a területed a térképen — neked és mindenki másnak is.
         </p>
         {error ? <p className="field__error">{error}</p> : null}
       </section>
@@ -128,9 +155,7 @@ function CellColorSection() {
           <div className="label">Prémium színek</div>
           <span className="ccolor__badge">PRO</span>
         </div>
-        <div className="ccolor__grid">
-          {PRO_CELL_COLOR_KEYS.map((color) => swatch(color, !isPro))}
-        </div>
+        {honeycomb(PRO_CELL_COLOR_KEYS, PRO_ROWS, proPreview, setProPreview, !isPro)}
         <p className="field__hint">
           {isPro
             ? 'A Pro-előfizetéseddel ezek is a tieid.'

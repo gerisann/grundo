@@ -1,77 +1,106 @@
-/**
- * Cellaszín-választó — Beállítások → Megjelenés
- *
- * A rács önmagát tördeli: a mintadarabok fix méretűek, a sorok száma a
- * képernyő szélességéből jön. Így telefonon négy, tableten hat-nyolc fér el,
- * külön töréspont nélkül.
- */
+/** Cellaszín-választó — hatszög-paletta. */
 
-.ccolor__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
-  gap: var(--sp-2);
+.ccolor__hive {
+  --ccolor-size: clamp(54px, 14vw, 68px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 6px 0 10px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ccolor__row {
+  display: flex;
+  justify-content: center;
+  height: calc(var(--ccolor-size) * 0.76);
+}
+
+.ccolor__row + .ccolor__row {
+  margin-top: calc(var(--ccolor-size) * -0.09);
 }
 
 .ccolor__swatch {
+  --ccolor-border: var(--border-strong);
   position: relative;
-  aspect-ratio: 1;
-  border: 2px solid transparent;
-  border-radius: var(--radius-md);
-  background: none;
+  width: var(--ccolor-size);
+  height: calc(var(--ccolor-size) * 1.12);
+  flex: 0 0 auto;
+  border: 0;
+  background: var(--ccolor-border);
+  clip-path: polygon(50% 0%, 94% 24%, 94% 76%, 50% 100%, 6% 76%, 6% 24%);
   cursor: pointer;
-  padding: 0;
-  /* A szín maga a tartalom — a mintadarab kitölti a gombot. */
+  padding: 3px;
   display: grid;
   place-items: center;
-  transition: transform 120ms ease, border-color 120ms ease;
+  transition: transform 120ms ease, filter 120ms ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.ccolor__swatch:hover:not(:disabled) {
-  transform: scale(1.06);
-}
-
-.ccolor__swatch:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+.ccolor__swatch + .ccolor__swatch {
+  margin-left: calc(var(--ccolor-size) * -0.22);
 }
 
 .ccolor__fill {
   width: 100%;
   height: 100%;
-  border-radius: calc(var(--radius-md) - 3px);
-  /* A halvány belső keret sötét témán is elválasztja a mintát a háttértől. */
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  background: var(--ccolor);
+  clip-path: polygon(50% 0%, 94% 24%, 94% 76%, 50% 100%, 6% 76%, 6% 24%);
+  transition: background-color 110ms ease, filter 110ms ease;
 }
 
-/* A kiválasztott szín kerete és pipája. */
+/* Egérrel rámutatva / ujjal lenyomva az egész BLOKK felveszi az előnézeti színt. */
+.ccolor__hive--preview .ccolor__fill {
+  background: var(--ccolor-preview);
+}
+
+.ccolor__swatch:hover,
+.ccolor__swatch:focus-visible {
+  z-index: 2;
+  transform: scale(1.08);
+}
+
+.ccolor__swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .ccolor__swatch--on {
-  border-color: var(--text-primary);
+  --ccolor-border: var(--text-primary);
+  z-index: 1;
+}
+
+.ccolor__check,
+.ccolor__lock {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  color: var(--text-inverse);
+  text-shadow: 0 1px 4px var(--shadow);
 }
 
 .ccolor__check {
-  position: absolute;
-  font-size: 18px;
-  font-weight: 700;
-  /* Sötét és világos mintán is olvasható marad. */
-  color: #fff;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.65);
-  pointer-events: none;
+  font-size: 19px;
+  font-weight: 800;
 }
 
-/* Zárt prémium szín: tompított minta, lakat. */
+.ccolor__lock {
+  font-size: 15px;
+}
+
+/* A Pro minta előnézhető marad, de kattintással nem menthető. */
 .ccolor__swatch--locked {
   cursor: not-allowed;
 }
 
 .ccolor__swatch--locked .ccolor__fill {
-  opacity: 0.35;
+  filter: saturate(0.65) brightness(0.78);
 }
 
-.ccolor__lock {
-  position: absolute;
-  font-size: 16px;
-  pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6));
+.ccolor__hive--preview .ccolor__swatch--locked .ccolor__fill {
+  filter: saturate(0.8) brightness(0.82);
 }
 
 .ccolor__pro-head {
@@ -81,11 +110,17 @@
 }
 
 .ccolor__badge {
-  border-radius: var(--radius-pill);
-  background: var(--accent-gradient, var(--territory-own));
+  border-radius: var(--r-pill);
+  background: var(--accent);
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #fff;
+  color: var(--accent-on);
+}
+
+@media (max-width: 390px) {
+  .ccolor__hive {
+    --ccolor-size: 52px;
+  }
 }
