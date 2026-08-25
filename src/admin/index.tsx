@@ -12,6 +12,11 @@ import { LabE2eTrackingScreen } from './LabE2eTrackingScreen';
 export default function AdminArea() {
   return (
     <Routes>
+      {/* Fullscreen: ugyanazt a tracking kompozíciót akarjuk látni, mint a
+          játékosnál, admin sidebar/header nélkül. A jogosultságot továbbra is
+          az egész /admin terület kapuja védi. */}
+      <Route path="lab/e2e/:sessionId" element={<LabE2eTrackingScreen />} />
+
       <Route element={<AdminLayout />}>
         <Route index element={<AdminHomeScreen />} />
         <Route path="jatekszabalyok" element={<GameplayScreen />} />
@@ -20,7 +25,6 @@ export default function AdminArea() {
         <Route path="visszajatszas" element={<ReplayScreen />} />
         <Route path="lab" element={<SimulationLabScreen />} />
         <Route path="lab/e2e" element={<LabE2eLauncherScreen />} />
-        <Route path="lab/e2e/:sessionId" element={<LabE2eTrackingScreen />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
     </Routes>
