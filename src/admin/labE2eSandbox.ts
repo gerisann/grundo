@@ -22,21 +22,10 @@ interface StoredSandbox {
 export interface LabE2eSandboxOptions {
   id: string;
   actorId: string;
-  /** A TrackingScreen saját playerként ezt az uid-t ismeri. */
   displayActorUid: string;
   ownerNames: ReadonlyMap<string, string>;
 }
 
-/**
- * Böngészőben izolált E2E sandbox.
- *
- * Célja nem egy második játékmotor: a claimet ugyanaz a LAB/shared engine
- * számolja, amit a Scenario LAB használ. A külön osztály csak a két szükséges
- * adaptert adja a production UI-nak: tile-olvasás + activity commit.
- *
- * A world sessionStorage-ban él. Így oldalváltás/új E2E futás után is megmarad,
- * de a production Firestore egyetlen dokumentumát sem érinti.
- */
 export class LabE2eSandbox {
   private readonly worlds: Record<Layer, OwnershipMap>;
 
@@ -89,7 +78,7 @@ export class LabE2eSandbox {
     layer: Layer,
     view: { south: number; west: number; north: number; east: number },
   ): Promise<TilesResult> {
-    const polygon = [[
+    const polygon: [number, number][][] = [[
       [view.south, view.west],
       [view.south, view.east],
       [view.north, view.east],
@@ -130,8 +119,6 @@ export class LabE2eSandbox {
     try {
       sessionStorage.setItem(STORAGE_PREFIX + this.options.id, JSON.stringify(value));
     } catch (error) {
-      // Egy extrém nagy, már sessionStorage-limitet túllépő sandbox ne állítsa
-      // le a futást. A memóriabeli world továbbra is helyes erre a lapra.
       console.warn('[GRUNDO LAB] E2E sandbox persistence failed', error);
     }
   }
