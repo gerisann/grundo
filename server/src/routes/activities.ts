@@ -39,7 +39,7 @@ import {
   notifyTerritoryDefended,
   notifyTerritoryStolen,
 } from '../lib/notifications';
-import { existingRivals, recordRivalry } from '../lib/rivals';
+import { existingRivals, recordRivalry, toRivalRecord, type RivalRecord } from '../lib/rivals';
 
 export const activitiesRouter = Router();
 
@@ -661,20 +661,71 @@ async function withAuthors(rows: FeedRow[], viewerUid: string) {
     });
   }
 
-  return rows.map(({ userId, center, stolenFrom, ...rest }) => ({
-    ...rest,
-    center,
-    likedByMe: liked.has(rest.id),
-    author: authors.get(userId) ?? unknownAuthor(userId),
-    /*
-      A KÁROSULTAK, a legtöbbet vesztettől lefelé. A felület az elsőt mutatja
-      nagyban, a többit apró jelvényként — a sorrend tehát nem kozmetika,
-      hanem ez dönti el, kinek az arca kerül a sáv közepére.
-    */
-    victims: Object.entries(stolenFrom)
-      .sort((a, b) => b[1] - a[1])
-      .map(([uid, cells]) => ({ ...(authors.get(uid) ?? unknownAuthor(uid)), cells })),
-  }));
+  /*
+    A KÁRTYA RIVÁLIS-SÁVJA A TELJES RIVALITÁST MUTATJA, nem az aktivitásét.
+
+    Geri pontosítása (2026-08-26): a sáv ugyanaz a rivális-kártya, ami a
+    profilon és a `/profil/rivalisok` fülön van — a HALMOZOTT mérleg (pl.
+    +189 / −295, 9× összecsapás) —, és csak EGY új adattal bővül: hány mezőt
+    vett el ebben a konkrét körben.
+
+    Ezért kell a `users/{szerző}/rivals/{károsult}` tükördokumentum. Kötegelve
+    olvassuk, ugyanabban a körben, mint a neveket: soronként külön lekérdezés
+    egy húszas feednél húsz körbefordulót jelentene.
+
+    Az aktivitás fő károsultja adja, KIVEL való mérleget mutatjuk — akitől a
+    legtöbbet vette el. Lopás nélkül nincs kit mutatni, ilyenkor `null`.
+  */
+  const topVictimOf = (stolenFrom: Record<string, number>): string | null =>
+    Object.entries(stolenFrom).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  const mirrorKeys = rows
+    .map((row) => {
+      const victim = topVictimOf(row.stolenFrom);
+      return victim ? { activityId: row.id, uid: row.userId, victim } : null;
+    })
+    .filter((entry): entry is { activityId: string; uid: string; victim: string } => entry !== null);
+
+  const mirrors = new Map<string, RivalRecord>();
+  if (mirrorKeys.length > 0) {
+    const snapshots = await db.getAll(
+      ...mirrorKeys.map((entry) =>
+        db.collection(COLLECTIONS.users).doc(entry.uid).collection('rivals').doc(entry.victim),
+      ),
+    );
+    snapshots.forEach((snapshot, index) => {
+      mirrors.set(mirrorKeys[index]!.activityId, toRivalRecord(snapshot.data()));
+    });
+  }
+
+  const cellM2 = GAMEPLAY.CELL_AREA_M2;
+
+  return rows.map(({ userId, center, stolenFrom, ...rest }) => {
+    const ordered = Object.entries(stolenFrom).sort((a, b) => b[1] - a[1]);
+    const [top, ...others] = ordered;
+    const record = mirrors.get(rest.id);
+
+    return {
+      ...rest,
+      center,
+      likedByMe: liked.has(rest.id),
+      author: authors.get(userId) ?? unknownAuthor(userId),
+      rival:
+        top && record
+          ? {
+              ...(authors.get(top[0]) ?? unknownAuthor(top[0])),
+              ...record,
+              exchangedM2: record.exchangedCells * cellM2,
+              gainedM2: record.gainedCells * cellM2,
+              lostM2: record.lostCells * cellM2,
+              /** Amit EBBEN a körben vett el tőle — a sáv bal felső pirulája. */
+              cellsThisActivity: top[1],
+              /** A kör többi károsultja, jelvényként a fő kép sarkában. */
+              others: others.map(([uid]) => authors.get(uid) ?? unknownAuthor(uid)),
+            }
+          : null,
+    };
+  });
 }
 
 /** Kedvelte-e ez a felhasználó ezt az aktivitást? */

@@ -248,33 +248,39 @@ export interface FeedActivity {
   likedByMe: boolean;
   activityCells: string[];
   author: ActivityAuthor;
-  /**
-   * A kártya rivális-sávjának adata.
-   *
-   * `cellsGained` — hány mezővel nőtt a grund ebben az aktivitásban (szabad
-   * földről + máshonnan elvéve). A `reclaimed`, vagyis a saját terület
-   * újrafutása NINCS benne: az védelmet épít, de nem növeli a területet.
-   *
-   * `cellsStolen` — ebből mennyi jött MÁS JÁTÉKOSTÓL. A sáv korall fele.
-   *
-   * `victims` — kiktől, a legtöbbet vesztettől lefelé rendezve. A szerver
-   * legfeljebb hatot tárol (`MAX_STORED_VICTIMS`), tehát nagyon sok
-   * károsultnál ez a lista a legnagyobbakat mutatja, nem mindenkit.
-   *
-   * A RÉGI AKTIVITÁSOK IS KAPNAK ÉRTÉKET. A mentés a bontást csak 2026-08-26
-   * óta írja ki (`claimCounts`), de a korábbiakra a szerver a `territoryEvents`
-   * történetéből és az `areaGainedM2`-ből állítja elő ugyanezt — leírt
-   * tényekből, nem újraszámolásból. Lásd `routes/activities.ts` →
-   * `claimCountsOf`.
-   */
+  /** Hány mezővel nőtt a grund ebben a körben (szabad földről + elvéve). */
   cellsGained: number;
+  /** Ebből mennyi jött MÁS JÁTÉKOSTÓL. */
   cellsStolen: number;
-  victims: ActivityVictim[];
+  /**
+   * A kártya alján futó rivális-sáv adata — `null`, ha a kör nem vett el
+   * senkitől területet.
+   *
+   * ⚠️ A SZÁMOK A TELJES, HALMOZOTT MÉRLEGET mutatják a szerző és a kör fő
+   * károsultja között, NEM ennek az egy aktivitásnak az eredményét. Ez
+   * szándékos (Geri, 2026-08-26): a sáv ugyanaz a rivális-kártya, ami a
+   * profilon és a `/profil/rivalisok` fülön van, hogy egy pillantással
+   * ugyanazt jelentse mindenhol.
+   *
+   * Az EGYETLEN aktivitáshoz kötött adat a `cellsThisActivity` — ez kerül a
+   * sáv bal felső sarkába, a jobb felső szorzó párjaként.
+   */
+  rival: ActivityRival | null;
 }
 
-export interface ActivityVictim extends ActivityAuthor {
-  /** Hány mezőt vesztett EBBEN az aktivitásban. */
-  cells: number;
+export interface ActivityRival extends ActivityAuthor {
+  exchangedCells: number;
+  gainedCells: number;
+  lostCells: number;
+  gainedEvents: number;
+  lostEvents: number;
+  exchangedM2: number;
+  gainedM2: number;
+  lostM2: number;
+  /** Amit EBBEN a körben vett el tőle. */
+  cellsThisActivity: number;
+  /** A kör többi károsultja — jelvényként a fő kép sarkában. */
+  others: ActivityAuthor[];
 }
 
 /** Egy feltöltött kép: a Storage-útvonal és a megjelenítéshez való cím. */

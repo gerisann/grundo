@@ -119,11 +119,15 @@
   pointer-events: none;
 }
 
+/* ⚠️ `--rival-avatar`, NEM `--rival-gained`. Az arckép a 10–90% sávba van
+   szorítva (a `RivalRow.tsx` számolja), különben szélsőséges aránynál a sor
+   szélére csúszna és félig kilógna. A SÁVOK és a villám továbbra is a valós
+   arányt mutatják — a kettő ilyenkor szándékosan válik el. */
 .rival-row__identity {
   position: absolute;
-  left: var(--rival-gained, 50%);
+  left: var(--rival-avatar, var(--rival-gained, 50%));
   top: 50%;
-  z-index: 2;
+  z-index: 3;
   /* Középre igazítás a KÜLÖNÁLLÓ `translate` tulajdonsággal, nem
      `transform`-mal — így a `transform`/`scale` szabadon marad a
      pattanó belépésnek, és a kettő nem írja felül egymást. */
@@ -202,19 +206,95 @@
   background: var(--rival-loss);
 }
 
+/* ── A kör többi károsultja ──────────────────────────────────────────────
+   Apró arcok a fő kép JOBB ALSÓ sarkában, rálógva — jelvénysorként.
+   Egymásra csúsztatva, hogy három-négy is elférjen a sávon belül. */
+
+.rival-row__others {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  display: flex;
+}
+
+.rival-row__others > .avatar {
+  display: block;
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / .5);
+}
+
+.rival-row__others > .avatar + .avatar {
+  margin-left: -5px;
+}
+
+.rival-row__others .avatar--empty {
+  font-size: 8px;
+}
+
 /* ── Belépő animáció ───────────────────────────────────────────────────────
    Csak a `--live` osztály alatt fut. A sorrend szándékos: a két sáv
-   egymás felé fut (0–640 ms), a találkozásnál lecsap a villám (520 ms),
-   utána pattan be az avatár, végül pörögnek fel a számok.                  */
+   egymás felé fut és ÖSSZECSAPÓDIK, az első ütközésnél lecsap a villám,
+   utána pattan be az avatár, végül pörögnek fel a számok.
+
+   ⚠️ AZ ÜTKÖZÉS `easeOutBounce`, ÉS EZÉRT VAN KIÍRVA KULCSKOCKÁNKÉNT.
+   Geri kérése (2026-08-26): a két sáv csapódjon egymásnak, mint egy rossz
+   liftajtó, és pattanjon vissza néhányszor. Ez NEM írható le
+   `cubic-bezier`-rel — az egyetlen sima görbe, a pattogás viszont szakaszos
+   függvény. A lenti százalékok a szabványos `easeOutBounce`
+   (https://easings.net) mintavételei; az ütközések a 36,4%, 72,7% és 90,9%
+   pontokon vannak, közöttük a visszapattanásokkal.
+
+   A gyorsítás LINEÁRIS marad az animáción — a görbét maguk a kulcskockák
+   hordozzák. Ha `ease`-t teszel rá, kétszer easelsz, és a pattogás elmosódik. */
 
 @keyframes rival-wipe-right {
-  from { clip-path: inset(0 100% 0 0); }
-  to { clip-path: inset(0 0 0 0); }
+  0%     { clip-path: inset(0 100% 0 0); }
+  5%     { clip-path: inset(0 98.1% 0 0); }
+  10%    { clip-path: inset(0 92.4% 0 0); }
+  15%    { clip-path: inset(0 83% 0 0); }
+  20%    { clip-path: inset(0 69.8% 0 0); }
+  25%    { clip-path: inset(0 52.7% 0 0); }
+  30%    { clip-path: inset(0 31.9% 0 0); }
+  36.4%  { clip-path: inset(0 0 0 0); }      /* első ütközés */
+  40%    { clip-path: inset(0 9% 0 0); }
+  45%    { clip-path: inset(0 18.1% 0 0); }
+  50%    { clip-path: inset(0 23.4% 0 0); }
+  54.5%  { clip-path: inset(0 25% 0 0); }    /* legnagyobb visszapattanás */
+  60%    { clip-path: inset(0 22.8% 0 0); }
+  65%    { clip-path: inset(0 16.7% 0 0); }
+  70%    { clip-path: inset(0 6.9% 0 0); }
+  72.7%  { clip-path: inset(0 0 0 0); }      /* második ütközés */
+  78%    { clip-path: inset(0 5.4% 0 0); }
+  81.8%  { clip-path: inset(0 6.3% 0 0); }
+  86%    { clip-path: inset(0 4.7% 0 0); }
+  90.9%  { clip-path: inset(0 0 0 0); }      /* harmadik ütközés */
+  95.5%  { clip-path: inset(0 1.6% 0 0); }
+  100%   { clip-path: inset(0 0 0 0); }
 }
 
 @keyframes rival-wipe-left {
-  from { clip-path: inset(0 0 0 100%); }
-  to { clip-path: inset(0 0 0 0); }
+  0%     { clip-path: inset(0 0 0 100%); }
+  5%     { clip-path: inset(0 0 0 98.1%); }
+  10%    { clip-path: inset(0 0 0 92.4%); }
+  15%    { clip-path: inset(0 0 0 83%); }
+  20%    { clip-path: inset(0 0 0 69.8%); }
+  25%    { clip-path: inset(0 0 0 52.7%); }
+  30%    { clip-path: inset(0 0 0 31.9%); }
+  36.4%  { clip-path: inset(0 0 0 0); }
+  40%    { clip-path: inset(0 0 0 9%); }
+  45%    { clip-path: inset(0 0 0 18.1%); }
+  50%    { clip-path: inset(0 0 0 23.4%); }
+  54.5%  { clip-path: inset(0 0 0 25%); }
+  60%    { clip-path: inset(0 0 0 22.8%); }
+  65%    { clip-path: inset(0 0 0 16.7%); }
+  70%    { clip-path: inset(0 0 0 6.9%); }
+  72.7%  { clip-path: inset(0 0 0 0); }
+  78%    { clip-path: inset(0 0 0 5.4%); }
+  81.8%  { clip-path: inset(0 0 0 6.3%); }
+  86%    { clip-path: inset(0 0 0 4.7%); }
+  90.9%  { clip-path: inset(0 0 0 0); }
+  95.5%  { clip-path: inset(0 0 0 1.6%); }
+  100%   { clip-path: inset(0 0 0 0); }
 }
 
 /* A becsapódás: rövid felvillanás, majd visszaállás egyenletes ragyogásra. */
@@ -252,20 +332,22 @@
   50% { scale: 1.16; box-shadow: 0 0 0 4px rgb(255 255 255 / .16); }
 }
 
+/* `linear`, mert a görbét a kulcskockák hordozzák — lásd fent. A 900 ms-ből
+   az első ütközés a 36,4%-nál, azaz ~328 ms-nél van; a villám ehhez igazodik. */
 .rival-row--live .rival-row__bar--gain::before {
-  animation: rival-wipe-right 640ms cubic-bezier(.16, 1, .3, 1) both;
+  animation: rival-wipe-right 900ms linear both;
 }
 
 .rival-row--live .rival-row__bar--loss::before {
-  animation: rival-wipe-left 640ms cubic-bezier(.16, 1, .3, 1) both;
+  animation: rival-wipe-left 900ms linear both;
 }
 
 .rival-row--live .rival-row__bolt {
-  animation: rival-strike 520ms ease-out 500ms both;
+  animation: rival-strike 520ms ease-out 328ms both;
 }
 
 .rival-row--live .rival-row__identity {
-  animation: rival-bounce-in 620ms cubic-bezier(.34, 1.56, .64, 1) 380ms both;
+  animation: rival-bounce-in 620ms cubic-bezier(.34, 1.56, .64, 1) 420ms both;
 }
 
 .rival-row--live .rival-score__gained {
@@ -282,12 +364,94 @@
     rival-throb 280ms ease-in-out 620ms 3;
 }
 
+/* ── A körben elvett mezők — a bal felső pirula ──────────────────────────
+   A jobb felső szorzó (`rival-score__total`) PÁRJA: Geri kifejezetten azt
+   kérte (2026-08-26), hogy pontosan úgy nézzen ki, csak a másik sarokban.
+   Ezért örökli annak minden méretét; csak a hely és a tartalom más.
+
+   Ez az EGYETLEN adat a sávon, ami erről az egy aktivitásról szól — minden
+   más a halmozott mérleg. */
+
+.rival-row__taken {
+  position: absolute;
+  left: var(--sp-3);
+  top: var(--sp-3);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgb(20 16 30 / .78);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A hatszög a SZÁMMAL EGY MAGAS, és csak szegélye van, fehéren. Az `em`
+   szándékos: ha a pirula betűmérete változik, az ikon vele nő. */
+.rival-row__hex {
+  width: .8em;
+  height: .8em;
+  flex: none;
+}
+
+.rival-row--live .rival-row__taken {
+  animation: rival-slide-from-left 420ms cubic-bezier(.2, .9, .3, 1) 500ms both;
+}
+
+/* ── Tömör változat — az aktivitás-kártyák alján ─────────────────────────
+   Nagyjából fele akkora magasság, arányosan kisebb pirulákkal. A szerkezet
+   és a jelentés VÁLTOZATLAN: ugyanaz a mérleg, ugyanazok a számok. */
+
+.rival-row--compact {
+  min-height: 48px;
+  border-radius: var(--r-sm);
+}
+
+.rival-row--compact .rival-row__taken,
+.rival-row--compact .rival-score__total {
+  top: 4px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.rival-row--compact .rival-row__taken { left: var(--sp-2); }
+.rival-row--compact .rival-score__total { right: var(--sp-2); }
+
+.rival-row--compact .rival-score__split {
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: 4px;
+}
+
+.rival-row--compact .rival-score__gained,
+.rival-row--compact .rival-score__lost {
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
+/* A kártya legalján teljes szélességben ül, saját lekerekítés nélkül: az alsó
+   sarkokat a kártya `overflow: hidden`-je vágja a saját sugarára. Saját
+   sugárral egy doboz lebegne a kártyában, ami MÁSIK kártyának nézne ki. */
+.acard > .rival-row--compact {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+}
+
 /* ⚠️ A REJTETT ALAPÁLLAPOTOT IS FEL KELL OLDANI. A fenti elemek `opacity: 0`
    értékről indulnak, tehát nem elég az animációt kikapcsolni — a végállapotot
    külön vissza kell adni, különben csökkentett mozgásigénnyel üres sor
    maradna. (A számok pörgetését a `useCountUp` külön is kikapcsolja.) */
 @media (prefers-reduced-motion: reduce) {
   .rival-row__identity,
+  .rival-row__taken,
   .rival-row .rival-score__total,
   .rival-row .rival-score__gained,
   .rival-row .rival-score__lost {

@@ -30,7 +30,7 @@ az érintett fájlok fejléceiben.
 | # | Mi változott | Hol |
 |---|---|---|
 | 1 | A profil „Riválisok" szekciója a `/profil/rivalisok` sorát kapta (sávok, villám, animáció) | `RivalsCard.tsx` |
-| 2 | **ÚJ**: rivális-sáv az aktivitás-kártyák alján — szabad föld ↔ mástól elvett, a fő károsult képével | `ActivityRivalBar.tsx` |
+| 2 | **ÚJ**: rivális-sáv az aktivitás-kártyák alján — a `RivalRow` tömör változata, HALMOZOTT mérleggel | `ActivityRivalBar.tsx` |
 | 3 | Profil-fülsor: +2 px, vastagabb, nagybetűs, teljes keret, alsó vonal nélkül | `profileTabs.css` |
 | 4 | Értesítések: minden sor 3 soros és egyforma magas (mérve: mind 82 px) | `NotificationPanel.tsx` |
 | 5 | **ÚJ**: mozgásforma-szűrő a feedben (Séta/Futás/Bringa) | `Feed.tsx` |
@@ -83,6 +83,35 @@ aktivitás**, tehát a jelvény-sor csak seedelt adaton látszott.
 A szkript alapból SZÁRAZON fut, és éles íráshoz `--apply --allow-production`
 kell — ugyanaz a minta, mint a `backfill:rivals`-nál.
 
+### ⚠️ A RIVÁLIS-SÁV A HALMOZOTT MÉRLEGET MUTATJA
+
+Első nekifutásra az aktivitás SAJÁT bontását tettem a sávra (szabad föld ↔
+elvett), és ez **rossz volt**. Geri pontosítása (2026-08-26): a kártyán
+UGYANAZ a rivális-kártya álljon, mint a profilon — a szerző és a kör fő
+károsultja közti teljes, halmozott mérleg (pl. `+189 / −295`, `9×`).
+
+Ezért lett a `RivalRow` EGYETLEN komponens három helyre (teljes lista, profil
+TOP 3, kártya-alji tömör változat). Ha ez a fájl változik, mind a három
+változik vele — ez a lényeg, nem mellékhatás.
+
+Az EGYETLEN adat a sávon, ami egy konkrét körről szól, a bal felső pirula
+(`rival-row__taken`): hány mezőt vett el ebben a körben. Szándékosan pontosan
+úgy néz ki, mint a jobb felső szorzó.
+
+**Két szabály, amit ne vonj vissza:**
+
+- **A sávok aránya valós, az AVATÁRÉ nem.** A `--rival-gained` a tényleges
+  arány; a `--rival-avatar` viszont 10–90% közé van szorítva, különben
+  szélsőséges aránynál a profilkép a sor szélére csúszna és félig kilógna.
+  A kettő ilyenkor SZÁNDÉKOSAN válik el a villámtól — mérve: 94%-os aránynál
+  az avatár 90%-on áll, a villám 94%-on.
+- **Az összecsapás `easeOutBounce`, kulcskockákban kiírva.** Nem
+  `cubic-bezier` — az egyetlen sima görbe, a pattogás szakaszos függvény.
+  A Web Animations API-val mérve: ütközés a 36,4%, 72,7% és 90,9% pontokon,
+  közöttük 25% / 6,3% / 1,6% visszapattanással. Az animáció gyorsítása
+  `linear`, mert a görbét maguk a kulcskockák hordozzák — ha `ease`-t teszel
+  rá, kétszer easelsz és elmosódik a pattogás.
+
 ### Mérési állapot a `#14` végén
 
 ```text
@@ -90,7 +119,7 @@ npx tsc --noEmit                         → OK
 npx tsc -p server/tsconfig.json --noEmit → OK
 npx vitest run --dir src                 → 34 fájl, 355 teszt, 0 bukó
 npx vitest run --dir server              → 165 zöld, 11 emulátoros fájl kihagyva
-npm run test:emulator                    → 11 fájl, 121 teszt, 0 bukó
+npm run test:emulator                    → 11 fájl, 122 teszt, 0 bukó
 npm run build                            → lefut
 ```
 

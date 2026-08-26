@@ -146,19 +146,41 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
       likeCount: 0,
       commentCount: 0,
     });
+    // A HALMOZOTT mérleg — ez kerül a sávra, nem az egy kör eredménye.
+    await db
+      .collection('users')
+      .doc(ME)
+      .collection('rivals')
+      .doc('aldozat')
+      .set({ gainedCells: 189, lostCells: 295, gainedEvents: 4, lostEvents: 5 });
 
     const result = await feed('scope=world');
     const row = result.activities.find((item: any) => item.id === 'regi');
 
     expect(row.cellsGained).toBe(79);
     expect(row.cellsStolen).toBe(7);
-    // A sáv lila fele: 79 − 7 = 72 mező szabad földről.
-    expect(row.cellsGained - row.cellsStolen).toBe(72);
-    // A legtöbbet vesztett áll elöl — az ő képe kerül a villámhoz.
-    expect(row.victims.map((v: any) => [v.username, v.cells])).toEqual([
-      ['aldozat', 5],
-      ['masik', 2],
-    ]);
+
+    /*
+      ⚠️ A SÁV SZÁMAI A TELJES MÉRLEGBŐL jönnek, nem ebből a körből. Ez a
+      teszt lényege: ha valaki visszaírná ide az aktivitás saját bontását,
+      a kép ugyanígy nézne ki, de mást jelentene.
+    */
+    expect(row.rival.username).toBe('aldozat');
+    expect(row.rival.gainedCells).toBe(189);
+    expect(row.rival.lostCells).toBe(295);
+    expect(row.rival.exchangedCells).toBe(484);
+    expect(row.rival.gainedEvents + row.rival.lostEvents).toBe(9);
+    // Az EGYETLEN adat, ami erről a körről szól:
+    expect(row.rival.cellsThisActivity).toBe(5);
+    // A többi károsult jelvényként, a fő kép sarkában.
+    expect(row.rival.others.map((o: any) => o.username)).toEqual(['masik']);
+  });
+
+  /** Lopás nélkül nincs kinek a mérlegét mutatni — a sáv sem jelenik meg. */
+  it('lopás nélküli körnél nincs rivális a sávhoz', async () => {
+    await seedActivity('tiszta', ME, new Date('2026-08-19T10:00:00Z'));
+    const result = await feed('scope=world');
+    expect(result.activities.find((item: any) => item.id === 'tiszta').rival).toBeNull();
   });
 
   it('a követett feed üres, ha nem követek senkit', async () => {
