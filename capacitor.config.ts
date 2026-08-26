@@ -2,6 +2,8 @@ import type { CapacitorConfig } from '@capacitor/cli';
 import type {} from '@capacitor-firebase/messaging';
 
 const config: CapacitorConfig = {
+  // Az Android natív projekt applicationId-ja szándékosan
+  // `app.grundo.android`; az iOS bundle ID miatt a közös alapérték itt marad.
   appId: 'app.grundo.ios',
   appName: 'GRUNDO',
   webDir: 'dist',

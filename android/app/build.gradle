@@ -5,10 +5,10 @@ def releaseVersionCode = (System.getenv('BUILD_NUMBER') ?: '1').toInteger()
 def releaseVersionName = new groovy.json.JsonSlurper().parse(file('../../package.json')).version
 
 android {
-    namespace = "app.grundo.ios"
+    namespace = "app.grundo.android"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.grundo.ios"
+        applicationId "app.grundo.android"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode releaseVersionCode

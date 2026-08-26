@@ -1,4 +1,4 @@
-package app.grundo.ios;
+package app.grundo.android;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;

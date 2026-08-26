@@ -1,4 +1,4 @@
-package app.grundo.ios;
+package app.grundo.android;
 
 import android.content.ContentValues;
 import android.content.Context;

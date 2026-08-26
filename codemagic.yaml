@@ -94,7 +94,7 @@ workflows:
       android_signing:
         - grundo_android_upload
       vars:
-        ANDROID_APPLICATION_ID: app.grundo.ios
+        ANDROID_APPLICATION_ID: app.grundo.android
       node: 22.14.0
       java: 21
       ubuntu: 24.04
@@ -136,6 +136,7 @@ workflows:
           test -n "$CM_KEYSTORE_PASSWORD"
           test -n "$CM_KEY_ALIAS"
           test -n "$CM_KEY_PASSWORD"
+          grep -q "applicationId \"$ANDROID_APPLICATION_ID\"" android/app/build.gradle
           grep -q 'targetSdkVersion = 36' android/variables.gradle
           grep -q 'FOREGROUND_SERVICE_LOCATION' android/app/src/main/AndroidManifest.xml
           ! grep -q 'ACCESS_BACKGROUND_LOCATION' android/app/src/main/AndroidManifest.xml

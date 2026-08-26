@@ -8,10 +8,10 @@
 
 ## Mi készült el
 
-- Létrejött a Capacitor 8.5 Android projekt `app.grundo.ios` application ID-val.
-  A meglévő közös Capacitor `appId` maradt érvényben; új azonosítót nem
-  találtunk ki. `minSdk 24`, `compileSdk/targetSdk 36`, AGP 8.13.0, Gradle
-  8.14.3, Java 21.
+- Létrejött a Capacitor 8.5 Android projekt a Geri által jóváhagyott
+  `app.grundo.android` application ID-val. Az iOS bundle ID változatlanul
+  `app.grundo.ios`. `minSdk 24`, `compileSdk/targetSdk 36`, AGP 8.13.0,
+  Gradle 8.14.3, Java 21.
 - A saját `BackgroundLocation` Capacitor plugin Androidon egy felhasználói
   gesztusból induló `location` foreground service-t vezérel. Fused Location
   Provider, 1 másodperces kérés, 5 méteres minimum elmozdulás, tartós
@@ -50,7 +50,7 @@
 
 ## Geri következő kézi lépései
 
-1. Firebase Console-ban hozz létre Android appot `app.grundo.ios` package
+1. Firebase Console-ban hozz létre Android appot `app.grundo.android` package
    névvel, és a letöltött `google-services.json` base64 értékét tedd a
    Codemagic `grundo_android` csoport `GOOGLE_SERVICES_JSON_BASE64` secretjébe.
 2. Hozd létre és biztonságosan mentsd a Play upload key-t, töltsd fel

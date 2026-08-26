@@ -1,4 +1,4 @@
-package app.grundo.ios;
+package app.grundo.android;
 
 import android.Manifest;
 import android.content.BroadcastReceiver;

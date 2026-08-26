@@ -1,4 +1,4 @@
-package app.grundo.ios;
+package app.grundo.android;
 
 import android.Manifest;
 import android.app.Notification;
@@ -34,7 +34,7 @@ import com.google.android.gms.location.Priority;
  * does not depend on the WebView remaining alive while the screen is locked.
  */
 public final class TrackingLocationService extends Service {
-    static final String EVENT_ACTION = "app.grundo.ios.BACKGROUND_LOCATION_EVENT";
+    static final String EVENT_ACTION = "app.grundo.android.BACKGROUND_LOCATION_EVENT";
     static final String EXTRA_EVENT_TYPE = "eventType";
     static final String EXTRA_ERROR_CODE = "errorCode";
     static final String EXTRA_ERROR_MESSAGE = "errorMessage";
@@ -47,7 +47,7 @@ public final class TrackingLocationService extends Service {
     static final String EXTRA_HAS_ELEVATION = "hasElevation";
     static final String EXTRA_HAS_SPEED = "hasSpeed";
 
-    private static final String ACTION_START = "app.grundo.ios.action.START_TRACKING";
+    private static final String ACTION_START = "app.grundo.android.action.START_TRACKING";
     private static final String PREFS_NAME = "grundo.backgroundLocation.v1";
     private static final String PREF_ACTIVE = "active";
     private static final String PREF_ACTIVITY_TYPE = "activityType";

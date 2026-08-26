@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">GRUNDO</string>
     <string name="title_activity_main">GRUNDO</string>
-    <string name="package_name">app.grundo.ios</string>
-    <string name="custom_url_scheme">app.grundo.ios</string>
+    <string name="package_name">app.grundo.android</string>
+    <string name="custom_url_scheme">app.grundo.android</string>
     <string name="tracking_channel_name">Aktivitásrögzítés</string>
     <string name="tracking_notification_title">GRUNDO aktivitásrögzítés</string>
     <string name="tracking_notification_run">Futás rögzítése folyamatban</string>

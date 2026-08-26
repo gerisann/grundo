@@ -2,11 +2,12 @@
 
 **Állapot:** natív Android projekt és release workflow elkészült · 2026-08-26
 
-**App:** GRUNDO · **Application ID:** `app.grundo.ios`
+**App:** GRUNDO · **Application ID:** `app.grundo.android`
 
-Az Android azonosító azért egyezik az iOS bundle ID-jával, mert ez volt a
-közös Capacitor-konfigurációban már rögzített `appId`; az Android buildhez nem
-vezettünk be új, kitalált azonosítót. A Google Playben ez az érték később nem
+Az Android külön, Geri által jóváhagyott azonosítót használ; az iOS bundle ID
+változatlanul `app.grundo.ios`. A közös Capacitor-konfiguráció `appId` mezője
+az iOS-értéken marad, az Android Gradle `namespace` és `applicationId` viszont
+`app.grundo.android`. A Google Playben az Android application ID később nem
 módosítható.
 
 ## Buildkonfiguráció
@@ -43,7 +44,7 @@ Android FCM-hez ezen felül kell a Firebase Android app konfigurációja.
 
 1. Firebase Console → `grundo` → Project settings → General → Your apps →
    **Add app → Android**.
-2. Android package name: `app.grundo.ios`; app nickname: `GRUNDO Android`.
+2. Android package name: `app.grundo.android`; app nickname: `GRUNDO Android`.
 3. Töltsd le a `google-services.json` fájlt. Ne tedd Gitbe; az
    `android/.gitignore` kizárja.
 4. PowerShellben, a fájl saját mappájában másold a base64 értéket a vágólapra:
@@ -52,7 +53,7 @@ Android FCM-hez ezen felül kell a Firebase Android app konfigurációja.
    `GOOGLE_SERVICES_JSON_BASE64` nevű, **Secret** változója legyen.
 
 Az Android workflow visszafejtés után ellenőrzi, hogy a JSON valóban az
-`app.grundo.ios` csomaghoz tartozik. Hamis vagy más apphoz tartozó fájllal a
+`app.grundo.android` csomaghoz tartozik. Hamis vagy más apphoz tartozó fájllal a
 build még Gradle előtt leáll. E-mail/jelszó authhoz és FCM-hez nem kell SHA-1;
 natív Google-belépés bevezetésekor majd szükséges lesz.
 
