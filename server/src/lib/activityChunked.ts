@@ -66,6 +66,7 @@ import {
   boundsOf,
   FIRESTORE_MAX_TRANSACTION_WRITES,
   sanitizePublicSummary,
+  topVictims,
   type ActivityPlan,
   type CommitOutcome,
   type CommitSummary,
@@ -690,6 +691,11 @@ async function closeBooks(
       {
         gp,
         areaGainedM2: Math.round(total.gainedM2),
+        // Ugyanaz a két mező, mint a gyors úton (`activityCommit.ts`) — a
+        // kártya rivális-sávja nem tudhatja, melyik úton mentődött az
+        // aktivitás, tehát MINDKETTŐNEK ki kell írnia.
+        claimCounts: total.counts,
+        stolenFrom: topVictims(total.stolenFrom),
         summary,
         claimStatus: 'done',
         claimGroups: groupCount,

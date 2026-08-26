@@ -412,13 +412,30 @@ export function notifyGpDaily(uid: string, holdGp: number): void {
   });
 }
 
-export function notifyActivityLiked(activityOwnerId: string, actorUsername: string, activityId: string): void {
+/**
+ * ⚠️ AZ AKTIVITÁS NEVE A `body`-BA MEGY, nem csak a `data`-ba.
+ *
+ * Az értesítés-lista minden sora három soros és egyforma magas (Geri,
+ * 2026-08-26), és a KÖZÉPSŐ sor a `body`. Ha az aktivitás neve csak a
+ * `data`-ban lenne, a lista üres középső sort mutatna. A `data.activityTitle`
+ * ettől függetlenül is megmarad: a push-értesítés más szerkezetű, ott külön
+ * mezőként jól jön.
+ *
+ * A RÉGI értesítéseken egyik sincs meg — a felület ilyenkor a típus általános
+ * feliratát írja a középső sorba, hogy a magasság akkor is stimmeljen.
+ */
+export function notifyActivityLiked(
+  activityOwnerId: string,
+  actorUsername: string,
+  activityId: string,
+  activityTitle: string,
+): void {
   void createNotification({
     uid: activityOwnerId,
     type: 'activity_liked',
     title: `${actorUsername} kedvelte az aktivitásodat`,
-    body: '',
-    data: { screen: 'activity', activityId },
+    body: activityTitle,
+    data: { screen: 'activity', activityId, activityTitle },
   });
 }
 
@@ -427,18 +444,21 @@ export function notifyActivityLiked(activityOwnerId: string, actorUsername: stri
  *
  * NEM új követő értesítés — az nem szerepelt Geri kérésében (7. pont:
  * „Követett user aktivitást rakott ki"), ez azt fedi le.
+ *
+ * A `body` itt is az aktivitás neve — lásd a `notifyActivityLiked` fejlécét.
  */
 export function notifyFollowedActivity(
   followerIds: readonly string[],
   actorUsername: string,
   activityId: string,
+  activityTitle: string,
 ): void {
   if (followerIds.length === 0) return;
   void createNotificationForMany(followerIds, {
     type: 'followed_activity',
     title: `${actorUsername} új aktivitást rögzített`,
-    body: '',
-    data: { screen: 'activity', activityId },
+    body: activityTitle,
+    data: { screen: 'activity', activityId, activityTitle },
   });
 }
 

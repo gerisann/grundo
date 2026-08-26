@@ -248,6 +248,31 @@ export interface FeedActivity {
   likedByMe: boolean;
   activityCells: string[];
   author: ActivityAuthor;
+  /**
+   * A kártya rivális-sávjának adata.
+   *
+   * `cellsGained` — hány mezővel nőtt a grund ebben az aktivitásban (szabad
+   * földről + máshonnan elvéve). A `reclaimed`, vagyis a saját terület
+   * újrafutása NINCS benne: az védelmet épít, de nem növeli a területet.
+   *
+   * `cellsStolen` — ebből mennyi jött MÁS JÁTÉKOSTÓL. A sáv korall fele.
+   *
+   * `victims` — kiktől, a legtöbbet vesztettől lefelé rendezve. A szerver
+   * legfeljebb hatot tárol (`MAX_STORED_VICTIMS`), tehát nagyon sok
+   * károsultnál ez a lista a legnagyobbakat mutatja, nem mindenkit.
+   *
+   * ⚠️ A RÉGI AKTIVITÁSOKON MINDHÁROM ÜRES/NULLA. A `claimCounts` és a
+   * `stolenFrom` mezőt a mentés 2026-08-26 óta írja; ami előtte készült, arra
+   * a motor nem őrizte meg. A sáv ilyenkor nem jelenik meg.
+   */
+  cellsGained: number;
+  cellsStolen: number;
+  victims: ActivityVictim[];
+}
+
+export interface ActivityVictim extends ActivityAuthor {
+  /** Hány mezőt vesztett EBBEN az aktivitásban. */
+  cells: number;
 }
 
 /** Egy feltöltött kép: a Storage-útvonal és a megjelenítéshez való cím. */

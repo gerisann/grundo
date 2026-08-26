@@ -14,11 +14,23 @@
   gap: var(--sp-4);
 }
 
+/* A három szűrőcsoport (terület · mozgásforma · időszak) EGY arculatot visz:
+   azonos pirula-magasság, azonos betűméret, azonos „bekapcsolt" jelölés.
+   A dátumszűrő korábban kilógott ebből — széles, nagybetűs, ritkított —, és
+   ettől úgy nézett ki, mintha máshova tartozna.
+
+   `flex-wrap`, mert három csoport keskeny telefonon nem fér egy sorba; az
+   időszak megy át a második sorba, jobbra igazítva. */
 .feed__filterbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--sp-2);
+}
+
+.feed__date-select {
+  margin-left: auto;
 }
 
 .feed__geo {
@@ -48,22 +60,30 @@
   flex: 0 0 auto;
 }
 
+/* A trigger a `feed__geo` csoport KÜLSŐ pirulájának felel meg, benne a
+   kiválasztott időszak a `--on` gomb kinézetével. Nincs `min-width`: a
+   „Mindig" mellett korábban egy fél gombnyi üres hely maradt, mert a doboz
+   a leghosszabb felirathoz volt szabva. */
 .feed__date-trigger {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  min-width: 108px;
-  min-height: 32px;
-  padding: 5px 10px 5px 13px;
-  border: 1px solid var(--accent-border);
+  gap: 4px;
+  padding: 2px 8px 2px 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.feed__date-trigger > span:first-child {
+  padding: 6px 10px;
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font: inherit;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--accent-border);
 }
 
 .feed__date-trigger:hover,
@@ -105,9 +125,8 @@
   padding: 8px 10px;
   border-radius: var(--r-sm);
   color: var(--text-secondary);
-  font-size: var(--fs-label);
-  font-weight: 750;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-small);
+  font-weight: 700;
   text-align: left;
 }
 

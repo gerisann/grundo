@@ -19,9 +19,10 @@ import './rivalScore.css';
  * nélkül — színvakon és fekete-fehér képernyőn is eldönthető, melyik a
  * szerzett és melyik a vesztett.
  *
- * ⚠️ A `countUp` CSAK A RIVÁLIS-SORÉ. A profil „Riválisok" kártyája (TOP 3)
- * szándékosan nyugodt marad: ott a mérleg mellékszereplő egy áttekintő
- * oldalon, itt viszont a sor FŐ mondanivalója. Alapértelmezés szerint kikapcsolt.
+ * ⚠️ A `countUp` A HÍVÓ DÖNTÉSE, és alapból kikapcsolt. A `RivalRow` akkor
+ * kapcsolja be, amikor a sor láthatóvá válik — így a pörgetés és a CSS-sávok
+ * együtt indulnak. Aki csak a számokat mutatja sáv nélkül, hagyja kikapcsolva:
+ * önmagában pörgő szám egy listában nyugtalanság, nem kiemelés.
  */
 export function RivalScore({ rival, countUp = false }: { rival: Rival; countUp?: boolean }) {
   const encounters = rival.gainedEvents + rival.lostEvents;

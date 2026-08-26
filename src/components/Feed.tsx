@@ -20,18 +20,41 @@ import './feed.css';
 const TAB_KEY = 'grundo.feed.tab';
 const RADIUS_KEY = 'grundo.feed.radiusKm';
 const DATE_KEY = 'grundo.feed.date';
+const TYPES_KEY = 'grundo.feed.types';
 
 type Tab = 'global' | 'following';
 type GlobalView = 'world' | 'local';
 type DatePreset = 'today' | 'week' | 'month' | 'always' | 'custom';
+type ActivityType = FeedActivity['type'];
 
 const DATE_OPTIONS: readonly { value: DatePreset; label: string }[] = [
-  { value: 'today', label: 'MA' },
-  { value: 'week', label: 'HÉT' },
-  { value: 'month', label: 'HÓNAP' },
-  { value: 'always', label: 'MINDIG' },
-  { value: 'custom', label: 'EGYEDI' },
+  { value: 'today', label: 'Ma' },
+  { value: 'week', label: 'Hét' },
+  { value: 'month', label: 'Hónap' },
+  { value: 'always', label: 'Mindig' },
+  { value: 'custom', label: 'Egyedi' },
 ];
+
+/**
+ * A mozgásforma-szűrő.
+ *
+ * ⚠️ TÖBBET IS BE LEHET KAPCSOLNI, és alapból mind a három BE van. Egy
+ * hárompozíciós, egymást kizáró kapcsoló azt jelentené, hogy vegyes feedet
+ * SOHA nem lehet nézni — pedig épp az az alapállapot, amit a felhasználók
+ * túlnyomó része akar. Így viszont a szűrés szűkítés: leveszed, ami nem
+ * érdekel.
+ *
+ * ⚠️ AZ UTOLSÓ BEKAPCSOLTAT NEM LEHET LEVENNI. „Egyik mozgásforma sem" nem
+ * hasznos állapot — üres listát adna, és a felhasználó azt hinné, elromlott
+ * valami. A koppintás ilyenkor egyszerűen nem csinál semmit.
+ */
+const TYPE_OPTIONS: readonly { value: ActivityType; label: string }[] = [
+  { value: 'walk', label: 'Séta' },
+  { value: 'run', label: 'Futás' },
+  { value: 'ride', label: 'Bringa' },
+];
+
+const ALL_TYPES: readonly ActivityType[] = ['walk', 'run', 'ride'];
 
 /** A választható sugarak. Nem szabad szöveges beviteli mező: futás után, egy
  *  kézzel senki nem akar számot gépelni. */
@@ -44,6 +67,7 @@ export function Feed() {
   const [view, setView] = useState<GlobalView>('world');
   const [radiusKm, setRadiusKm] = useState<number>(() => Number(read(RADIUS_KEY)) || 10);
   const [datePreset, setDatePreset] = useState<DatePreset>(() => readDatePreset());
+  const [types, setTypes] = useState<readonly ActivityType[]>(() => readTypes());
   const [customFrom, setCustomFrom] = useState(() => localDateValue(new Date()));
   const [customTo, setCustomTo] = useState(() => localDateValue(new Date()));
   const [dateMenuOpen, setDateMenuOpen] = useState(false);
@@ -120,6 +144,27 @@ export function Feed() {
         },
   );
 
+  /**
+   * A mozgásforma-szűrés a BETÖLTÖTT lapon fut, nem a szerveren.
+   *
+   * A `type` szerinti szerveroldali szűréshez `where('type','in',…)` kellene
+   * az `orderBy('startedAt')` mellé, ami új összetett indexet jelent — és a
+   * feed amúgy is egyetlen, időrendben bekért lapot hoz. A szűrés így
+   * azonnali, gépelés nélkül, hálózat nélkül.
+   *
+   * ⚠️ EMIATT A SZŰRT LISTA HIÁNYOS LEHET: ha a lap már eleve levágott
+   * (`truncated`), a kiszűrt mozgásformák helyén NEM jönnek fel régebbi
+   * aktivitások. A `truncated` jelzést ezért változatlanul továbbadjuk.
+   */
+  const visibleResult = useMemo<FeedResult | null>(() => {
+    if (result === null) return null;
+    if (types.length === ALL_TYPES.length) return result;
+    return {
+      ...result,
+      activities: result.activities.filter((item) => types.includes(item.type)),
+    };
+  }, [result, types]);
+
   function chooseTab(next: Tab) {
     setTab(next);
     write(TAB_KEY, next);
@@ -135,6 +180,17 @@ export function Feed() {
     write(DATE_KEY, next);
     setDateMenuOpen(false);
     dateTriggerRef.current?.focus();
+  }
+
+  function toggleType(value: ActivityType) {
+    setTypes((current) => {
+      const on = current.includes(value);
+      // Az utolsó bekapcsolt nem vehető le — lásd a `TYPE_OPTIONS` fejlécét.
+      if (on && current.length === 1) return current;
+      const next = on ? current.filter((item) => item !== value) : [...current, value];
+      write(TYPES_KEY, next.join(','));
+      return next;
+    });
   }
 
   function focusDateOption(direction: 1 | -1, event: KeyboardEvent<HTMLButtonElement>) {
@@ -177,9 +233,24 @@ export function Feed() {
               Helyi
             </button>
           </div>
-        ) : (
-          <span />
-        )}
+        ) : null}
+
+        <div className="feed__geo" role="group" aria-label="Mozgásforma szerinti szűrés">
+          {TYPE_OPTIONS.map((option) => {
+            const on = types.includes(option.value);
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={on}
+                className={on ? 'feed__geo-btn feed__geo-btn--on' : 'feed__geo-btn'}
+                onClick={() => toggleType(option.value)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="feed__date-select" ref={dateSelectRef}>
           <button
@@ -272,10 +343,20 @@ export function Feed() {
         </div>
       ) : awaitingPosition ? (
         <div className="card">Helymeghatározás…</div>
+      ) : /*
+           A SZŰRŐ okozta üresség NEM ugyanaz, mint hogy nincs aktivitás. Az
+           általános „Nincs mit mutatni" itt félrevezetne: a felhasználó azt
+           hinné, a környéken nem mozgott senki, pedig csak levette a
+           mozgásformát, amiben mozogtak.
+         */
+      result !== null && result.activities.length > 0 && visibleResult?.activities.length === 0 ? (
+        <div className="card">
+          Van itt aktivitás, csak nem ilyen mozgásformában. Kapcsold vissza a többit a szűrőn.
+        </div>
       ) : (
         <ActivityList
           scope={scope}
-          result={result}
+          result={visibleResult}
           loading={loading}
           error={error}
           radiusKm={radiusKm}
@@ -444,6 +525,14 @@ function write(key: string, value: string): void {
   } catch {
     /* privát böngészés — a választás nem marad meg, de működik */
   }
+}
+
+function readTypes(): readonly ActivityType[] {
+  const stored = (read(TYPES_KEY) ?? '')
+    .split(',')
+    .filter((value): value is ActivityType => (ALL_TYPES as readonly string[]).includes(value));
+  // Üres vagy sérült érték esetén mind a három — lásd a `TYPE_OPTIONS` fejlécét.
+  return stored.length > 0 ? stored : ALL_TYPES;
 }
 
 function readDatePreset(): DatePreset {

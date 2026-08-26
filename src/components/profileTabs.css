@@ -1,8 +1,15 @@
+/* A fülsor KERETES, nem aláhúzott (Geri, 2026-08-26).
+
+   Az aktív fül teljes, lekerekített keretet kap az aláhúzás helyett, és a
+   sor alól eltűnt az 1 px-es elválasztó vonal: két vízszintes vonal egymás
+   alatt (a keret alja és az elválasztó) rácsot rajzolt volna a fejlécbe.
+   A keret MINDEN fülön ott van, csak átlátszóan — különben az aktív fül
+   szélesebb lenne a többinél, és a sor megugrana váltáskor. */
+
 .profile-tabs {
   display: flex;
-  gap: var(--sp-4);
-  padding: 0 var(--sp-4);
-  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-2);
   overflow-x: auto;
   scrollbar-width: none;
   touch-action: pan-x;
@@ -17,26 +24,20 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  min-height: 42px;
-  padding: 0;
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
   color: var(--text-secondary);
-  font-weight: 400;
-  font-size: var(--fs-small);
+  font-weight: 600;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .profile-tabs__item--active {
-  color: var(--text-primary);
-}
-
-.profile-tabs__item--active::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  border-radius: var(--r-pill);
-  background: linear-gradient(90deg, var(--accent), var(--territory-stolen));
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .profile-header {

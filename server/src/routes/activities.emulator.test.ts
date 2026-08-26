@@ -252,6 +252,36 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     expect(events.docs[0]!.data().recipientId).toBe('alice');
   });
 
+  /**
+   * A KÁRTYA RIVÁLIS-SÁVJÁNAK ADATA.
+   *
+   * ⚠️ EZT KORÁBBAN CSAK A COMMIT VÁLASZA HORDOZTA, a dokumentum nem — az
+   * értesítés kiment, aztán az adat elveszett, és utólag nem lehetett
+   * megmondani, kitől vett el területet egy aktivitás. A `claimCounts` és a
+   * `stolenFrom` 2026-08-26 óta a dokumentumon is rajta van.
+   *
+   * A `tsc` ezt NEM fogná meg: a `tx.set(...)` egy szabad alakú objektumot
+   * vesz át, tehát egy elfelejtett mező néma marad. Csak mérés dönti el.
+   */
+  it('a lopás bontása rákerül az aktivitás dokumentumára', async () => {
+    const points = freshLoop();
+    await upload('alice', 'activity-bar0001', points);
+    await upload('bob', 'activity-bar0002', points);
+
+    const stolen = (await db.collection(collections.activities!).doc('activity-bar0002').get()).data()!;
+    const counts = stolen.claimCounts as Record<string, number>;
+
+    // Bob ugyanazt a kört futotta, tehát MINDENT Alice-től vett el.
+    expect(counts.stolen).toBeGreaterThan(0);
+    expect(stolen.stolenFrom).toEqual({ alice: counts.stolen });
+
+    // Alice köre szűz terepen ment: van szerzés, de nincs kitől.
+    const free = (await db.collection(collections.activities!).doc('activity-bar0001').get()).data()!;
+    expect((free.claimCounts as Record<string, number>).free).toBeGreaterThan(0);
+    expect((free.claimCounts as Record<string, number>).stolen).toBe(0);
+    expect(free.stolenFrom).toEqual({});
+  });
+
   it('a duplikált mentés nem hoz létre második területeseményt', async () => {
     const points = freshLoop();
     await upload('alice', 'activity-evt0001', points);

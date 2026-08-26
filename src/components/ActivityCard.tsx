@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ActivityRivalBar } from '@/components/ActivityRivalBar';
 import { RivalBadge } from '@/components/RivalBadge';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { CommentButton, LikeButton } from '@/components/SocialActions';
@@ -219,6 +220,18 @@ export function ActivityCard({
           <LikeButton activityId={item.id} count={item.likeCount} liked={item.likedByMe} />
         </div>
       </footer>
+
+      {/*
+        A RIVÁLIS-SÁV A KÁRTYA LEGALJÁN, teljes szélességben — Geri kérése
+        (2026-08-26). A NYITÓ GOMBON KÍVÜL van, mint a fejléc, és ugyanazért:
+        a károsult képére koppintva később az ő profilja nyílhat meg, ami
+        gomb a gombban lenne. Most még nem kattintható, de a szerkezet már
+        nem áll ennek az útjában.
+
+        A SAJÁT kártyán is ott van: az „szereztem 24 mezőt, ebből 7-et
+        Katától" ugyanúgy az aktivitásról szól, akárki nézi.
+      */}
+      <ActivityRivalBar item={item} />
     </article>
   );
 }

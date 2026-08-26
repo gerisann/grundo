@@ -334,27 +334,56 @@
   color: var(--weather-wind);
 }
 
+/* ── Három sor, egyforma magasság ─────────────────────────────────────────
+ *
+ * MINDEN ÉRTESÍTÉS UGYANOLYAN MAGAS (Geri, 2026-08-26). Korábban a `body`
+ * nélküli típusok két sorosak voltak, a hosszú szövegűek pedig négy-öt
+ * sorosra nőttek — a lista lépcsőzött, és görgetés közben nem lehetett
+ * ránézésre megbecsülni, hány bejegyzés van hátra.
+ *
+ * Két dolog tartja együtt, és MINDKETTŐ kell:
+ *   1. a komponens MINDIG kiírja a középső sort (lásd `middleLine()`),
+ *   2. mind a három sor EGYETLEN sorra van fogva, túlcsordulásnál „…".
+ *
+ * ⚠️ A `min-height` az üres szöveg miatt kell. A levágás önmagában nem ad
+ * magasságot egy üres elemnek, tehát nélküle egy szöveg nélküli sor
+ * összelapulna — és pont az a lépcsőzés jönne vissza, amit megszüntettünk.
+ */
+
 .nrow__text {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
+.nrow__title,
+.nrow__body,
+.nrow__when {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nrow__title {
   font-size: var(--fs-body);
   font-weight: 700;
   line-height: 1.3;
+  min-height: calc(var(--fs-body) * 1.3);
 }
 
 .nrow__body {
   font-size: var(--fs-small);
   color: var(--text-secondary);
   line-height: 1.4;
+  min-height: calc(var(--fs-small) * 1.4);
 }
 
 .nrow__when {
   font-size: var(--fs-label);
   color: var(--text-tertiary);
+  line-height: 1.4;
+  min-height: calc(var(--fs-label) * 1.4);
 }
 
 .nrow__dot {

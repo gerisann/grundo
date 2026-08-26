@@ -434,6 +434,18 @@ export async function commitActivity(
     cellCount: result.cellPath.length,
     activityCells: plan.candidateCells,
     pointCount: points.length,
+    /*
+      A KÁRTYA RIVÁLIS-SÁVJÁHOZ. A `claimCounts` mondja meg, mennyi jött
+      szabad földről és mennyi másoktól; a `stolenFrom` azt, kiktől.
+
+      ⚠️ EZT KORÁBBAN CSAK A COMMIT VÁLASZA HORDOZTA, a dokumentum nem —
+      vagyis az értesítés kiment, aztán az adat elveszett. Emiatt egy
+      aktivitásról utólag NEM lehetett megmondani, kitől vett el területet,
+      pedig a motor pontosan tudta. A régi aktivitásokon ez a két mező
+      hiányzik; a felület ilyenkor csak a szerzett cellák számát mutatja.
+    */
+    claimCounts: result.claim?.counts ?? { free: 0, reclaimed: 0, stolen: 0, breakthrough: 0 },
+    stolenFrom: topVictims(result.claim?.stolenFrom),
     summary,
     bounds: publicBounds(publicPoints),
     route: publicRoute,
@@ -590,6 +602,30 @@ export async function commitActivity(
 
 
 /* ══ Segédek ══════════════════════════════════════════════ */
+
+/**
+ * Hány károsult kerül BE az aktivitás dokumentumába.
+ *
+ * A kártya rivális-sávja egy fő áldozatot mutat nagyban, a többit apró
+ * jelvényként a képe sarkában — hatnál több már nem olvasható, csak zsúfolt.
+ * A dokumentum méretét is ez tartja kordában: egy nagy kör több tucat
+ * játékostól is elvehet területet, és mindet eltárolni fölösleges teher
+ * olyan adatból, amit soha nem mutatunk meg.
+ *
+ * ⚠️ A SORREND SZÁMÍT, ezért rendezünk: a levágás a LEGKEVESEBBET vesztett
+ * játékosokat dobja el, nem véletlenszerűen valakit. Enélkül előfordulhatna,
+ * hogy a fő áldozat — akitől a legtöbbet vettük el — épp kimarad.
+ */
+export const MAX_STORED_VICTIMS = 6;
+
+export function topVictims(stolenFrom: Record<string, number> | undefined): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(stolenFrom ?? {})
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_STORED_VICTIMS),
+  );
+}
 
 export function totalDistance(points: readonly TracePoint[]): number {
   let sum = 0;

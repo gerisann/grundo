@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useTrackingEnvironment } from '@/tracking/environment';
@@ -25,6 +26,7 @@ export function Dock() {
   const location = useLocation();
   const trackingEnvironment = useTrackingEnvironment();
   const { state, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
+  const dockRef = useDockHeight();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
   // admin útvonalon él. Ilyenkor nem navigálunk el `/rogzites`-re a Play előtt.
@@ -55,7 +57,12 @@ export function Dock() {
   const controls = (
     <div className="dock__center">
       {active ? (
-        <button className="dock__side dock__side--left" onClick={markLap}>
+        /*
+          SZÜNETBEN NEM LEHET KÖRT NYITNI (Geri, 2026-08-26). Álló mérésnél a
+          kör kezdete értelmezhetetlen: nincs mozgás, amit elválasztana, és a
+          folytatás pillanatában amúgy is szakadás van a nyomvonalban.
+        */
+        <button className="dock__side dock__side--left" onClick={markLap} disabled={paused}>
           Új kör
         </button>
       ) : null}
@@ -82,14 +89,17 @@ export function Dock() {
 
   if (active) {
     return (
-      <nav className="dock dock--controls" aria-label="Rögzítés vezérlése">
-        {controls}
-      </nav>
+      <>
+        <PausePanel shown={paused} />
+        <nav ref={dockRef} className="dock dock--controls" aria-label="Rögzítés vezérlése">
+          {controls}
+        </nav>
+      </>
     );
   }
 
   return (
-    <nav className="dock" aria-label="Fő navigáció és rögzítés">
+    <nav ref={dockRef} className="dock" aria-label="Fő navigáció és rögzítés">
       <NavLink to="/" className="dock__item" aria-label="Kezdőlap">
         <HomeIcon />
       </NavLink>
@@ -107,7 +117,79 @@ export function Dock() {
   );
 }
 
-const FINISH_HOLD_MS = 2000;
+/**
+ * A dokk VALÓDI magassága, CSS-változóként.
+ *
+ * MIÉRT NEM ELÉG A `--dock-height` TOKEN? Mert rögzítés közben a dokk
+ * `dock--controls` módba vált, ahol a magasság `auto` — a token ilyenkor nem
+ * a tényleges méret. A szünet-panelnek viszont pontosan a dokk fölé kell
+ * ülnie, és egy néhány pixeles tévedés vagy rést hagy, vagy átfedést csinál.
+ *
+ * A `ResizeObserver` a témaváltást, a safe-area változását és a
+ * képernyőforgatást is lekezeli — mindegyik átméretezi a dokkot.
+ */
+function useDockHeight() {
+  const ref = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        '--dock-measured-height',
+        `${Math.round(node.getBoundingClientRect().height)}px`,
+      );
+    };
+
+    publish();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(publish);
+    observer.observe(node);
+    return () => observer.disconnect();
+  });
+
+  return ref;
+}
+
+/**
+ * SZÜNET — sárga panel, ami a dokk MÖGÜL úszik fel.
+ *
+ * Korábban a képernyő közepén lüktetett egy „SZÜNET" doboz. Geri kérése
+ * (2026-08-26): ne a tartalom közepét takarja el, hanem a vezérlők mellől
+ * jelentse be magát, és ne pulzáljon — a szünet állapot, nem riasztás.
+ *
+ * ⚠️ MINDIG KI VAN RENDERELVE, csak eltolva. Így a kifelé tartó animáció is
+ * lefut; ha a `paused` állapot leszedné a DOM-ból, a panel eltűnne ahelyett,
+ * hogy lecsúszna. A `--dock-measured-height` teszi lehetővé, hogy a rejtett
+ * állapotban pontosan a dokk mögé kerüljön, ne csak „nagyjából alá".
+ *
+ * ⚠️ `aria-hidden` REJTETT ÁLLAPOTBAN. A képernyőolvasó különben folyamatosan
+ * bemondaná a szünet-szöveget rögzítés közben is, amikor nincs is szünet.
+ */
+function PausePanel({ shown }: { shown: boolean }) {
+  return (
+    <div
+      className={`dock__pause${shown ? ' dock__pause--shown' : ''}`}
+      role="status"
+      aria-hidden={!shown}
+    >
+      <strong className="dock__pause-title">Szünet</strong>
+      <span className="dock__pause-hint">A mérés áll — a PLAY gombbal folytathatod.</span>
+    </div>
+  );
+}
+
+/**
+ * A nyomva tartás ideje.
+ *
+ * ⚠️ FELEZVE 2026-08-26-án (2000 → 1000 ms). A két másodperc a középre
+ * kitett, nagy visszajelzés nélkül volt indokolt: addig a felhasználó a saját
+ * ujja alatt nem látta, hogy egyáltalán történik valami. Most látja, tehát a
+ * hosszú várakozás már csak lassítás. Nullára azért nem megy: a véletlen
+ * koppintás nem szakíthatja félbe egy futás rögzítését.
+ */
+const FINISH_HOLD_MS = 1000;
 
 function FinishButton({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -145,37 +227,79 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
   }
 
   const percent = progress * 100;
+  const holdingNow = progress > 0;
 
   return (
-    <button
-      className={`dock__side dock__side--right dock__finish${
-        progress > 0 ? ' dock__finish--holding' : ''
-      }`}
-      onPointerDown={start}
-      onPointerUp={cancel}
-      onPointerLeave={cancel}
-      onPointerCancel={cancel}
-      onContextMenu={(event) => event.preventDefault()}
-      onKeyDown={(event) => {
-        if (event.key === ' ' || event.key === 'Enter') {
-          event.preventDefault();
-          start();
-        }
-      }}
-      onKeyUp={cancel}
-      onBlur={cancel}
-      aria-label="Befejezés — tartsd nyomva két másodpercig"
-    >
-      <span className="dock__finish-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
-      <span className="dock__finish-label">Befejezés</span>
-      <span
-        className="dock__finish-label dock__finish-label--filled"
-        style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
-        aria-hidden="true"
+    <>
+      {/*
+        A KÖZÉPRE KITETT VISSZAJELZÉS — ez a lényege a 2026-08-26-i
+        átalakításnak.
+
+        A régi megoldásban csak az alsó gomb töltődött, amit a felhasználó
+        SAJÁT UJJA TAKART EL. Emiatt a gomb úgy viselkedett, mintha nem
+        reagálna: nem derült ki, hogy nyomva kell tartani, csak az, hogy
+        a koppintás „nem csinál semmit".
+
+        Portálban megy a `body`-ba, nem a gombon belül: a `.dock__finish`
+        `overflow: hidden`, a dokk pedig `position: fixed` — egy belülre tett
+        teljes képernyős réteg mindkettőn elvérezne.
+
+        ⚠️ `pointer-events: none` (a CSS-ben): a réteg NEM foghatja el a
+        mutatót, különben a `pointerup`/`pointerleave` nem a gombhoz érkezne,
+        és a nyomva tartás beragadna.
+      */}
+      {holdingNow && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="finish-overlay" aria-hidden="true">
+              {/* A sötétítés a haladással ARÁNYOS, és 50%-nál megáll: a
+                  térképnek végig látszania kell alatta. */}
+              <div className="finish-overlay__veil" style={{ opacity: progress * 0.5 }} />
+              <div className="finish-overlay__button">
+                <span className="finish-overlay__fill" style={{ width: `${percent}%` }} />
+                <span className="finish-overlay__label">Befejezés</span>
+                <span
+                  className="finish-overlay__label finish-overlay__label--filled"
+                  style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
+                >
+                  Befejezés
+                </span>
+              </div>
+              <span className="finish-overlay__hint">Tartsd nyomva</span>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      <button
+        className={`dock__side dock__side--right dock__finish${
+          holdingNow ? ' dock__finish--holding' : ''
+        }`}
+        onPointerDown={start}
+        onPointerUp={cancel}
+        onPointerLeave={cancel}
+        onPointerCancel={cancel}
+        onContextMenu={(event) => event.preventDefault()}
+        onKeyDown={(event) => {
+          if (event.key === ' ' || event.key === 'Enter') {
+            event.preventDefault();
+            start();
+          }
+        }}
+        onKeyUp={cancel}
+        onBlur={cancel}
+        aria-label="Befejezés — tartsd nyomva egy másodpercig"
       >
-        Befejezés
-      </span>
-    </button>
+        <span className="dock__finish-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
+        <span className="dock__finish-label">Befejezés</span>
+        <span
+          className="dock__finish-label dock__finish-label--filled"
+          style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
+          aria-hidden="true"
+        >
+          Befejezés
+        </span>
+      </button>
+    </>
   );
 }
 

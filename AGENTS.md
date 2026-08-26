@@ -140,6 +140,12 @@ pénzbe vagy éles hibába került. Olvasd el minden munkamenet elején.
 Utána, ha van a repo gyökerében `HANDOFF.md`, azt is olvasd el — az adja az
 aktuális állapotot (részletek: [6. Átadási protokoll](#6-átadási-protokoll)).
 
+⚠️ **Geri felé minden csevegésbeli kommunikáció magyarul menjen** — ez a chat
+üzenetekre vonatkozik (magyarázat, összefoglaló, kérdés, státusz), nem a
+kódra/kommentre (azok angolul maradnak, lásd Technikai konvenciók). Ha egy
+eszközkimenet vagy hibaüzenet angol, azt idézheted, de a saját szöveged körülötte
+magyar legyen.
+
 ## 0. Minden kör elején: modelljavaslat
 
 **A valós munka megkezdése ELŐTT mondd meg, melyik modell és milyen

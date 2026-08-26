@@ -441,14 +441,13 @@ export function TrackingScreen() {
         )}
       </div>
 
-      {paused ? (
-        <div className="track__paused">
-          <div className="track__paused-label">
-            Szünet
-            <span className="track__paused-hint">A mérés áll. A PLAY gombbal folytathatod.</span>
-          </div>
-        </div>
-      ) : null}
+      {/*
+        A SZÜNET JELZÉSE A DOKKHOZ KÖLTÖZÖTT (Geri, 2026-08-26). Korábban itt
+        egy lüktető doboz ült a képernyő közepén, ami épp a térképet takarta
+        el — most a `Dock` sárga panelje úszik fel a vezérlők mögül
+        (`dock__pause`). Egy helyen legyen, mert a szünet a rögzítés
+        állapota, nem ezé a képernyőé: a dokk minden nézetben látszik.
+      */}
 
       <div className="track__overlay">
         {remoteState !== null ? (

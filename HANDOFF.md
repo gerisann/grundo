@@ -1,13 +1,84 @@
 # GRUNDO — Claude handoff
 
-> Frissítve: **2026-08-25** (a `GRUNDO #11` beszélgetés végén)  
-> Kiegészítve: **2026-08-25** — compact backend bekötés (`4a9978f`), majd a
-> küldetés-detektor javítása (`3b7a5f1`). A két munka párhuzamos beszélgetésben
-> futott; a sorszámozásukat Geri tudja rendbe tenni.  
+> Frissítve: **2026-08-26** (`GRUNDO #14`, felületi javítások)  
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo`  
 > GitHub: `gerisann/grundo`  
-> Ág: **`main`**  
-> Kód-baseline a handoff frissítése előtt: **`505fe31` — `docs: refresh Claude handoff`**
+> Ág: **`main`**
+
+## ⚠️ MELYIK DOKUMENTUM AZ IGAZSÁG
+
+Ez a fájl a **Simulation LAB, a compact backend és a küldetés-detektor**
+állapotát írja le, `3b7a5f1` szintjén.
+
+- **A JÁTÉKMOTOR MEGERŐSÍTÉS-SZABÁLYAIRA EZ A FÁJL ELAVULT.** A `#13` menet
+  (`27bc319` … `a2c7793`) a védelmet a bezárások számáról **körüljárási
+  számra** vitte át (`src/game/winding.ts`). A 3. és 4. szakasz erre külön
+  figyelmeztet. Az érvényes leírás:
+  `HANDOFF_CLAUDE_2026-08-25_REINFORCEMENT_CURRENT.md` — a nyitott pontok is
+  ott vannak (szálszabály, nyomvonal-vékonyítás, compact átvezetés, éles
+  ellenőrzés).
+- Ez a fájl `3b7a5f1`-et írt utolsó commitnak, miközben a HEAD már
+  `a2c7793` volt — vagyis a `#13` munkája sosem került bele. Aki a motorhoz
+  nyúl, a reinforcement-dokumentumból induljon.
+
+## A `GRUNDO #14` MENET (2026-08-26) — FELÜLETI JAVÍTÁSOK
+
+Kilenc pont, mind Geri kérése, mind élőben, helyi emulátoros környezetben
+visszamérve. A motorhoz **egyik sem nyúlt**; a részletek a commit-üzenetben és
+az érintett fájlok fejléceiben.
+
+| # | Mi változott | Hol |
+|---|---|---|
+| 1 | A profil „Riválisok" szekciója a `/profil/rivalisok` sorát kapta (sávok, villám, animáció) | `RivalsCard.tsx` |
+| 2 | **ÚJ**: rivális-sáv az aktivitás-kártyák alján — szabad föld ↔ mástól elvett, a fő károsult képével | `ActivityRivalBar.tsx` |
+| 3 | Profil-fülsor: +2 px, vastagabb, nagybetűs, teljes keret, alsó vonal nélkül | `profileTabs.css` |
+| 4 | Értesítések: minden sor 3 soros és egyforma magas (mérve: mind 82 px) | `NotificationPanel.tsx` |
+| 5 | **ÚJ**: mozgásforma-szűrő a feedben (Séta/Futás/Bringa) | `Feed.tsx` |
+| 6 | Dátumszűrő keskenyebb és egységes arculatú | `feed.css` |
+| 7 | Befejezés: képernyő közepére kitett nagy animáció + elsötétítés, feleannyi idő | `Dock.tsx` |
+| 8 | Szünet: sárga panel úszik fel a dokk mögül; „Új kör" ilyenkor inaktív | `Dock.tsx` |
+| 9 | `/kuldetesek` vízszintes kilógása javítva (rács `minmax(0,1fr)`) | `missions.css` |
+
+### ⚠️ AMI BACKEND-DEPLOYT IGÉNYEL
+
+A 2. és a 4. pont **szerveroldali mezőket** vezetett be. A frontend addig is
+működik, csak a régi adaton nem mutat semmit:
+
+- `claimCounts` + `stolenFrom` az aktivitás dokumentumán (`activityCommit.ts`
+  ÉS `activityChunked.ts` — mindkét mentési út kiírja). A `#14` előtt ezt csak
+  a commit VÁLASZA hordozta, a dokumentum nem: utólag nem lehetett megmondani,
+  egy aktivitás kitől vett el területet. **A régi aktivitásokon hiányzik, és
+  visszamenőleg nem töltjük fel** — ott a rivális-sáv egyszerűen nem jelenik meg.
+- Az aktivitás neve az `activity_liked` / `followed_activity` értesítés
+  `body`-jába (eddig üres volt). Régi értesítésnél a felület a típus általános
+  feliratát írja a középső sorba, hogy a magasság stimmeljen.
+
+Regressziós teszt valódi Firestore ellen: `activities.emulator.test.ts` →
+„a lopás bontása rákerül az aktivitás dokumentumára". A `tsc` ezt NEM fogná
+meg, mert a `tx.set(...)` szabad alakú objektumot vesz át.
+
+### Mérési állapot a `#14` végén
+
+```text
+npx tsc --noEmit                         → OK
+npx tsc -p server/tsconfig.json --noEmit → OK
+npx vitest run --dir src                 → 34 fájl, 355 teszt, 0 bukó
+npx vitest run --dir server              → 165 zöld, 11 emulátoros fájl kihagyva
+npm run test:emulator                    → 11 fájl, 119 teszt, 0 bukó
+npm run build                            → lefut
+```
+
+### ⚠️ Amit a `#14` közben MÉRTÜNK a tesztkörnyezetről
+
+A böngészőpanel rejtett állapotában a lap **nem rajzol képkockákat**: a
+`requestAnimationFrame` egyáltalán nem fut. Emiatt minden CSS-átmenet
+„beragadtnak" látszik a kiindulási értéken, és a nyomva tartós gomb sem halad.
+Ez NEM alkalmazáshiba — kétszer is majdnem annak néztem. Aki itt animációt
+ellenőriz:
+
+- **állapot** ellenőrzéséhez tegyen `transition: none`-t, és a végértéket mérje;
+- **haladás** ellenőrzéséhez cserélje ki a `requestAnimationFrame`-et
+  `setTimeout`-os pótlásra — a komponens valódi logikája így lefut.
 
 ## A FUTÓ MUNKATERV (Geri, 2026-08-25)
 

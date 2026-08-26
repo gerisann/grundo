@@ -234,3 +234,152 @@
     transition: none;
   }
 }
+
+/* ── Befejezés: a képernyő közepére kitett visszajelzés ──────────────────
+ *
+ * Ugyanaz a töltődő gomb, csak nagyban és középen — plusz egy fokozatos
+ * sötétítés. Az indoklás a `Dock.tsx`-ben áll: az alsó gombot a felhasználó
+ * saját ujja takarja, tehát ott a töltés nem látszik, és a gomb úgy tűnik,
+ * mintha nem reagálna.
+ *
+ * ⚠️ `pointer-events: none` AZ EGÉSZ RÉTEGEN. A mutató végig az alsó gombé
+ * kell maradjon: ha a réteg elfogná, a `pointerup` nem érkezne meg, és a
+ * nyomva tartás elengedés után is folytatódna.
+ */
+
+.finish-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--sp-4);
+  pointer-events: none;
+}
+
+.finish-overlay__veil {
+  position: absolute;
+  inset: 0;
+  /* A sötétítés a `Dock.tsx`-ben, a haladásból számolva kap `opacity`-t, és
+     50%-nál megáll — a térképnek végig látszania kell alatta. */
+  background: #000;
+}
+
+.finish-overlay__button {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: min(72vw, 300px);
+  height: 108px;
+  border: 2px solid var(--danger);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  box-shadow: 0 18px 48px rgb(0 0 0 / .45);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--danger);
+}
+
+.finish-overlay__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--danger);
+}
+
+.finish-overlay__label {
+  position: relative;
+  display: block;
+}
+
+/* Ugyanaz a kétrétegű felirat, mint az alsó gombon: a betűk PONTOSAN ott
+   váltanak fehérre, ahol a piros már alattuk van. */
+.finish-overlay__label--filled {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+
+.finish-overlay__hint {
+  position: relative;
+  z-index: 1;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  background: rgb(0 0 0 / .55);
+  color: #fff;
+  font-size: var(--fs-small);
+  font-weight: 700;
+}
+
+/* ── Szünet: sárga panel a dokk mögül ────────────────────────────────────
+ *
+ * A dokkal AZONOS SZÉLESSÉGŰ (ugyanaz a `left`/`right`), és a dokk fölé ül.
+ * Rejtett állapotban lefelé, a dokk MÖGÉ tolva várakozik — ezért kell a
+ * `z-index`, ami a dokké (40) ALATT van: így a dokk takarja, nem fordítva.
+ *
+ * A magasság a `--dock-measured-height`-ból jön, amit a `useDockHeight()`
+ * ír ki. A `--dock-height` token itt NEM használható: rögzítés közben a
+ * dokk `dock--controls` módban `auto` magas.
+ *
+ * ⚠️ SZÍNEK BEÉGETVE, SZÁNDÉKOSAN. A sárga (#fdc700) és a sötét szöveg
+ * (#222222) Geri konkrét választása (2026-08-26), és jelentést hordoz —
+ * „áll a mérés" —, nem a felület hangulatát. Világos és sötét témában
+ * ugyanaz kell legyen, különben a figyelmeztetés az egyik témában elveszne.
+ */
+
+.dock__pause {
+  position: fixed;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  bottom: calc(max(var(--safe-bottom), var(--sp-1)) + var(--dock-measured-height, var(--dock-height)) + var(--sp-2));
+  z-index: 39;
+
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: #fdc700;
+  color: #222222;
+  text-align: center;
+
+  /* Rejtve: lecsúsztatva a dokk mögé. A saját magasságán FELÜL a résnyi
+     `--sp-2` és a dokk teljes magassága is kell, különben a panel alja
+     kikandikálna a dokk alól.
+
+     Mérve (2026-08-26, 812 px magas nézet, 70 px-es vezérlő-dokk): rejtve a
+     panel alja 875, láthatóan 730 — a dokk teteje 738, tehát a rejtett
+     állapot valóban a dokk MÖGÉ kerül, a látható pedig pontosan fölé. */
+  translate: 0 calc(100% + var(--sp-2) + var(--dock-measured-height, var(--dock-height)));
+  transition: translate 400ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.dock__pause--shown {
+  translate: 0 0;
+}
+
+.dock__pause-title {
+  font-size: var(--fs-body);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.dock__pause-hint {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  /* Ugyanaz a sötét szín, csak halványabban — a sárgán egy szürke token
+     olvashatatlan lenne. */
+  opacity: .78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock__pause {
+    transition: none;
+  }
+}

@@ -10,41 +10,12 @@
   gap: var(--sp-2);
 }
 
-.rivals-card__row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 100%;
-  padding: var(--sp-2) var(--sp-3);
-  text-align: left;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-md);
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-}
-
-.rivals-card__row:hover {
-  border-color: var(--rival-badge-bg);
-}
-
-/* A helyezés száma — halvány, mert a NÉV a főszereplő, nem a sorszám. */
-.rivals-card__rank {
+/* A sorokat a `RivalRow` viszi (`conn__row` + `rivalRow.css`) — itt csak a
+   szekció kerete és az „összes" gomb marad. A `flex: none` azért kell, mert
+   a sorok magassága fix, és a szekció flex-oszlopban ül: enélkül egy szűk
+   képernyőn összenyomódnának. */
+.rivals-card > .rival-row {
   flex: none;
-  width: 16px;
-  font-size: var(--fs-small);
-  font-weight: 800;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-.rivals-card__name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-body);
-  font-weight: 700;
 }
 
 .rivals-card__all {

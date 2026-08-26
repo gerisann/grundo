@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar } from '@/components/ActivityCard';
-import { RivalScore } from '@/components/RivalScore';
+import { RivalRow } from '@/components/RivalRow';
 import { api, type Rival } from '@/lib/api';
+import './connectionsSheet.css';
 import './rivalsCard.css';
 
 /**
@@ -16,6 +16,12 @@ import './rivalsCard.css';
  * ⚠️ A SZEKCIÓ ELTŰNIK, HA NINCS RIVÁLIS. Egy üres „Riválisok" doboz azt
  * sugallná, hogy a felhasználó elmulasztott valamit — pedig csak még nem
  * csapott össze senkivel. A rivalitás nem gyűjtendő cél, hanem következmény.
+ *
+ * ⚠️ UGYANAZ A SOR, MINT A `/profil/rivalisok` FÜLÖN (Geri, 2026-08-26). A
+ * korábbi kompakt sor (sorszám + avatár + név + számok) helyére a `RivalRow`
+ * lépett, tehát a sávok, a villám és a belépő animáció itt is fut. Ne
+ * gyártsunk hozzá külön változatot: a két helyen ugyanaz az adat ugyanazt
+ * jelenti, és két külön megjelenítés azt sugallná, hogy nem ugyanaz.
  */
 export function RivalsCard({ onOpenAll }: { onOpenAll: () => void }) {
   const navigate = useNavigate();
@@ -51,22 +57,12 @@ export function RivalsCard({ onOpenAll }: { onOpenAll: () => void }) {
       <div className="label rivals-card__label">Riválisok</div>
 
       <div className="rivals-card">
-        {rivals.map((rival, index) => (
-          <button
+        {rivals.map((rival) => (
+          <RivalRow
             key={rival.uid}
-            type="button"
-            className="rivals-card__row"
-            onClick={() => navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`)}
-          >
-            {/* A helyezés a kiemelés lényege: nem csak „három rivális", hanem
-                a HÁROM LEGNAGYOBB, sorrendben. */}
-            <span className="rivals-card__rank" aria-hidden="true">
-              {index + 1}
-            </span>
-            <Avatar url={rival.photoURL} name={rival.username} size={36} />
-            <span className="rivals-card__name">{rival.username}</span>
-            <RivalScore rival={rival} />
-          </button>
+            rival={rival}
+            onOpen={() => navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`)}
+          />
         ))}
 
         {/*

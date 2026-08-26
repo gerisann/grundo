@@ -1,15 +1,41 @@
 /* Küldetés-ajánló */
 
+/* ⚠️ MIÉRT VAN MINDENHOL `minmax(0, 1fr)` ÉS `min-width: 0`?
+ *
+ * A `1fr` valójában `minmax(auto, 1fr)`, és rács-elemen az `auto` minimum a
+ * TARTALOM min-content szélessége — a sáv tehát nem zsugorodik a leghosszabb
+ * szó alá, hanem szétfeszíti a rácsot. A `.screen-body` maga is rács, így a
+ * túlcsordulás felfelé terjedt: a kártya kilógott a képernyőből, és az EGÉSZ
+ * lap vízszintesen görgethetővé vált.
+ *
+ * MÉRVE (2026-08-26, 375 px széles nézet): a lap 406 px-re nyúlt (31 px
+ * kilógás), a kártya 390 px lett a helyes 343 helyett. A javítás után a lap
+ * `scrollWidth`-e pontosan 375.
+ *
+ * Ez iOS-en tűnt fel leginkább, de nem iOS-hiba: minden keskeny kijelzőn így
+ * viselkedett. Ha ide új rács kerül, annak is `minmax(0, 1fr)` kell.
+ */
+
 .mission__form {
   display: grid;
   gap: var(--sp-3);
+  /* Rács-elemként enélkül nem tud a tartalma min-content szélessége alá menni. */
+  min-width: 0;
 }
 
-.mission__advanced { display: grid; gap: var(--sp-4); }
-.mission__type { margin-top: var(--sp-3); }
+.mission__advanced { display: grid; gap: var(--sp-4); min-width: 0; }
+.mission__type { margin-top: var(--sp-3); min-width: 0; }
 .mission__field > span { margin-top: var(--sp-2); }
-.mission__utilities { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
-.mission__stepper { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+/* `auto-fit`, hogy a két gomb EGY oszlopra váltson, ha kettő nem fér ki.
+   A puszta `minmax(0, 1fr)` megszüntette a lap kilógását, de cserébe 320 px-en
+   levágta a „Mentett küldetések" feliratot a gombon belül — mérve. Így viszont
+   a szűk kijelző alá tördel, és mindkét felirat olvasható marad. */
+.mission__utilities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-2);
+}
+.mission__stepper { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 .mission__stepper button { width: 44px; height: 44px; border: 1px solid var(--accent-border); border-radius: var(--r-sm); background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 22px; font-weight: 700; }
 .mission__stepper-value { min-height: 44px; display: grid; place-items: center; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--input-bg); color: var(--text-primary); font-weight: 700; }
 
@@ -44,14 +70,14 @@
 
 .mission__input-with-unit {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-2);
 }
 
 .mission__select-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-2);
 }
 
@@ -64,7 +90,7 @@
 .mission__minutes {
   display: grid;
   /* Négy fix érték + az „egyedi" gomb. */
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--sp-2);
 }
 
@@ -240,7 +266,7 @@
 
 .mission__stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
   margin: 0;
 }
@@ -272,4 +298,7 @@
 
 .mission__actions > * {
   flex: 1;
+  /* Flex-elemen ugyanaz a csapda, mint rácsban: `min-width: auto` miatt a
+     gomb nem menne a felirata alá, és kifeszítené a sort. */
+  min-width: 0;
 }

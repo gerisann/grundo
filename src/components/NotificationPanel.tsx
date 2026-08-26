@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
-import { screenFor, type NotificationType, type StoredNotification } from '@/lib/notificationTypes';
+import {
+  NOTIFICATION_TYPES,
+  screenFor,
+  type NotificationType,
+  type StoredNotification,
+} from '@/lib/notificationTypes';
 import { formatRelativeDay } from '@/lib/format';
 import './notificationPanel.css';
 
@@ -372,15 +377,43 @@ function NotificationRow({
         <span className={`nrow__icon nrow__icon--${toneFor(item.type)}`} aria-hidden="true">
           {typeIcon(item.type)}
         </span>
+        {/*
+          HÁROM SOR, MINDIG (Geri, 2026-08-26). A középső sor akkor is ott
+          van, ha üres — enélkül a `body` nélküli értesítések alacsonyabbak
+          lennének, és a lista lépcsőzne. A magasságot a CSS rögzíti, nem ez
+          a szerkezet: itt csak annyi a dolgunk, hogy a három sor MINDIG
+          kikerüljön.
+        */}
         <span className="nrow__text">
           <span className="nrow__title">{item.title}</span>
-          {item.body ? <span className="nrow__body">{item.body}</span> : null}
+          <span className="nrow__body">{middleLine(item)}</span>
           <span className="nrow__when">{formatRelativeDay(item.createdAt)}</span>
         </span>
         {!item.read ? <span className="nrow__dot" aria-hidden="true" /> : null}
       </button>
     </div>
   );
+}
+
+/**
+ * A KÖZÉPSŐ SOR — minden értesítésnél kitöltve.
+ *
+ * Az aktivitáshoz kötődő értesítéseknél (kedvelés, követett felhasználó
+ * aktivitása) ez az AKTIVITÁS NEVE: a cím már megmondta, KI és MIT csinált,
+ * a hasznos többlet az, hogy MELYIK aktivitásról van szó. A nevet a szerver
+ * küldi (`body`, illetve `data.activityTitle`).
+ *
+ * ⚠️ A RÉGI ÉRTESÍTÉSEKEN NINCS MEG. Azok a mező bevezetése előtt keletkeztek,
+ * és visszamenőleg nem töltjük fel — ehhez minden korábbi értesítéshez ki
+ * kellene olvasni a hozzá tartozó aktivitást. Ilyenkor a típus általános
+ * felirata áll ott: nem mond újat, de a sor magassága stimmel, és nem
+ * hazudik sem.
+ */
+function middleLine(item: StoredNotification): string {
+  if (item.body) return item.body;
+  const title = item.data?.activityTitle;
+  if (title) return title;
+  return NOTIFICATION_TYPES[item.type].label;
 }
 
 /* ── Típusikonok ──────────────────────────────────────────────────────── */

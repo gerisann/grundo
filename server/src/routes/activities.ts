@@ -3,6 +3,7 @@ import { type DocumentReference, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { distanceM } from '../../../src/game/geo';
+import { activityTitle } from '../../../src/lib/format';
 import { GAMEPLAY } from '../../../src/config/gameplay';
 import type { ActivityType, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
@@ -274,7 +275,14 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       if (!followers.empty) {
         const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
         const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
-        notifyFollowedActivity(followers.docs.map((doc) => doc.id), username, activityId);
+        // A mentés `title: null`-lal jön létre, tehát itt mindig az
+        // automatikus, napszak + mozgásforma alakú cím a helyes.
+        notifyFollowedActivity(
+          followers.docs.map((doc) => doc.id),
+          username,
+          activityId,
+          activityTitle(type, startedAt),
+        );
       }
     })().catch((error: unknown) => {
       // eslint-disable-next-line no-console
@@ -502,6 +510,12 @@ interface FeedRow {
   likeCount: number;
   commentCount: number;
   activityCells: string[];
+  /** Hány cellát szerzett az aktivitás: szabad földről + máshonnan elvéve. */
+  cellsGained: number;
+  /** Ebből mennyi jött MÁS JÁTÉKOSTÓL — a kártya rivális-sávjának korall fele. */
+  cellsStolen: number;
+  /** uid → tőle elvett cellák. A nevet/képet a `withAuthors` teszi hozzá. */
+  stolenFrom: Record<string, number>;
 }
 
 export interface ActivityPhoto {
@@ -511,11 +525,46 @@ export interface ActivityPhoto {
   url: string;
 }
 
+/** Idegen forrásból jövő térkép — a kulcs uid, az érték cellaszám. */
+function parseStolenFrom(raw: unknown): Record<string, number> {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [uid, value] of Object.entries(raw as Record<string, unknown>)) {
+    const count = Number(value);
+    if (Number.isFinite(count) && count > 0) out[uid] = Math.round(count);
+  }
+  return out;
+}
+
+/**
+ * A rivális-sáv két száma az aktivitás `claimCounts` mezőjéből.
+ *
+ * ⚠️ A `reclaimed` NEM SZERZÉS. A saját, már birtokolt cella újbóli
+ * bejárása védelmet épít, de nem növeli a területet — a motor is így
+ * számol (`claim.ts`: csak a `free` és a `stolen` ad `gainedM2`-t). Ha
+ * beleszámítanánk, a kártyán nagyobb szám állna, mint amennyivel a grund
+ * ténylegesen nőtt.
+ *
+ * A RÉGI aktivitásokon nincs `claimCounts` — ilyenkor mindkét szám nulla, és
+ * a felület a sáv helyett csak a szerzett területet mutatja.
+ */
+function claimCountsOf(data: Record<string, unknown>): { gained: number; stolen: number } {
+  const counts = data.claimCounts as Record<string, unknown> | undefined;
+  if (!counts) return { gained: 0, stolen: 0 };
+  const free = Number(counts.free ?? 0);
+  const stolen = Number(counts.stolen ?? 0);
+  return { gained: free + stolen, stolen };
+}
+
 function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
   const bounds = data.bounds as
     | { north: number; south: number; east: number; west: number }
     | undefined;
+  const claimCounts = claimCountsOf(data);
   return {
+    cellsGained: claimCounts.gained,
+    cellsStolen: claimCounts.stolen,
+    stolenFrom: parseStolenFrom(data.stolenFrom),
     id,
     userId: String(data.userId ?? ''),
     type: data.type,
@@ -548,7 +597,21 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
  * csak az EGYEDI szerzőkre — húsz aktivitás jellemzően néhány embertől van.
  */
 async function withAuthors(rows: FeedRow[], viewerUid: string) {
-  const ids = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
+  /*
+    A SZERZŐK ÉS A KÁROSULTAK EGYETLEN OLVASÁSBAN jönnek le.
+
+    A rivális-sávhoz a károsultak neve és képe is kell, ők pedig gyakran
+    ugyanazok, akik máshol szerzők — külön kötegben olvasva ugyanazt a
+    dokumentumot kétszer kérnénk le. Egy halmaz, egy `getAll`.
+  */
+  const ids = [
+    ...new Set(
+      [
+        ...rows.map((row) => row.userId),
+        ...rows.flatMap((row) => Object.keys(row.stolenFrom)),
+      ].filter(Boolean),
+    ),
+  ];
   const authors = new Map<string, Author>();
 
   if (ids.length > 0) {
@@ -582,11 +645,19 @@ async function withAuthors(rows: FeedRow[], viewerUid: string) {
     });
   }
 
-  return rows.map(({ userId, center, ...rest }) => ({
+  return rows.map(({ userId, center, stolenFrom, ...rest }) => ({
     ...rest,
     center,
     likedByMe: liked.has(rest.id),
     author: authors.get(userId) ?? unknownAuthor(userId),
+    /*
+      A KÁROSULTAK, a legtöbbet vesztettől lefelé. A felület az elsőt mutatja
+      nagyban, a többit apró jelvényként — a sorrend tehát nem kozmetika,
+      hanem ez dönti el, kinek az arca kerül a sáv közepére.
+    */
+    victims: Object.entries(stolenFrom)
+      .sort((a, b) => b[1] - a[1])
+      .map(([uid, cells]) => ({ ...(authors.get(uid) ?? unknownAuthor(uid)), cells })),
   }));
 }
 
@@ -904,17 +975,30 @@ async function setLike(activityId: string, uid: string, liked: boolean) {
     const existing = await tx.get(likeRef);
     if (!activity.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
 
-    const activityData = activity.data() as { likeCount?: number; userId?: string };
+    const activityData = activity.data() as {
+      likeCount?: number;
+      userId?: string;
+      title?: string | null;
+      type?: 'run' | 'walk' | 'ride';
+      startedAt?: unknown;
+    };
     const count = Number(activityData.likeCount ?? 0);
     const ownerId = String(activityData.userId ?? '');
-    if (existing.exists === liked) return { likeCount: count, likedByMe: liked, ownerId, isNew: false };
+    // Az értesítés középső sora ez lesz; a saját név nyer, különben a
+    // napszak + mozgásforma alakú automatikus cím — ugyanaz, amit a kártya mutat.
+    const title =
+      activityData.title ||
+      activityTitle(activityData.type ?? 'run', toMillis(activityData.startedAt));
+    if (existing.exists === liked) {
+      return { likeCount: count, likedByMe: liked, ownerId, title, isNew: false };
+    }
 
     if (liked) tx.set(likeRef, { createdAt: new Date() });
     else tx.delete(likeRef);
 
     const next = Math.max(0, count + (liked ? 1 : -1));
     tx.set(activityRef, { likeCount: next }, { merge: true });
-    return { likeCount: next, likedByMe: liked, ownerId, isNew: true };
+    return { likeCount: next, likedByMe: liked, ownerId, title, isNew: true };
   });
 }
 
@@ -923,14 +1007,14 @@ activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
     const activityId = String(req.params.id);
     const uid = req.uid!;
     const result = await setLike(activityId, uid, true);
-    const { ownerId, isNew, ...body } = result;
+    const { ownerId, isNew, title, ...body } = result;
 
     // Csak VALÓDI, új kedvelésnél értesítünk — a saját aktivitásod
     // kedvelése pedig magától értetődően nem szól neked.
     if (isNew && ownerId && ownerId !== uid) {
       const actor = await db.collection(COLLECTIONS.users).doc(uid).get();
       const username = String((actor.data() as { username?: string })?.username ?? 'Valaki');
-      notifyActivityLiked(ownerId, username, activityId);
+      notifyActivityLiked(ownerId, username, activityId, title);
     }
 
     res.json(body);
@@ -941,7 +1025,8 @@ activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
 
 activitiesRouter.delete('/:id/like', async (req: AuthedRequest, res, next) => {
   try {
-    const { ownerId, isNew, ...body } = await setLike(String(req.params.id), req.uid!, false);
+    // A `title` csak az értesítéshez kellett — a válaszban nincs keresnivalója.
+    const { ownerId, isNew, title, ...body } = await setLike(String(req.params.id), req.uid!, false);
     res.json(body);
   } catch (error) {
     next(error);
