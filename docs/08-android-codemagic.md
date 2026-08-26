@@ -21,6 +21,7 @@ módosítható.
 | Android Gradle Plugin | 8.13.0 |
 | Gradle wrapper | 8.14.3 |
 | Java | 21 |
+| Codemagic instance | `mac_mini_m2` (az Individual free csomagban elérhető) |
 | Kotlin plugin | 2.2.20 (a Geolocation plugin hozza) |
 | `versionName` | a gyökér `package.json` verziója |
 | `versionCode` | Codemagic `BUILD_NUMBER`, helyben alapból 1 |
@@ -35,6 +36,11 @@ npm ci → tesztek → npm run build → npx cap sync android
 
 Az iOS workflow külön maradt, a meglévő Xcode/SPM/TestFlight lépései nem
 változtak.
+
+Az Android Gradle build macOS-on is fut; a pipeline nem indít Android-emulátort.
+A Firebase-konfiguráció dekódolása és az `apksigner` kiválasztása
+platformfüggetlen Node-szkripttel történik. Ezért ugyanaz a workflow a
+Codemagic Individual csomag ingyenes `mac_mini_m2` gépén is használható.
 
 ## Firebase Android
 

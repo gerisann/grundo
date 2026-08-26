@@ -1,6 +1,6 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-26** · Android natív build és Codemagic release pipeline
+> Frissítve: **2026-08-26** · Android Codemagic build macOS M2-n
 >
 > Repo: `C:\Users\Geri\Documents\ChatGPT\GRUNDO` · GitHub: `gerisann/grundo`
 >
@@ -26,10 +26,11 @@
   Gitbe.
 - A backend CORS allowlist megkapta az Android Capacitor `https://localhost`
   originjét. Firestore rules/index/adatmodell nem változott.
-- A `codemagic.yaml` új, az iOS workflow-tól különálló **GRUNDO Android
-  Release** workflow-ja tesztel, buildel, lintel, Codemagic upload key-jel
-  aláír, majd az APK és az AAB aláírását is ellenőrzi. Automatikus Play Store
-  publikálás nincs.
+- A `codemagic.yaml` iOS workflow-tól különálló **GRUNDO Android Release**
+  workflow-ja az Individual free csomagban elérhető `mac_mini_m2` instance-on
+  tesztel, buildel, lintel, Codemagic upload key-jel aláír, majd az APK és az
+  AAB aláírását is ellenőrzi. Android-emulátort nem indít. Automatikus Play
+  Store publikálás nincs.
 - Teljes üzemeltetési és első készülékes leírás: `docs/08-android-codemagic.md`.
 
 ## Ellenőrzött állapot
@@ -47,22 +48,20 @@
 - Production dependency audit: kliens 0 critical/high (2 moderate), szerver
   0 critical/high (8 moderate). Automatikus breaking audit-fix nem futott.
 - `codemagic.yaml`: YAML lint sikeres. `git diff --check`: tiszta.
+- Az Android workflow `mac_mini_m2` instance-ra váltása után a YAML lint
+  ismét sikeres, a Linux-specifikus Base64- és verziórendezési parancsok helyett
+  platformfüggetlen Node-megoldás fut.
 
 ## Geri következő kézi lépései
 
-1. Firebase Console-ban hozz létre Android appot `app.grundo.android` package
-   névvel, és a letöltött `google-services.json` base64 értékét tedd a
-   Codemagic `grundo_android` csoport `GOOGLE_SERVICES_JSON_BASE64` secretjébe.
-2. Hozd létre és biztonságosan mentsd a Play upload key-t, töltsd fel
-   Codemagicbe `grundo_android_upload` reference néven. A pontos parancs és UI
-   mezők a `docs/08-android-codemagic.md` fájlban vannak.
-3. A workflow a meglévő `grundo_ios` csoport közös `VITE_*` értékeit
-   újrahasználja; a Mapbox token engedje a `https://localhost` origint.
-4. A commit pusholása után telepítsd újra a backendet a CORS-változás miatt,
-   majd indítsd a **GRUNDO Android Release** workflow-t a `main` ágon.
-5. Az artifactek a Codemagic build Artifacts részében lesznek:
+1. Pushold a macOS M2 Codemagic-módosítást a GitHub `main` ágra.
+2. Frissítsd a Codemagic repository nézetét, majd indítsd a **GRUNDO Android
+   Release** workflow-t a `main` ágon.
+3. Az artifactek a Codemagic build Artifacts részében lesznek:
    `android/app/build/outputs/apk/release/app-release.apk` és
    `android/app/build/outputs/bundle/release/app-release.aab`.
+4. A valódi kliens API-hívások előtt a korábban elkészült Android CORS
+   módosítás miatt a **backendet** is telepíteni kell.
 
 ## Nyitott, készüléket igénylő ellenőrzés
 
