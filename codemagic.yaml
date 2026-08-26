@@ -90,6 +90,8 @@ workflows:
 
     environment:
       groups:
+        # Platformfüggetlen VITE_* klienskonfiguráció; Apple signing nincs benne.
+        - grundo_ios
         - grundo_android
       android_signing:
         - grundo_android_upload

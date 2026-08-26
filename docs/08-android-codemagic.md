@@ -112,8 +112,16 @@ keystore később nem tölthető vissza.
 
 ### 1. Android environment group
 
-Codemagic app → Environment variables → Add group: `grundo_android`.
-Vedd fel ugyanazokat a kliensváltozókat, mint az iOS `grundo_ios` csoportban:
+Az Android workflow a meglévő `grundo_ios` csoport platformfüggetlen
+`VITE_*` kliensváltozóit is importálja. Az Apple signing ettől elkülönített
+`grundo_ios_signing` csoportban van, azt az Android workflow nem kapja meg.
+Így a közös értékeket nem kell duplikálni, és később sem tudnak eltérni.
+
+A `grundo_android` csoportban csak ez az Android-specifikus változó szükséges:
+
+- `GOOGLE_SERVICES_JSON_BASE64` (**Secret**, az előző fejezet szerint)
+
+A `grundo_ios` csoportból újrahasznált közös változók:
 
 - `VITE_FIREBASE_API_KEY`
 - `VITE_FIREBASE_AUTH_DOMAIN`
@@ -128,8 +136,6 @@ Vedd fel ugyanazokat a kliensváltozókat, mint az iOS `grundo_ios` csoportban:
 - `VITE_MAPBOX_STYLE_DARK`
 - `VITE_API_BASE_URL`
 - `VITE_USE_EMULATORS=0`
-- `GOOGLE_SERVICES_JSON_BASE64` (**Secret**, az előző fejezet szerint)
-
 A `VITE_*` értékek kliensoldaliak és beépülnek az APK/AAB web bundle-jébe;
 szerveroldali privát kulcs soha ne kerüljön közéjük.
 

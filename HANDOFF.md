@@ -56,8 +56,8 @@
 2. Hozd létre és biztonságosan mentsd a Play upload key-t, töltsd fel
    Codemagicbe `grundo_android_upload` reference néven. A pontos parancs és UI
    mezők a `docs/08-android-codemagic.md` fájlban vannak.
-3. Töltsd fel a dokumentált `VITE_*` változókat a `grundo_android` groupba;
-   a Mapbox token engedje a `https://localhost` origint.
+3. A workflow a meglévő `grundo_ios` csoport közös `VITE_*` értékeit
+   újrahasználja; a Mapbox token engedje a `https://localhost` origint.
 4. A commit pusholása után telepítsd újra a backendet a CORS-változás miatt,
    majd indítsd a **GRUNDO Android Release** workflow-t a `main` ágon.
 5. Az artifactek a Codemagic build Artifacts részében lesznek:
