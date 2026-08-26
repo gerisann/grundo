@@ -41,14 +41,12 @@ az érintett fájlok fejléceiben.
 
 ### ⚠️ AMI BACKEND-DEPLOYT IGÉNYEL
 
-A 2. és a 4. pont **szerveroldali mezőket** vezetett be. A frontend addig is
-működik, csak a régi adaton nem mutat semmit:
+A 2. és a 4. pont **szerveroldali mezőket** vezetett be:
 
 - `claimCounts` + `stolenFrom` az aktivitás dokumentumán (`activityCommit.ts`
   ÉS `activityChunked.ts` — mindkét mentési út kiírja). A `#14` előtt ezt csak
   a commit VÁLASZA hordozta, a dokumentum nem: utólag nem lehetett megmondani,
-  egy aktivitás kitől vett el területet. **A régi aktivitásokon hiányzik, és
-  visszamenőleg nem töltjük fel** — ott a rivális-sáv egyszerűen nem jelenik meg.
+  egy aktivitás kitől vett el területet.
 - Az aktivitás neve az `activity_liked` / `followed_activity` értesítés
   `body`-jába (eddig üres volt). Régi értesítésnél a felület a típus általános
   feliratát írja a középső sorba, hogy a magasság stimmeljen.
@@ -57,6 +55,34 @@ Regressziós teszt valódi Firestore ellen: `activities.emulator.test.ts` →
 „a lopás bontása rákerül az aktivitás dokumentumára". A `tsc` ezt NEM fogná
 meg, mert a `tx.set(...)` szabad alakú objektumot vesz át.
 
+### A RÉGI AKTIVITÁSOK IS KAPNAK RIVÁLIS-SÁVOT
+
+Geri kérte (2026-08-26), és **pontosan megoldható** — nem újraszámolás, hanem
+egy már leírt tény átformálása:
+
+- **kitől**: a `territoryEvents` minden károsultról ír egy dokumentumot
+  (`{activityId}_{victimId}`, benne a `cellCount`). Ezt a
+  `backfill:activity-rivals` szkript tölti vissza a `stolenFrom` mezőbe.
+- **mennyit**: az `areaGainedM2` definíció szerint `cellák × CELL_AREA_M2`,
+  tehát a visszaosztás egész számot ad.
+
+⚠️ **Újraszámolni NEM lehetne**: ahhoz a mentés PILLANATÁBAN érvényes
+birtokviszony kellene, a világ pedig azóta változott.
+
+⚠️ **A lefedettség teljes.** A `territoryEvents` írása az `54854af` (2026-08-17)
+óta létezik — ugyanabban a commitban, amelyik az aktivitás-mentést bevezette.
+Az esemény hiánya tehát valóban azt jelenti, hogy nem lopott, nem azt, hogy
+nincs róla adat.
+
+**Mérve éles adaton (2026-08-26, olvasó fiókkal):** 27 aktivitás, 13
+területesemény. A rekonstrukció ellentmondásmentes — 22 kap sávot, 5-nek nincs
+területe (nem zárt kört), 13-ban van lopás; nulla törtrészes cellaszám és
+nulla negatív szabad terület. Éles adaton egyelőre **nincs többkárosultas
+aktivitás**, tehát a jelvény-sor csak seedelt adaton látszott.
+
+A szkript alapból SZÁRAZON fut, és éles íráshoz `--apply --allow-production`
+kell — ugyanaz a minta, mint a `backfill:rivals`-nál.
+
 ### Mérési állapot a `#14` végén
 
 ```text
@@ -64,7 +90,7 @@ npx tsc --noEmit                         → OK
 npx tsc -p server/tsconfig.json --noEmit → OK
 npx vitest run --dir src                 → 34 fájl, 355 teszt, 0 bukó
 npx vitest run --dir server              → 165 zöld, 11 emulátoros fájl kihagyva
-npm run test:emulator                    → 11 fájl, 119 teszt, 0 bukó
+npm run test:emulator                    → 11 fájl, 121 teszt, 0 bukó
 npm run build                            → lefut
 ```
 

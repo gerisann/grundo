@@ -23,19 +23,18 @@ import './activityRivalBar.css';
  * is így számol. Ha beleszámítanánk a lila oldalba, a sáv többet mutatna,
  * mint amennyivel a grund ténylegesen nőtt.
  *
- * ⚠️ NEM JELENIK MEG, HA NINCS MIT MUTATNI. Két ilyen eset van, és mindkettő
- * valódi:
+ * ⚠️ NEM JELENIK MEG, HA NULLA MEZŐT SZERZETT. Ilyen a be nem zárt kör: a
+ * kártya lábléce amúgy is kiírja, hogy „nincs új terület", egy üres mérőszalag
+ * „+0"-val csak zaj lenne.
  *
- *   1. az aktivitás nem zárt kört, tehát nulla mezőt szerzett — a kártya
- *      lábléce ilyenkor amúgy is kiírja, hogy „nincs új terület"; egy üres
- *      mérőszalag „+0"-val csak zaj lenne;
- *   2. RÉGI aktivitás, amin a szerver még nem őrizte meg a bontást
- *      (`claimCounts` / `stolenFrom`, 2026-08-26 óta van). Ilyenkor a
- *      `cellsGained` nulla — nem azért, mert nem szerzett semmit, hanem mert
- *      nem tudjuk. Kitalálni nem szabad: a `areaGainedM2`-ből visszaosztott
- *      cellaszám pontosnak LÁTSZANA, de a lila/korall bontást akkor sem
- *      adná meg, és egy tisztán lila sáv azt hazudná, hogy senkitől nem vett
- *      el területet.
+ * A RÉGI AKTIVITÁSOK IS MEGJELENNEK. A `claimCounts` mezőt a mentés csak
+ * 2026-08-26 óta írja, de a bontás visszamenőleg is PONTOSAN ismert: a
+ * károsultak a `territoryEvents` történetből jönnek (a
+ * `backfill:activity-rivals` szkript tölti vissza őket a `stolenFrom`-ba), a
+ * szerzett mezők száma pedig az `areaGainedM2`-ből, ami definíció szerint
+ * `cellák × CELL_AREA_M2`. Ez nem becslés és nem újraszámolás — a szerver
+ * mindkét adatot leírta a mentés pillanatában. Részletek:
+ * `server/src/scripts/backfillActivityRivals.ts`.
  */
 export function ActivityRivalBar({ item }: { item: FeedActivity }) {
   // A sáv az aktivitás-kártya alján ül, tehát jellemzően a képernyő alsó

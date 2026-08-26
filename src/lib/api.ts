@@ -261,9 +261,11 @@ export interface FeedActivity {
    * legfeljebb hatot tárol (`MAX_STORED_VICTIMS`), tehát nagyon sok
    * károsultnál ez a lista a legnagyobbakat mutatja, nem mindenkit.
    *
-   * ⚠️ A RÉGI AKTIVITÁSOKON MINDHÁROM ÜRES/NULLA. A `claimCounts` és a
-   * `stolenFrom` mezőt a mentés 2026-08-26 óta írja; ami előtte készült, arra
-   * a motor nem őrizte meg. A sáv ilyenkor nem jelenik meg.
+   * A RÉGI AKTIVITÁSOK IS KAPNAK ÉRTÉKET. A mentés a bontást csak 2026-08-26
+   * óta írja ki (`claimCounts`), de a korábbiakra a szerver a `territoryEvents`
+   * történetéből és az `areaGainedM2`-ből állítja elő ugyanezt — leírt
+   * tényekből, nem újraszámolásból. Lásd `routes/activities.ts` →
+   * `claimCountsOf`.
    */
   cellsGained: number;
   cellsStolen: number;

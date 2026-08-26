@@ -537,7 +537,7 @@ function parseStolenFrom(raw: unknown): Record<string, number> {
 }
 
 /**
- * A rivális-sáv két száma az aktivitás `claimCounts` mezőjéből.
+ * A rivális-sáv két száma.
  *
  * ⚠️ A `reclaimed` NEM SZERZÉS. A saját, már birtokolt cella újbóli
  * bejárása védelmet épít, de nem növeli a területet — a motor is így
@@ -545,15 +545,31 @@ function parseStolenFrom(raw: unknown): Record<string, number> {
  * beleszámítanánk, a kártyán nagyobb szám állna, mint amennyivel a grund
  * ténylegesen nőtt.
  *
- * A RÉGI aktivitásokon nincs `claimCounts` — ilyenkor mindkét szám nulla, és
- * a felület a sáv helyett csak a szerzett területet mutatja.
+ * KÉT ÚT VAN, és a régi aktivitásoké sem becslés:
+ *
+ * 1. `claimCounts` — a mentés 2026-08-26 óta kiírja, ez az elsődleges.
+ * 2. Hiányában a `stolenFrom` (a `backfillActivityRivals` szkript tölti
+ *    vissza a `territoryEvents` történetből) és az `areaGainedM2`.
+ *
+ * A visszaosztás EGZAKT, nem közelítés: az `areaGainedM2` definíció szerint
+ * `gainedCells × CELL_AREA_M2`, tehát a hányados egész. Éles adaton
+ * ellenőrizve (2026-08-26, mind a 27 aktivitás): egyetlen törtrészes eset
+ * sincs, és sehol nem jön ki negatív szabad terület.
  */
 function claimCountsOf(data: Record<string, unknown>): { gained: number; stolen: number } {
   const counts = data.claimCounts as Record<string, unknown> | undefined;
-  if (!counts) return { gained: 0, stolen: 0 };
-  const free = Number(counts.free ?? 0);
-  const stolen = Number(counts.stolen ?? 0);
-  return { gained: free + stolen, stolen };
+  if (counts) {
+    const free = Number(counts.free ?? 0);
+    const stolen = Number(counts.stolen ?? 0);
+    return { gained: free + stolen, stolen };
+  }
+
+  const stolen = Object.values(parseStolenFrom(data.stolenFrom)).reduce((sum, n) => sum + n, 0);
+  const gained = Math.round(Number(data.areaGainedM2 ?? 0) / GAMEPLAY.CELL_AREA_M2);
+  // Az elvett mezők a szerzés RÉSZE, tehát a szerzés soha nem lehet kevesebb.
+  // Mérve nem fordul elő; a `max` csak azért van itt, hogy egy sérült régi
+  // dokumentum se tudjon negatív szabad területet mutatni a sávon.
+  return { gained: Math.max(gained, stolen), stolen };
 }
 
 function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {

@@ -23,6 +23,7 @@
     "backfill:blocked-by": "tsx src/scripts/backfillBlockedBy.ts",
     "backfill:area-windows": "tsx src/scripts/backfillAreaWindows.ts",
     "backfill:rivals": "tsx src/scripts/backfillRivals.ts",
+    "backfill:activity-rivals": "tsx src/scripts/backfillActivityRivals.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts",
     "inspect:push": "tsx src/scripts/inspectPushTokens.ts",
     "probe:apns": "tsx src/scripts/probeApns.ts",

@@ -115,6 +115,52 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
     return response.json();
   }
 
+  /**
+   * A RÉGI aktivitásokon nincs `claimCounts` — a mentés csak 2026-08-26 óta
+   * írja. A rivális-sáv mégis megjelenik rajtuk: a károsultak a
+   * `territoryEvents`-ből visszatöltött `stolenFrom`-ból jönnek, a szerzett
+   * mezők száma pedig az `areaGainedM2`-ből, ami definíció szerint
+   * `cellák × CELL_AREA_M2`.
+   *
+   * Ez a teszt azt rögzíti, hogy a visszaosztás EGÉSZ számot ad, és hogy a
+   * szabad föld a maradék — vagyis a `+N` és a lila/korall arány a régi
+   * sorokon is helyes. Kódra ránézésből ez nem látszik: a hányados
+   * lebegőpontos, és egy elrontott kerekítés csendben egyel kevesebb mezőt
+   * mutatna.
+   */
+  it('a régi, `claimCounts` nélküli aktivitáson is helyes a rivális-sáv', async () => {
+    await seedUser('aldozat');
+    await seedUser('masik');
+    // 79 mező × 307,09 m² — valódi éles arány (2026-08-18), ebből 7 lopott.
+    await db.collection('activities').doc('regi').set({
+      userId: ME,
+      type: 'run',
+      layer: 'foot',
+      visibility: 'everyone',
+      startedAt: new Date('2026-08-18T10:00:00Z'),
+      distanceM: 5000,
+      movingS: 1800,
+      areaGainedM2: Math.round(79 * 307.09),
+      stolenFrom: { aldozat: 5, masik: 2 },
+      route: '',
+      likeCount: 0,
+      commentCount: 0,
+    });
+
+    const result = await feed('scope=world');
+    const row = result.activities.find((item: any) => item.id === 'regi');
+
+    expect(row.cellsGained).toBe(79);
+    expect(row.cellsStolen).toBe(7);
+    // A sáv lila fele: 79 − 7 = 72 mező szabad földről.
+    expect(row.cellsGained - row.cellsStolen).toBe(72);
+    // A legtöbbet vesztett áll elöl — az ő képe kerül a villámhoz.
+    expect(row.victims.map((v: any) => [v.username, v.cells])).toEqual([
+      ['aldozat', 5],
+      ['masik', 2],
+    ]);
+  });
+
   it('a követett feed üres, ha nem követek senkit', async () => {
     await seedUser('idegen');
     await seedActivity('a1', 'idegen', new Date('2026-08-19T10:00:00Z'));
