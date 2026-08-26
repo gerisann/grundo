@@ -2,6 +2,10 @@
   position: fixed;
   left: var(--sp-4);
   right: var(--sp-4);
+  /* Asztali gépen a sáv nem nyúlik a teljes ablak szélességében — mobil
+     szélességre korlátozva, középre igazítva áll, mint a többi kezelőfelület. */
+  max-width: calc(var(--app-max-width) - 2 * var(--sp-4));
+  margin-inline: auto;
   /* A safe-area már maga a szükséges alsó távolság. Ha még egy teljes
      margót hozzáadunk, iOS PWA-ban a Dock látványosan felúszik. */
   bottom: max(var(--safe-bottom), var(--sp-1));
@@ -353,6 +357,8 @@
   position: fixed;
   left: var(--sp-4);
   right: var(--sp-4);
+  max-width: calc(var(--app-max-width) - 2 * var(--sp-4));
+  margin-inline: auto;
   bottom: var(--dock-pause-offset);
   z-index: 39;
 

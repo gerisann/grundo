@@ -37,6 +37,12 @@
 .track__overlay {
   position: absolute;
   inset: 0;
+  /* A térkép (`.track__map`) mindig a teljes ablakot tölti ki — ez a réteg
+     viszont a kezelőfelület, tehát asztali gépen mobil szélességre
+     korlátozva, középre igazítva ül a térkép fölött. Az `inset: 0` adja a
+     `left`/`right: 0`-t, amivel a `margin-inline: auto` középre húzza. */
+  max-width: var(--app-max-width);
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);

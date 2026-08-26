@@ -34,6 +34,15 @@
   --info:    #3b82f6;
   --territory-label-strong: #ffffff;
 
+  /*
+    ═══ Elrendezés ═════════════════════════════════════════════════════
+    A felület mobil app, asztali gépen nézve is. Minden kezelőfelület
+    (kártya, lap, dokk, menü) ennél szélesebbre nem nő — a térkép ez alól
+    KIVÉTEL, az mindig kitölti az ablakot. 480 px egy nagy telefon (pl.
+    iPhone Pro Max) szélessége, nem tabletméret.
+  */
+  --app-max-width: 480px;
+
   /* ═══ Térköz ══════════════════════════════════════════════════════ */
   --sp-1: 4px;
   --sp-2: 8px;

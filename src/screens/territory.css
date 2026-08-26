@@ -26,6 +26,11 @@
 .terr__overlay {
   position: absolute;
   inset: 0;
+  /* A térkép (`.terr__map`) mindig a teljes ablakot tölti ki — ez a réteg
+     viszont a kezelőfelület, tehát asztali gépen mobil szélességre
+     korlátozva, középre igazítva ül a térkép fölött. */
+  max-width: var(--app-max-width);
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);

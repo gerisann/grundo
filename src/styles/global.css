@@ -45,6 +45,14 @@ a {
 .app-shell {
   min-height: 100%;
   padding-bottom: calc(var(--dock-height) + var(--safe-bottom) + var(--sp-4));
+  /*
+    Asztali gepen a felulet mobil szelessegu oszlopkent ul kozepen - a
+    terkepes kepernyok (Rogzites, Terulet) ez alol kivetelek, mert azoknal
+    a gyoker position: fixed, tehat nem a szulo szelessegebol szamol, a
+    terkep a teljes ablakot tolti ki, ahogy eddig is.
+  */
+  max-width: var(--app-max-width);
+  margin-inline: auto;
 }
 
 .card {

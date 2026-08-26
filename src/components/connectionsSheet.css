@@ -9,6 +9,11 @@
   flex-direction: column;
   background: var(--bg-primary);
   animation: conn-in 160ms ease-out;
+  /* Asztali gépen mobil szélességre korlátozva, középre igazítva — a
+     háttérszín megegyezik a `body`-éval, ezért a szélek varrat nélkül
+     folytatódnak. */
+  max-width: var(--app-max-width);
+  margin-inline: auto;
 }
 
 @keyframes conn-in {

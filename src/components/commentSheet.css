@@ -21,6 +21,9 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  /* Asztali gépen mobil szélességre korlátozva, középre igazítva. */
+  max-width: var(--app-max-width);
+  margin-inline: auto;
   /* Nem teljes magasság: alatta látszódjon, mihez szólnak hozzá. */
   max-height: 82dvh;
   background: var(--bg-secondary);
