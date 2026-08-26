@@ -89,6 +89,12 @@ export interface RecorderApi {
   error: TrackingError | null;
   /** Érkezett-e már használható fix. Amíg nem, a felület jelet keres. */
   hasFix: boolean;
+  /**
+   * A legfrissebb, megjelenítésre alkalmas fix — a térkép ezt követi.
+   * Lásd a `LivePosition` magyarázatát: szándékosan gyorsabb, mint a
+   * nyomvonal, és szándékosan nem befolyásol semmilyen játékbeli értéket.
+   */
+  livePosition: LivePosition | null;
   /** Mér-e a forrás a háttérben. Böngészőben mindig hamis. */
   supportsBackground: boolean;
   /** Sikerült-e ébren tartani a képernyőt. */
@@ -127,6 +133,29 @@ export interface RecorderApi {
   dismissResumable: () => Promise<void>;
 }
 
+/**
+ * A MEGJELENÍTÉSHEZ használt legfrissebb fix — NEM a nyomvonal része.
+ *
+ * MIÉRT KELL KÜLÖN? A nyomvonalba csak az a minta kerül be, ami legalább
+ * `FILTER.MIN_MOVE_M` (5 m) távolságra van az előzőtől: enélkül egy piros
+ * lámpánál álló felhasználó „megtenne" pár száz métert a GPS zajából. A
+ * mellékhatás viszont az volt, hogy a térképen a pötty is CSAK ötméterenként
+ * mozdult — sétatempóban ez 3-4 másodperces szakadozás, ami a felhasználónak
+ * úgy néz ki, mintha az app lefagyott volna.
+ *
+ * Ezért a két dolgot szétválasztjuk: a nyomvonal (és vele a távolság, a
+ * cellák, a GP — minden, amit a játékmotor lát) változatlan szűréssel épül, a
+ * térkép viszont MINDEN elfogadható pontosságú mintát megkap, másodpercenként.
+ * A `livePosition` sehol nem folyik bele a számításba: kizárólag a pötty, a
+ * kamera és a menetirány használja.
+ */
+export interface LivePosition {
+  lat: number;
+  lng: number;
+  t: number;
+  accuracy: number;
+}
+
 export type UploadState =
   | { status: 'idle' }
   | { status: 'sending' }
@@ -147,6 +176,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const [state, setState] = useState<RecorderState>(stateRef.current);
   const [error, setError] = useState<TrackingError | null>(null);
   const [hasFix, setHasFix] = useState(false);
+  const [livePosition, setLivePosition] = useState<LivePosition | null>(null);
   const [resumable, setResumable] = useState<RecorderState | null>(null);
   const [resumableNotice, setResumableNotice] = useState<string | null>(null);
   const resumableRun = useRef<PersistedRun | null>(null);
@@ -188,6 +218,18 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
           setHasFix(true);
           // A hibát töröljük: ha jön fix, a korábbi jelvesztés már nem áll fenn.
           setError(null);
+          // A térképé MINDEN pontos minta, a nyomvonalé csak a szűrésen
+          // átjutó. A pontossági kapu itt is kell: egy 200 méteres hálózati
+          // becslés a pöttyöt a szomszéd utcába vinné.
+          if (isDisplayableFix(sample)) {
+            setLivePosition((previous) =>
+              // Natív forrásból ébredés után kötegelve, sorrenden kívül is
+              // érkezhet minta; a pötty nem ugorhat vissza a múltba.
+              previous !== null && sample.t < previous.t
+                ? previous
+                : { lat: sample.lat, lng: sample.lng, t: sample.t, accuracy: sample.accuracy },
+            );
+          }
           apply((current) => applySample(current, sample));
         },
         onError: (err) => setError(err),
@@ -279,6 +321,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const begin = useCallback(
     async (type?: ActivityType) => {
       setHasFix(false);
+      // Az előző rögzítés utolsó pöttye nem kísérthet az újba.
+      setLivePosition(null);
       const started = apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
       await acquireWakeLock();
       await attach(type ?? pendingType, started);
@@ -420,6 +464,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     stateRef.current = createRecorder('run');
     setState(stateRef.current);
     setHasFix(false);
+    setLivePosition(null);
     setError(null);
     setUpload({ status: 'idle' });
     // A szellemvonal EGYETLEN rögzítésre szólt — a következő induljon nélküle,
@@ -453,6 +498,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     state,
     error,
     hasFix,
+    livePosition,
     supportsBackground: positionSource.supportsBackground,
     wakeLockActive,
     resumable,
@@ -470,6 +516,20 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     restore,
     dismissResumable,
   };
+}
+
+/**
+ * Kirajzolható-e ez a fix?
+ *
+ * Ugyanaz a pontossági küszöb, mint a nyomvonalszűrőben — csak a
+ * távolság- és sebességfeltételek nélkül. Így a pötty soha nem kerül olyan
+ * helyre, ahova a nyomvonal sem kerülhetne, viszont minden másodpercben
+ * frissül.
+ */
+function isDisplayableFix(sample: { lat: number; lng: number; accuracy: number }): boolean {
+  if (!Number.isFinite(sample.lat) || !Number.isFinite(sample.lng)) return false;
+  // `!(x <= y)` és nem `x > y`: így a NaN pontosság is kiesik.
+  return !!(sample.accuracy <= GAMEPLAY.MAX_GPS_ACCURACY_M);
 }
 
 function toPositionActivityState(state: RecorderState): PositionActivityState | null {

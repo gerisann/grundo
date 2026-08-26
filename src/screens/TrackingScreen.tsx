@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cellToChildren } from 'h3-js';
+import { cellToChildren, latLngToCell } from 'h3-js';
 import { Button, SegmentedControl } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import type { MapViewProps } from '@/components/MapView';
@@ -235,13 +235,60 @@ export function TrackingScreen() {
   const nearbyCache = useRef(new Map<string, TilesResult>());
   const nearbyLayer = useRef(layerOf(displayType));
 
+  /**
+   * A LEGUTÓBB LEKÉRT terület — hogy ne kérjünk le mindent újra minden
+   * kameramozdulatra.
+   *
+   * Az `onViewport` minden `moveend`-nél tüzel, a kamera pedig mostantól
+   * MINDEN pozíciófrissítésnél mozdul (másodpercenként, nem 3-4
+   * másodpercenként). Változatlan lekérési logikával ez háromszor-négyszer
+   * annyi `/api/tiles` hívást jelentene — a hexagonok pont attól kezdenének
+   * akadozni, amitől gyorsítani akartuk őket.
+   *
+   * Ezért a látható nézetnél NAGYOBB dobozt kérünk le, és amíg a kamera ezen
+   * belül marad, nem kérünk újat. Így a mozgás közbeni hívások száma csökken,
+   * miközben a képernyő széle sem marad üresen.
+   */
+  const requestedBox = useRef<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+    layer: 'foot' | 'bike';
+  } | null>(null);
+
   useEffect(() => {
     if (!apiConfigured || nearbyView === null) return;
 
-    let alive = true;
     const layer = layerOf(displayType);
-    const key = `${layer}:${nearbyView.south.toFixed(4)}:${nearbyView.west.toFixed(4)}:` +
-      `${nearbyView.north.toFixed(4)}:${nearbyView.east.toFixed(4)}`;
+
+    const previous = requestedBox.current;
+    if (
+      previous !== null &&
+      previous.layer === layer &&
+      previous.south <= nearbyView.south &&
+      previous.west <= nearbyView.west &&
+      previous.north >= nearbyView.north &&
+      previous.east >= nearbyView.east
+    ) {
+      return;
+    }
+
+    // 40% ráhagyás minden irányban: nagyjából fél képernyőnyi tartalék, ami
+    // futótempóban több tíz másodpercnyi mozgást fed le.
+    const padLat = (nearbyView.north - nearbyView.south) * 0.4;
+    const padLng = (nearbyView.east - nearbyView.west) * 0.4;
+    const box = {
+      south: nearbyView.south - padLat,
+      west: nearbyView.west - padLng,
+      north: nearbyView.north + padLat,
+      east: nearbyView.east + padLng,
+    };
+    requestedBox.current = { ...box, layer };
+
+    let alive = true;
+    const key = `${layer}:${box.south.toFixed(4)}:${box.west.toFixed(4)}:` +
+      `${box.north.toFixed(4)}:${box.east.toFixed(4)}`;
     const cached = nearbyCache.current.get(key);
 
     // Mozgás közben a régi, azonos rétegű adat marad a térképen a válaszig:
@@ -254,7 +301,7 @@ export function TrackingScreen() {
       setNearby(cached);
     }
     void api
-      .tiles(layer, nearbyView)
+      .tiles(layer, box)
       .then((result) => {
         if (!alive) return;
         nearbyCache.current.set(key, result);
@@ -319,6 +366,47 @@ export function TrackingScreen() {
   }, [nearby, nearbyView?.zoom]);
 
   /**
+   * A TÉRKÉP a nyomvonalnál gyorsabb forrást követ.
+   *
+   * A nyomvonalba csak ötméterenként kerül pont (lásd `FILTER.MIN_MOVE_M`),
+   * ezért sétatempóban a pötty 3-4 másodpercenként ugrott egyet. A
+   * `livePosition` minden pontos mintát átenged, tehát a pötty, a kamera és
+   * a menetirány másodpercenként frissül — a megtett táv, a cellák és a GP
+   * viszont továbbra is a szűrt nyomvonalból jön, változatlanul.
+   *
+   * Csak SAJÁT, futó mérésnél számít: a távoli (másik eszközön futó) mérésnek
+   * nincs helyi GPS-e, befejezés után pedig a nyomvonal vége a helyes vég.
+   */
+  const liveActive =
+    remoteState === null && (state.status === 'recording' || state.status === 'paused');
+  const livePosition = recorder.livePosition;
+  const liveFix = useMemo(
+    () =>
+      liveActive && livePosition
+        ? { lat: livePosition.lat, lng: livePosition.lng }
+        : null,
+    [liveActive, livePosition],
+  );
+
+  /**
+   * A NYOMVONAL-CELLA, amiben ÉPP állunk.
+   *
+   * A rács a szűrt nyomvonalból épül, ami ötméterenként lép — a felhasználó
+   * tehát láthatta magát olyan hatszögben, ami még nem volt kiszínezve. Az
+   * élő fix cellája ezt a maradék csúszást is elviszi. Kizárólag a
+   * MEGJELENÍTÉST bővíti: a `preview.path` (és vele a mezőszámláló, a GP és
+   * minden, amit a szerver újraszámol) érintetlen.
+   */
+  const liveCell = useMemo(
+    () => (liveFix ? latLngToCell(liveFix.lat, liveFix.lng, GAMEPLAY.H3_RESOLUTION) : null),
+    [liveFix],
+  );
+  const trailCells = useMemo(
+    () => (liveCell === null || cells.at(-1) === liveCell ? cells : [...cells, liveCell]),
+    [cells, liveCell],
+  );
+
+  /**
    * A Mapbox-rétegek referenciája csak valódi cellaváltozáskor változhat.
    *
    * Korábban a JSX-ben minden rendernél új tömb készült. A másodperces
@@ -334,12 +422,13 @@ export function TrackingScreen() {
       { role: 'interior', cells: nearbyMine },
       { role: 'interior', cells: preview.own },
       { role: 'stolen', cells: preview.stolen },
-      { role: 'trail', cells },
+      { role: 'trail', cells: trailCells },
     ] : [],
-    [showHexes, nearbyFree, nearbyOthers, nearbyMine, preview.own, preview.stolen, cells],
+    [showHexes, nearbyFree, nearbyOthers, nearbyMine, preview.own, preview.stolen, trailCells],
   );
 
   const lastPoint = displayPoints.length > 0 ? displayPoints[displayPoints.length - 1]! : null;
+
 
   /**
    * Indítás előtt is oda kell állítani a térképet, ahol a felhasználó van.
@@ -382,7 +471,7 @@ export function TrackingScreen() {
    * Amíg az első pont meg nem érkezik, a térkép ott marad, ahol volt. Ez
    * jobb, mint egy ugrás egy másik városrészbe.
    */
-  const mapPosition = lastPoint ?? (state.status === 'idle' ? homeFix : null);
+  const mapPosition = liveFix ?? lastPoint ?? (state.status === 'idle' ? homeFix : null);
 
   /**
    * Az „Indítás" nyíl — MINDEN tétlen állapotban.

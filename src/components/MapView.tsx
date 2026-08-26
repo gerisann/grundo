@@ -49,6 +49,45 @@ const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 const TILTED_PITCH = 55;
 const TILT_KEY = 'grundo.mapTilt';
 
+/**
+ * Követő nagyítás felülnézetben és bedöntött nézetben.
+ *
+ * A 3D nézet SZÁNDÉKOSAN közelebbi (Strava a mérce): bedöntve a képernyő
+ * alsó harmada a felhasználó mögötti, már megtett szakasz, a felső kétharmad
+ * a menetirány — ha ugyanazon a 16-os nagyításon maradna, a felhasználó egy
+ * madártávlati pöttyöt nézne, amin nem látszik, melyik utcába kell befordulni.
+ */
+const FOLLOW_ZOOM = 16;
+const TILTED_ZOOM = 17.6;
+
+/**
+ * A követő animáció hossza.
+ *
+ * Rövidebb kell, mint a minták közti idő (~1 s), különben az új animáció a
+ * régi közben indul, és a térkép sosem ér a pozícióhoz — látható, állandó
+ * lemaradás. 350 ms elég sima, és 650 ms tartalékot hagy.
+ */
+const FOLLOW_DURATION_MS = 350;
+
+/**
+ * A menetirány simítása.
+ *
+ * 0,2-ről emelve: a régi értékkel a térkép egy kanyar után 8-10 mintán
+ * keresztül forgott a helyes irányba, ami futótempóban is 10 másodperc. 0,4
+ * mellett három-négy minta alatt beáll, és a `trackBearing` 25 méteres
+ * bázisvonala miatt még mindig nem ugrál a GPS zajától.
+ */
+const BEARING_SMOOTHING = 0.4;
+
+/**
+ * Ennyi pont végéből számoljuk a menetirányt.
+ *
+ * A `trackBearing` úgyis csak 25 méternyit megy vissza, a nyomvonal viszont
+ * több ezer pont is lehet — a másodpercenkénti teljes tömbmásolás fölösleges
+ * szemétgyártás lenne.
+ */
+const BEARING_TAIL = 64;
+
 function readTiltPreference(): boolean {
   try {
     return localStorage.getItem(TILT_KEY) === '3d';
@@ -124,6 +163,12 @@ export function MapView({
       pitchWithRotate: false,
       dragRotate: false,
       pitch: tilted ? TILTED_PITCH : 0,
+      // A Mapbox alapból 300 ms-ig ÚSZTATJA BE az új csempék tartalmát. A
+      // hatszögeink így a mozgás után is még egy harmad másodpercig
+      // halványak — pont akkor, amikor a felhasználó azt nézi, elfoglalta-e
+      // a mezőt. Nulla késleltetéssel a cella abban a pillanatban látszik,
+      // amikor a rács megkapta.
+      fadeDuration: 0,
     });
 
     const resizeObserver = new ResizeObserver(() => instance.resize());
@@ -252,24 +297,33 @@ export function MapView({
 
     if (!centered.current) {
       centered.current = true;
-      instance.jumpTo({ center: [position.lng, position.lat], zoom: 16 });
+      instance.jumpTo({
+        center: [position.lng, position.lat],
+        zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
+      });
       return;
     }
 
     if (follow && !followPaused.current) {
       if (tilted) {
-        const measured = trackBearing(trackRef.current ?? []);
+        /*
+          A menetirányt a nyomvonal VÉGE plusz a MOSTANI pozíció adja. A
+          nyomvonalba csak ötméterenként kerül pont, a pozíció viszont
+          másodpercenként frissül — ha csak a nyomvonalat néznénk, az irány
+          annyival maradna le, amennyivel a pötty korábban lemaradt.
+        */
+        const measured = trackBearing(bearingTrack(trackRef.current, position));
         if (measured !== null) {
           bearingRef.current =
             bearingRef.current === null
               ? measured
-              : smoothBearing(bearingRef.current, measured, 0.2);
+              : smoothBearing(bearingRef.current, measured, BEARING_SMOOTHING);
         }
       }
       const bearing = tilted ? bearingRef.current : null;
       instance.easeTo({
         center: [position.lng, position.lat],
-        duration: 600,
+        duration: FOLLOW_DURATION_MS,
         ...(bearing !== null ? { bearing } : {}),
       });
     }
@@ -278,11 +332,15 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
+    // A nagyítást csak akkor állítjuk, ha a térkép már a felhasználón áll:
+    // felcsatoláskor az alapértelmezett budapesti középpontra ráközelíteni
+    // értelmetlen ugrás lenne.
+    const zoom = centered.current ? { zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM } : {};
     if (tilted) {
-      instance.easeTo({ pitch: TILTED_PITCH, duration: 400 });
+      instance.easeTo({ pitch: TILTED_PITCH, ...zoom, duration: 400 });
     } else {
       bearingRef.current = null;
-      instance.easeTo({ pitch: 0, bearing: 0, duration: 400 });
+      instance.easeTo({ pitch: 0, bearing: 0, ...zoom, duration: 400 });
     }
   }, [tilted]);
 
@@ -356,7 +414,11 @@ export function MapView({
             setShowRecenter(false);
             const target = map.current;
             if (target && position) {
-              target.easeTo({ center: [position.lng, position.lat], duration: 400 });
+              target.easeTo({
+                center: [position.lng, position.lat],
+                zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
+                duration: 400,
+              });
             }
           }}
         >
@@ -376,6 +438,24 @@ export interface MapHexCell {
   defense?: number;
   preview?: boolean;
   owner?: string;
+}
+
+/**
+ * A menetirány-számítás bemenete: a nyomvonal vége + az aktuális pozíció.
+ *
+ * Ha a pozíció már a nyomvonal utolsó pontja (mert épp az lett elfogadva),
+ * nem duplázzuk meg — két egybeeső pontból a `trackBearing` úgyis `null`-t
+ * adna a bázis végén.
+ */
+function bearingTrack(
+  track: MapViewProps['track'],
+  position: { lat: number; lng: number },
+): { lat: number; lng: number }[] {
+  const tail = (track ?? []).slice(-BEARING_TAIL);
+  const last = tail[tail.length - 1];
+  if (last && last.lat === position.lat && last.lng === position.lng) return tail;
+  tail.push(position);
+  return tail;
 }
 
 function fitTrackOnce(
