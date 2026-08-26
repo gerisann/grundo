@@ -26,18 +26,34 @@ import './rivalRow.css';
  * végig korall. Ne „szépítsük meg” egy alsó/felső korláttal, mert azzal a kép
  * mást mondana, mint a számok.
  *
- * ⚠️ AZ AVATÁR VISZONT IGENIS BEHÚZÓDIK (`--rival-avatar`). Ha az egyik sáv
- * 90%-nál többet foglal, a profilkép a sor szélére csúszna és félig kilógna —
- * Geri ezt külön kérte (2026-08-26). Ez NEM mond ellent a fentinek: a SÁVOK és
- * a villám a valós arányt tartják, csak az arckép húzódik beljebb, hogy
- * látszódjon. A kettő szándékosan válik el szélsőséges aránynál.
+ * ⚠️ AZ AVATÁR VISZONT IGENIS BEHÚZÓDIK. A profilkép sosem megy közelebb a
+ * sor széléhez, mint a saját méretének a KÉTSZERESE (`--rival-avatar-gap`) —
+ * Geri kérése (2026-08-26). Ez NEM mond ellent a fentinek: a SÁVOK és a villám
+ * a valós arányt tartják, csak az arckép húzódik beljebb, hogy látszódjon. A
+ * kettő szándékosan válik el szélsőséges aránynál.
  *
- * ⚠️ AZ ANIMÁCIÓ AKKOR INDUL, AMIKOR A SOR LÁTSZIK. Nem a betöltéskor: egy
- * hosszú listán az alsó sorok addigra lefutnának, mire a felhasználó odaér, és
- * ő csak kész, mozdulatlan sorokat találna. A `--live` osztály billenti át
- * mindkét oldalt — a CSS-animációkat és a számok pörgetését egyszerre —, hogy
- * a kettő ne csússzon szét.
+ * ⚠️ A KORLÁT PIXELBEN VAN, NEM SZÁZALÉKBAN, és ez mérésből jött: egy
+ * százalékos korlát (10–90%) keskeny sávon KEVESEBB pixelt hagy, mint amennyi
+ * az arckép fele — a kép ilyenkor is kilógott. A `clamp()` a CSS-ben van, hogy
+ * a sáv tényleges szélességéhez igazodjon, ne egy React-beli becsléshez.
+ *
+ * ⚠️ AZ ANIMÁCIÓ AKKOR INDUL, AMIKOR A TELJES KÁRTYA LÁTSZIK. Nem korábban:
+ * a `rootMargin` előretöltése miatt a sávok lefutottak, mire a felhasználó
+ * odagörgetett, és ő csak kész, mozdulatlan sorokat talált. Aktivitás-kártyán
+ * belül a KÁRTYA a mérce, nem a sáv — a sáv a kártya alján ül, tehát az ő
+ * láthatósága még nem jelenti, hogy a kártya is látszik.
  */
+/**
+ * Aktivitás-kártyán belül a KÁRTYA a mérce, önálló listasornál saját maga.
+ *
+ * Modulszintű állandó, nem soronkénti nyílfüggvény: a `useInView` függősége,
+ * tehát új példány minden rendernél újraindítaná a megfigyelőt.
+ */
+const RESOLVE_CARD = (node: HTMLButtonElement): Element => node.closest('.acard') ?? node;
+
+/** Ugyanezért állandó: tömb-literál minden rendernél új megfigyelőt indítana. */
+const VISIBILITY_STEPS = [0, 1];
+
 export function RivalRow({
   rival,
   onOpen,
@@ -54,16 +70,18 @@ export function RivalRow({
   /** További arcok a fő kép sarkában — a kör többi károsultja. */
   others?: readonly ActivityAuthor[];
 }) {
-  // A sáv 120 pixellel a képernyő alatt már „élesedik”, hogy a görgetés
-  // közben ne a felhasználó szeme előtt kapcsoljon be.
-  const { ref, inView } = useInView<HTMLButtonElement>({ rootMargin: '120px 0px' });
+  const { ref, inView } = useInView<HTMLButtonElement>({
+    whole: true,
+    // A `threshold: 1` csak azt szabja meg, mikor SZÓL a megfigyelő; a teljes
+    // láthatóság ellenőrzése a hookban van (lásd az ottani figyelmeztetést).
+    threshold: VISIBILITY_STEPS,
+    resolveTarget: RESOLVE_CARD,
+  });
 
   // A nevező nulla is lehet (rivális esemény nélkül nem jönne létre, de a
   // védelem olcsó) — a `max(1, …)` osztás helyett 50%-os felezést ad.
   const total = Math.max(1, rival.gainedCells + rival.lostCells);
   const gained = Math.round((rival.gainedCells / total) * 100);
-  // Az arckép sosem megy a szélső tizedbe — lásd a fejléc figyelmeztetését.
-  const avatar = Math.min(90, Math.max(10, gained));
 
   return (
     <button
@@ -72,7 +90,7 @@ export function RivalRow({
       className={`conn__row rival-row${compact ? ' rival-row--compact' : ''}${
         inView ? ' rival-row--live' : ''
       }`}
-      style={{ '--rival-gained': `${gained}%`, '--rival-avatar': `${avatar}%` } as CSSProperties}
+      style={{ '--rival-gained': `${gained}%` } as CSSProperties}
       onClick={onOpen}
     >
       <span className="rival-row__bars" aria-hidden="true">

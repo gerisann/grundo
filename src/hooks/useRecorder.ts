@@ -26,6 +26,7 @@ import {
   movingMs as movingMsOf,
   pause as pauseRecorder,
   resume as resumeRecorder,
+  shouldAutoUpload,
   start as startRecorder,
   type RecorderState,
 } from '@/tracking/recorder';
@@ -43,6 +44,7 @@ import {
   type PositionSource,
 } from '@/tracking/types';
 import { ApiError, api, apiConfigured, type ActivitySummary } from '@/lib/api';
+import { GAMEPLAY } from '@/config/gameplay';
 import { requestWakeLock, wakeLockSupported, type WakeLock } from '@/tracking/wakeLock';
 import {
   currentNavigationType,
@@ -348,6 +350,59 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       });
     }
   }, [persister, uploader]);
+
+  /**
+   * A BEFEJEZÉS UTÁNI FELTÖLTÉS ITT INDUL, NEM A KÉPERNYŐN.
+   *
+   * ⚠️ EZ EGY VALÓDI, ÉLES ADATVESZTÉS JAVÍTÁSA (2026-08-26). Korábban ez a
+   * hatás a `TrackingScreen`-ben ült — a Befejezés gomb viszont a `Dock`-ban
+   * van, ami MINDEN képernyőn ott van. Aki rögzítés közben a böngésző
+   * „vissza" gombjával elhagyta a rögzítés képernyőjét, majd befejezte a
+   * mérést, annál a feltöltés SOHA nem indult el: a képernyő nem volt
+   * felcsatolva, tehát a hatása sem futott. A felhasználó azt látta, hogy
+   * befejezte és elmentette; a szerverre semmi nem érkezett.
+   *
+   * Éles adaton visszaigazolva (`nagz`, 2026-08-26): nulla aktivitás, nulla
+   * trust-dokumentum, nulla GP-tétel — vagyis a kérés el sem jutott a
+   * szerverig, nem pedig ott hasalt el.
+   *
+   * A feltöltés a RÖGZÍTŐ dolga, nem a képernyőé. Itt a provider alatt fut,
+   * ami a routerNÉL feljebb van, tehát nem tud kikerülni a fa alól.
+   */
+  useEffect(() => {
+    if (!shouldAutoUpload(state, upload.status, GAMEPLAY.MIN_DISTANCE_M)) return;
+    void uploadActivity();
+    // A `state` OBJEKTUM minden mintánál új, ezért csak a ténylegesen használt
+    // két mezőjétől függünk — különben a hatás minden GPS-pontnál újrafutna.
+  }, [state.status, state.distanceM, upload.status, uploadActivity]);
+
+  /**
+   * FIGYELMEZTETÉS AZ OLDAL ELHAGYÁSÁRA, amíg van mentetlen mérés.
+   *
+   * A böngésző „vissza" gombja egyetlen előzmény-bejegyzésnél KILÉP az
+   * oldalról — a React Router ilyenkor már nem tud közbeszólni, és a memóriában
+   * élő rögzítés a lap bezárásával elszáll. A megőrzött másolat visszakínálja
+   * ugyan a futást, de csak ha a felhasználó egyáltalán visszatér.
+   *
+   * ⚠️ CSAK FUTÓ VAGY MENTETLEN MÉRÉSNÉL. Egy mindig ott lógó „biztosan
+   * elhagyod?" ablak a leggyakoribb úton (nincs rögzítés) puszta bosszúság
+   * lenne, és pont attól szoknák le róla az emberek, hogy elolvassák.
+   *
+   * A szöveget a böngészők nem jelenítik meg (saját, általános üzenetet
+   * mutatnak) — a `preventDefault` az, ami számít.
+   */
+  useEffect(() => {
+    const vanFuto = state.status === 'recording' || state.status === 'paused';
+    const vanMentetlen = state.status === 'finished' && upload.status !== 'done';
+    if (!vanFuto && !vanMentetlen) return;
+
+    const figyelmeztet = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', figyelmeztet);
+    return () => window.removeEventListener('beforeunload', figyelmeztet);
+  }, [state.status, upload.status]);
 
   const finish = useCallback(async () => {
     await positionSource.stop();

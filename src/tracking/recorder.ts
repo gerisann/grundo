@@ -144,6 +144,34 @@ export function finish(state: RecorderState, now: number): RecorderState {
 }
 
 /**
+ * El kell-e indítani MAGÁTÓL a befejezett rögzítés feltöltését?
+ *
+ * ⚠️ KÜLÖN, TISZTA FÜGGVÉNY, mert ez egy éles adatvesztés javítása
+ * (2026-08-26). A feltétel korábban a `TrackingScreen` egyik hatásában élt, a
+ * Befejezés gomb viszont a `Dock`-ban van, ami MINDEN képernyőn ott van. Aki
+ * rögzítés közben elhagyta a rögzítés képernyőjét és onnan fejezte be a
+ * mérést, annál a feltöltés soha nem indult el — a futása némán elveszett.
+ *
+ * A döntés innentől a rögzítő rétegé (`useRecorder`), ami a router FÖLÖTT ül,
+ * tehát nem tud kikerülni a komponensfa alól. Ha valaki visszaköltöztetné egy
+ * képernyőbe, a hiba visszajön — ezért rögzíti teszt is.
+ *
+ * @param uploadStatus a feltöltés állapota; csak `idle`-ből indulhat, hogy a
+ *   lassú mentés alatt ne induljon el másodszor is.
+ */
+export function shouldAutoUpload(
+  state: Pick<RecorderState, 'status' | 'distanceM'>,
+  uploadStatus: 'idle' | 'sending' | 'done' | 'error',
+  minDistanceM: number,
+): boolean {
+  if (state.status !== 'finished') return false;
+  if (uploadStatus !== 'idle') return false;
+  // A küszöb alatti mozgás nem aktivitás — a szerver is elutasítaná, tehát a
+  // felhasználó csak egy fölösleges hibaüzenetet kapna tőle.
+  return state.distanceM >= minDistanceM;
+}
+
+/**
  * Egy beérkezett minta feldolgozása.
  *
  * Szünet alatt és leállás után eldobjuk: a natív forrás ilyenkor is küldhet,

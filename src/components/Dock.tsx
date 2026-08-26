@@ -25,7 +25,7 @@ export function Dock() {
   const navigate = useNavigate();
   const location = useLocation();
   const trackingEnvironment = useTrackingEnvironment();
-  const { state, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
+  const { state, upload, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
   const dockRef = useDockHeight();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
@@ -36,10 +36,50 @@ export function Dock() {
   const done = state.status === 'finished';
   const active = running || paused;
 
+  /**
+   * FUTÓ MÉRÉS KÖZBEN A RÖGZÍTÉS KÉPERNYŐJE RAGADÓS.
+   *
+   * A böngésző „vissza" gombja ZSÁKUTCÁBA vitt (Geri, 2026-08-26): a Home
+   * jelent meg, a dokk viszont a rögzítés vezérlőit mutatta — és mivel az
+   * `active` állapotban a dokk CSAK a három gombot tartalmazza, menüpontok
+   * nélkül, a felhasználó nem tudott sehova továbblépni. A képernyő és a dokk
+   * két külön dolgot állított, és egyik sem vezetett ki.
+   *
+   * A történelmi navigációt nem lehet megbízhatóan letiltani (és nem is
+   * volna helyes elvenni a böngésző gombját), ezért a másik irányt
+   * választottuk: bármit tölt be a vissza/előre, azonnal visszaváltunk a
+   * mérésre. A `replace` szándékos — így a felhasználó nem tud egy hosszú
+   * oda-vissza láncot építeni magának a nyomógombbal.
+   *
+   * ⚠️ A LAB E2E-t KI KELL HAGYNI: ott a rögzítés admin útvonalon fut, és egy
+   * `/rogzites`-re dobás kirántaná a mérést a saját környezetéből.
+   */
+  useEffect(() => {
+    if (!active || onTrackingScreen) return;
+    navigate('/rogzites', { replace: true });
+  }, [active, onTrackingScreen, navigate]);
+
   function primaryAction() {
     if (running) return pause();
     if (paused) return resume();
-    if (done) return void discard();
+    if (done) {
+      /**
+       * ⚠️ MENTETLEN MÉRÉST SOHA NEM DOBUNK EL EGY KOPPINTÁSRA.
+       *
+       * A `discard()` VÉGLEG törli a megőrzött rögzítést. Korábban a `done`
+       * ág feltétel nélkül ezt hívta — és ez éles adatvesztéshez vezetett
+       * (2026-08-26): a rögzítés képernyőjéről elnavigálva a gomb nem is
+       * „Új rögzítés" feliratot viselt, hanem egy Play ikont (a felirathoz
+       * `onTrackingScreen` is kell), tehát a felhasználó a folytatás
+       * szándékával nyomta meg — és ezzel törölte a saját futását.
+       *
+       * Amíg a feltöltés nincs kész, ez a gomb a rögzítés képernyőjére visz,
+       * ahol LÁTSZIK, mi történt (küldés, hiba, újrapróbálás). Eldobni csak
+       * onnan lehet, tudatosan.
+       */
+      if (upload.status !== 'done') return navigate('/rogzites');
+      return void discard();
+    }
     if (!onTrackingScreen) return navigate('/rogzites');
     return void begin();
   }

@@ -14,6 +14,9 @@
 .rival-row {
   --rival-gain: #8f5cf2;
   --rival-loss: #fb5f73;
+  /* Az arckép sosem megy ennél közelebb a sor széléhez — a saját méretének
+     a KÉTSZERESE (44 px-es avatár → 88 px). Lásd a `RivalRow.tsx` fejlécét. */
+  --rival-avatar-gap: 88px;
 
   position: relative;
   min-height: 82px;
@@ -119,13 +122,22 @@
   pointer-events: none;
 }
 
-/* ⚠️ `--rival-avatar`, NEM `--rival-gained`. Az arckép a 10–90% sávba van
-   szorítva (a `RivalRow.tsx` számolja), különben szélsőséges aránynál a sor
-   szélére csúszna és félig kilógna. A SÁVOK és a villám továbbra is a valós
-   arányt mutatják — a kettő ilyenkor szándékosan válik el. */
+/* ⚠️ AZ ARCKÉP HELYE KORLÁTOZOTT, a sávoké nem. Szélsőséges aránynál a sor
+   szélére csúszna és félig kilógna, ezért a két szélen `--rival-avatar-gap`
+   tiltott sáv van. A SÁVOK és a villám továbbra is a valós arányt mutatják —
+   a kettő ilyenkor szándékosan válik el.
+
+   ⚠️ A `clamp()` SZÁNDÉKOSAN CSS-BEN VAN, nem a komponensben: pixelben kell
+   korlátozni, a korlát viszont a sáv tényleges szélességétől függ. Egy
+   React-beli százalékos becslés (a korábbi 10–90%) keskeny sávon kevesebb
+   pixelt hagyott, mint az arckép fele — így a kép ott is kilógott. */
 .rival-row__identity {
   position: absolute;
-  left: var(--rival-avatar, var(--rival-gained, 50%));
+  left: clamp(
+    var(--rival-avatar-gap),
+    var(--rival-gained, 50%),
+    calc(100% - var(--rival-avatar-gap))
+  );
   top: 50%;
   z-index: 3;
   /* Középre igazítás a KÜLÖNÁLLÓ `translate` tulajdonsággal, nem
@@ -238,62 +250,67 @@
 
    ⚠️ AZ ÜTKÖZÉS `easeOutBounce`, ÉS EZÉRT VAN KIÍRVA KULCSKOCKÁNKÉNT.
    Geri kérése (2026-08-26): a két sáv csapódjon egymásnak, mint egy rossz
-   liftajtó, és pattanjon vissza néhányszor. Ez NEM írható le
-   `cubic-bezier`-rel — az egyetlen sima görbe, a pattogás viszont szakaszos
-   függvény. A lenti százalékok a szabványos `easeOutBounce`
-   (https://easings.net) mintavételei; az ütközések a 36,4%, 72,7% és 90,9%
-   pontokon vannak, közöttük a visszapattanásokkal.
+   liftajtó, és pattanjon vissza — PONTOSAN HÁROM ütközésből álljon meg. Ez
+   NEM írható le `cubic-bezier`-rel: az egyetlen sima görbe, a pattogás
+   viszont szakaszos függvény.
+
+   ⚠️ A GÖRBE A HARMADIK ÜTKÖZÉSRE VAN SKÁLÁZVA. A szabványos `easeOutBounce`
+   (https://easings.net/#easeOutBounce) NÉGY szakaszból áll, és az utolsó egy
+   alig látható negyedik koccanás. Az eredeti görbe harmadik ütközése a
+   90,909%-nál van, ezért az egészet ezzel osztottuk — így az ütközések a
+   40%, 80% és 100% pontokra esnek, a negyedik pedig kimarad. Ha valaki
+   „visszajavítja" a nyers easeOutBounce-ra, visszajön a negyedik pattanás.
 
    A gyorsítás LINEÁRIS marad az animáción — a görbét maguk a kulcskockák
    hordozzák. Ha `ease`-t teszel rá, kétszer easelsz, és a pattogás elmosódik. */
 
 @keyframes rival-wipe-right {
   0%     { clip-path: inset(0 100% 0 0); }
-  5%     { clip-path: inset(0 98.1% 0 0); }
-  10%    { clip-path: inset(0 92.4% 0 0); }
-  15%    { clip-path: inset(0 83% 0 0); }
-  20%    { clip-path: inset(0 69.8% 0 0); }
-  25%    { clip-path: inset(0 52.7% 0 0); }
-  30%    { clip-path: inset(0 31.9% 0 0); }
-  36.4%  { clip-path: inset(0 0 0 0); }      /* első ütközés */
-  40%    { clip-path: inset(0 9% 0 0); }
-  45%    { clip-path: inset(0 18.1% 0 0); }
-  50%    { clip-path: inset(0 23.4% 0 0); }
-  54.5%  { clip-path: inset(0 25% 0 0); }    /* legnagyobb visszapattanás */
-  60%    { clip-path: inset(0 22.8% 0 0); }
-  65%    { clip-path: inset(0 16.7% 0 0); }
-  70%    { clip-path: inset(0 6.9% 0 0); }
-  72.7%  { clip-path: inset(0 0 0 0); }      /* második ütközés */
-  78%    { clip-path: inset(0 5.4% 0 0); }
-  81.8%  { clip-path: inset(0 6.3% 0 0); }
-  86%    { clip-path: inset(0 4.7% 0 0); }
-  90.9%  { clip-path: inset(0 0 0 0); }      /* harmadik ütközés */
-  95.5%  { clip-path: inset(0 1.6% 0 0); }
-  100%   { clip-path: inset(0 0 0 0); }
+  5.5%   { clip-path: inset(0 98.1% 0 0); }
+  11%    { clip-path: inset(0 92.4% 0 0); }
+  16.5%  { clip-path: inset(0 83% 0 0); }
+  22%    { clip-path: inset(0 69.8% 0 0); }
+  27.5%  { clip-path: inset(0 52.7% 0 0); }
+  33%    { clip-path: inset(0 31.9% 0 0); }
+  40%    { clip-path: inset(0 0 0 0); }      /* 1. ütközés */
+  44%    { clip-path: inset(0 9% 0 0); }
+  49.5%  { clip-path: inset(0 18.1% 0 0); }
+  55%    { clip-path: inset(0 23.4% 0 0); }
+  60%    { clip-path: inset(0 25% 0 0); }    /* legnagyobb visszapattanás */
+  66%    { clip-path: inset(0 22.8% 0 0); }
+  71.5%  { clip-path: inset(0 16.7% 0 0); }
+  77%    { clip-path: inset(0 6.9% 0 0); }
+  80%    { clip-path: inset(0 0 0 0); }      /* 2. ütközés */
+  82.5%  { clip-path: inset(0 2.7% 0 0); }
+  88%    { clip-path: inset(0 6% 0 0); }
+  90%    { clip-path: inset(0 6.3% 0 0); }   /* második visszapattanás teteje */
+  93.5%  { clip-path: inset(0 5.5% 0 0); }
+  99%    { clip-path: inset(0 1.2% 0 0); }
+  100%   { clip-path: inset(0 0 0 0); }      /* 3. ütközés — itt áll meg */
 }
 
 @keyframes rival-wipe-left {
   0%     { clip-path: inset(0 0 0 100%); }
-  5%     { clip-path: inset(0 0 0 98.1%); }
-  10%    { clip-path: inset(0 0 0 92.4%); }
-  15%    { clip-path: inset(0 0 0 83%); }
-  20%    { clip-path: inset(0 0 0 69.8%); }
-  25%    { clip-path: inset(0 0 0 52.7%); }
-  30%    { clip-path: inset(0 0 0 31.9%); }
-  36.4%  { clip-path: inset(0 0 0 0); }
-  40%    { clip-path: inset(0 0 0 9%); }
-  45%    { clip-path: inset(0 0 0 18.1%); }
-  50%    { clip-path: inset(0 0 0 23.4%); }
-  54.5%  { clip-path: inset(0 0 0 25%); }
-  60%    { clip-path: inset(0 0 0 22.8%); }
-  65%    { clip-path: inset(0 0 0 16.7%); }
-  70%    { clip-path: inset(0 0 0 6.9%); }
-  72.7%  { clip-path: inset(0 0 0 0); }
-  78%    { clip-path: inset(0 0 0 5.4%); }
-  81.8%  { clip-path: inset(0 0 0 6.3%); }
-  86%    { clip-path: inset(0 0 0 4.7%); }
-  90.9%  { clip-path: inset(0 0 0 0); }
-  95.5%  { clip-path: inset(0 0 0 1.6%); }
+  5.5%   { clip-path: inset(0 0 0 98.1%); }
+  11%    { clip-path: inset(0 0 0 92.4%); }
+  16.5%  { clip-path: inset(0 0 0 83%); }
+  22%    { clip-path: inset(0 0 0 69.8%); }
+  27.5%  { clip-path: inset(0 0 0 52.7%); }
+  33%    { clip-path: inset(0 0 0 31.9%); }
+  40%    { clip-path: inset(0 0 0 0); }
+  44%    { clip-path: inset(0 0 0 9%); }
+  49.5%  { clip-path: inset(0 0 0 18.1%); }
+  55%    { clip-path: inset(0 0 0 23.4%); }
+  60%    { clip-path: inset(0 0 0 25%); }
+  66%    { clip-path: inset(0 0 0 22.8%); }
+  71.5%  { clip-path: inset(0 0 0 16.7%); }
+  77%    { clip-path: inset(0 0 0 6.9%); }
+  80%    { clip-path: inset(0 0 0 0); }
+  82.5%  { clip-path: inset(0 0 0 2.7%); }
+  88%    { clip-path: inset(0 0 0 6%); }
+  90%    { clip-path: inset(0 0 0 6.3%); }
+  93.5%  { clip-path: inset(0 0 0 5.5%); }
+  99%    { clip-path: inset(0 0 0 1.2%); }
   100%   { clip-path: inset(0 0 0 0); }
 }
 
@@ -333,7 +350,7 @@
 }
 
 /* `linear`, mert a görbét a kulcskockák hordozzák — lásd fent. A 900 ms-ből
-   az első ütközés a 36,4%-nál, azaz ~328 ms-nél van; a villám ehhez igazodik. */
+   az ELSŐ ütközés a 40%-nál, azaz 360 ms-nél van; a villám ehhez igazodik. */
 .rival-row--live .rival-row__bar--gain::before {
   animation: rival-wipe-right 900ms linear both;
 }
@@ -343,11 +360,11 @@
 }
 
 .rival-row--live .rival-row__bolt {
-  animation: rival-strike 520ms ease-out 328ms both;
+  animation: rival-strike 520ms ease-out 360ms both;
 }
 
 .rival-row--live .rival-row__identity {
-  animation: rival-bounce-in 620ms cubic-bezier(.34, 1.56, .64, 1) 420ms both;
+  animation: rival-bounce-in 620ms cubic-bezier(.34, 1.56, .64, 1) 450ms both;
 }
 
 .rival-row--live .rival-score__gained {
@@ -410,6 +427,8 @@
 .rival-row--compact {
   min-height: 48px;
   border-radius: var(--r-sm);
+  /* 34 px-es arckép → 68 px tiltott sáv a két szélen. */
+  --rival-avatar-gap: 68px;
 }
 
 .rival-row--compact .rival-row__taken,
@@ -423,9 +442,13 @@
 .rival-row--compact .rival-row__taken { left: var(--sp-2); }
 .rival-row--compact .rival-score__total { right: var(--sp-2); }
 
+/* ⚠️ AZ ALSÓ CÍMKÉK BELJEBB VANNAK, mint a felsők — az aktivitás-kártya
+   lekerekített alsó sarkai miatt. A sáv a kártya legalján ül, tehát a kártya
+   `overflow: hidden`-je pont a `+412` és a `−26` sarkába harap bele. A felső
+   pirulák a kártya közepén vannak, azokat nem érinti. */
 .rival-row--compact .rival-score__split {
-  left: var(--sp-2);
-  right: var(--sp-2);
+  left: calc(var(--sp-2) + 5px);
+  right: calc(var(--sp-2) + 5px);
   bottom: 4px;
 }
 

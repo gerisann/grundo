@@ -394,22 +394,16 @@ export function TrackingScreen() {
    */
   const showStartHint = true;
 
-  /**
-   * A befejezés után magától indul a feltöltés.
+  /*
+   * A befejezés utáni AUTOMATIKUS feltöltés innen ELKÖLTÖZÖTT a
+   * `useRecorder`-be (2026-08-26). Nem stílusrendezés volt: itt a hatás csak
+   * akkor futott, ha ez a képernyő fel volt csatolva — a Befejezés gomb
+   * viszont a `Dock`-ban van, tehát máshonnan befejezve a mérés NÉMÁN
+   * elveszett. Az indoklás és az éles mérés a `useRecorder` fejlécében áll.
    *
-   * Külön „Mentés" gomb nélkül: a felhasználó befejezte a futást, nincs miért
-   * még egyszer megerősítenie. Hiba esetén viszont KELL gomb — az újrapróbálás
-   * az ő döntése, és a hálózat lehet, hogy csak egy perc múlva jön vissza.
+   * Ne tedd vissza ide. Ami ITT marad, az a hiba utáni ÚJRAPRÓBÁLÁS gombja —
+   * az tudatos felhasználói döntés, és van hozzá felület.
    */
-  const uploadStatus = recorder.upload.status;
-  const uploadActivity = recorder.uploadActivity;
-  useEffect(() => {
-    if (!done || uploadStatus !== 'idle' || !countsAsActivity) return;
-    void uploadActivity();
-    // A `recorder` OBJEKTUM minden rendereléskor új, ezért ha attól függene, a
-    // hatás minden rendereléskor újrafutna — és a lassú mentés alatt kétszer is
-    // elindíthatta a feltöltést. Csak a ténylegesen használt két értéktől függ.
-  }, [done, countsAsActivity, uploadStatus, uploadActivity]);
 
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);

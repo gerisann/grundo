@@ -37,6 +37,7 @@ az érintett fájlok fejléceiben.
 | 6 | Dátumszűrő keskenyebb és egységes arculatú | `feed.css` |
 | 7 | Befejezés: képernyő közepére kitett nagy animáció + elsötétítés, feleannyi idő | `Dock.tsx` |
 | 8 | Szünet: sárga panel úszik fel a dokk mögül; „Új kör" ilyenkor inaktív | `Dock.tsx` |
+| 10 | Rögzítés közben a böngészős vissza/előre nem visz zsákutcába | `Dock.tsx` |
 | 9 | `/kuldetesek` vízszintes kilógása javítva (rács `minmax(0,1fr)`) | `missions.css` |
 
 ### ⚠️ AMI BACKEND-DEPLOYT IGÉNYEL
@@ -98,42 +99,130 @@ Az EGYETLEN adat a sávon, ami egy konkrét körről szól, a bal felső pirula
 (`rival-row__taken`): hány mezőt vett el ebben a körben. Szándékosan pontosan
 úgy néz ki, mint a jobb felső szorzó.
 
-**Két szabály, amit ne vonj vissza:**
+**Három szabály, amit ne vonj vissza:**
 
 - **A sávok aránya valós, az AVATÁRÉ nem.** A `--rival-gained` a tényleges
-  arány; a `--rival-avatar` viszont 10–90% közé van szorítva, különben
-  szélsőséges aránynál a profilkép a sor szélére csúszna és félig kilógna.
-  A kettő ilyenkor SZÁNDÉKOSAN válik el a villámtól — mérve: 94%-os aránynál
-  az avatár 90%-on áll, a villám 94%-on.
-- **Az összecsapás `easeOutBounce`, kulcskockákban kiírva.** Nem
-  `cubic-bezier` — az egyetlen sima görbe, a pattogás szakaszos függvény.
-  A Web Animations API-val mérve: ütközés a 36,4%, 72,7% és 90,9% pontokon,
-  közöttük 25% / 6,3% / 1,6% visszapattanással. Az animáció gyorsítása
-  `linear`, mert a görbét maguk a kulcskockák hordozzák — ha `ease`-t teszel
-  rá, kétszer easelsz és elmosódik a pattogás.
+  arány; az arckép viszont sosem megy közelebb a szélhez, mint a saját
+  méretének kétszerese (`--rival-avatar-gap`: 88 px teljes, 68 px tömör
+  soron). A `clamp()` SZÁNDÉKOSAN CSS-ben van: pixelben kell korlátozni, de a
+  korlát a sáv tényleges szélességétől függ. Egy százalékos korlát (az első
+  változat 10–90%-a) keskeny sávon kevesebb pixelt hagyott, mint az arckép
+  fele — ott a kép ugyanúgy kilógott. Mérve 320 px-es nézeten (286 px-es sáv),
+  0/3/50/97/100%-os aránynál: sehol nem lóg ki.
+- **Az összecsapás `easeOutBounce`, kulcskockákban kiírva, HÁROM ütközéssel.**
+  Nem `cubic-bezier` — az egyetlen sima görbe, a pattogás szakaszos függvény.
+  A nyers `easeOutBounce` NÉGY szakaszos, ezért a görbe a harmadik ütközésre
+  (az eredeti 90,909%) van skálázva. A Web Animations API-val mérve: ütközés a
+  40%, 80% és 100% pontokon, közöttük 25% és 6,3% visszapattanással. A
+  gyorsítás `linear`, mert a görbét maguk a kulcskockák hordozzák — ha `ease`-t
+  teszel rá, kétszer easelsz és elmosódik a pattogás.
+- **Az animáció csak TELJESEN látható kártyán indul** (`useInView` →
+  `whole: true`, `resolveTarget` a `.acard`-ra). Előretöltéssel (`rootMargin`)
+  a sávok lefutottak, mire a felhasználó odagörgetett. ⚠️ Az `isIntersecting`
+  egyetlen átfedő képpontra is igaz, tehát önmagában NEM elég — a döntés a
+  `shouldActivate()` tiszta függvényben van, és a `useInView.test.ts` rögzíti,
+  mert böngészőben nem mérhető (lásd lent).
+
+### ⚠️ RÖGZÍTÉS KÖZBEN A MÉRÉS KÉPERNYŐJE RAGADÓS
+
+A böngésző „vissza" gombja zsákutcába vitt (Geri, 2026-08-26): a Home jelent
+meg, a dokk viszont a rögzítés vezérlőit mutatta — és mivel `active`
+állapotban a dokk CSAK a három gombot tartalmazza, menüpontok nélkül, a
+felhasználó nem tudott sehova továbblépni.
+
+A történelmi navigációt nem lehet megbízhatóan letiltani (és nem is helyes
+elvenni a böngésző gombját), ezért a `Dock` figyeli az útvonalat, és futó
+mérés közben `replace`-szel visszavált `/rogzites`-re. ⚠️ A LAB E2E ki van
+hagyva (`trackingEnvironment.mode === 'lab'`), különben kirántaná a mérést a
+saját környezetéből. Befejezés után a korlát megszűnik — mérve: a dokk
+visszakapja a négy menüpontját, és a navigáció szabad.
+
+### ⚠️ A SZÜNET-PANEL ÉS A BIZTONSÁGI SÁV
+
+A panel alja sárga csíkként kilátszott a dokk alatt folytatás után. Az ok:
+a `bottom` beleszámolta a `--safe-bottom`-ot, a rejtő eltolás viszont nem —
+a panel pont ennyivel kevesebbet csúszott le. Asztali gépen láthatatlan
+(`--safe-bottom: 0`), telefonon nem. Most egy közös `--dock-pause-offset`
+szolgálja mindkettőt. Mérve 0 / 34 / 48 px-es biztonsági sávnál: a rejtett
+panel felső éle pontosan a képernyő alján, nulla látható csík.
+
+### 🔴 ÉLES ADATVESZTÉS — JAVÍTVA (2026-08-26)
+
+**Tünet:** egy felhasználó (`nagz`) rögzítés közben megnyomta a böngésző
+„vissza" gombját, majd befejezte és „elmentette" a mérést. Sehol nem
+keletkezett belőle semmi.
+
+**Mérve éles adaton (olvasó fiókkal):** nulla aktivitás, nulla
+trust-dokumentum, nulla GP-tétel. A trust-dokumentum a mentés TRANZAKCIÓJÁBAN
+készül — a hiánya bizonyítja, hogy a kérés el sem jutott a szerverig, nem
+pedig ott hasalt el.
+
+**Az ok — két, egymást erősítő hiba:**
+
+1. **A feltöltés a KÉPERNYŐN lakott.** A `TrackingScreen` egyik hatása
+   indította a mentést befejezés után, a Befejezés gomb viszont a `Dock`-ban
+   van, ami MINDEN képernyőn ott van. Máshonnan befejezve a képernyő nem volt
+   felcsatolva, tehát a hatás sem futott. Néma vesztés.
+2. **A `Dock` középső gombja `done` állapotban feltétel nélkül `discard()`-ot
+   hívott**, ami VÉGLEG törli a megőrzött rögzítést. A rögzítés képernyőjén
+   kívül a gomb nem is „Új rögzítés" feliratot viselt (ahhoz `onTrackingScreen`
+   is kell), hanem egy Play ikont — a felhasználó a folytatás szándékával
+   nyomta meg, és ezzel törölte a saját futását.
+
+**Négy védvonal, mind mérve:**
+
+| # | Mi | Hol |
+|---|---|---|
+| 1 | A feltöltés a RÖGZÍTŐ rétegbe került, ami a router FÖLÖTT ül | `useRecorder.ts` |
+| 2 | Futó mérés közben a rögzítés képernyője ragadós (vissza/előre visszadob) | `Dock.tsx` |
+| 3 | Mentetlen mérést a középső gomb nem dob el, hanem a rögzítésre visz | `Dock.tsx` |
+| 4 | `beforeunload` figyelmeztetés futó vagy mentetlen mérésnél | `useRecorder.ts` |
+
+⚠️ **A feltételt tiszta függvény őrzi** (`shouldAutoUpload`,
+`autoUpload.test.ts`) — ha valaki visszaköltözteti egy képernyőbe, a hiba
+visszajön, és a teszt ezt rögzíti. Böngészőben ez nem mérhető (lásd a
+tesztkörnyezetről szóló szakaszt).
 
 ### Mérési állapot a `#14` végén
 
 ```text
 npx tsc --noEmit                         → OK
 npx tsc -p server/tsconfig.json --noEmit → OK
-npx vitest run --dir src                 → 34 fájl, 355 teszt, 0 bukó
+npx vitest run --dir src                 → 36 fájl, 366 teszt, 0 bukó
 npx vitest run --dir server              → 165 zöld, 11 emulátoros fájl kihagyva
 npm run test:emulator                    → 11 fájl, 122 teszt, 0 bukó
 npm run build                            → lefut
 ```
 
+⚠️ A `labScenarioEngine.test.ts` „aszinkron = szinkron" esete teljes készlet
+alatt EGYSZER elbukott, két ismételt teljes futáson viszont zöld volt, és
+önmagában is az. Időzítés-érzékeny teszt terhelés alatt — ha CI-ben villog,
+ott érdemes megfogni, nem a motorban keresni.
+
 ### ⚠️ Amit a `#14` közben MÉRTÜNK a tesztkörnyezetről
 
-A böngészőpanel rejtett állapotában a lap **nem rajzol képkockákat**: a
-`requestAnimationFrame` egyáltalán nem fut. Emiatt minden CSS-átmenet
-„beragadtnak" látszik a kiindulási értéken, és a nyomva tartós gomb sem halad.
-Ez NEM alkalmazáshiba — kétszer is majdnem annak néztem. Aki itt animációt
-ellenőriz:
+A böngészőpanel rejtett állapotában a lap **nem rajzol képkockákat**. Ennek
+három, egymástól független következménye van, és MINDHÁROM ugyanúgy néz ki,
+mint egy valódi hiba:
 
-- **állapot** ellenőrzéséhez tegyen `transition: none`-t, és a végértéket mérje;
-- **haladás** ellenőrzéséhez cserélje ki a `requestAnimationFrame`-et
-  `setTimeout`-os pótlásra — a komponens valódi logikája így lefut.
+1. a `requestAnimationFrame` nem fut → a nyomva tartós gomb nem halad;
+2. a CSS-átmenetek és -animációk beragadnak a kiindulási értéken;
+3. az **`IntersectionObserver` egyetlen visszahívást sem kézbesít** — még a
+   kezdetit sem —, tehát minden láthatóságra épülő logika némán hallgat.
+
+Ez nem elméleti: a `#14` során háromszor néztem valódi hibának, egyszer pedig
+egy téves „MÉRVE" megjegyzést is beírtam emiatt a kódba. Aki itt animációt
+vagy láthatóságot ellenőriz:
+
+- **végállapot**: tegyen `animation: none` / `transition: none` felülírást, és
+  úgy mérje a geometriát. (Ne `translate: none`-t — az a középre igazítást is
+  elviszi, és hamis számot ad.)
+- **haladás**: cserélje ki a `requestAnimationFrame`-et `setTimeout`-os
+  pótlásra, vagy vezérelje az animációt a Web Animations API-val
+  (`element.getAnimations()` + `currentTime`) — ez utóbbi képkockák nélkül is
+  pontos.
+- **láthatóság**: sehogy. Ott a logikát tiszta függvénybe kell emelni és
+  teszttel rögzíteni — ezért van `shouldActivate()` és `useInView.test.ts`.
 
 ## A FUTÓ MUNKATERV (Geri, 2026-08-25)
 

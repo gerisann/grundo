@@ -335,10 +335,25 @@
  */
 
 .dock__pause {
+  /*
+    A panel alatti teljes távolság EGY helyen, mert kétszer kell: egyszer a
+    nyugvó helyzethez (`bottom`), egyszer a rejtett állapot eltolásához.
+
+    ⚠️ A `--safe-bottom` IS BENNE VAN, és ez nem részletkérdés. Korábban az
+    eltolás csak a dokk magasságával és a réssel számolt, a `bottom` viszont a
+    biztonsági sávval is — így a panel pont `--safe-bottom`-nyival kevesebbet
+    csúszott le, mint amennyi kellett, és az alja SÁRGA CSÍKKÉNT kilátszott a
+    dokk alatt. Asztali gépen ez láthatatlan (`--safe-bottom: 0`), telefonon
+    viszont a gesztussáv miatt nem az — Geri Androidon vette észre.
+  */
+  --dock-pause-offset: calc(
+    max(var(--safe-bottom), var(--sp-1)) + var(--dock-measured-height, var(--dock-height)) + var(--sp-2)
+  );
+
   position: fixed;
   left: var(--sp-4);
   right: var(--sp-4);
-  bottom: calc(max(var(--safe-bottom), var(--sp-1)) + var(--dock-measured-height, var(--dock-height)) + var(--sp-2));
+  bottom: var(--dock-pause-offset);
   z-index: 39;
 
   display: grid;
@@ -349,14 +364,10 @@
   color: #222222;
   text-align: center;
 
-  /* Rejtve: lecsúsztatva a dokk mögé. A saját magasságán FELÜL a résnyi
-     `--sp-2` és a dokk teljes magassága is kell, különben a panel alja
-     kikandikálna a dokk alól.
-
-     Mérve (2026-08-26, 812 px magas nézet, 70 px-es vezérlő-dokk): rejtve a
-     panel alja 875, láthatóan 730 — a dokk teteje 738, tehát a rejtett
-     állapot valóban a dokk MÖGÉ kerül, a látható pedig pontosan fölé. */
-  translate: 0 calc(100% + var(--sp-2) + var(--dock-measured-height, var(--dock-height)));
+  /* Rejtve: a saját magasságával PLUSZ a teljes alatta lévő távolsággal
+     tolva le. Így a panel FELSŐ éle pontosan a képernyő aljára kerül,
+     bármekkora is a biztonsági sáv — nem marad belőle látható csík. */
+  translate: 0 calc(100% + var(--dock-pause-offset));
   transition: translate 400ms cubic-bezier(.22, 1, .36, 1);
 }
 
