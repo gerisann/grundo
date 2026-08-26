@@ -15,6 +15,7 @@ const config: CapacitorConfig = {
   server: {
     hostname: 'localhost',
     iosScheme: 'capacitor',
+    androidScheme: 'https',
   },
   plugins: {
     StatusBar: {

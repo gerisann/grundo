@@ -5,7 +5,12 @@ export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
-/** Az első iOS kiadásban támogatott natív platform megkülönböztetése. */
+/** Az iOS-specifikus natív képességek megkülönböztetése. */
 export function isNativeIos(): boolean {
   return Capacitor.getPlatform() === 'ios';
+}
+
+/** Az Android-specifikus natív képességek megkülönböztetése. */
+export function isNativeAndroid(): boolean {
+  return Capacitor.getPlatform() === 'android';
 }

@@ -253,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signInWithGoogle() {
         if (isNativeApp()) {
           throw new Error(
-            'A Google-belépés a TestFlight első verziójában még nem érhető el. ' +
+            'A Google-belépés a natív alkalmazás első verziójában még nem érhető el. ' +
               'Lépj be e-mail-címmel és jelszóval.',
           );
         }
@@ -267,7 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!instance.currentUser) throw new Error('Nincs bejelentkezett felhasználó.');
         if (isNativeApp()) {
           throw new Error(
-            'A Google-fiók összekapcsolása a TestFlight első verziójában még nem érhető el.',
+            'A Google-fiók összekapcsolása a natív alkalmazás első verziójában még nem érhető el.',
           );
         }
         await linkWithPopup(instance.currentUser, new GoogleAuthProvider());

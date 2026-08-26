@@ -42,7 +42,7 @@ app.use(express.json({ limit: '10mb' })); // a nyomvonalak nagyok lehetnek
 
 const ALLOWED_ORIGINS = (
   process.env.ALLOWED_ORIGINS ??
-    'https://grundo.ai.studio,http://localhost:5173,capacitor://localhost'
+    'https://grundo.ai.studio,http://localhost:5173,capacitor://localhost,https://localhost'
 )
   .split(',')
   .map((o) => o.trim())

@@ -431,9 +431,10 @@ Lásd [04 — Pontrendszer](04-pontrendszer.md#jelvények). Üres állapot: „M
 ### Értesítések
 
 **Platformmegvalósítás:** weben az iOS 16.4+ Főképernyőre telepített PWA és a
-többi támogatott böngésző FCM Web Push/VAPID tokent használ. A natív iOS app
-Firebase Messagingen keresztül FCM tokent regisztrál, a Firebase pedig APNs-en
-kézbesít. Mindkét token a `devices/{uid}/tokens/{token}` alatt él platform-
+többi támogatott böngésző FCM Web Push/VAPID tokent használ. A natív iOS és
+Android app Firebase Messagingen keresztül FCM tokent regisztrál; a Firebase
+iOS-en APNs-en, Androidon közvetlenül FCM-en kézbesít. Minden token a
+`devices/{uid}/tokens/{token}` alatt él `web` / `ios` / `android` platform-
 jelöléssel; a felső eszközkapcsoló leiratkozáskor a tokent is törli, nem csak a
 felületet némítja. Natív értesítésre koppintva a kapcsolódó aktivitásra,
 profilra, grundra vagy beállítási képernyőre navigálunk.

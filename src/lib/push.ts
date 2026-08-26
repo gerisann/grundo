@@ -19,7 +19,7 @@
 import { doc, serverTimestamp, setDoc, deleteDoc } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported, type Messaging } from 'firebase/messaging';
 import { app, db } from './firebase';
-import { isNativeApp, isNativeIos } from './platform';
+import { isNativeAndroid, isNativeApp, isNativeIos } from './platform';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -33,9 +33,9 @@ const PUSH_ENABLED_STORAGE_KEY = 'grundo.pushEnabled';
 /** `undefined` = még nem próbáltuk; `null` = nem támogatott ezen a böngészőn/eszközön. */
 async function getMessagingIfSupported(): Promise<Messaging | null> {
   if (messagingInstance !== undefined) return messagingInstance;
-  // A jelenlegi FCM implementáció webes service workerre épül. A natív push
-  // külön APNs + Capacitor plugin bevezetést igényel; addig ne kérjen hibásan
-  // böngészős értesítési engedélyt a WKWebView.
+  // A webes FCM service workerre épül, a natív push pedig a Capacitor
+  // Firebase Messaging pluginre. Natív WebView-ban ezért soha ne próbáljunk
+  // böngészős service workert vagy Notification API-t használni.
   if (
     isNativeApp() ||
     !app ||
@@ -75,7 +75,15 @@ async function registerServiceWorker(): Promise<ServiceWorkerRegistration | unde
   }
 }
 
-async function saveToken(uid: string, token: string, platform: 'web' | 'ios'): Promise<void> {
+type PushPlatform = 'web' | 'ios' | 'android';
+
+function nativePushPlatform(): Exclude<PushPlatform, 'web'> | null {
+  if (isNativeIos()) return 'ios';
+  if (isNativeAndroid()) return 'android';
+  return null;
+}
+
+async function saveToken(uid: string, token: string, platform: PushPlatform): Promise<void> {
   if (!db) return;
   await setDoc(
     doc(db, 'devices', uid, 'tokens', token),
@@ -122,16 +130,18 @@ function setPushEnabledOnThisDevice(enabled: boolean): void {
 }
 
 async function replaceNativeToken(uid: string, token: string): Promise<void> {
+  const platform = nativePushPlatform();
+  if (!platform) return;
   const previous = storedNativeToken();
   if (previous && previous !== token && db) {
     await deleteDoc(doc(db, 'devices', uid, 'tokens', previous)).catch(() => {});
   }
-  await saveToken(uid, token, 'ios');
+  await saveToken(uid, token, platform);
   storeNativeToken(token);
 }
 
 async function ensureNativeTokenListener(uid: string): Promise<void> {
-  if (!isNativeIos()) return;
+  if (!nativePushPlatform()) return;
   if (nativeTokenListener && nativeTokenListenerUid === uid) return;
   await nativeTokenListener?.remove().catch(() => {});
 
@@ -150,14 +160,14 @@ export type PushPermission = 'granted' | 'denied' | 'default' | 'unsupported';
 export function currentPushPermission(): PushPermission {
   // A natív engedély aszinkron kérdezhető le. Az első renderen ezért nem
   // tiltjuk le a kapcsolót; a `readPushPermission` rögtön pontosítja.
-  if (isNativeIos()) return 'default';
+  if (nativePushPlatform()) return 'default';
   if (isNativeApp() || typeof Notification === 'undefined') return 'unsupported';
   if (Notification.permission === 'granted' && !pushEnabledOnThisDevice()) return 'default';
   return Notification.permission;
 }
 
 export async function readPushPermission(): Promise<PushPermission> {
-  if (!isNativeIos()) return currentPushPermission();
+  if (!nativePushPlatform()) return currentPushPermission();
   try {
     const { FirebaseMessaging } = await import('@capacitor-firebase/messaging');
     const support = await FirebaseMessaging.isSupported();
@@ -180,7 +190,7 @@ export async function readPushPermission(): Promise<PushPermission> {
  * fölötti magyarázatot arról, miért nem elég egy `false`.
  */
 export async function requestPermissionAndSubscribe(uid: string): Promise<PushResult> {
-  if (isNativeIos()) {
+  if (nativePushPlatform()) {
     try {
       const { FirebaseMessaging } = await import('@capacitor-firebase/messaging');
       const support = await FirebaseMessaging.isSupported();
@@ -245,7 +255,7 @@ export async function initIfAlreadyGranted(uid: string): Promise<void> {
 
 /** Leiratkozás — a tokent TÖRÖLJÜK, nem csak inaktívra állítjuk. */
 export async function unsubscribe(uid: string): Promise<void> {
-  if (isNativeIos()) {
+  if (nativePushPlatform()) {
     const token = storedNativeToken();
     if (token && db) {
       await deleteDoc(doc(db, 'devices', uid, 'tokens', token)).catch(() => {});
@@ -301,7 +311,7 @@ export function pathFromPushData(data: Record<string, unknown>): string {
 export async function addNativePushActionListener(
   navigate: (path: string) => void,
 ): Promise<() => void> {
-  if (!isNativeIos()) return () => {};
+  if (!nativePushPlatform()) return () => {};
   const { FirebaseMessaging } = await import('@capacitor-firebase/messaging');
   const listener = await FirebaseMessaging.addListener(
     'notificationActionPerformed',
