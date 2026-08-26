@@ -51,10 +51,13 @@
 - Az Android workflow `mac_mini_m2` instance-ra váltása után a YAML lint
   ismét sikeres, a Linux-specifikus Base64- és verziórendezési parancsok helyett
   platformfüggetlen Node-megoldás fut.
+- Az első macOS build `./gradlew: Permission denied` hibáját a Gradle wrapper
+  Gitben tárolt végrehajtható (`100755`) jogosultsága javítja.
 
 ## Geri következő kézi lépései
 
-1. Pushold a macOS M2 Codemagic-módosítást a GitHub `main` ágra.
+1. Pushold a Gradle wrapper végrehajtható jogosultságát javító commitot a
+   GitHub `main` ágra.
 2. Frissítsd a Codemagic repository nézetét, majd indítsd a **GRUNDO Android
    Release** workflow-t a `main` ágon.
 3. Az artifactek a Codemagic build Artifacts részében lesznek:
