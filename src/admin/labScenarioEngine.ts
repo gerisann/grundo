@@ -161,10 +161,12 @@ export async function runLabScenarioAsync(
   let step = steps.next();
   let sliceStartedAt = performance.now();
   while (!step.done) {
-    // A generátor sűrűn kínál megszakítási pontot; élni csak akkor élünk vele,
-    // ha a szelet betöltötte az időkeretet.
+    // A progress callback logikai checkpointot jelent, ezért minden generátor-
+    // yieldnél továbbítjuk. Az event-loop yield ettől függetlenül időkeretes:
+    // így a progress tartalma nem függ attól, milyen gyors gépen fut a LAB.
+    onProgress?.(step.value);
+
     if (performance.now() - sliceStartedAt >= FRAME_BUDGET_MS) {
-      onProgress?.(step.value);
       await yieldToEventLoop();
       sliceStartedAt = performance.now();
     }
