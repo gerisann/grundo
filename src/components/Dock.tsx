@@ -250,26 +250,47 @@ export function Dock() {
  */
 const FINISH_HOLD_MS = 1000;
 
+/**
+ * Elengedéskor NEM ugrik vissza nullára, hanem visszaanimál — Geri kérése
+ * (2026-08-27): a hirtelen eltűnés úgy hatott, mintha a gomb elakadt volna.
+ * A idő ARÁNYOS a bejárt úttal (`progress * FINISH_RELEASE_MS`): egy alig
+ * megkezdett nyomásból gyors a visszafolyás, egy majdnem kész bezárásból
+ * ez a teljes hossz — sosem tűnik indokolatlanul lassúnak egy koppintás után.
+ */
+const FINISH_RELEASE_MS = 350;
+
 function FinishButton({ onFinish }: { onFinish: () => void }) {
   const [progress, setProgress] = useState(0);
   const holding = useRef(false);
   const frame = useRef(0);
   const startedAt = useRef(0);
+  /** A legfrissebb `progress` — a `start()`/`cancel()` zárványai ebből
+      olvasnak, hogy egy visszafolyás KÖZBENI újranyomás onnan folytassa,
+      ahonnan a sáv épp tart, ne nulláról induljon újra. */
+  const progressRef = useRef(0);
 
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  function setProgressValue(value: number) {
+    progressRef.current = value;
+    setProgress(value);
+  }
 
   function start() {
     if (holding.current) return;
     holding.current = true;
-    startedAt.current = performance.now();
+    cancelAnimationFrame(frame.current);
+    // Ha épp visszafolyóban volt a sáv, onnan folytatja fölfelé — nem
+    // nulláról indul újra.
+    startedAt.current = performance.now() - progressRef.current * FINISH_HOLD_MS;
 
     const step = (now: number) => {
       if (!holding.current) return;
       const value = Math.min(1, (now - startedAt.current) / FINISH_HOLD_MS);
-      setProgress(value);
+      setProgressValue(value);
       if (value >= 1) {
         holding.current = false;
-        setProgress(0);
+        setProgressValue(0);
         onFinish();
         return;
       }
@@ -282,7 +303,24 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
     if (!holding.current) return;
     holding.current = false;
     cancelAnimationFrame(frame.current);
-    setProgress(0);
+
+    const releaseFrom = progressRef.current;
+    if (releaseFrom <= 0) {
+      setProgressValue(0);
+      return;
+    }
+    const releaseStartedAt = performance.now();
+    const releaseDuration = releaseFrom * FINISH_RELEASE_MS;
+
+    const step = (now: number) => {
+      const t = Math.min(1, (now - releaseStartedAt) / releaseDuration);
+      const value = releaseFrom * (1 - t);
+      setProgressValue(value);
+      if (t < 1) {
+        frame.current = requestAnimationFrame(step);
+      }
+    };
+    frame.current = requestAnimationFrame(step);
   }
 
   const percent = progress * 100;

@@ -198,6 +198,10 @@
 */
 .dock__play--armed {
   background: var(--danger);
+  /* Fix fehér, NEM `--accent-on` — az sötét témában sötét szöveget ad
+     (lila hátterekre van hangolva), a piros gombon szinte olvashatatlan
+     volt (Geri screenshotja, 2026-08-27). */
+  color: #fff;
   box-shadow: 0 0 28px color-mix(in srgb, var(--danger) 45%, transparent);
   animation: dock-pulse-armed 2.4s ease-in-out infinite;
 }
