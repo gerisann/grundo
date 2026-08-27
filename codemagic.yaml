@@ -120,7 +120,7 @@ workflows:
         script: |
           test -n "$GOOGLE_SERVICES_JSON_BASE64"
           node -e 'const fs=require("fs"); fs.writeFileSync("android/app/google-services.json", Buffer.from(process.env.GOOGLE_SERVICES_JSON_BASE64, "base64"));'
-          node -e "const f=require('./android/app/google-services.json'); const ids=f.client.map(c=>c.client_info?.android_client_info?.package_name).filter(Boolean); if(!ids.includes(process.env.ANDROID_APPLICATION_ID)) throw new Error('A google-services.json nem a '+process.env.ANDROID_APPLICATION_ID+' Android apphoz tartozik.');"
+          node -e "const f=require('./android/app/google-services.json'); const client=f.client.find(c=>c.client_info?.android_client_info?.package_name===process.env.ANDROID_APPLICATION_ID); if(!client) throw new Error('A google-services.json nem a '+process.env.ANDROID_APPLICATION_ID+' Android apphoz tartozik.'); const oauth=client.oauth_client??[]; if(!oauth.some(c=>c.client_type===1&&c.android_info?.package_name===process.env.ANDROID_APPLICATION_ID)||!oauth.some(c=>c.client_type===3)) throw new Error('A google-services.json nem tartalmazza a natív Google-belépés Android és web OAuth klienseit.');"
 
       - name: Vite production build
         script: |

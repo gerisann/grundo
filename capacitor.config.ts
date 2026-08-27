@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import type {} from '@capacitor-firebase/authentication';
 import type {} from '@capacitor-firebase/messaging';
 
 const config: CapacitorConfig = {
@@ -27,11 +28,20 @@ const config: CapacitorConfig = {
     FirebaseMessaging: {
       presentationOptions: ['alert', 'badge', 'sound'],
     },
+    FirebaseAuthentication: {
+      // A GRUNDO továbbra is a Firebase JS SDK auth-állapotát használja.
+      // A natív réteg csak a Google ID tokent szerzi meg.
+      skipNativeAuth: true,
+      providers: ['google.com'],
+    },
   },
   experimental: {
     ios: {
       spm: {
         packageOptions: {
+          '@capacitor-firebase/authentication': {
+            symlink: true,
+          },
           '@capacitor-firebase/messaging': {
             symlink: true,
           },

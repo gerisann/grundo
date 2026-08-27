@@ -1,6 +1,6 @@
 # GRUNDO Android · Capacitor · Codemagic
 
-**Állapot:** natív Android projekt és release workflow elkészült · 2026-08-26
+**Állapot:** natív Android projekt, release workflow és Google-belépés elkészült · 2026-08-27
 
 **App:** GRUNDO · **Application ID:** `app.grundo.android`
 
@@ -59,9 +59,31 @@ Android FCM-hez ezen felül kell a Firebase Android app konfigurációja.
    `GOOGLE_SERVICES_JSON_BASE64` nevű, **Secret** változója legyen.
 
 Az Android workflow visszafejtés után ellenőrzi, hogy a JSON valóban az
-`app.grundo.android` csomaghoz tartozik. Hamis vagy más apphoz tartozó fájllal a
-build még Gradle előtt leáll. E-mail/jelszó authhoz és FCM-hez nem kell SHA-1;
-natív Google-belépés bevezetésekor majd szükséges lesz.
+`app.grundo.android` csomaghoz tartozik, valamint tartalmaz Android- és webes
+OAuth-klienst. Hamis, hiányos vagy más apphoz tartozó fájllal a build még
+Gradle előtt leáll.
+
+### Natív Google-belépés
+
+A Firebase Android appban az upload certificate SHA-1 ujjlenyomata rögzítve
+van. Ezután új `google-services.json` készült, és annak base64 értéke került a
+Codemagic `GOOGLE_SERVICES_JSON_BASE64` változójába. A jelenlegi upload SHA-1:
+
+`2A:75:93:84:FA:1F:DB:21:7A:39:EB:78:F7:10:66:3A:D8:7F:EF:5F`
+
+Androidon a `@capacitor-firebase/authentication` natív Credential Manager
+fiókválasztója szerzi meg a Google ID tokent. A tartós munkamenetet továbbra is
+a közös Firebase JS SDK kezeli: a natív tokenből `GoogleAuthProvider`
+credential készül, majd ugyanaz a kliensoldali belépési vagy fiók-összekapcsolási
+folyamat fut, mint weben. Az iOS Google-belépés ettől nem változik.
+
+Google Play App Signing bekapcsolásakor a Play más tanúsítvánnyal írja alá a
+felhasználóknak kiosztott APK-kat. A Play Console-ban megjelenő **app signing
+certificate SHA-1** ujjlenyomatot ezért külön hozzá kell adni ugyanahhoz a
+Firebase Android apphoz, majd ismét frissíteni kell a Codemagicben tárolt
+`google-services.json` értéket. Enélkül a Codemagicből közvetlenül telepített
+APK-ban működhet a Google-belépés, a Play Áruházból telepített verzióban viszont
+nem.
 
 ## GPS és háttérmérés
 
@@ -181,6 +203,9 @@ Az Android Capacitor originje `https://localhost`. Ez bekerült a Cloud Run
 
 ## Első valódi készülékes ellenőrzés
 
+- Jelentkezz ki, válaszd a Google-belépést, válassz fiókot, majd ellenőrizd,
+  hogy a profil betöltődik. E-mail/jelszavas fiókkal külön próbáld ki a
+  Google-fiók összekapcsolását is.
 - Friss telepítésen engedélyezd a **pontos** helyet, indíts legalább 3 perces
   rögzítést, haladj legalább 100 métert, közben zárd le a kijelzőt.
 - Ellenőrizd a folyamatos foreground notificationt, majd feloldás után a
