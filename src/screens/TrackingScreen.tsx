@@ -58,7 +58,7 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
-  const { pendingType: type, setPendingType, pickerOpen, countdown } = recorder;
+  const { pendingType: type, setPendingType, pickerOpen, setPickerOpen, countdown } = recorder;
   const candidateRemoteState = state.status === 'idle' ? recorder.remoteState : null;
   const [dismissedRemoteId, setDismissedRemoteId] = useState<string | null>(null);
   const remoteState = candidateRemoteState?.activityId === dismissedRemoteId
@@ -676,6 +676,22 @@ export function TrackingScreen() {
       */}
       {idle && pickerOpen ? (
         <div className="track__type-picker">
+          {/*
+            BEZÁRÁS — Geri kérése (2026-08-27). A választás visszavonása:
+            a Play gomb visszaáll az eredeti (gradiens, lüktető) állapotra,
+            mintha az egész nem indult volna el.
+          */}
+          <button
+            type="button"
+            className="track__type-picker-close"
+            aria-label="Mozgásforma-választó bezárása"
+            onClick={() => {
+              setPickerOpen(false);
+              setPendingType(null);
+            }}
+          >
+            ✕
+          </button>
           <SegmentedControl
             label="Mozgásforma"
             block

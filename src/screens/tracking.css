@@ -489,11 +489,32 @@
 
   display: grid;
   gap: var(--sp-3);
-  padding: var(--sp-4);
+  /* A tetején hellyel a bezárás gombnak — enélkül a kör ráülne a
+     mozgásforma-gombok tetejére. */
+  padding: 40px var(--sp-4) var(--sp-4);
   border-radius: var(--r-lg);
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-card);
+}
+
+.track__type-picker-close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.track__type-picker-close:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
 }
 
 /*
