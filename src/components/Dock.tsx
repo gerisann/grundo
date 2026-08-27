@@ -4,6 +4,7 @@ import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useTrackingEnvironment } from '@/tracking/environment';
 import { HoldFinishButton, SwipeFinishButton } from '@/components/FinishGestureButtons';
+import { GAMEPLAY } from '@/config/gameplay';
 import './Dock.css';
 
 /**
@@ -53,6 +54,15 @@ export function Dock() {
   const paused = state.status === 'paused';
   const done = state.status === 'finished';
   const active = running || paused;
+  /**
+   * TÚL RÖVID RÖGZÍTÉS — Geri kérése (2026-08-27): ilyenkor a TrackingScreen
+   * SOSEM tölti fel (nincs mit), tehát `upload.status` örökre `'idle'`
+   * marad. A régi „Új rögzítés" gomb ezért a `done` ágban a
+   * `upload.status !== 'done'` feltétel miatt csak `navigate('/rogzites')`-t
+   * hívott — ami a rögzítés képernyőjén NULLA hatású volt, a gomb
+   * láthatóan „nem csinált semmit".
+   */
+  const tooShortDone = done && state.distanceM < GAMEPLAY.MIN_DISTANCE_M;
 
   /**
    * INDÍTÁS ELŐTT: 3-2-1 VISSZASZÁMLÁLÁS A GOMBON, MAJD „RAJT!" A KÖZÉPEN.
@@ -105,6 +115,14 @@ export function Dock() {
     if (paused) return resume();
     if (done) {
       /**
+       * TÚL RÖVID RÖGZÍTÉS: NINCS MIT VÉDENI. Se terület, se GP nem jár érte
+       * (lásd a TrackingScreen figyelmeztetését) — az alábbi, mentett-mérést
+       * védő szabály itt nem vonatkozik, mert nincs mit menteni. A gomb
+       * ilyenkor amúgy is a sima Play ikont mutatja (`showFinishedLabel`
+       * lent), tehát ez a koppintás egyenesen egy friss indítást takar.
+       */
+      if (tooShortDone) return void discard();
+      /**
        * ⚠️ MENTETLEN MÉRÉST SOHA NEM DOBUNK EL EGY KOPPINTÁSRA.
        *
        * A `discard()` VÉGLEG törli a megőrzött rögzítést. Korábban a `done`
@@ -142,7 +160,9 @@ export function Dock() {
   /** Van választott mozgásforma, VAGY fut a visszaszámlálás — piros, kész. */
   const armed = (idle && pickerOpen && !!pendingType) || countdown !== null;
 
-  const showFinishedLabel = done && onTrackingScreen;
+  // Túl rövid rögzítésnél NEM a kiszélesített „Új rögzítés" felirat jön —
+  // a sima Play ikon jelzi, hogy ez gyakorlatilag egy friss indítás lesz.
+  const showFinishedLabel = done && onTrackingScreen && !tooShortDone;
 
   const primaryLabel = running
     ? 'Szünet'

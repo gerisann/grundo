@@ -663,19 +663,24 @@ export function TrackingScreen() {
             ) : null}
 
             {done && !countsAsActivity ? (
-              <div className="track__note track__note--warn">
-                <strong>Ez a rögzítés túl rövid.</strong> Legalább {GAMEPLAY.MIN_DISTANCE_M} méter
-                kell ahhoz, hogy az aktivitás számítson — terület és pont nem jár érte.
+              <div className="track__note track__note--too-short track__note--closable">
                 {/*
-                  KIÚT. Enélkül a képernyő zsákutca volt: az üzenet közölte,
-                  hogy nem jár érte semmi, de nem volt mivel továbbmenni.
-                  Minden végállapotnak vezetnie kell valahova.
+                  BEZÁRÁS GOMB, NEM „ÉRTEM" GOMB — Geri kérése (2026-08-27):
+                  a jobb felső ✕ ugyanúgy eldobja a rögzítést
+                  (`recorder.discard()`), csak nem foglal helyet egy külön
+                  gombsorral. Ugyanaz a minta, mint a „Mobilos aktivitásod…"
+                  szinkron-üzenetnél lejjebb.
                 */}
-                <div style={{ marginTop: 'var(--sp-3)' }}>
-                  <Button size="sm" onClick={() => void recorder.discard()}>
-                    Rendben, eldobom
-                  </Button>
-                </div>
+                <button
+                  type="button"
+                  className="track__note-close"
+                  aria-label="Bezárás"
+                  onClick={() => void recorder.discard()}
+                >
+                  ✕
+                </button>
+                <strong>Ez a rögzítés túl rövid lett.</strong> Legalább {GAMEPLAY.MIN_DISTANCE_M}{' '}
+                méter kell ahhoz, hogy az aktivitás számítson — terület és pont nem jár érte.
               </div>
             ) : null}
 

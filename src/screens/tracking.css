@@ -117,6 +117,30 @@
   color: var(--text-primary);
 }
 
+/*
+  „Túl rövid rögzítés" — teli sárga háttér, mint a szünet-panel (Geri
+  kérése, 2026-08-27), nem csak sárga keret: ez egy hasonlóan fontos,
+  minden nézetben egyértelmű állapotjelzés, ugyanúgy meg kell állítania
+  a felhasználót, mint a szünetnek.
+*/
+.track__note--too-short {
+  background: #fdc700;
+  backdrop-filter: none;
+  border-color: #fdc700;
+  color: #222222;
+}
+
+/* A ✕ alapból `--text-tertiary` (szürke) — sárga alapon alig látszana. */
+.track__note--too-short .track__note-close {
+  color: #222222;
+  opacity: 0.7;
+}
+
+.track__note--too-short .track__note-close:hover {
+  color: #222222;
+  opacity: 1;
+}
+
 .track__note--sync {
   display: flex;
   flex-wrap: wrap;
