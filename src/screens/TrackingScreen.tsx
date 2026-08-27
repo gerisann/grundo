@@ -58,7 +58,7 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
-  const { pendingType: type, setPendingType, pickerOpen } = recorder;
+  const { pendingType: type, setPendingType, pickerOpen, countdown } = recorder;
   const candidateRemoteState = state.status === 'idle' ? recorder.remoteState : null;
   const [dismissedRemoteId, setDismissedRemoteId] = useState<string | null>(null);
   const remoteState = candidateRemoteState?.activityId === dismissedRemoteId
@@ -646,7 +646,7 @@ export function TrackingScreen() {
         ) : null}
       </div>
 
-      {idle && remoteState === null && showStartHint && !pickerOpen ? (
+      {idle && remoteState === null && showStartHint && !pickerOpen && countdown === null ? (
         <div className="track__hint" aria-hidden="true">
           <span className="track__hint-text">Indítás</span>
           <svg className="track__hint-arrow" viewBox="0 0 28 40" fill="none">

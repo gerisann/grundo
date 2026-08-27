@@ -186,17 +186,62 @@
   filter: none;
 }
 
+/*
+  „Kész indulni" — Geri kérése (2026-08-27): a piros gomb NE legyen néma,
+  hívjon cselekvésre, ugyanúgy, ahogy az alap `--idle` állapot lüktet
+  indítás előtt. Két, EGYMÁSTÓL FÜGGETLEN lüktetés fut egyszerre: a gomb
+  saját fénygyűrűje (`dock-pulse-armed`, ugyanaz a technika, mint az
+  `--idle`-nél, csak piros) ÉS az ikon finom méretlüktetése
+  (`play-icon-pulse`) — utóbbi csak akkor látszik, amíg tényleg a Play
+  ikon van bent (a visszaszámlálás alatt a szám váltja fel, ott nincs mit
+  lüktetni).
+*/
 .dock__play--armed {
   background: var(--danger);
   box-shadow: 0 0 28px color-mix(in srgb, var(--danger) 45%, transparent);
+  animation: dock-pulse-armed 2.4s ease-in-out infinite;
 }
 
-/* Szünetben a Play (folytatás) gomb ugyanazt a sárgát kapja, mint a
-   szünet-panel — Geri kérése (2026-08-27), hogy a két jelzés összetartozzon. */
+@keyframes dock-pulse-armed {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--danger) 0%, transparent);
+  }
+}
+
+.dock__play--armed svg {
+  animation: play-icon-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes play-icon-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock__play--armed,
+  .dock__play--armed svg {
+    animation: none;
+  }
+}
+
+/*
+  Szünetben a Play (folytatás) gomb UGYANAZT a sárgát kapja, mint a
+  szünet-panel (`#fdc700`, lásd `tracking.css` → `.track__pause`) — Geri
+  kérése (2026-08-27), hogy a két jelzés összetartozzon. Szándékosan NINCS
+  színes fény/glow (a `--armed`-del ellentétben): a szünet-panel is lapos
+  szín, a gombnak ugyanúgy kell festenie, nem egy világítóbb változatnak.
+*/
 .dock__play--paused {
   background: #fdc700;
   color: #222222;
-  box-shadow: 0 0 28px color-mix(in srgb, #fdc700 45%, transparent);
+  box-shadow: none;
 }
 
 .dock__play-countdown {

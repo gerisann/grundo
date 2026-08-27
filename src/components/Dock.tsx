@@ -38,6 +38,8 @@ export function Dock() {
     setPendingType,
     pickerOpen,
     setPickerOpen,
+    countdown,
+    setCountdown,
   } = useRecorderContext();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
@@ -58,7 +60,6 @@ export function Dock() {
    * valódi `begin()`. Így a rögzítés kezdő időbélyege pontosan a „RAJT!"
    * pillanatára esik, nem a gombnyomásra.
    */
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [showRajt, setShowRajt] = useState(false);
 
   useEffect(() => {
@@ -69,9 +70,9 @@ export function Dock() {
       setShowRajt(true);
       return;
     }
-    const timer = window.setTimeout(() => setCountdown((current) => (current ?? 1) - 1), 1000);
+    const timer = window.setTimeout(() => setCountdown(countdown - 1), 1000);
     return () => window.clearTimeout(timer);
-  }, [countdown, pendingType, begin]);
+  }, [countdown, pendingType, begin, setCountdown]);
 
   /**
    * FUTÓ MÉRÉS KÖZBEN A RÖGZÍTÉS KÉPERNYŐJE RAGADÓS.

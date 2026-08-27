@@ -77,6 +77,7 @@ export function SegmentedControl<T extends string>({
             aria-checked={checked}
             tabIndex={checked ? 0 : -1}
             className="seg__item"
+            data-value={option.value}
             onClick={() => onChange(option.value)}
           >
             {option.icon}

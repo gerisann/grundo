@@ -136,6 +136,15 @@ export interface RecorderApi {
   pickerOpen: boolean;
   setPickerOpen: (open: boolean) => void;
 
+  /**
+   * A 3-2-1 visszaszámlálás — `null`, ha nem fut. A DOKK ÍRJA (a Play gomb
+   * második megnyomása indítja, a `setTimeout`-lánc is ott ketyeg), a
+   * TrackingScreen csak OLVASSA, hogy az „Indítás" jelzőnyilat is elrejtse
+   * ilyenkor (2026-08-27, Geri: a nyíl a visszaszámláló számra mutatott).
+   */
+  countdown: number | null;
+  setCountdown: (value: number | null) => void;
+
   begin: (type?: ActivityType) => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -198,6 +207,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const resumableRun = useRef<PersistedRun | null>(null);
   const [pendingType, setPendingType] = useState<ActivityType | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
@@ -538,6 +548,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     setPendingType,
     pickerOpen,
     setPickerOpen,
+    countdown,
+    setCountdown,
     upload,
     uploadActivity,
     begin,
