@@ -145,6 +145,16 @@ export interface RecorderApi {
   countdown: number | null;
   setCountdown: (value: number | null) => void;
 
+  /**
+   * A statisztika-panel TELJES KÉPERNYŐS nézetben van-e (a lenti csíkra
+   * kétszeri koppintással érhető el, lásd `TrackingScreen.tsx` `StatsPanel`).
+   * A TrackingScreen írja (ő tudja, melyik nézetben van a panel), a DOKK
+   * olvassa — teljes nézetben a dokk háttere „beleolvad" a panelbe, nincs
+   * két külön rétege a felületnek.
+   */
+  statsFullView: boolean;
+  setStatsFullView: (value: boolean) => void;
+
   begin: (type?: ActivityType) => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -208,6 +218,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const [pendingType, setPendingType] = useState<ActivityType | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [statsFullView, setStatsFullView] = useState(false);
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
@@ -550,6 +561,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     setPickerOpen,
     countdown,
     setCountdown,
+    statsFullView,
+    setStatsFullView,
     upload,
     uploadActivity,
     begin,

@@ -40,6 +40,7 @@ export function Dock() {
     setPickerOpen,
     countdown,
     setCountdown,
+    statsFullView,
   } = useRecorderContext();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
@@ -212,16 +213,23 @@ export function Dock() {
     </div>
   );
 
+  /*
+    A statisztika-panel teljes nézetében a dokk „beleolvad" a panelbe —
+    Geri kérése (2026-08-27): azonos háttér, se keret, se árnyék, se blur,
+    hogy a kettő egy felületnek hasson. Lásd `Dock.css` → `.dock--blend`.
+  */
+  const dockClassName = `dock${statsFullView ? ' dock--blend' : ''}`;
+
   if (active) {
     return (
-      <nav className="dock dock--controls" aria-label="Rögzítés vezérlése">
+      <nav className={`${dockClassName} dock--controls`} aria-label="Rögzítés vezérlése">
         {controls}
       </nav>
     );
   }
 
   return (
-    <nav className="dock" aria-label="Fő navigáció és rögzítés">
+    <nav className={dockClassName} aria-label="Fő navigáció és rögzítés">
       <NavLink to="/" className="dock__item" aria-label="Kezdőlap">
         <HomeIcon />
       </NavLink>

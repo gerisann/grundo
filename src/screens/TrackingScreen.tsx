@@ -58,7 +58,14 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
-  const { pendingType: type, setPendingType, pickerOpen, setPickerOpen, countdown } = recorder;
+  const {
+    pendingType: type,
+    setPendingType,
+    pickerOpen,
+    setPickerOpen,
+    countdown,
+    setStatsFullView,
+  } = recorder;
   const candidateRemoteState = state.status === 'idle' ? recorder.remoteState : null;
   const [dismissedRemoteId, setDismissedRemoteId] = useState<string | null>(null);
   const remoteState = candidateRemoteState?.activityId === dismissedRemoteId
@@ -91,6 +98,22 @@ export function TrackingScreen() {
   );
   const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
   const [showHexes, setShowHexes] = useState(true);
+
+  /**
+   * A statisztika-panel HÁROM nézete — Geri kérése (2026-08-27):
+   *   compact  — egy sor, összecsukva
+   *   expanded — 2×2 rács, ikonokkal
+   *   full     — teljes képernyő, térkép nélkül
+   * A csík (`.track__panel-grip`) lépteti compact→expanded→full és vissza
+   * full→expanded felé; a panel törzsére koppintva compact⇄expanded, mint
+   * eddig. A `full` bit külön is megy a rögzítőbe (`statsFullView`), mert
+   * a Dock — más komponens — is tud róla: teljes nézetben a dokk háttere
+   * beleolvad a panelbe.
+   */
+  const [statsView, setStatsView] = useState<'compact' | 'expanded' | 'full'>('compact');
+  useEffect(() => {
+    setStatsFullView(statsView === 'full');
+  }, [statsView, setStatsFullView]);
 
   /**
    * Egy mentett útvonal kiválasztása — MÁR a rögzítés képernyőn állunk, tehát
@@ -491,33 +514,41 @@ export function TrackingScreen() {
     <div
       className={`track${done ? ' track--finished' : ''}${savePanelOpen ? ' track--save-open' : ''}${
         pickerOpen ? ' track--picker-open' : ''
-      }`}
+      }${statsView === 'full' ? ' track--stats-full' : ''}`}
     >
-      <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
-        {mapboxConfigured ? (
-          <Suspense fallback={null}>
-            <MapView
-              layers={mapHexLayers}
-              track={displayPoints}
-              ghostTrack={ghostTrack}
-              position={mapPosition}
-              allowTilt
-              hexesVisible={showHexes}
-              onToggleHexes={() => setShowHexes((visible) => !visible)}
-              follow={running || remoteState?.status === 'recording'}
-              onViewport={setNearbyView}
-              fill
-            />
-          </Suspense>
-        ) : displayPoints.length > 1 ? (
-          <HexMap layers={[{ role: 'trail', cells }]} track={displayPoints} height={420} />
-        ) : (
-          <p className="track__note">
-            A nyomvonalad itt jelenik meg, amint elindulsz. Utcatérkép csak beállított
-            Mapbox-tokennel látszik.
-          </p>
-        )}
-      </div>
+      {/*
+        TELJES NÉZETBEN A TÉRKÉP EGYÁLTALÁN NINCS KIRENDERELVE — Geri kérése
+        (2026-08-27): „kapcsoljuk ki a térképet, egyáltalán nem kell
+        megjeleníteni". Nem csak elrejtve (`display:none`): a Mapbox-példány
+        le is áll, amíg a felhasználó a teljes statisztika-nézetben van.
+      */}
+      {statsView !== 'full' ? (
+        <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
+          {mapboxConfigured ? (
+            <Suspense fallback={null}>
+              <MapView
+                layers={mapHexLayers}
+                track={displayPoints}
+                ghostTrack={ghostTrack}
+                position={mapPosition}
+                allowTilt
+                hexesVisible={showHexes}
+                onToggleHexes={() => setShowHexes((visible) => !visible)}
+                follow={running || remoteState?.status === 'recording'}
+                onViewport={setNearbyView}
+                fill
+              />
+            </Suspense>
+          ) : displayPoints.length > 1 ? (
+            <HexMap layers={[{ role: 'trail', cells }]} track={displayPoints} height={420} />
+          ) : (
+            <p className="track__note">
+              A nyomvonalad itt jelenik meg, amint elindulsz. Utcatérkép csak beállított
+              Mapbox-tokennel látszik.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {/*
         A SZÜNET JELZÉSE A DOKKHOZ KÖLTÖZÖTT (Geri, 2026-08-26). Korábban itt
@@ -608,6 +639,8 @@ export function TrackingScreen() {
             {!savePanelOpen ? (
               <div className="track__panel-wrap">
                 <StatsPanel
+                  view={statsView}
+                  onViewChange={setStatsView}
                   distanceM={displayDistanceM}
                   elapsed={elapsed}
                   pace={pace}
@@ -924,7 +957,11 @@ function LapList({ state }: { state: RecorderState }) {
  * TODO(F2): a kinyitott nézet lesz a helye a felhasználó által választott
  * mérőszámoknak (pulzus, emelkedés, szakasztempó).
  */
+type StatsView = 'compact' | 'expanded' | 'full';
+
 function StatsPanel({
+  view,
+  onViewChange,
   distanceM,
   elapsed,
   pace,
@@ -934,6 +971,8 @@ function StatsPanel({
   speedMps,
   hasFix,
 }: {
+  view: StatsView;
+  onViewChange: (view: StatsView) => void;
   distanceM: number;
   elapsed: number;
   pace: number | null;
@@ -944,7 +983,8 @@ function StatsPanel({
   speedMps: number | null;
   hasFix: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const expanded = view !== 'compact';
+  const full = view === 'full';
 
   /**
    * Zárójelben a VÁRHATÓ érték.
@@ -991,45 +1031,85 @@ function StatsPanel({
     },
   ] as const;
 
+  /**
+   * A CSÍK KÜLÖN GOMB, nem a törzsé — HTML nem enged gombot gombba ágyazni.
+   * Geri kérése (2026-08-27): a csíkra koppintva LÉPTET (compact→expanded→
+   * full→expanded→...), a törzsre koppintva pedig KI/BE kapcsol (compact⇄
+   * expanded), mint eddig — a két gomb két KÜLÖNBÖZŐ dolgot csinál, ezért
+   * nem lehet ugyanaz az elem.
+   */
+  function stepGrip() {
+    if (view === 'compact') return onViewChange('expanded');
+    if (view === 'expanded') return onViewChange('full');
+    return onViewChange('expanded'); // full → expanded
+  }
+
+  function toggleBody() {
+    if (view === 'compact') return onViewChange('expanded');
+    if (view === 'expanded') return onViewChange('compact');
+    return onViewChange('expanded'); // full → expanded (a törzsre koppintva is ki lehet lépni)
+  }
+
   return (
-    <button
-      type="button"
-      className={`track__panel track__panel--tap${expanded ? ' track__panel--open' : ''}`}
-      onClick={() => setExpanded((value) => !value)}
-      aria-expanded={expanded}
-      aria-label={expanded ? 'Adatok összecsukása' : 'Adatok kinyitása'}
+    <div
+      className={`track__panel${expanded ? ' track__panel--open' : ''}${
+        full ? ' track__panel--full' : ''
+      }`}
     >
-      {/* Első sor: sebesség balra, megtett táv jobbra — azonos mérettel.
-          Futás közben ez a két szám az, amit egy pillantással leolvasol. */}
-      <div className="track__primary">
-        <span className="track__primary-cell">
-          {/* A mértékegység a SZÁMMAL egy sorban, azonos méretben és színben —
-              ugyanúgy, ahogy a megtett távnál („1,55 km"). A címke alatta a
-              mérőszám neve, nem a mértékegysége. */}
-          <span className="track__primary-value">{formatLiveSpeed(speedMps)}</span>
-          <span className="track__primary-label">sebesség</span>
-        </span>
-        <span className="track__primary-cell">
-          <span className="track__primary-value">{formatDistance(distanceM)}</span>
-          <span className="track__primary-label">megtett táv</span>
-        </span>
-      </div>
+      <button
+        type="button"
+        className="track__panel-tap"
+        onClick={toggleBody}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Adatok összecsukása' : 'Adatok kinyitása'}
+      >
+        {/* Első sor: sebesség balra, megtett táv jobbra — azonos mérettel.
+            Futás közben ez a két szám az, amit egy pillantással leolvasol.
+            Teljes nézetben (`full`) EGYMÁS ALATT, még nagyobban — Geri
+            kérése (2026-08-27), lásd `.track__panel--full .track__primary`. */}
+        <div className="track__primary">
+          <span className="track__primary-cell">
+            {/* A mértékegység a SZÁMMAL egy sorban, azonos méretben és színben —
+                ugyanúgy, ahogy a megtett távnál („1,55 km"). A címke alatta a
+                mérőszám neve, nem a mértékegysége. */}
+            <span className="track__primary-value">{formatLiveSpeed(speedMps)}</span>
+            <span className="track__primary-label">sebesség</span>
+          </span>
+          <span className="track__primary-cell">
+            <span className="track__primary-value">{formatDistance(distanceM)}</span>
+            <span className="track__primary-label">megtett táv</span>
+          </span>
+        </div>
 
-      <div className="track__stats">
-        {stats.map((stat) => (
-          <div className="track__stat" key={stat.key}>
-            {expanded ? <span className="track__stat-icon">{stat.icon}</span> : null}
-            <span className="track__stat-value">{stat.value}</span>
-            <span className="track__stat-label">
-              {'dot' in stat ? <span className={`track__dot track__dot--${stat.dot}`} /> : null}
-              {stat.label}
-            </span>
-          </div>
-        ))}
-      </div>
+        <div className="track__stats">
+          {stats.map((stat) => (
+            <div className="track__stat" key={stat.key}>
+              {expanded ? <span className="track__stat-icon">{stat.icon}</span> : null}
+              <span className="track__stat-value">{stat.value}</span>
+              <span className="track__stat-label">
+                {'dot' in stat ? <span className={`track__dot track__dot--${stat.dot}`} /> : null}
+                {stat.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </button>
 
-      <span className="track__panel-grip" aria-hidden="true" />
-    </button>
+      <button
+        type="button"
+        className="track__panel-grip"
+        onClick={stepGrip}
+        aria-label={
+          view === 'compact'
+            ? 'Adatok kinyitása'
+            : view === 'expanded'
+              ? 'Teljes képernyős nézet'
+              : 'Kilépés a teljes képernyős nézetből'
+        }
+      >
+        <span className="track__panel-grip-bar" aria-hidden="true" />
+      </button>
+    </div>
   );
 }
 

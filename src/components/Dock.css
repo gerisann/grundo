@@ -24,6 +24,19 @@
   z-index: 40;
 }
 
+/*
+  A statisztika-panel teljes nézetében a dokk „beleolvad" a mögötte lévő
+  panelbe (`tracking.css` → `.track__panel--full`, ugyanaz a `--bg-elevated`
+  háttér) — Geri kérése (2026-08-27). A blur/keret/árnyék eltűnik, mert
+  azok azt sugallnák, hogy a dokk KÜLÖN réteg úszik a panel fölött.
+*/
+.dock--blend {
+  background: var(--bg-elevated);
+  backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 .dock__item {
   display: grid;
   place-items: center;
