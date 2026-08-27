@@ -85,8 +85,8 @@
   overflow: hidden;
   border-radius: var(--r-md);
 }
-.acard__hex-map .mapview__hex-toggle { right: var(--sp-2); bottom: var(--sp-2); width: 34px; height: 34px; }
-.acard__hex-toggle { position: absolute; right: var(--sp-2); bottom: var(--sp-2); z-index: 2; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(20,16,28,.82); color: #8F5CF2; display: grid; place-items: center; }
+.acard__hex-map .mapview__hex-toggle { left: var(--sp-2); bottom: var(--sp-2); width: 34px; height: 34px; }
+.acard__hex-toggle { position: absolute; left: var(--sp-2); bottom: var(--sp-2); z-index: 2; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(20,16,28,.82); color: #8F5CF2; display: grid; place-items: center; }
 .acard__hex-toggle--on { background: #8F5CF2; color: #fff; box-shadow: 0 0 0 2px rgb(255 255 255 / .24); }
 
 .acard__map {
@@ -100,21 +100,84 @@
   background: var(--map-bg);
 }
 
-.acard__photo-count {
+/* ═══ Galéria-nézet — facebookos felosztás, ha vannak további fotók ═══
+   60/40: a térkép marad a domináns elem, a fotók csak előnézetek. */
+.acard__split {
+  display: grid;
+  grid-template-columns: 60% 40%;
+  gap: 3px;
+  aspect-ratio: 16 / 7;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+/*
+  ⚠️ MINDEN grid-cellának min-height/min-width: 0 kell. A rács alapból a
+  benne lévő KÉP TERMÉSZETES MÉRETÉT (nem a kiszabott dobozét) veszi a sor
+  automatikus minimumának — egy álló (portré) fotónál ez a teljes kártyát
+  szétfeszítette, a 60/40 és az 50/50 arány helyett a kép saját arányát
+  adta ki. Mérve (2026-08-27): egy 300×900-as teszkép nélküle 127 px helyett
+  506 px-re nyújtotta a sort; a `min-height: 0` visszaadja a kiszabott
+  méretet, függetlenül attól, milyen arányú kép kerül bele.
+*/
+.acard__split-photos,
+.acard__split-photo,
+.acard__map-pane {
+  min-height: 0;
+  min-width: 0;
+}
+
+.acard__map-pane {
+  position: relative;
+  height: 100%;
+}
+
+.acard__map-pane .acard__map {
+  height: 100%;
+  aspect-ratio: unset;
+  border-radius: 0;
+}
+
+.acard__split-photos {
+  display: grid;
+}
+
+.acard__split-photos--one {
+  grid-template-rows: 1fr;
+}
+
+.acard__split-photos--two {
+  grid-template-rows: 1fr 1fr;
+  gap: 3px;
+}
+
+.acard__split-photo {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--map-bg);
+  cursor: pointer;
+}
+
+.acard__split-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.acard__split-photo-more {
   position: absolute;
-  right: var(--sp-2);
-  bottom: var(--sp-2);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-radius: var(--r-pill);
-  background: rgba(20, 16, 28, 0.78);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 8, 15, 0.62);
   color: #fff;
-  font-size: var(--fs-small);
-  font-weight: 700;
-  line-height: 1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  font-size: 17px;
+  font-weight: 800;
 }
 
 .acard__map--empty {

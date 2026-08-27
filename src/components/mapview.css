@@ -130,14 +130,15 @@
   color: var(--accent-on);
 }
 
-/* Hexagonréteg — ugyanabban a jobb alsó vezérlőoszlopban és ugyanakkora,
-   mint a 2D/3D váltó. Szándékosan fekete: ez térképi segédkapcsoló, nem
-   kiválasztott játékállapot. */
+/* Hexagonréteg — a BAL alsó sarokban, külön oszlopban a jobb oldali
+   recenter/2D-3D vezérlőktől (Geri kérése, 2026-08-27: a jobb alsó sarok
+   ütközött a további képek jelvényével a feed-kártyán). Szándékosan
+   fekete: ez térképi segédkapcsoló, nem kiválasztott játékállapot. */
 .mapview__hex-toggle {
   position: absolute;
-  right: var(--sp-4);
+  left: var(--sp-4);
   bottom: calc(
-    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3) + 96px
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3)
   );
   width: 40px;
   height: 40px;

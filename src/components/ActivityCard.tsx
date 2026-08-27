@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ActivityRivalBar } from '@/components/ActivityRivalBar';
 import { RivalBadge } from '@/components/RivalBadge';
+import { PhotoLightbox } from '@/components/PhotoLightbox';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { routeImageUrl } from '@/lib/staticMap';
@@ -49,6 +50,7 @@ export function ActivityCard({
    */
   const [mapFailed, setMapFailed] = useState(false);
   const [hexesVisible, setHexesVisible] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const mapUrl = mapFailed ? null : routeImageUrl(item.route, { theme });
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
   const title = item.title ?? activityTitle(item.type, item.startedAt);
@@ -92,6 +94,72 @@ export function ActivityCard({
   const previewTrack = useMemo(
     () => (hexesVisible ? decodePolyline(item.route).map((point) => ({ ...point, t: 0 })) : []),
     [hexesVisible, item.route],
+  );
+
+  const visiblePhotos = item.photos.slice(0, 2);
+  const morePhotoCount = item.photos.length - visiblePhotos.length;
+
+  /*
+    A TÉRKÉP-PANEL saját változóban, mert két helyen kell: önmagában, ha
+    nincs fotó, vagy a galéria bal 60%-os oszlopában, ha van (lásd lent a
+    `.acard__split`-et). A hexagon-váltó a panel BAL alsó sarkában ül —
+    korábban jobbra, de az ütközött a további képek jelvényével.
+  */
+  const mapPane = mapUrl ? (
+    <>
+      <img
+        className="acard__map"
+        src={mapUrl}
+        alt="Az aktivitás útvonala a térképen"
+        /* A képernyőn kívüli kártyák képe le se töltődik. */
+        loading="lazy"
+        decoding="async"
+        onError={() => setMapFailed(true)}
+      />
+      {hexesVisible && previewCells.length > 0 && mapboxConfigured ? (
+        <div className="acard__hex-map" onClick={(event) => event.stopPropagation()}>
+          <Suspense fallback={null}>
+            <MapView
+              track={previewTrack}
+              follow={false}
+              fitTrack
+              fill
+              hexesVisible
+              onToggleHexes={() => setHexesVisible(false)}
+              layers={[{ role: 'interior', cells: previewCells }]}
+            />
+          </Suspense>
+        </div>
+      ) : null}
+      <span
+        role="button"
+        tabIndex={0}
+        className={`acard__hex-toggle${hexesVisible ? ' acard__hex-toggle--on' : ''}`}
+        aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'}
+        aria-pressed={hexesVisible}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setHexesVisible((visible) => !visible);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setHexesVisible((visible) => !visible);
+          }
+        }}
+      >
+        <HexagonIcon />
+      </span>
+    </>
+  ) : (
+    <div className="acard__map acard__map--empty">
+      {item.routeHidden
+        ? 'Az útvonal rejtve'
+        : item.route.length === 0
+          ? 'Nincs elmentett útvonal'
+          : 'A térkép nem elérhető'}
+    </div>
   );
 
   /*
@@ -141,54 +209,35 @@ export function ActivityCard({
         {showAuthor ? <h3 className="acard__title">{title}</h3> : null}
 
         <div className="acard__media">
-          {mapUrl ? (
-            <>
-            <img
-              className="acard__map"
-              src={mapUrl}
-              alt="Az aktivitás útvonala a térképen"
-              /* A képernyőn kívüli kártyák képe le se töltődik. */
-              loading="lazy"
-              decoding="async"
-              onError={() => setMapFailed(true)}
-            />
-            {hexesVisible && previewCells.length > 0 && mapboxConfigured ? (
-              <div className="acard__hex-map" onClick={(event) => event.stopPropagation()}>
-                <Suspense fallback={null}>
-                  <MapView
-                    track={previewTrack}
-                    follow={false}
-                    fitTrack
-                    fill
-                    hexesVisible
-                    onToggleHexes={() => setHexesVisible(false)}
-                    layers={[{ role: 'interior', cells: previewCells }]}
-                  />
-                </Suspense>
-              </div>
-            ) : null}
-            <span role="button" tabIndex={0} className={`acard__hex-toggle${hexesVisible ? ' acard__hex-toggle--on' : ''}`} aria-label={hexesVisible ? 'Hexagonok elrejtése' : 'Hexagonok megjelenítése'} aria-pressed={hexesVisible} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setHexesVisible((visible) => !visible); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setHexesVisible((visible) => !visible); } }}>
-              <HexagonIcon />
-            </span>
-            </>
-          ) : (
-            <div className="acard__map acard__map--empty">
-              {item.routeHidden
-                ? 'Az útvonal rejtve'
-                : item.route.length === 0
-                  ? 'Nincs elmentett útvonal'
-                  : 'A térkép nem elérhető'}
-            </div>
-          )}
-
           {item.photos.length > 0 ? (
-            <span
-              className="acard__photo-count"
-              aria-label={`${item.photos.length} saját fotó tartozik az aktivitáshoz`}
-            >
-              <CameraIcon /> +{Math.min(5, item.photos.length)}
-            </span>
-          ) : null}
+            <div className="acard__split">
+              <div className="acard__map-pane">{mapPane}</div>
+              <div
+                className={`acard__split-photos acard__split-photos--${visiblePhotos.length === 1 ? 'one' : 'two'}`}
+              >
+                {visiblePhotos.map((photo, index) => (
+                  <button
+                    key={photo.path}
+                    type="button"
+                    className="acard__split-photo"
+                    aria-label={`${index + 1}. fotó megnyitása`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setPhotoIndex(index);
+                    }}
+                  >
+                    <img src={photo.url} alt="" loading="lazy" decoding="async" />
+                    {index === 1 && morePhotoCount > 0 ? (
+                      <span className="acard__split-photo-more">+{morePhotoCount}</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            mapPane
+          )}
         </div>
 
         <dl className="acard__stats">
@@ -232,21 +281,16 @@ export function ActivityCard({
         Katától" ugyanúgy az aktivitásról szól, akárki nézi.
       */}
       <ActivityRivalBar item={item} />
-    </article>
-  );
-}
 
-function CameraIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M4 7.5h3l1.4-2h7.2l1.4 2h3v11H4z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
+      {photoIndex !== null ? (
+        <PhotoLightbox
+          photos={item.photos}
+          index={photoIndex}
+          onIndexChange={setPhotoIndex}
+          onClose={() => setPhotoIndex(null)}
+        />
+      ) : null}
+    </article>
   );
 }
 
