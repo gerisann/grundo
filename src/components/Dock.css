@@ -311,22 +311,18 @@
   color: #fff;
 }
 
-.finish-overlay__hint {
-  position: relative;
-  z-index: 1;
-  padding: 6px 14px;
-  border-radius: var(--r-pill);
-  background: rgb(0 0 0 / .55);
-  color: #fff;
-  font-size: var(--fs-small);
-  font-weight: 700;
-}
-
-/* ── Szünet: sárga panel a dokk mögül ────────────────────────────────────
+/* ── Szünet: sárga panel, ami a DOKKBÓL NŐ KI ─────────────────────────────
  *
- * A dokkal AZONOS SZÉLESSÉGŰ (ugyanaz a `left`/`right`), és a dokk fölé ül.
- * Rejtett állapotban lefelé, a dokk MÖGÉ tolva várakozik — ezért kell a
- * `z-index`, ami a dokké (40) ALATT van: így a dokk takarja, nem fordítva.
+ * A dokkal AZONOS SZÉLESSÉGŰ (ugyanaz a `left`/`right`), és KÖZVETLENÜL a
+ * dokk teteje fölött ül, rés nélkül — Geri kérése (2026-08-27): ne egy
+ * különálló, lebegő doboz legyen, hanem a dokk FOLYTATÁSÁNAK hasson. Ezért
+ * csak a felső sarkok kerekítettek (`border-radius`), az alsó szél éles,
+ * pont ott, ahol a dokk teteje kezdődik.
+ *
+ * Rejtett állapotban a SAJÁT MAGASSÁGÁVAL tolódik le (`translate: 0 100%`),
+ * NEM a dokk magasságával is — így nem tűnik el a dokk ALÁ, hanem pontosan
+ * a dokk fölé simulva, mögéje csukódik. A `z-index`, ami a dokké (40)
+ * ALATT van, ezért fedi a dokk, amint a panel visszacsukódott.
  *
  * A magasság a `--dock-measured-height`-ból jön, amit a `useDockHeight()`
  * ír ki. A `--dock-height` token itt NEM használható: rögzítés közben a
@@ -339,19 +335,8 @@
  */
 
 .dock__pause {
-  /*
-    A panel alatti teljes távolság EGY helyen, mert kétszer kell: egyszer a
-    nyugvó helyzethez (`bottom`), egyszer a rejtett állapot eltolásához.
-
-    ⚠️ A `--safe-bottom` IS BENNE VAN, és ez nem részletkérdés. Korábban az
-    eltolás csak a dokk magasságával és a réssel számolt, a `bottom` viszont a
-    biztonsági sávval is — így a panel pont `--safe-bottom`-nyival kevesebbet
-    csúszott le, mint amennyi kellett, és az alja SÁRGA CSÍKKÉNT kilátszott a
-    dokk alatt. Asztali gépen ez láthatatlan (`--safe-bottom: 0`), telefonon
-    viszont a gesztussáv miatt nem az — Geri Androidon vette észre.
-  */
   --dock-pause-offset: calc(
-    max(var(--safe-bottom), var(--sp-1)) + var(--dock-measured-height, var(--dock-height)) + var(--sp-2)
+    max(var(--safe-bottom), var(--sp-1)) + var(--dock-measured-height, var(--dock-height))
   );
 
   position: fixed;
@@ -365,15 +350,14 @@
   display: grid;
   gap: 2px;
   padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
+  border-radius: var(--r-md) var(--r-md) 0 0;
   background: #fdc700;
   color: #222222;
   text-align: center;
 
-  /* Rejtve: a saját magasságával PLUSZ a teljes alatta lévő távolsággal
-     tolva le. Így a panel FELSŐ éle pontosan a képernyő aljára kerül,
-     bármekkora is a biztonsági sáv — nem marad belőle látható csík. */
-  translate: 0 calc(100% + var(--dock-pause-offset));
+  /* Rejtve: csak a saját magasságával lejjebb, tehát pontosan a dokk
+     mögé/fölé simulva tűnik el — nem száguld el alatta. */
+  translate: 0 100%;
   transition: translate 400ms cubic-bezier(.22, 1, .36, 1);
 }
 
@@ -382,9 +366,13 @@
 }
 
 .dock__pause-title {
-  font-size: var(--fs-body);
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  /* Domináns, jól látható felirat — Geri kérése (2026-08-27): 3× a
+     testszöveg mérete (var(--fs-body): 15px → 45px), nagybetűvel. */
+  font-size: 45px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  line-height: 1.1;
 }
 
 .dock__pause-hint {

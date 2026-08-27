@@ -289,6 +289,7 @@ export function TerritoryScreen() {
               onViewport={onViewport}
               onCellPress={onCellPress}
               cellPopup={ownerPopup}
+              allowTilt
               fill
             />
           </Suspense>

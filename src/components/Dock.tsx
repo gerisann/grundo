@@ -304,7 +304,6 @@ function FinishButton({ onFinish }: { onFinish: () => void }) {
                   Befejezés
                 </span>
               </div>
-              <span className="finish-overlay__hint">Tartsd nyomva</span>
             </div>,
             document.body,
           )
