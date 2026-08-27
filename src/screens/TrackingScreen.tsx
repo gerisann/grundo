@@ -354,17 +354,21 @@ export function TrackingScreen() {
    */
   const savePanelOpen = done && countsAsActivity && recorder.upload.status === 'done';
 
-  /** A környék teljes birtokképe ugyanazzal a szintadattal, mint a Grundon. */
+  /**
+   * A környék teljes birtokképe ugyanazzal a szintadattal ÉS tulajdonossal,
+   * mint a Grundon — az `owner` mező kell a térképnek ahhoz, hogy mindenkit
+   * a saját választott színében rajzoljon ki, ne az általános szerep-színben.
+   */
   const nearbyOthers = useMemo(
     () => (nearby?.cells ?? [])
       .filter((c) => c.owner !== profileUid)
-      .map((c) => ({ cell: c.cell, defense: c.defense })),
+      .map((c) => ({ cell: c.cell, defense: c.defense, owner: c.owner })),
     [nearby, profileUid],
   );
   const nearbyMine = useMemo(
     () => (nearby?.cells ?? [])
       .filter((c) => c.owner === profileUid)
-      .map((c) => ({ cell: c.cell, defense: c.defense })),
+      .map((c) => ({ cell: c.cell, defense: c.defense, owner: c.owner })),
     [nearby, profileUid],
   );
   const nearbyFree = useMemo(() => {
@@ -536,6 +540,8 @@ export function TrackingScreen() {
                 onToggleHexes={() => setShowHexes((visible) => !visible)}
                 follow={running || remoteState?.status === 'recording'}
                 onViewport={setNearbyView}
+                /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon. */
+                ownerColors={nearby?.ownerColors}
                 fill
               />
             </Suspense>

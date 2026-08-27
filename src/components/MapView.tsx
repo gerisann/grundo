@@ -635,7 +635,14 @@ function syncAreaData(
       type: 'Feature' as const,
       properties: {
         color,
-        outlineColor: role === 'rival' ? cssColor(ROLE_COLOR.rival) : color,
+        /*
+          A PIROS SZEGÉLY csak az ELRABOLHATÓ (1-es védelmű) rivális
+          területet jelöli — Geri kérése (2026-08-27). Egy jól védett (2-5
+          szintű) rivális folt a SAJÁT tulajdonosi színében kap szegélyt is,
+          különben minden ellenség egyformán "fenyegetőnek" tűnne, holott a
+          legtöbbjük ma nem vehető el.
+        */
+        outlineColor: role === 'rival' && defense === 1 ? cssColor(ROLE_COLOR.rival) : color,
         opacity: cssNumber(`--defense-alpha-${defense}`, 0.2),
         own: role === 'interior' || role === 'stolen',
       },
