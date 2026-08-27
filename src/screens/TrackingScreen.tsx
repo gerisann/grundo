@@ -340,6 +340,15 @@ export function TrackingScreen() {
   /** A 100 méteres küszöb alatt nincs terület — lásd a befejezés utáni jelzést. */
   const countsAsActivity = displayDistanceM >= GAMEPLAY.MIN_DISTANCE_M;
 
+  /**
+   * A „Mentve." panel (a mentés-űrlappal) fedésben van a felső statisztika-
+   * panellel és a térkép jobb alsó gombjaival (hexagon, 2D/3D) — Geri mérése
+   * (2026-08-27): a lebegő gombok a mentés-panel fölé lógtak, a felső panel
+   * pedig ugyanazokat a számokat ismételte, amik a „Mentve." panelen is ott
+   * vannak. Ilyenkor mindhármat elrejtjük.
+   */
+  const savePanelOpen = done && countsAsActivity && recorder.upload.status === 'done';
+
   /** A környék teljes birtokképe ugyanazzal a szintadattal, mint a Grundon. */
   const nearbyOthers = useMemo(
     () => (nearby?.cells ?? [])
@@ -497,7 +506,7 @@ export function TrackingScreen() {
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
   return (
-    <div className={`track${done ? ' track--finished' : ''}`}>
+    <div className={`track${done ? ' track--finished' : ''}${savePanelOpen ? ' track--save-open' : ''}`}>
       <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
         {mapboxConfigured ? (
           <Suspense fallback={null}>
@@ -643,19 +652,27 @@ export function TrackingScreen() {
 
         {!idle || remoteState !== null ? (
           <>
-            <StatsPanel
-              distanceM={displayDistanceM}
-              elapsed={elapsed}
-              pace={pace}
-              claimableCells={preview.claimable.length}
-              expectedGp={preview.gp}
-              /* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
-                 megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
-                 és a profilon számít. */
-              cells={countsAsActivity ? cells.length : null}
-              speedMps={remoteState?.speedMps ?? currentSpeedMps(state)}
-              hasFix={remoteState !== null ? displayPoints.length > 0 : recorder.hasFix}
-            />
+            {/*
+              A „Mentve." panel UGYANEZEKET A SZÁMOKAT hordozza (táv, GP,
+              mező/bezárás), tehát a felette lévő élő statisztika-panel csak
+              megismételné őket — és felül is fedte a mentés-űrlapot. Ekkor
+              elrejtjük.
+            */}
+            {!savePanelOpen ? (
+              <StatsPanel
+                distanceM={displayDistanceM}
+                elapsed={elapsed}
+                pace={pace}
+                claimableCells={preview.claimable.length}
+                expectedGp={preview.gp}
+                /* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
+                   megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
+                   és a profilon számít. */
+                cells={countsAsActivity ? cells.length : null}
+                speedMps={remoteState?.speedMps ?? currentSpeedMps(state)}
+                hasFix={remoteState !== null ? displayPoints.length > 0 : recorder.hasFix}
+              />
+            ) : null}
 
             {remoteState === null && state.laps.length > 1 ? <LapList state={state} /> : null}
 
@@ -1122,8 +1139,14 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
     const { summary, duplicate } = upload;
     /*
       A `--upload` változat a képernyő maradék magasságát kapja, és belül
-      görget: az űrlap mezői mozognak, a Mentés és az Új rögzítés gomb pedig
-      a panel alján marad. Indoklás a tracking.css-ben.
+      görget: az űrlap mezői mozognak, a Mentés gomb pedig a panel alján
+      marad. Indoklás a tracking.css-ben.
+
+      ⚠️ NINCS ITT „Új rögzítés" gomb — a Dock már ad egyet (Geri kérése,
+      2026-08-27): befejezett méréssel a Dock középső gombja magától
+      kiszélesedik, „Új rögzítés" felirattal, és ugyanazt a `discard()`-ot
+      hívja. A kétszeres gomb csak azért kellett korábban, mert a Dock ekkor
+      még nem viselte ezt a feliratot mindenhol — most már igen.
     */
     return (
       <div className="track__panel track__panel--upload">
@@ -1183,11 +1206,6 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
             }}
           />
         ) : null}
-        <div className="track__new-recording">
-          <Button block variant="secondary" onClick={() => void recorder.discard()}>
-            Új rögzítés
-          </Button>
-        </div>
       </div>
     );
   }

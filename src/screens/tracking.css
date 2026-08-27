@@ -32,6 +32,17 @@
   background: var(--bg-secondary);
 }
 
+/*
+  A mentés-panel nyitva: a térkép saját lebegő gombjai (hexagon, 2D/3D) a
+  jobb/bal alsó sarokban ülnek, pont ott, ahol a mentés-panel is — Geri
+  mérése (2026-08-27) a Mentés gomb és a 2D/3D váltó átfedését mutatta.
+  Ilyenkor a gombok úgyis feleslegesek: a panel a teljes térképet eltakarja.
+*/
+.track--save-open .track__map .mapview__hex-toggle,
+.track--save-open .track__map .mapview__tilt {
+  display: none;
+}
+
 /* ── A rárétegzett felület ───────────────────────────────────────── */
 
 .track__overlay {
@@ -428,10 +439,6 @@
   margin-bottom: var(--sp-2);
 }
 
-.track__new-recording {
-  margin-top: var(--sp-4);
-}
-
 /* ── A kör-lista összecsukása ────────────────────────────────────────
    Futás közben a térkép a fontos. Összecsukva csak egy stopper ikon marad a
    bal szélen, a körök számával — arra koppintva jön vissza a panel. */
@@ -609,11 +616,10 @@
   padding-bottom: var(--sp-2);
 }
 
-/* A fejrész és a két gomb nem zsugorodhat: ezek a fix pontok. */
+/* A fejrész és a Mentés gomb nem zsugorodhat: ezek a fix pontok. */
 .track__panel--upload .track__saved,
 .track__panel--upload .track__stats,
-.track__panel--upload .save__actions,
-.track__panel--upload .track__new-recording {
+.track__panel--upload .save__actions {
   flex: none;
 }
 
