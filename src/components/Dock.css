@@ -116,12 +116,16 @@
   background: var(--bg-elevated);
 }
 
+/* 40/60 arány a Befejezés javára — Geri kérése (2026-08-27): a Befejezés
+   (különösen a húzásos gesztus) több helyet érdemel, mint az „Új kör". */
 .dock__side--left {
   color: var(--success);
+  flex: 4;
 }
 
 .dock__side--right {
   color: var(--danger);
+  flex: 6;
 }
 
 .dock__side:active {
