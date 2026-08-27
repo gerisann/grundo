@@ -155,6 +155,18 @@ export interface RecorderApi {
   statsFullView: boolean;
   setStatsFullView: (value: boolean) => void;
 
+  /**
+   * A BEFEJEZÉS-GESZTUS — Geri kérése (2026-08-27): a felhasználó választja
+   * a Beállítások → Preferenciák → Működés alatt (`/beallitasok/mukodes`).
+   *   'hold'  — nyomva tartós gomb (a régi, alapértelmezett viselkedés)
+   *   'swipe' — húzásos, „slide to unlock" mintájú gomb
+   * A `localStorage`-ban él (eszközhöz kötött beállítás, nem fiókhoz — más
+   * felhasználók, más eszközök más gesztust preferálhatnak), a `Dock`
+   * ebből olvassa ki, melyik gombot rajzolja ki.
+   */
+  finishGesture: FinishGesture;
+  setFinishGesture: (value: FinishGesture) => void;
+
   begin: (type?: ActivityType) => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -197,6 +209,18 @@ export type UploadState =
   | { status: 'done'; summary: ActivitySummary; duplicate: boolean }
   | { status: 'error'; message: string; retryable: boolean };
 
+export type FinishGesture = 'hold' | 'swipe';
+
+const FINISH_GESTURE_KEY = 'grundo.finishGesture';
+
+function readFinishGesture(): FinishGesture {
+  try {
+    return localStorage.getItem(FINISH_GESTURE_KEY) === 'swipe' ? 'swipe' : 'hold';
+  } catch {
+    return 'hold';
+  }
+}
+
 export function useRecorder(source?: PositionSource, options: RecorderOptions = {}): RecorderApi {
   const positionSource = useMemo<PositionSource>(
     () => source ?? (isNativeApp() ? new NativePositionSource() : new BrowserPositionSource()),
@@ -219,6 +243,15 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [statsFullView, setStatsFullView] = useState(false);
+  const [finishGesture, setFinishGestureState] = useState<FinishGesture>(readFinishGesture);
+  const setFinishGesture = useCallback((value: FinishGesture) => {
+    setFinishGestureState(value);
+    try {
+      localStorage.setItem(FINISH_GESTURE_KEY, value);
+    } catch {
+      /* nem baj — a beállítás csak erre a munkamenetre él tovább */
+    }
+  }, []);
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
@@ -563,6 +596,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     setCountdown,
     statsFullView,
     setStatsFullView,
+    finishGesture,
+    setFinishGesture,
     upload,
     uploadActivity,
     begin,

@@ -506,6 +506,99 @@
 }
 
 /*
+  ── Befejezés: húzásos („slide to unlock") gomb ─────────────────────────
+  Geri kérése (2026-08-27): a nyomva tartás alternatívája — a felirat a
+  sáv KÖZEPÉN áll (nem takarja el a bal szélen ülő fogantyú, mert az kicsi
+  és a sáv széles), a piros kitöltés balról nő, ugyanúgy, mint a nyomva
+  tartós gombnál. A fogantyú `position: absolute`, `translateX`-szel
+  mozog — a `.swipe-finish` (a track) adja a pozicionálási kontextust.
+*/
+.swipe-finish {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  padding: 0;
+}
+
+.swipe-finish__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--danger);
+  transition: width 140ms ease-out;
+}
+
+.swipe-finish--dragging .swipe-finish__fill {
+  transition: none;
+}
+
+.swipe-finish__label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  /* Kicsit jobbra tolva — Geri kérése (2026-08-27): a fogantyú a bal
+     szélen ül, a teljes sávra középre igazított felirat ezért vizuálisan
+     balra tolódottnak hatott a maradék, LÁTHATÓ helyhez képest. */
+  padding-left: 22px;
+  color: var(--danger);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+/* A vágás ugyanazt a százalékot követi, mint a `.swipe-finish__fill`
+   szélessége — a betűk pontosan ott váltanak fehérre, ahol alattuk már
+   piros van. */
+.swipe-finish__label--filled {
+  color: #fff;
+  transition: clip-path 140ms ease-out;
+}
+
+.swipe-finish--dragging .swipe-finish__label--filled {
+  transition: none;
+}
+
+.swipe-finish__thumb {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  bottom: 3px;
+  width: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  /*
+    ⚠️ A HÁTTÉR ÉS A SZÍN INLINE, NEM ITT — Geri kérése (2026-08-27):
+    nyugalmi állapotban NE legyen teli piros a fogantyú, hanem a húzás
+    arányában teljen pirosra, ugyanúgy, mint a sáv kitöltése. A JSX
+    (`FinishGestureButtons.tsx`) `color-mix()`-szel számolja `progress`-ből.
+  */
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--danger) 40%, transparent);
+  transition:
+    transform 220ms cubic-bezier(.22, 1, .36, 1),
+    background-color 220ms ease,
+    color 220ms ease;
+  z-index: 1;
+}
+
+.swipe-finish--dragging .swipe-finish__thumb {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-finish__fill,
+  .swipe-finish__thumb,
+  .swipe-finish__label--filled {
+    transition: none;
+  }
+}
+
+/*
   A SZÜNET-PANEL ELKÖLTÖZÖTT a TrackingScreen-be (Geri kérése, 2026-08-27):
   a felső statisztika-panel alól nő ki, nem a dokk mögül. Lásd
   `src/screens/tracking.css` → `.track__pause*`.

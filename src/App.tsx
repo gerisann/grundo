@@ -19,6 +19,7 @@ import { MissionsScreen } from './screens/MissionsScreen';
 import { ProfileRivalsScreen, ProfileStatsScreen, ProfileClansScreen, ProfileBadgesScreen } from './screens/ProfileSectionScreens';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { AppearanceScreen } from './screens/settings/AppearanceScreen';
+import { FinishGestureScreen } from './screens/settings/FinishGestureScreen';
 import { PrivacyScreen } from './screens/settings/PrivacyScreen';
 import { RulesScreen } from './screens/settings/RulesScreen';
 import { NotificationsScreen } from './screens/settings/NotificationsScreen';
@@ -187,6 +188,7 @@ function Router() {
           <Route path="/aktivitas/:id" element={<ActivityScreen />} />
           <Route path="/beallitasok" element={<SettingsScreen />} />
           <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
+          <Route path="/beallitasok/mukodes" element={<FinishGestureScreen />} />
           <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
           <Route path="/beallitasok/szabalyok" element={<RulesScreen />} />
           <Route path="/beallitasok/ertesitesek" element={<NotificationsScreen />} />
@@ -209,9 +211,12 @@ function Router() {
       </div>
       {/* Az aktivitás adatlapja saját, teljes képernyős navigációt kap. A
           rögzítő ettől továbbra is app-szinten él; csak a Dock nem takarja el
-          az adatlap alsó tartalmát. */}
+          az adatlap alsó tartalmát. A Beállítások is ugyanígy: hosszú,
+          görgethető listás oldalak, ahol a Dock csak eltakarta az utolsó
+          sorokat — Geri kérése (2026-08-27), lásd a „Bejelentkezve" sort. */}
       {pathname.startsWith('/aktivitas/') ||
       pathname.startsWith('/admin') ||
+      pathname.startsWith('/beallitasok') ||
       (pathname === '/rogzites' && savePanelOpen) ? null : <Dock />}
     </>
   );

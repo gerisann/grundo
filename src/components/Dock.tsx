@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useTrackingEnvironment } from '@/tracking/environment';
+import { HoldFinishButton, SwipeFinishButton } from '@/components/FinishGestureButtons';
 import './Dock.css';
 
 /**
@@ -41,6 +42,7 @@ export function Dock() {
     countdown,
     setCountdown,
     statsFullView,
+    finishGesture,
   } = useRecorderContext();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
@@ -190,7 +192,13 @@ export function Dock() {
         )}
       </button>
 
-      {active ? <FinishButton onFinish={() => void finish()} /> : null}
+      {active ? (
+        finishGesture === 'swipe' ? (
+          <SwipeFinishButton onFinish={() => void finish()} />
+        ) : (
+          <HoldFinishButton onFinish={() => void finish()} />
+        )
+      ) : null}
 
       {/*
         „RAJT!" — a visszaszámlálás VÉGÉN jelenik meg, ugyanazzal a portál-
@@ -253,165 +261,6 @@ export function Dock() {
   );
 }
 
-/**
- * A nyomva tartás ideje.
- *
- * ⚠️ FELEZVE 2026-08-26-án (2000 → 1000 ms). A két másodperc a középre
- * kitett, nagy visszajelzés nélkül volt indokolt: addig a felhasználó a saját
- * ujja alatt nem látta, hogy egyáltalán történik valami. Most látja, tehát a
- * hosszú várakozás már csak lassítás. Nullára azért nem megy: a véletlen
- * koppintás nem szakíthatja félbe egy futás rögzítését.
- */
-const FINISH_HOLD_MS = 1000;
-
-/**
- * Elengedéskor NEM ugrik vissza nullára, hanem visszaanimál — Geri kérése
- * (2026-08-27): a hirtelen eltűnés úgy hatott, mintha a gomb elakadt volna.
- * A idő ARÁNYOS a bejárt úttal (`progress * FINISH_RELEASE_MS`): egy alig
- * megkezdett nyomásból gyors a visszafolyás, egy majdnem kész bezárásból
- * ez a teljes hossz — sosem tűnik indokolatlanul lassúnak egy koppintás után.
- */
-const FINISH_RELEASE_MS = 350;
-
-function FinishButton({ onFinish }: { onFinish: () => void }) {
-  const [progress, setProgress] = useState(0);
-  const holding = useRef(false);
-  const frame = useRef(0);
-  const startedAt = useRef(0);
-  /** A legfrissebb `progress` — a `start()`/`cancel()` zárványai ebből
-      olvasnak, hogy egy visszafolyás KÖZBENI újranyomás onnan folytassa,
-      ahonnan a sáv épp tart, ne nulláról induljon újra. */
-  const progressRef = useRef(0);
-
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-
-  function setProgressValue(value: number) {
-    progressRef.current = value;
-    setProgress(value);
-  }
-
-  function start() {
-    if (holding.current) return;
-    holding.current = true;
-    cancelAnimationFrame(frame.current);
-    // Ha épp visszafolyóban volt a sáv, onnan folytatja fölfelé — nem
-    // nulláról indul újra.
-    startedAt.current = performance.now() - progressRef.current * FINISH_HOLD_MS;
-
-    const step = (now: number) => {
-      if (!holding.current) return;
-      const value = Math.min(1, (now - startedAt.current) / FINISH_HOLD_MS);
-      setProgressValue(value);
-      if (value >= 1) {
-        holding.current = false;
-        setProgressValue(0);
-        onFinish();
-        return;
-      }
-      frame.current = requestAnimationFrame(step);
-    };
-    frame.current = requestAnimationFrame(step);
-  }
-
-  function cancel() {
-    if (!holding.current) return;
-    holding.current = false;
-    cancelAnimationFrame(frame.current);
-
-    const releaseFrom = progressRef.current;
-    if (releaseFrom <= 0) {
-      setProgressValue(0);
-      return;
-    }
-    const releaseStartedAt = performance.now();
-    const releaseDuration = releaseFrom * FINISH_RELEASE_MS;
-
-    const step = (now: number) => {
-      const t = Math.min(1, (now - releaseStartedAt) / releaseDuration);
-      const value = releaseFrom * (1 - t);
-      setProgressValue(value);
-      if (t < 1) {
-        frame.current = requestAnimationFrame(step);
-      }
-    };
-    frame.current = requestAnimationFrame(step);
-  }
-
-  const percent = progress * 100;
-  const holdingNow = progress > 0;
-
-  return (
-    <>
-      {/*
-        A KÖZÉPRE KITETT VISSZAJELZÉS — ez a lényege a 2026-08-26-i
-        átalakításnak.
-
-        A régi megoldásban csak az alsó gomb töltődött, amit a felhasználó
-        SAJÁT UJJA TAKART EL. Emiatt a gomb úgy viselkedett, mintha nem
-        reagálna: nem derült ki, hogy nyomva kell tartani, csak az, hogy
-        a koppintás „nem csinál semmit".
-
-        Portálban megy a `body`-ba, nem a gombon belül: a `.dock__finish`
-        `overflow: hidden`, a dokk pedig `position: fixed` — egy belülre tett
-        teljes képernyős réteg mindkettőn elvérezne.
-
-        ⚠️ `pointer-events: none` (a CSS-ben): a réteg NEM foghatja el a
-        mutatót, különben a `pointerup`/`pointerleave` nem a gombhoz érkezne,
-        és a nyomva tartás beragadna.
-      */}
-      {holdingNow && typeof document !== 'undefined'
-        ? createPortal(
-            <div className="finish-overlay" aria-hidden="true">
-              {/* A sötétítés a haladással ARÁNYOS, és 50%-nál megáll: a
-                  térképnek végig látszania kell alatta. */}
-              <div className="finish-overlay__veil" style={{ opacity: progress * 0.5 }} />
-              <div className="finish-overlay__button">
-                <span className="finish-overlay__fill" style={{ width: `${percent}%` }} />
-                <span className="finish-overlay__label">Befejezés</span>
-                <span
-                  className="finish-overlay__label finish-overlay__label--filled"
-                  style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
-                >
-                  Befejezés
-                </span>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
-
-      <button
-        className={`dock__side dock__side--right dock__finish${
-          holdingNow ? ' dock__finish--holding' : ''
-        }`}
-        onPointerDown={start}
-        onPointerUp={cancel}
-        onPointerLeave={cancel}
-        onPointerCancel={cancel}
-        onContextMenu={(event) => event.preventDefault()}
-        onKeyDown={(event) => {
-          if (event.key === ' ' || event.key === 'Enter') {
-            event.preventDefault();
-            start();
-          }
-        }}
-        onKeyUp={cancel}
-        onBlur={cancel}
-        aria-label="Befejezés — tartsd nyomva egy másodpercig"
-      >
-        <span className="dock__finish-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
-        <span className="dock__finish-label">Befejezés</span>
-        <span
-          className="dock__finish-label dock__finish-label--filled"
-          style={{ clipPath: `inset(0 ${100 - percent}% 0 0)` }}
-          aria-hidden="true"
-        >
-          Befejezés
-        </span>
-      </button>
-    </>
-  );
-}
 
 function PauseIcon() {
   return (

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useAuth } from '@/hooks/AuthProvider';
+import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { buildInfo } from '@/lib/buildInfo';
 import { Button, List, ListRow, ScreenHeader } from '@/components/ui';
 
@@ -22,6 +23,7 @@ export function SettingsScreen() {
   const navigate = useNavigate();
   const { settings } = useThemeContext();
   const { user, role, signOut, status } = useAuth();
+  const { finishGesture } = useRecorderContext();
 
   return (
     <>
@@ -41,6 +43,12 @@ export function SettingsScreen() {
               label="Mértékegységek"
               value={<span className="row__value--muted">Hamarosan</span>}
               chevron
+            />
+            <ListRow
+              label="Működés"
+              description="Hogyan fejezd be az aktivitást a dokkban"
+              value={finishGesture === 'swipe' ? 'Húzás' : 'Nyomva tartás'}
+              onClick={() => navigate('/beallitasok/mukodes')}
             />
             <ListRow
               label="Aktivitás-adatvédelem"
