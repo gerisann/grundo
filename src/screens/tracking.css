@@ -165,10 +165,20 @@
 
 /* ── Élő adatok ──────────────────────────────────────────────────── */
 
+/* A szünet-panel (`.track__pause`) ehhez képest pozicionál — lásd ott. */
+.track__panel-wrap {
+  position: relative;
+}
+
 .track__panel {
   border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  backdrop-filter: blur(16px);
+  /*
+    TELJESEN ÁTLÁTSZATLAN, SZÁNDÉKOSAN (Geri, 2026-08-27). A szünet-panel a
+    `.track__panel-wrap`-ban KÖZVETLENÜL e mögé nyúlik be (lásd
+    `.track__pause`) — áttetsző háttérrel a térkép/hexagon-rács átütött
+    volna a sárga panel mögött, mintha a panel lyukas lenne.
+  */
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-card);
   padding: var(--sp-3);
@@ -224,6 +234,11 @@
   text-align: inherit;
   cursor: pointer;
   transition: padding 160ms ease;
+  /* A szünet-panel (`.track__pause`) EZ ALÁ nyúlik be — a pozitív z-index
+     nélkül a pozicionált szünet-panel automatikusan fölé kerülne, DOM-
+     sorrendtől függetlenül. Lásd a `.track__pause` megjegyzését. */
+  position: relative;
+  z-index: 1;
 }
 
 .track__panel-grip {
@@ -233,6 +248,68 @@
   margin: var(--sp-3) auto 0;
   border-radius: 2px;
   background: var(--border-default);
+}
+
+/* ── Szünet: sárga panel, ami a felső statisztika-panelből nő ki ─────────
+ *
+ * A `.track__panel-wrap` (a StatsPanel közvetlen szülője) a pozicionálási
+ * kontextus. Geri kérése (2026-08-27): NE a dokk mögül jöjjön, hanem a
+ * felső panel folytatásaként lefelé — ezért a teteje szögletes (a panelhez
+ * simul), az alja lekerekített.
+ *
+ * A `margin-top: -20px` + a panel `z-index: 1`-je adja a 20 px-es
+ * átfedést: ez alatt a sáv alatt a sárga a StatsPanel lekerekített alsó
+ * sarkai MÖGÖTT van, tehát azoknál sem látszik át semmi. A `padding-top`
+ * ezt a sávot pótolja, hogy a felirat ne az átfedés alá essen.
+ */
+.track__pause {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: -20px;
+  z-index: 0;
+
+  display: grid;
+  gap: var(--sp-2);
+  padding: calc(var(--sp-4) + 20px) var(--sp-4) var(--sp-6);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  background: #fdc700;
+  color: #222222;
+  text-align: center;
+
+  /* Rejtve: felfelé, a saját magasságával eltolva — a statisztika-panel
+     mögé csukódik, nem lejjebb a térképre. */
+  transform: translateY(-100%);
+  transition: transform 400ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.track__pause--shown {
+  transform: translateY(0);
+}
+
+.track__pause-title {
+  /* Domináns, jól látható felirat — Geri kérése (2026-08-27): 3× a
+     testszöveg mérete (var(--fs-body): 15px → 45px), nagybetűvel. */
+  font-size: 45px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.track__pause-hint {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  /* Ugyanaz a sötét szín, csak halványabban — a sárgán egy szürke token
+     olvashatatlan lenne. */
+  opacity: .78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track__pause {
+    transition: none;
+  }
 }
 
 /* Öt érték: összecsukva egy sorban is elfér, mert mind rövid szám. */

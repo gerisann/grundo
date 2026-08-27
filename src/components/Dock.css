@@ -311,80 +311,8 @@
   color: #fff;
 }
 
-/* ── Szünet: sárga panel, ami a DOKKBÓL NŐ KI ─────────────────────────────
- *
- * A dokkal AZONOS SZÉLESSÉGŰ (ugyanaz a `left`/`right`), és KÖZVETLENÜL a
- * dokk teteje fölött ül, rés nélkül — Geri kérése (2026-08-27): ne egy
- * különálló, lebegő doboz legyen, hanem a dokk FOLYTATÁSÁNAK hasson. Ezért
- * csak a felső sarkok kerekítettek (`border-radius`), az alsó szél éles,
- * pont ott, ahol a dokk teteje kezdődik.
- *
- * Rejtett állapotban a SAJÁT MAGASSÁGÁVAL tolódik le (`translate: 0 100%`),
- * NEM a dokk magasságával is — így nem tűnik el a dokk ALÁ, hanem pontosan
- * a dokk fölé simulva, mögéje csukódik. A `z-index`, ami a dokké (40)
- * ALATT van, ezért fedi a dokk, amint a panel visszacsukódott.
- *
- * A magasság a `--dock-measured-height`-ból jön, amit a `useDockHeight()`
- * ír ki. A `--dock-height` token itt NEM használható: rögzítés közben a
- * dokk `dock--controls` módban `auto` magas.
- *
- * ⚠️ SZÍNEK BEÉGETVE, SZÁNDÉKOSAN. A sárga (#fdc700) és a sötét szöveg
- * (#222222) Geri konkrét választása (2026-08-26), és jelentést hordoz —
- * „áll a mérés" —, nem a felület hangulatát. Világos és sötét témában
- * ugyanaz kell legyen, különben a figyelmeztetés az egyik témában elveszne.
- */
-
-.dock__pause {
-  --dock-pause-offset: calc(
-    max(var(--safe-bottom), var(--sp-1)) + var(--dock-measured-height, var(--dock-height))
-  );
-
-  position: fixed;
-  left: var(--sp-4);
-  right: var(--sp-4);
-  max-width: calc(var(--app-max-width) - 2 * var(--sp-4));
-  margin-inline: auto;
-  bottom: var(--dock-pause-offset);
-  z-index: 39;
-
-  display: grid;
-  gap: 2px;
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md) var(--r-md) 0 0;
-  background: #fdc700;
-  color: #222222;
-  text-align: center;
-
-  /* Rejtve: csak a saját magasságával lejjebb, tehát pontosan a dokk
-     mögé/fölé simulva tűnik el — nem száguld el alatta. */
-  translate: 0 100%;
-  transition: translate 400ms cubic-bezier(.22, 1, .36, 1);
-}
-
-.dock__pause--shown {
-  translate: 0 0;
-}
-
-.dock__pause-title {
-  /* Domináns, jól látható felirat — Geri kérése (2026-08-27): 3× a
-     testszöveg mérete (var(--fs-body): 15px → 45px), nagybetűvel. */
-  font-size: 45px;
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  line-height: 1.1;
-}
-
-.dock__pause-hint {
-  font-size: var(--fs-small);
-  font-weight: 600;
-  /* Ugyanaz a sötét szín, csak halványabban — a sárgán egy szürke token
-     olvashatatlan lenne. */
-  opacity: .78;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dock__pause {
-    transition: none;
-  }
-}
+/*
+  A SZÜNET-PANEL ELKÖLTÖZÖTT a TrackingScreen-be (Geri kérése, 2026-08-27):
+  a felső statisztika-panel alól nő ki, nem a dokk mögül. Lásd
+  `src/screens/tracking.css` → `.track__pause*`.
+*/

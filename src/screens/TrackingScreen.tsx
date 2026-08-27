@@ -659,19 +659,22 @@ export function TrackingScreen() {
               elrejtjük.
             */}
             {!savePanelOpen ? (
-              <StatsPanel
-                distanceM={displayDistanceM}
-                elapsed={elapsed}
-                pace={pace}
-                claimableCells={preview.claimable.length}
-                expectedGp={preview.gp}
-                /* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
-                   megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
-                   és a profilon számít. */
-                cells={countsAsActivity ? cells.length : null}
-                speedMps={remoteState?.speedMps ?? currentSpeedMps(state)}
-                hasFix={remoteState !== null ? displayPoints.length > 0 : recorder.hasFix}
-              />
+              <div className="track__panel-wrap">
+                <StatsPanel
+                  distanceM={displayDistanceM}
+                  elapsed={elapsed}
+                  pace={pace}
+                  claimableCells={preview.claimable.length}
+                  expectedGp={preview.gp}
+                  /* A cellák SZÁMA, nem a területük: futás közben a „38 mező"
+                     megfogható, a „11 666 m²" nem. A négyzetméter az összegzésben
+                     és a profilon számít. */
+                  cells={countsAsActivity ? cells.length : null}
+                  speedMps={remoteState?.speedMps ?? currentSpeedMps(state)}
+                  hasFix={remoteState !== null ? displayPoints.length > 0 : recorder.hasFix}
+                />
+                {running || paused ? <PausePanel shown={paused} /> : null}
+              </div>
             ) : null}
 
             {remoteState === null && state.laps.length > 1 ? <LapList state={state} /> : null}
@@ -1037,6 +1040,35 @@ function StatsPanel({
 
       <span className="track__panel-grip" aria-hidden="true" />
     </button>
+  );
+}
+
+/**
+ * SZÜNET — sárga panel, ami a felső statisztika-panel ALÓL nő ki.
+ *
+ * Geri kérése (2026-08-27): korábban a dokk mögül úszott fel, önálló
+ * dobozként — ez viszont takarásban volt a lenti gombokkal, és nem tűnt a
+ * felső panel folytatásának. Most a `.track__panel-wrap` (a StatsPanel
+ * közvetlen szülője) alján, ANNAK RÉSZEKÉNT jelenik meg: a teteje szögletes
+ * és 20 px-et ALÁJA nyúlik a statisztika-panelnek, hogy annak lekerekített
+ * alsó sarkai mögött is sárga legyen, ne a térkép látsszon át.
+ *
+ * ⚠️ MINDIG KI VAN RENDERELVE (amíg fut vagy szünetel a mérés), csak
+ * felfelé eltolva — így a visszacsukódás is animált, nem csak eltűnik.
+ *
+ * ⚠️ `aria-hidden` REJTETT ÁLLAPOTBAN. A képernyőolvasó különben folyamatosan
+ * bemondaná a szünet-szöveget rögzítés közben is, amikor nincs is szünet.
+ */
+function PausePanel({ shown }: { shown: boolean }) {
+  return (
+    <div
+      className={`track__pause${shown ? ' track__pause--shown' : ''}`}
+      role="status"
+      aria-hidden={!shown}
+    >
+      <strong className="track__pause-title">Szünet</strong>
+      <span className="track__pause-hint">A mérés áll — a PLAY gombbal folytathatod.</span>
+    </div>
   );
 }
 

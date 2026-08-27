@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
@@ -26,7 +26,6 @@ export function Dock() {
   const location = useLocation();
   const trackingEnvironment = useTrackingEnvironment();
   const { state, upload, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
-  const dockRef = useDockHeight();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
   // admin útvonalon él. Ilyenkor nem navigálunk el `/rogzites`-re a Play előtt.
@@ -129,17 +128,14 @@ export function Dock() {
 
   if (active) {
     return (
-      <>
-        <PausePanel shown={paused} />
-        <nav ref={dockRef} className="dock dock--controls" aria-label="Rögzítés vezérlése">
-          {controls}
-        </nav>
-      </>
+      <nav className="dock dock--controls" aria-label="Rögzítés vezérlése">
+        {controls}
+      </nav>
     );
   }
 
   return (
-    <nav ref={dockRef} className="dock" aria-label="Fő navigáció és rögzítés">
+    <nav className="dock" aria-label="Fő navigáció és rögzítés">
       <NavLink to="/" className="dock__item" aria-label="Kezdőlap">
         <HomeIcon />
       </NavLink>
@@ -154,69 +150,6 @@ export function Dock() {
         <PersonIcon />
       </NavLink>
     </nav>
-  );
-}
-
-/**
- * A dokk VALÓDI magassága, CSS-változóként.
- *
- * MIÉRT NEM ELÉG A `--dock-height` TOKEN? Mert rögzítés közben a dokk
- * `dock--controls` módba vált, ahol a magasság `auto` — a token ilyenkor nem
- * a tényleges méret. A szünet-panelnek viszont pontosan a dokk fölé kell
- * ülnie, és egy néhány pixeles tévedés vagy rést hagy, vagy átfedést csinál.
- *
- * A `ResizeObserver` a témaváltást, a safe-area változását és a
- * képernyőforgatást is lekezeli — mindegyik átméretezi a dokkot.
- */
-function useDockHeight() {
-  const ref = useRef<HTMLElement | null>(null);
-
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-
-    const publish = () => {
-      document.documentElement.style.setProperty(
-        '--dock-measured-height',
-        `${Math.round(node.getBoundingClientRect().height)}px`,
-      );
-    };
-
-    publish();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(publish);
-    observer.observe(node);
-    return () => observer.disconnect();
-  });
-
-  return ref;
-}
-
-/**
- * SZÜNET — sárga panel, ami a dokk MÖGÜL úszik fel.
- *
- * Korábban a képernyő közepén lüktetett egy „SZÜNET" doboz. Geri kérése
- * (2026-08-26): ne a tartalom közepét takarja el, hanem a vezérlők mellől
- * jelentse be magát, és ne pulzáljon — a szünet állapot, nem riasztás.
- *
- * ⚠️ MINDIG KI VAN RENDERELVE, csak eltolva. Így a kifelé tartó animáció is
- * lefut; ha a `paused` állapot leszedné a DOM-ból, a panel eltűnne ahelyett,
- * hogy lecsúszna. A `--dock-measured-height` teszi lehetővé, hogy a rejtett
- * állapotban pontosan a dokk mögé kerüljön, ne csak „nagyjából alá".
- *
- * ⚠️ `aria-hidden` REJTETT ÁLLAPOTBAN. A képernyőolvasó különben folyamatosan
- * bemondaná a szünet-szöveget rögzítés közben is, amikor nincs is szünet.
- */
-function PausePanel({ shown }: { shown: boolean }) {
-  return (
-    <div
-      className={`dock__pause${shown ? ' dock__pause--shown' : ''}`}
-      role="status"
-      aria-hidden={!shown}
-    >
-      <strong className="dock__pause-title">Szünet</strong>
-      <span className="dock__pause-hint">A mérés áll — a PLAY gombbal folytathatod.</span>
-    </div>
   );
 }
 
