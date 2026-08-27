@@ -191,6 +191,14 @@
   box-shadow: 0 0 28px color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
+/* Szünetben a Play (folytatás) gomb ugyanazt a sárgát kapja, mint a
+   szünet-panel — Geri kérése (2026-08-27), hogy a két jelzés összetartozzon. */
+.dock__play--paused {
+  background: #fdc700;
+  color: #222222;
+  box-shadow: 0 0 28px color-mix(in srgb, #fdc700 45%, transparent);
+}
+
 .dock__play-countdown {
   font-size: 26px;
   font-weight: 900;

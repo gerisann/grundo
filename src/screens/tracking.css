@@ -261,6 +261,20 @@
  * átfedést: ez alatt a sáv alatt a sárga a StatsPanel lekerekített alsó
  * sarkai MÖGÖTT van, tehát azoknál sem látszik át semmi. A `padding-top`
  * ezt a sávot pótolja, hogy a felirat ne az átfedés alá essen.
+ *
+ * ⚠️ NEM `translate`-tel rejtjük, hanem `max-height: 0` + `overflow: hidden`
+ * (Geri mérése, 2026-08-27). A panel SAJÁT MAGASSÁGA (~144 px, a nagy
+ * felirat miatt) nagyobb, mint a fölötte lévő StatsPanel — egy `translateY
+ * (-100%)` ezért a panel TETEJÉT a StatsPanel FÖLÉ tolta volna ki (látszó
+ * sárga csík a lekerekített felső sarkoknál).
+ *
+ * ⚠️ A PADDING IS 0 CSUKOTT ÁLLAPOTBAN — MÁSODIK MÉRÉS (Geri, 2026-08-27).
+ * `border-box` mellett is: a `max-height: 0` a TARTALOM magasságát nullázza,
+ * a padding-et NEM tudja összenyomni — padding-top+padding-bottom (itt
+ * 36+32=68 px) mindig megjelenik, akárhogy szorítja a `max-height` a
+ * tartalmat. Ha a padding is fix marad, marad egy 68 px-es sárga csík a
+ * StatsPanel alatt. Ezért a padding is `0`-ra megy csukva, és EGYÜTT
+ * animál a `max-height`-tal.
  */
 .track__pause {
   position: absolute;
@@ -269,23 +283,29 @@
   top: 100%;
   margin-top: -20px;
   z-index: 0;
+  overflow: hidden;
 
   display: grid;
   gap: var(--sp-2);
-  padding: calc(var(--sp-4) + 20px) var(--sp-4) var(--sp-6);
+  padding: 0 var(--sp-4);
+  max-height: 0;
   border-radius: 0 0 var(--r-lg) var(--r-lg);
   background: #fdc700;
   color: #222222;
   text-align: center;
 
-  /* Rejtve: felfelé, a saját magasságával eltolva — a statisztika-panel
-     mögé csukódik, nem lejjebb a térképre. */
-  transform: translateY(-100%);
-  transition: transform 400ms cubic-bezier(.22, 1, .36, 1);
+  transition:
+    max-height 400ms cubic-bezier(.22, 1, .36, 1),
+    padding-top 400ms cubic-bezier(.22, 1, .36, 1),
+    padding-bottom 400ms cubic-bezier(.22, 1, .36, 1);
 }
 
 .track__pause--shown {
-  transform: translateY(0);
+  /* Bőven a tényleges tartalom fölött (~144 px) — a `max-height` csak a
+     FELSŐ KORLÁT, a doboz sosem nő ekkorára, csak eddig ENGEDETT nőni. */
+  max-height: 240px;
+  padding-top: calc(var(--sp-4) + 20px);
+  padding-bottom: var(--sp-6);
 }
 
 .track__pause-title {

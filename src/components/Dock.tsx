@@ -170,7 +170,7 @@ export function Dock() {
           idle && !pickerOpen && countdown === null ? ' dock__play--idle' : ''
         }${active ? ' dock__play--large' : ''}${picking ? ' dock__play--picking' : ''}${
           armed ? ' dock__play--armed' : ''
-        }`}
+        }${paused ? ' dock__play--paused' : ''}`}
         onClick={primaryAction}
         disabled={picking}
         aria-label={primaryLabel}
