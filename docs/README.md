@@ -17,6 +17,7 @@ Ez a mappa a GRUNDO funkcionális és technikai gerince. A `../*.jpg` (49 db) re
 | 05 | [Adatmodell](05-adatmodell.md) | Firestore/PostGIS séma, kollekciók, indexek, biztonsági szabályok |
 | 06 | [Architektúra és admin](06-architektura-es-admin.md) | Szolgáltatások, jobok, admin felület, analitika, üzemeltetés, ütemterv |
 | 07 | [iOS és TestFlight](07-ios-testflight-codemagic.md) | Capacitor/WKWebView döntések, Codemagic pipeline és az első belső TestFlight build kézi lépései |
+| 08 | [Android és Codemagic](08-android-codemagic.md) | Natív foreground GPS, Firebase Android, upload-key signing, APK/AAB pipeline és az első készülékes build lépései |
 
 ## A GRUNDO egy mondatban
 

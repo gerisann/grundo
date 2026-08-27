@@ -18,7 +18,7 @@ import { decodePolyline } from '@/game/polyline';
 import { IncrementalActivityGeometry, processActivityGeometry } from '@/game';
 import { api, apiConfigured, type Mission, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
-import { isNativeApp } from '@/lib/platform';
+import { isNativeIos } from '@/lib/platform';
 import {
   currentSpeedMps,
   lapDistances,
@@ -586,7 +586,7 @@ export function TrackingScreen() {
             </button>
             Tartsd bekapcsolva a képernyőt. Böngészőben a rögzítés megáll, ha a telefon
             lezáródik vagy másik appra váltasz.
-            {isNativeApp()
+            {isNativeIos()
               ? ' A lezárt képernyős méréshez a rendszer helyengedélyénél az „Mindig” opciót is engedélyezd.'
               : ''}
             {recorder.wakeLockActive

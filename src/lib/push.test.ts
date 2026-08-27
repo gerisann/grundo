@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const platform = vi.hoisted(() => ({ native: false, ios: false }));
+const platform = vi.hoisted(() => ({ native: false, ios: false, android: false }));
 const messaging = vi.hoisted(() => ({
   isSupported: vi.fn(async () => ({ isSupported: true })),
   checkPermissions: vi.fn(async () => ({ receive: 'prompt' })),
@@ -27,6 +27,7 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('./platform', () => ({
   isNativeApp: () => platform.native,
   isNativeIos: () => platform.ios,
+  isNativeAndroid: () => platform.android,
 }));
 
 vi.mock('@capacitor-firebase/messaging', () => ({
@@ -47,6 +48,7 @@ beforeEach(() => {
   values.clear();
   platform.native = false;
   platform.ios = false;
+  platform.android = false;
   vi.clearAllMocks();
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -96,5 +98,19 @@ describe('push eszközkapcsoló', () => {
     expect(messaging.deleteToken).toHaveBeenCalledOnce();
     expect(values.has('grundo.pushEnabled')).toBe(false);
     await expect(readPushPermission()).resolves.toBe('default');
+  });
+
+  it('natív Androidon android platformjelöléssel menti az FCM tokent', async () => {
+    platform.native = true;
+    platform.android = true;
+    messaging.checkPermissions.mockResolvedValue({ receive: 'granted' });
+
+    await expect(requestPermissionAndSubscribe('geri')).resolves.toEqual({ ok: true });
+    expect(firestore.setDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ platform: 'android' }),
+      { merge: true },
+    );
+    await expect(readPushPermission()).resolves.toBe('granted');
   });
 });

@@ -1,11 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
+  linkWithCredential,
   linkWithPopup,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithCustomToken,
+  signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as fbSignOut,
@@ -15,7 +18,7 @@ import {
 import { auth, firebaseConfigured, requireAuth } from '@/lib/firebase';
 // `backend` néven, mert az AuthProvider saját visszatérési objektuma is `api`.
 import { api as backend, apiConfigured } from '@/lib/api';
-import { isNativeApp } from '@/lib/platform';
+import { isNativeAndroid, isNativeApp } from '@/lib/platform';
 
 export type AuthStatus = 'loading' | 'signed-in' | 'signed-out' | 'unconfigured';
 
@@ -68,6 +71,30 @@ class AuthTimeoutError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AuthTimeoutError';
+  }
+}
+
+async function nativeGoogleCredential() {
+  try {
+    const result = await FirebaseAuthentication.signInWithGoogle({
+      // A natív SDK a rendszer fiókválasztóját adja, de a tartós auth-állapot
+      // továbbra is a GRUNDO meglévő Firebase JS rétegében marad.
+      skipNativeAuth: true,
+      useCredentialManager: true,
+    });
+    const idToken = result.credential?.idToken;
+    if (!idToken) {
+      throw new Error('A Google-belépés nem adott azonosító tokent. Próbáld újra.');
+    }
+    return GoogleAuthProvider.credential(idToken);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/cancel/i.test(message)) {
+      const cancelled = new Error('A bejelentkezést megszakítottad.');
+      Object.assign(cancelled, { code: 'auth/popup-closed-by-user' });
+      throw cancelled;
+    }
+    throw error;
   }
 }
 
@@ -251,9 +278,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signInWithGoogle() {
+        if (isNativeAndroid()) {
+          const credential = await nativeGoogleCredential();
+          await signInWithCredential(requireAuth(), credential);
+          return;
+        }
         if (isNativeApp()) {
           throw new Error(
-            'A Google-belépés a TestFlight első verziójában még nem érhető el. ' +
+            'A Google-belépés az iOS alkalmazás első verziójában még nem érhető el. ' +
               'Lépj be e-mail-címmel és jelszóval.',
           );
         }
@@ -265,9 +297,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async linkGoogle() {
         const instance = requireAuth();
         if (!instance.currentUser) throw new Error('Nincs bejelentkezett felhasználó.');
+        if (isNativeAndroid()) {
+          const credential = await nativeGoogleCredential();
+          await linkWithCredential(instance.currentUser, credential);
+          return;
+        }
         if (isNativeApp()) {
           throw new Error(
-            'A Google-fiók összekapcsolása a TestFlight első verziójában még nem érhető el.',
+            'A Google-fiók összekapcsolása az iOS alkalmazás első verziójában még nem érhető el.',
           );
         }
         await linkWithPopup(instance.currentUser, new GoogleAuthProvider());

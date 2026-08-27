@@ -9,9 +9,9 @@ interface State {
 }
 
 /**
- * A natív WKWebViewben a konzol nehezen hozzáférhető. Egy induláskori React
+ * A natív WebViewban a konzol nehezen hozzáférhető. Egy induláskori React
  * kivétel ezért korábban csak üres/splash képernyőnek látszott. Ez a határ
- * a TestFlight-felhasználónak is megmutatja a hiba lényegét és újraindítást ad.
+ * az app felhasználójának is megmutatja a hiba lényegét és újraindítást ad.
  */
 export class AppErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -42,7 +42,7 @@ export class AppErrorBoundary extends Component<Props, State> {
         <section style={{ maxWidth: 420, display: 'grid', gap: 16, textAlign: 'center' }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>Nem sikerült elindítani a GRUNDO-t</h1>
           <p style={{ margin: 0, color: '#c9c2d2', lineHeight: 1.5 }}>
-            Indítási hiba történt. Kérjük, küldj visszajelzést a TestFlightból ezzel a szöveggel:
+            Indítási hiba történt. Kérjük, küldj visszajelzést ezzel a szöveggel:
           </p>
           <code
             style={{

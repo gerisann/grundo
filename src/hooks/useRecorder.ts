@@ -265,8 +265,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
 
       const strategy = restoreStrategy(saved, Date.now(), isNativeApp());
       if (strategy === 'automatic') {
-        // iOS-en a WebView újraindulhat, miközben a natív Core Location és a
-        // Live Activity tovább fut. Ez nem félbehagyott út: a mentett
+        // A natív WebView újraindulhat, miközben a natív helyszolgáltatás
+        // tovább fut. Ez nem félbehagyott út: a mentett
         // állapotot kérdés és mesterséges szünet nélkül visszavesszük, majd a
         // natív sorból azonnal beolvassuk a közben érkezett pontokat.
         stateRef.current = saved.state;
@@ -325,9 +325,19 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       setLivePosition(null);
       const started = apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
       await acquireWakeLock();
-      await attach(type ?? pendingType, started);
+      try {
+        await attach(type ?? pendingType, started);
+      } catch {
+        // Engedélymegtagadás vagy natív szolgáltatáshiba után nem maradhat
+        // látszólag futó, valójában pontot nem gyűjtő aktivitás.
+        await Promise.resolve(positionSource.stop()).catch(() => undefined);
+        await releaseWakeLock();
+        await persister.clear();
+        stateRef.current = createRecorder(type ?? pendingType);
+        setState(stateRef.current);
+      }
     },
-    [acquireWakeLock, apply, attach, pendingType],
+    [acquireWakeLock, apply, attach, pendingType, persister, positionSource, releaseWakeLock],
   );
 
   const pause = useCallback(() => {

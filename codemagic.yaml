@@ -82,3 +82,85 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
+
+  android-release:
+    name: GRUNDO Android Release
+    # Az Individual free csomagban elérhető; Android Gradle buildhöz is megfelel.
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      groups:
+        # Platformfüggetlen VITE_* klienskonfiguráció; Apple signing nincs benne.
+        - grundo_ios
+        - grundo_android
+      android_signing:
+        - grundo_android_upload
+      vars:
+        ANDROID_APPLICATION_ID: app.grundo.android
+      node: 22.14.0
+      java: 21
+
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+        - $HOME/.npm
+
+    scripts:
+      - name: JavaScript-függőségek telepítése
+        script: |
+          npm ci
+          npm ci --prefix server
+
+      - name: Unit tesztek
+        script: npm run test
+
+      - name: Firebase Android konfiguráció létrehozása
+        script: |
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          node -e 'const fs=require("fs"); fs.writeFileSync("android/app/google-services.json", Buffer.from(process.env.GOOGLE_SERVICES_JSON_BASE64, "base64"));'
+          node -e "const f=require('./android/app/google-services.json'); const client=f.client.find(c=>c.client_info?.android_client_info?.package_name===process.env.ANDROID_APPLICATION_ID); if(!client) throw new Error('A google-services.json nem a '+process.env.ANDROID_APPLICATION_ID+' Android apphoz tartozik.'); const oauth=client.oauth_client??[]; if(!oauth.some(c=>c.client_type===1&&c.android_info?.package_name===process.env.ANDROID_APPLICATION_ID)||!oauth.some(c=>c.client_type===3)) throw new Error('A google-services.json nem tartalmazza a natív Google-belépés Android és web OAuth klienseit.');"
+
+      - name: Vite production build
+        script: |
+          export VITE_BUILD_CHANNEL="Android build ${BUILD_NUMBER}"
+          export VITE_GIT_SHA="$(git rev-parse --short HEAD)"
+          npm run build
+
+      - name: Capacitor Android szinkron
+        script: npx cap sync android
+
+      - name: Android konfiguráció és signing ellenőrzése
+        script: |
+          test -f android/app/google-services.json
+          test -n "$CM_KEYSTORE_PATH"
+          test -n "$CM_KEYSTORE_PASSWORD"
+          test -n "$CM_KEY_ALIAS"
+          test -n "$CM_KEY_PASSWORD"
+          grep -q "applicationId \"$ANDROID_APPLICATION_ID\"" android/app/build.gradle
+          grep -q 'targetSdkVersion = 36' android/variables.gradle
+          grep -q 'FOREGROUND_SERVICE_LOCATION' android/app/src/main/AndroidManifest.xml
+          ! grep -q 'ACCESS_BACKGROUND_LOCATION' android/app/src/main/AndroidManifest.xml
+          ! grep -q 'ACTIVITY_RECOGNITION' android/app/src/main/AndroidManifest.xml
+
+      - name: Signed release APK és AAB készítése
+        script: |
+          cd android
+          ./gradlew clean :app:lintRelease :app:assembleRelease :app:bundleRelease --stacktrace
+
+      - name: Android artifactek ellenőrzése
+        script: |
+          test -f android/app/build/outputs/apk/release/app-release.apk
+          test -f android/app/build/outputs/bundle/release/app-release.aab
+          APKSIGNER="$(node -e 'const fs=require("fs"),p=require("path"),root=p.join(process.env.ANDROID_HOME,"build-tools"); const versions=fs.readdirSync(root).filter(v=>fs.existsSync(p.join(root,v,"apksigner"))).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})); if(!versions.length) process.exit(1); process.stdout.write(p.join(root,versions[versions.length-1],"apksigner"));')"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose android/app/build/outputs/apk/release/app-release.apk
+          AAB_VERIFY="$(jarsigner -verify -verbose -certs android/app/build/outputs/bundle/release/app-release.aab)"
+          printf '%s\n' "$AAB_VERIFY"
+          printf '%s\n' "$AAB_VERIFY" | grep -q 'jar verified.'
+
+    artifacts:
+      - android/app/build/outputs/apk/release/app-release.apk
+      - android/app/build/outputs/bundle/release/app-release.aab
+      - android/app/build/reports/**

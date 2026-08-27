@@ -1,11 +1,11 @@
 /**
  * Pozíció a GRUNDO saját, Capacitoron át elérhető natív helyforrásából.
  *
- * Az iOS WKWebView `navigator.geolocation` API-ja a webes eredetet
- * ("localhost") nevezi meg az engedélykérésben. A plugin ezzel szemben a
- * tényleges GRUNDO alkalmazás natív jogosultságát kéri, és nem függ a
- * WKWebView böngészős helytárolásától. A Swift réteg a lezárt képernyő alatt
- * is sorba teszi a pontokat, amelyeket az ébredő JavaScript átvesz.
+ * A Capacitor WebView `navigator.geolocation` API-ja nem alkalmas megbízható
+ * háttérmérésre. A plugin ezzel szemben a tényleges GRUNDO alkalmazás natív
+ * jogosultságát kéri. iOS-en Core Location, Androidon egy location típusú
+ * foreground service teszi tartós sorba a pontokat, amelyeket az ébredő
+ * JavaScript átvesz.
  */
 
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
@@ -67,9 +67,9 @@ export class NativePositionSource implements PositionSource {
     activityType: ActivityType = 'run',
     activityState?: PositionActivityState,
   ): Promise<void> {
-    // Egy új WebView ugyanahhoz a már futó natív Core Location méréshez
+    // Egy új WebView ugyanahhoz a már futó natív helyméréshez
     // kapcsolódik vissza. Itt TILOS a natív szolgáltatást leállítani: az
-    // rövid iOS WebView-újraindulás különben valódi GPS-lyukat okozna.
+    // átmeneti WebView-újraindulás különben valódi GPS-lyukat okozna.
     await this.detach();
     this.handlers = handlers;
     this.locationListener = await BackgroundLocation.addListener('location', (location) => {
@@ -136,13 +136,23 @@ function toTrackingError(error: unknown): TrackingError {
   const code = typeof error === 'object' && error !== null && 'code' in error
     ? String(error.code)
     : '';
-  const message = error instanceof Error ? error.message : '';
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String(error.message)
+      : '';
 
   if (code === 'permission_denied' || message.includes('helyhozzáférés')) {
     return new TrackingError(
       'permission_denied',
-      'Nincs helyhozzáférés. Engedélyezd a GRUNDO számára a készülék beállításaiban.',
+      message || 'Nincs helyhozzáférés. Engedélyezd a GRUNDO számára a készülék beállításaiban.',
     );
   }
-  return new TrackingError('unavailable', 'A helymeghatározás nem sikerült.');
+  if (code === 'location_disabled') {
+    return new TrackingError(
+      'unavailable',
+      message || 'A helymeghatározás ki van kapcsolva a készüléken.',
+    );
+  }
+  return new TrackingError('unavailable', message || 'A helymeghatározás nem sikerült.');
 }
