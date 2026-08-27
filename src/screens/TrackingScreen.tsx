@@ -641,6 +641,7 @@ export function TrackingScreen() {
                 <StatsPanel
                   view={statsView}
                   onViewChange={setStatsView}
+                  paused={paused}
                   distanceM={displayDistanceM}
                   elapsed={elapsed}
                   pace={pace}
@@ -657,7 +658,9 @@ export function TrackingScreen() {
               </div>
             ) : null}
 
-            {remoteState === null && state.laps.length > 1 ? <LapList state={state} /> : null}
+            {remoteState === null && state.laps.length > 1 ? (
+              <LapList state={state} paused={paused} />
+            ) : null}
 
             {done && !countsAsActivity ? (
               <div className="track__note track__note--warn">
@@ -855,7 +858,7 @@ function relativeSyncTime(updatedAt: number, now: number): string {
  * hogy állok", nem az, hogy mi volt a negyedik körben. A teljes lista egy
  * koppintással előhozható.
  */
-function LapList({ state }: { state: RecorderState }) {
+function LapList({ state, paused }: { state: RecorderState; paused: boolean }) {
   const [expanded, setExpanded] = useState(false);
   /**
    * A kör-lista TELJESEN elrejthető.
@@ -868,6 +871,27 @@ function LapList({ state }: { state: RecorderState }) {
    * következő futásra ne kösse meg a kezét.
    */
   const [collapsed, setCollapsed] = useState(false);
+
+  /**
+   * SZÜNETBEN AUTOMATIKUSAN ÖSSZECSUKVA — Geri kérése (2026-08-27): nyitva
+   * a körök panelje a szünet-jelzés (`.track__pause`) MÖGÉ töltött be,
+   * eltakarva azt. Felold folytatáskor: PONTOSAN oda áll vissza, ahol
+   * szünet előtt volt (ha a felhasználó már összecsukta, nyitva marad
+   * összecsukva, nem nyílik ki magától).
+   */
+  const beforePause = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (paused) {
+      setCollapsed((current) => {
+        beforePause.current = current;
+        return true;
+      });
+    } else if (beforePause.current !== null) {
+      const restore = beforePause.current;
+      beforePause.current = null;
+      setCollapsed(restore);
+    }
+  }, [paused]);
   const distances = lapDistances(state);
 
   // Fordított sorrend: a legfrissebb kör legyen elöl.
@@ -962,6 +986,7 @@ type StatsView = 'compact' | 'expanded' | 'full';
 function StatsPanel({
   view,
   onViewChange,
+  paused,
   distanceM,
   elapsed,
   pace,
@@ -973,6 +998,10 @@ function StatsPanel({
 }: {
   view: StatsView;
   onViewChange: (view: StatsView) => void;
+  /** Csak a TELJES nézetben számít — ott nincs hely a dokk-fölötti sárga
+      panelnek (lásd `PausePanel`), tehát maga ez a panel vált sárgára, és
+      egy kis sáv úszik be fentről. Lásd lent, `.track__full-pause`. */
+  paused: boolean;
   distanceM: number;
   elapsed: number;
   pace: number | null;
@@ -1033,29 +1062,54 @@ function StatsPanel({
 
   /**
    * A CSÍK KÜLÖN GOMB, nem a törzsé — HTML nem enged gombot gombba ágyazni.
-   * Geri kérése (2026-08-27): a csíkra koppintva LÉPTET (compact→expanded→
-   * full→expanded→...), a törzsre koppintva pedig KI/BE kapcsol (compact⇄
-   * expanded), mint eddig — a két gomb két KÜLÖNBÖZŐ dolgot csinál, ezért
-   * nem lehet ugyanaz az elem.
+   * Geri kérése (2026-08-27, pontosítva): a csíkra koppintva egy RÖGZÍTETT,
+   * körkörös sorrendben lép — compact→expanded→full→compact→... —, tehát
+   * teljes nézetből EGYENESEN kompaktra ugrik, nem áll meg útközben
+   * expanded-en. A törzsre koppintva továbbra is KI/BE kapcsol (compact⇄
+   * expanded, teljesből pedig expanded-re lép vissza) — ez egy MÁSIK,
+   * finomabb gesztus, szándékosan eltér a csíktól.
    */
   function stepGrip() {
     if (view === 'compact') return onViewChange('expanded');
     if (view === 'expanded') return onViewChange('full');
-    return onViewChange('expanded'); // full → expanded
+    return onViewChange('compact'); // full → compact, egyenesen
   }
 
   function toggleBody() {
     if (view === 'compact') return onViewChange('expanded');
     if (view === 'expanded') return onViewChange('compact');
-    return onViewChange('expanded'); // full → expanded (a törzsre koppintva is ki lehet lépni)
+    return onViewChange('expanded'); // full → expanded (a törzsre koppintva finomabban lép ki)
   }
+
+  /** A csík nyilának iránya — Geri kérése (2026-08-27): mutassa, MERRE
+      lép a következő koppintás, ne csak egy semleges vonal legyen. */
+  const gripDirection: 'down' | 'up' = view === 'full' ? 'up' : 'down';
 
   return (
     <div
       className={`track__panel${expanded ? ' track__panel--open' : ''}${
         full ? ' track__panel--full' : ''
-      }`}
+      }${full && paused ? ' track__panel--paused' : ''}`}
     >
+      {/*
+        TELJES NÉZETBEN NINCS HELYE a dokk-fölötti sárga panelnek (az ott
+        marad compact/expanded módban, változatlanul) — Geri kérése
+        (2026-08-27): itt maga a képernyő váltson sárgára, és egy kis sáv
+        ússzon be FENTRŐL, ne a felső panelből nőjön ki, hiszen ez MAGA a
+        panel. MINDIG KI VAN RENDERELVE (csak eltolva), hogy a ki- és
+        becsukódás is animált legyen, ugyanaz a technika, mint a
+        `.track__pause`-nál.
+      */}
+      {full ? (
+        <div
+          className={`track__full-pause${paused ? ' track__full-pause--shown' : ''}`}
+          aria-hidden={!paused}
+        >
+          <strong className="track__full-pause-title">Szünet</strong>
+          <span className="track__full-pause-hint">A mérés áll — a PLAY gombbal folytathatod.</span>
+        </div>
+      ) : null}
+
       <button
         type="button"
         className="track__panel-tap"
@@ -1107,7 +1161,7 @@ function StatsPanel({
               : 'Kilépés a teljes képernyős nézetből'
         }
       >
-        <span className="track__panel-grip-bar" aria-hidden="true" />
+        <GripArrowIcon direction={gripDirection} />
       </button>
     </div>
   );
@@ -1168,6 +1222,32 @@ function MinimizeIcon() {
       aria-hidden="true"
     >
       <path d="M6 16.5h12" />
+    </svg>
+  );
+}
+
+/**
+ * A csík nyila — nyújtott, vastag, lekerekített chevron (Geri kérése,
+ * 2026-08-27, konkrét referenciaképpel). A `direction` a `stepGrip()`
+ * KÖVETKEZŐ lépését mutatja, nem a jelenlegi állapotot.
+ */
+function GripArrowIcon({ direction }: { direction: 'down' | 'up' }) {
+  return (
+    <svg
+      width="28"
+      height="14"
+      viewBox="0 0 28 14"
+      fill="none"
+      aria-hidden="true"
+      style={direction === 'up' ? { transform: 'rotate(180deg)' } : undefined}
+    >
+      <path
+        d="M3 2.5 14 11.5 25 2.5"
+        stroke="currentColor"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

@@ -219,6 +219,80 @@
   flex-direction: column;
   padding: calc(var(--safe-top) + var(--sp-4)) var(--sp-4)
     calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-4));
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+/*
+  SZÜNETBEN A TELJES KÉPERNYŐ SÁRGÁRA VÁLT — Geri kérése (2026-08-27): ebben
+  a nézetben nincs hely a dokk-fölötti sárga panelnek (`.track__pause`, ami
+  a compact/expanded módban ott marad, változatlanul), ezért maga a panel
+  veszi fel a szünet-színt. A számok sötét szövegre váltanak, hogy a sárgán
+  is olvashatók maradjanak.
+*/
+.track__panel--paused {
+  background: #fdc700;
+}
+
+.track__panel--paused .track__primary-value,
+.track__panel--paused .track__stat-value,
+.track__panel--paused .track__distance {
+  color: #222222;
+}
+
+.track__panel--paused .track__primary-label,
+.track__panel--paused .track__stat-label {
+  color: rgb(34 34 34 / 0.7);
+}
+
+.track__panel--paused .track__stat-icon {
+  color: #222222;
+}
+
+/*
+  A SZÜNET-SÁV FENTRŐL ÚSZIK BE — Geri kérése (2026-08-27), a compact/
+  expanded nézet `.track__pause`-ának (dokk-fölötti panel) megfelelője
+  ebben a nézetben, csak a képernyő TETEJÉRŐL, mert maga a háttér is sárga.
+  MINDIG KI VAN RENDERELVE (csak eltolva), hogy a be- és kicsukódás is
+  animált legyen — ugyanaz a technika, mint a `.track__pause`-nál.
+*/
+.track__full-pause {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: calc(var(--safe-top) + var(--sp-4)) var(--sp-4) var(--sp-3);
+  text-align: center;
+  color: #222222;
+  transform: translateY(-100%);
+  transition: transform 400ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.track__full-pause--shown {
+  transform: translateY(0);
+}
+
+.track__full-pause-title {
+  display: block;
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.track__full-pause-hint {
+  display: block;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  opacity: 0.78;
+  margin-top: var(--sp-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track__full-pause {
+    transition: none;
+  }
 }
 
 /* Első sor: két egyenrangú, nagy szám — sebesség és megtett táv. */
@@ -304,9 +378,10 @@
 }
 
 /*
-  A CSÍK — MOSTANTÓL SAJÁT GOMB (2026-08-27), nem díszítő `span`: koppintásra
-  LÉPTET (compact→expanded→full→expanded→...). Lila, hogy jobban látsszon —
-  eddig szürke volt, alig vették észre, hogy ez a nyitó/csukó vezérlő.
+  A CSÍK — MOSTANTÓL SAJÁT GOMB (2026-08-27), nem díszítő elem: koppintásra
+  LÉPTET (compact→expanded→full→compact→...). Nyújtott, lila nyíllal
+  (`GripArrowIcon`), ami MUTATJA, merre lép a következő koppintás — eddig
+  egy semleges szürke vonal volt, sem a szín, sem az irány nem látszott.
 */
 .track__panel-grip {
   display: flex;
@@ -315,13 +390,22 @@
   width: 100%;
   min-height: 28px;
   flex: none;
+  color: var(--accent);
 }
 
-.track__panel-grip-bar {
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--accent);
+.track__panel-grip svg {
+  transition: transform 200ms ease;
+}
+
+/* Sárga alapon (teljesképernyős szünet) a szokásos lila nyíl alig látszana
+   — sötét, majdnem fekete lesz, hoverre sötétlilára vált. */
+.track__panel--paused .track__panel-grip {
+  color: #1a1623;
+  transition: color 150ms ease;
+}
+
+.track__panel--paused .track__panel-grip:hover {
+  color: var(--brand-800);
 }
 
 /* ── Szünet: sárga panel, ami a felső statisztika-panelből nő ki ─────────
@@ -356,6 +440,16 @@
   right: 0;
   top: 100%;
   margin-top: -20px;
+  /*
+    ⚠️ 0-N MARADT, NEM EMELVE (Geri javítása, 2026-08-27): egy korábbi
+    kísérlet 10-re emelte, hogy a körök listája se takarhassa — de ez a
+    StatsPanel (`z-index: 1`) ELÉ tolta a szünet-panelt, és elrontotta a
+    20 px-es átfedést (a panel lekerekített sarkai mögött MÖGÖTTE kell
+    lennie, nem előtte). A körök-lista ütközését a `LapList` szünetkori
+    automatikus összecsukása oldja meg (lásd ott) — a statikus (nem
+    pozicionált) körök-lista amúgy is a pozicionált elemek MÖGÉ esik a
+    normál CSS-rétegződésben, tehát a `z-index: 0` már eleve elég volt.
+  */
   z-index: 0;
   overflow: hidden;
 

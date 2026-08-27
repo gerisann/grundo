@@ -37,6 +37,20 @@
   box-shadow: none;
 }
 
+/* Szünetben a teljes nézet sárgára vált (`tracking.css` →
+   `.track__panel--paused`) — a dokknak követnie kell, hogy a beolvadás
+   megmaradjon. */
+.dock--blend.dock--paused {
+  background: #fdc700;
+}
+
+/* Sárga alapon a szokásos zöld „Új kör" felirat alig látszik, ÉS szünetben
+   ez a gomb amúgy is inaktív (`disabled`, lásd `Dock.tsx`) — a sötétszürke
+   mindkettőt jelzi: gyengén olvasható zöld helyett egyértelműen inaktív. */
+.dock--paused .dock__side--left {
+  color: #4b5563;
+}
+
 .dock__item {
   display: grid;
   place-items: center;
@@ -259,6 +273,24 @@
   background: #fdc700;
   color: #222222;
   box-shadow: none;
+}
+
+/*
+  A TELJESKÉPERNYŐS SZÜNET-NÉZETBEN MÁS a Play gomb — Geri kérése
+  (2026-08-27): itt a HÁTTÉR már úgyis sárga (`.track__panel--paused`), a
+  szokásos sárga gomb rajta beleveszne. Sötét (majdnem fekete) alap, piros
+  ikon; hoverre megfordul (piros alap, fehér ikon) — ugyanaz a piros, mint
+  a „Befejezés" felirat, hogy a két figyelmeztető szín összetartozzon.
+*/
+.dock--paused .dock__play--paused {
+  background: #1a1623;
+  color: var(--danger);
+  box-shadow: none;
+}
+
+.dock--paused .dock__play--paused:hover {
+  background: var(--danger);
+  color: #fff;
 }
 
 .dock__play-countdown {

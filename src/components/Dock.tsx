@@ -217,8 +217,14 @@ export function Dock() {
     A statisztika-panel teljes nézetében a dokk „beleolvad" a panelbe —
     Geri kérése (2026-08-27): azonos háttér, se keret, se árnyék, se blur,
     hogy a kettő egy felületnek hasson. Lásd `Dock.css` → `.dock--blend`.
+
+    Szünetben a teljes nézet MAGA VÁLT SÁRGÁRA (`.track__panel--paused`,
+    tracking.css) — a dokknak KÖVETNIE kell, különben a beolvadás pont
+    akkor törne meg, amikor a felhasználó megáll.
   */
-  const dockClassName = `dock${statsFullView ? ' dock--blend' : ''}`;
+  const dockClassName = `dock${statsFullView ? ' dock--blend' : ''}${
+    statsFullView && paused ? ' dock--paused' : ''
+  }`;
 
   if (active) {
     return (
