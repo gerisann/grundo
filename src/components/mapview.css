@@ -108,9 +108,16 @@
   recenter` fenti megjegyzését a cseréről) — pontosan egy vonalban a bal
   oldali hexagon-gombbal, AZONOS `bottom`-képlettel.
 
-  Mindig lila (`--accent`) — Geri kérése (2026-08-27): korábban csak
-  bekapcsolt (3D) állapotban volt kiemelve, most a hexagon-gombbal
+  Mindig lila alapon (`--accent`) — Geri kérése (2026-08-27): korábban
+  csak bekapcsolt (3D) állapotban volt kiemelve, most a hexagon-gombbal
   egységesen mindig aktív-színű, hogy a kettő egy csoportnak látsszon.
+  3D nézetben MAGENTA (Geri, 2026-08-27 — második kérés): a szín maga
+  mondja, hogy most a döntött nézet aktív.
+
+  ⚠️ A SZÍN FIX FEHÉR, NEM `--accent-on` — az sötét témában szinte fekete
+  (lila hátterekre van hangolva, nem erre a lila/magenta GOMBRA), a felirat
+  olvashatatlan volt rajta (ugyanaz a csapda, mint a Play gomb visszaszám-
+  lálójánál, lásd `Dock.css`).
 */
 .mapview__tilt {
   position: absolute;
@@ -126,17 +133,27 @@
   background: var(--accent);
   border: 1px solid var(--accent);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
-  color: var(--accent-on);
+  color: #fff;
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.02em;
   z-index: 2;
 }
 
-/* Hexagonréteg — a BAL alsó sarokban, ugyanabban a sorban, mint a jobb
-   oldali 2D/3D váltó (azonos `bottom`-képlet — Geri kérése, 2026-08-27,
-   korábban a kettő nem volt egy vonalban). Mindig lila, mint a 2D/3D
-   gomb — a kettő egy csoportnak hasson. */
+.mapview__tilt--on {
+  background: #d946ef;
+  border-color: #d946ef;
+}
+
+/*
+  Hexagonréteg — a BAL alsó sarokban, ugyanabban a sorban, mint a jobb
+  oldali 2D/3D váltó (azonos `bottom`-képlet — Geri kérése, 2026-08-27,
+  korábban a kettő nem volt egy vonalban).
+
+  ⚠️ KI/BE ELTÉRŐ ÁRNYALAT (Geri, 2026-08-27 — második kérés): kikapcsolva
+  sötétebb lila (`--brand-800`), bekapcsolva a szokásos élénk `--accent` —
+  így a gomb ÁLLAPOTA is látszik, nem csak a helye.
+*/
 .mapview__hex-toggle {
   position: absolute;
   left: var(--sp-4);
@@ -148,9 +165,14 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--accent);
-  border: 1px solid var(--accent);
+  background: var(--brand-800);
+  border: 1px solid var(--brand-800);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
-  color: var(--accent-on);
+  color: #fff;
   z-index: 2;
+}
+
+.mapview__hex-toggle[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
 }
