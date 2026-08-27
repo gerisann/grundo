@@ -25,15 +25,53 @@ export function Dock() {
   const navigate = useNavigate();
   const location = useLocation();
   const trackingEnvironment = useTrackingEnvironment();
-  const { state, upload, begin, pause, resume, markLap, finish, discard } = useRecorderContext();
+  const {
+    state,
+    upload,
+    begin,
+    pause,
+    resume,
+    markLap,
+    finish,
+    discard,
+    pendingType,
+    setPendingType,
+    pickerOpen,
+    setPickerOpen,
+  } = useRecorderContext();
 
   // LAB E2E-ben ugyanaz a Dock vezérli ugyanazt a recordert, csak az oldal
   // admin útvonalon él. Ilyenkor nem navigálunk el `/rogzites`-re a Play előtt.
   const onTrackingScreen = location.pathname === '/rogzites' || trackingEnvironment.mode === 'lab';
+  const idle = state.status === 'idle';
   const running = state.status === 'recording';
   const paused = state.status === 'paused';
   const done = state.status === 'finished';
   const active = running || paused;
+
+  /**
+   * INDÍTÁS ELŐTT: 3-2-1 VISSZASZÁMLÁLÁS A GOMBON, MAJD „RAJT!" A KÖZÉPEN.
+   *
+   * Geri kérése (2026-08-27): a Play gomb második megnyomása nem indítja
+   * AZONNAL a mérést — előbb egy 3 másodperces visszaszámlálás fut a gombon
+   * magán, utána jelenik meg a „RAJT!" felirat, és CSAK EZUTÁN hívódik a
+   * valódi `begin()`. Így a rögzítés kezdő időbélyege pontosan a „RAJT!"
+   * pillanatára esik, nem a gombnyomásra.
+   */
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [showRajt, setShowRajt] = useState(false);
+
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      setCountdown(null);
+      if (pendingType) void begin(pendingType);
+      setShowRajt(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setCountdown((current) => (current ?? 1) - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown, pendingType, begin]);
 
   /**
    * FUTÓ MÉRÉS KÖZBEN A RÖGZÍTÉS KÉPERNYŐJE RAGADÓS.
@@ -80,8 +118,25 @@ export function Dock() {
       return void discard();
     }
     if (!onTrackingScreen) return navigate('/rogzites');
-    return void begin();
+    // Visszaszámlálás közben a gomb inert — nincs mit kezdeni egy újabb
+    // koppintással, amíg a „RAJT!" felé tartunk.
+    if (countdown !== null) return;
+    if (!pickerOpen) {
+      // Első koppintás: nyitja a választót, és MINDIG üresen — Geri kérése
+      // (2026-08-27), hogy sose emlékezzen az előző mozgásformára.
+      setPendingType(null);
+      setPickerOpen(true);
+      return;
+    }
+    if (!pendingType) return; // még nincs választva — a gomb ilyenkor `disabled`.
+    setPickerOpen(false);
+    setCountdown(3);
   }
+
+  /** A választóban NINCS kiválasztva semmi — a gomb inaktív, sárga, ↑. */
+  const picking = idle && pickerOpen && !pendingType;
+  /** Van választott mozgásforma, VAGY fut a visszaszámlálás — piros, kész. */
+  const armed = (idle && pickerOpen && !!pendingType) || countdown !== null;
 
   const showFinishedLabel = done && onTrackingScreen;
 
@@ -91,7 +146,11 @@ export function Dock() {
       ? 'Folytatás'
       : showFinishedLabel
         ? 'Új rögzítés'
-        : 'Aktivitás indítása';
+        : countdown !== null
+          ? `Indul: ${countdown}`
+          : picking
+            ? 'Válassz mozgásformát'
+            : 'Aktivitás indítása';
 
   const controls = (
     <div className="dock__center">
@@ -108,21 +167,47 @@ export function Dock() {
 
       <button
         className={`dock__play${showFinishedLabel ? ' dock__play--wide' : ''}${
-          state.status === 'idle' ? ' dock__play--idle' : ''
-        }${active ? ' dock__play--large' : ''}`}
+          idle && !pickerOpen && countdown === null ? ' dock__play--idle' : ''
+        }${active ? ' dock__play--large' : ''}${picking ? ' dock__play--picking' : ''}${
+          armed ? ' dock__play--armed' : ''
+        }`}
         onClick={primaryAction}
+        disabled={picking}
         aria-label={primaryLabel}
       >
-        {showFinishedLabel ? (
+        {countdown !== null ? (
+          <span className="dock__play-countdown">{countdown}</span>
+        ) : showFinishedLabel ? (
           <span className="dock__play-text">Új rögzítés</span>
         ) : running ? (
           <PauseIcon />
+        ) : picking ? (
+          <UpArrowIcon />
         ) : (
           <PlayIcon />
         )}
       </button>
 
       {active ? <FinishButton onFinish={() => void finish()} /> : null}
+
+      {/*
+        „RAJT!" — a visszaszámlálás VÉGÉN jelenik meg, ugyanazzal a portál-
+        technikával, mint a befejezés-visszajelzés: a `body`-ba megy, hogy a
+        `dock`/`dock__center` `overflow`-ja ne vágja le. Az `onAnimationEnd`
+        szedi le magát — nincs külön timer, ami elszaladhatna az animációtól.
+      */}
+      {showRajt
+        ? createPortal(
+            <div
+              className="rajt-overlay"
+              aria-hidden="true"
+              onAnimationEnd={() => setShowRajt(false)}
+            >
+              RAJT!
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 
@@ -323,5 +408,21 @@ const PersonIcon = () => (
 const PlayIcon = () => (
   <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
     <path d="M8 5.5v13l11-6.5z" />
+  </svg>
+);
+
+/** A mozgásforma-választó nyitott állapotát jelzi — „válassz felül". */
+const UpArrowIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 19V5M6 11l6-6 6 6" />
   </svg>
 );

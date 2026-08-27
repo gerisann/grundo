@@ -167,6 +167,98 @@
   filter: brightness(1.08);
 }
 
+/*
+ * ── Mozgásforma-választás a Play gombon ─────────────────────────────────
+ * Geri kérése (2026-08-27): a gomb két átmeneti állapotot kap indítás előtt.
+ *   sárga, ↑, inaktív   — nyitva a választó, de még nincs mozgásforma
+ *   piros, ▶, aktív     — van választás (vagy fut a visszaszámlálás)
+ * Utóbbi a 3-2-1 alatt is megmarad — a visszaszámláló szám ÍRJA FELÜL az
+ * ikont, a piros háttér jelzi, hogy „ez most éles".
+ */
+.dock__play--picking {
+  background: #fdc700;
+  color: #222222;
+  box-shadow: 0 0 0 0 transparent;
+  cursor: not-allowed;
+}
+
+.dock__play--picking:hover {
+  filter: none;
+}
+
+.dock__play--armed {
+  background: var(--danger);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.dock__play-countdown {
+  font-size: 26px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * ── „RAJT!" — a visszaszámlálás után, a képernyő közepén ────────────────
+ * Három szakasz EGY animációban, kulcskockákkal (nem `transition`, mert a
+ * belépő/kilépő szakasz eltérő görbét kíván, és köztük egy teljesen
+ * MOZDULATLAN, átlátszatlan szakasz kell — ezt csak explicit kulcskockákkal
+ * lehet garantálni). 1800 ms teljes hossz: ~500 ms zoom-in-nel felpattan,
+ * 1000 ms fixen áll, ~300 ms alatt elhalványul.
+ */
+.rajt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-size: min(18vw, 96px);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: 0 4px 24px rgb(0 0 0 / .55);
+  animation: rajt-pop 1800ms ease-out forwards;
+}
+
+@keyframes rajt-pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  22% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  28%,
+  83% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rajt-overlay {
+    animation: rajt-fade 1800ms linear forwards;
+  }
+}
+
+@keyframes rajt-fade {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .dock__play:active {
   transform: scale(0.94);
   filter: brightness(0.92);

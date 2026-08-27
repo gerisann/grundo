@@ -116,9 +116,25 @@ export interface RecorderApi {
    * választásnak el kell jutnia oda. Korábban a képernyő saját állapotában
    * volt, amit a dokk nem látott — ezért indult minden rögzítés futásként,
    * hiába választott a felhasználó bringát.
+   *
+   * `null`: MÉG NINCS VÁLASZTVA. Geri kérése (2026-08-27): a mozgásforma-
+   * választó minden indításnál üresen nyíljon, ne az előző választást
+   * mutassa — ezért ez SOSEM őrződik meg (sem lokálisan, sem munkameneten
+   * belül a következő nyitásra, lásd `Dock.tsx` `openPicker`).
    */
-  pendingType: ActivityType;
-  setPendingType: (type: ActivityType) => void;
+  pendingType: ActivityType | null;
+  setPendingType: (type: ActivityType | null) => void;
+
+  /**
+   * Nyitva van-e a mozgásforma-választó (a Dock indítógombja fölött).
+   *
+   * A DOKK nyitja/zárja (első koppintás nyit, a második — választás után —
+   * zár és indítja a visszaszámlálást), a TrackingScreen csak OLVASSA, hogy
+   * megjelenítse a választó modult. Ide, a rögzítőbe kerül, mert mindkét
+   * komponensnek látnia kell, és ez az egyetlen közös szülőjük.
+   */
+  pickerOpen: boolean;
+  setPickerOpen: (open: boolean) => void;
 
   begin: (type?: ActivityType) => Promise<void>;
   pause: () => void;
@@ -180,7 +196,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const [resumable, setResumable] = useState<RecorderState | null>(null);
   const [resumableNotice, setResumableNotice] = useState<string | null>(null);
   const resumableRun = useRef<PersistedRun | null>(null);
-  const [pendingType, setPendingType] = useState<ActivityType>('run');
+  const [pendingType, setPendingType] = useState<ActivityType | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
@@ -323,17 +340,21 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       setHasFix(false);
       // Az előző rögzítés utolsó pöttye nem kísérthet az újba.
       setLivePosition(null);
-      const started = apply(() => startRecorder(createRecorder(type ?? pendingType), Date.now()));
+      // A `?? 'run'` védelem: a gombot a Dock csak választott mozgásforma
+      // mellett engedi megnyomni, ez tehát a gyakorlatban sosem sül el —
+      // csak arra való, hogy egy hívó véletlenül se indíthasson típus nélkül.
+      const resolvedType = type ?? pendingType ?? 'run';
+      const started = apply(() => startRecorder(createRecorder(resolvedType), Date.now()));
       await acquireWakeLock();
       try {
-        await attach(type ?? pendingType, started);
+        await attach(resolvedType, started);
       } catch {
         // Engedélymegtagadás vagy natív szolgáltatáshiba után nem maradhat
         // látszólag futó, valójában pontot nem gyűjtő aktivitás.
         await Promise.resolve(positionSource.stop()).catch(() => undefined);
         await releaseWakeLock();
         await persister.clear();
-        stateRef.current = createRecorder(type ?? pendingType);
+        stateRef.current = createRecorder(resolvedType);
         setState(stateRef.current);
       }
     },
@@ -515,6 +536,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     resumableNotice,
     pendingType,
     setPendingType,
+    pickerOpen,
+    setPickerOpen,
     upload,
     uploadActivity,
     begin,

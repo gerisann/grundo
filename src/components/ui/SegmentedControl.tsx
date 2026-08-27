@@ -8,7 +8,8 @@ export interface SegmentOption<T extends string> {
 
 export interface SegmentedControlProps<T extends string> {
   options: readonly SegmentOption<T>[];
-  value: T;
+  /** `null`: nincs kiválasztott elem — a csoport egyik gombja sem aktív. */
+  value: T | null;
   onChange: (value: T) => void;
   /** Kötelező: a csoport neve képernyőolvasónak. */
   label: string;

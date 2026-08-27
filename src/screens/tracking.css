@@ -442,6 +442,30 @@
  * különben ott jelenne meg, ahol a szöveg épp tart, és bárhova mutatna,
  * csak a gombra nem. (Az első változat pontosan ezt csinálta.)
  */
+/*
+  A MOZGÁSFORMA-VÁLASZTÓ — a Dock indítógombja FÖLÖTT lebeg (Geri kérése,
+  2026-08-27), nem a képernyő tetején. Ugyanazzal a `bottom`-képlettel, mint
+  a `.track__hint`, csak a dokk szélességét követve, hogy a három gomb
+  kényelmesen elférjen.
+*/
+.track__type-picker {
+  position: absolute;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  max-width: calc(var(--app-max-width) - 2 * var(--sp-4));
+  margin-inline: auto;
+  bottom: calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3));
+  z-index: 39;
+
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+}
+
 .track__hint {
   position: absolute;
   left: 50%;

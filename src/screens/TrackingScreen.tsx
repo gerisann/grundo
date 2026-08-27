@@ -33,7 +33,6 @@ import {
   formatLiveSpeed,
   formatPace,
 } from '@/lib/format';
-import type { ActivityType } from '@/types';
 import './tracking.css';
 
 /**
@@ -43,9 +42,6 @@ import './tracking.css';
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
-const LAST_TYPE_KEY = 'grundo.lastActivityType';
-
-const ACTIVITY_TYPES: ActivityType[] = ['run', 'walk', 'ride'];
 
 /**
  * Rögzítés.
@@ -62,7 +58,7 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profileUid = useProfile().profile?.uid ?? '';
   const { state } = recorder;
-  const { pendingType: type, setPendingType } = recorder;
+  const { pendingType: type, setPendingType, pickerOpen } = recorder;
   const candidateRemoteState = state.status === 'idle' ? recorder.remoteState : null;
   const [dismissedRemoteId, setDismissedRemoteId] = useState<string | null>(null);
   const remoteState = candidateRemoteState?.activityId === dismissedRemoteId
@@ -73,8 +69,13 @@ export function TrackingScreen() {
    * Indítás előtt a kiválasztott típust kell megjeleníteni, nem a még el sem
    * indult rögzítő előző/alapértelmezett típusát. Enélkül a Bringa gomb aktív
    * lehetett úgy, hogy a térkép továbbra is a gyalogos réteget kérte le.
+   *
+   * `type` (`pendingType`) indításig `null` is lehet — a `?? 'run'` csak a
+   * belső számításoknak (térképréteg, előnézet) kell, a MEGJELENÍTETT
+   * választás (lásd a mozgásforma-választó modult) továbbra is `type`-ot
+   * olvassa közvetlenül, üresen, amíg nincs kiválasztva semmi.
    */
-  const displayType = remoteState?.type ?? (state.status === 'idle' ? type : state.type);
+  const displayType = remoteState?.type ?? (state.status === 'idle' ? (type ?? 'run') : state.type);
   const displayDistanceM = remoteState?.distanceM ?? state.distanceM;
   /**
    * A szellemvonal — a Küldetések képernyőn kiválasztott ajánlat útvonala.
@@ -101,25 +102,6 @@ export function TrackingScreen() {
     setSavedRoutesOpen(false);
   }
   const distanceBucket = Math.floor(displayDistanceM / 25);
-  /**
-   * A mozgásforma a RÖGZÍTŐBEN él, nem itt.
-   *
-   * Az indítógomb a dokkban van, tehát a választásnak oda kell eljutnia. Amíg
-   * ez a képernyő saját állapota volt, a dokk nem látta — ezért indult minden
-   * rögzítés futásként.
-   *
-   * A legutóbbi választást megjegyezzük: aki bringázik, jellemzően minden nap
-   * bringázik, neki minden indításnál átállítani fölösleges lépés.
-   */
-  useEffect(() => {
-    const saved = readFlag(LAST_TYPE_KEY);
-    if (ACTIVITY_TYPES.includes(saved as ActivityType)) setPendingType(saved as ActivityType);
-  }, [setPendingType]);
-
-  function setType(next: ActivityType) {
-    setPendingType(next);
-    writeFlag(LAST_TYPE_KEY, next);
-  }
 
   // Az eltelt idő magától nem változik — az állapot csak mintaérkezéskor
   // frissül, márpedig állva percekig nem jön minta. Saját ütem kell hozzá.
@@ -610,45 +592,6 @@ export function TrackingScreen() {
           </div>
         ) : null}
 
-        {/*
-          A MOZGÁSFORMA-VÁLASZTÓ minden tétlen állapotban látszik.
-          Korábban a `remoteState === null` is feltétel volt, vagyis ha a
-          telefonról érkezett egy állapot-pillanatkép, a választó ELTŰNT — a
-          felhasználó nem tudott elindulni anélkül, hogy előbb kitalálja,
-          miért nincs ott. Egy TÁJÉKOZTATÁS nem veheti el az alapvető
-          kezelőelemet.
-        */}
-        {idle ? (
-          <div className="track__panel">
-            <p
-              style={{
-                fontSize: 14,
-                color: 'var(--text-secondary)',
-                marginBottom: 'var(--sp-3)',
-                lineHeight: 1.45,
-              }}
-            >
-              Válaszd ki a mozgásformát, aztán indíts. Legalább {GAMEPLAY.MIN_DISTANCE_M} méter
-              kell ahhoz, hogy az aktivitás számítson.
-            </p>
-            <SegmentedControl
-              label="Mozgásforma"
-              block
-              value={type}
-              onChange={setType}
-              options={[
-                { value: 'run', label: 'Futás' },
-                { value: 'walk', label: 'Séta' },
-                { value: 'ride', label: 'Bringa' },
-              ]}
-            />
-            <div style={{ marginTop: 'var(--sp-3)' }}>
-              <Button block variant="ghost" size="sm" onClick={() => setSavedRoutesOpen(true)}>
-                Mentett útvonalak
-              </Button>
-            </div>
-          </div>
-        ) : null}
 
         {!idle || remoteState !== null ? (
           <>
@@ -703,7 +646,7 @@ export function TrackingScreen() {
         ) : null}
       </div>
 
-      {idle && remoteState === null && showStartHint ? (
+      {idle && remoteState === null && showStartHint && !pickerOpen ? (
         <div className="track__hint" aria-hidden="true">
           <span className="track__hint-text">Indítás</span>
           <svg className="track__hint-arrow" viewBox="0 0 28 40" fill="none">
@@ -716,6 +659,33 @@ export function TrackingScreen() {
             />
             <path d="M14 38l-9-13h18z" fill="currentColor" />
           </svg>
+        </div>
+      ) : null}
+
+      {/*
+        A MOZGÁSFORMA-VÁLASZTÓ — a Dock indítógombja fölött lebeg, ANNAK
+        NYOMÁSÁRA nyílik (Geri kérése, 2026-08-27), nem automatikusan tétlen
+        állapotban. A `pickerOpen`-t a Dock állítja: első koppintásra nyit
+        (és `pendingType`-ot nullázza, hogy sose emlékezzen az előzőre),
+        választás után marad nyitva, a MÁSODIK koppintásra zár és indul a
+        visszaszámlálás.
+      */}
+      {idle && pickerOpen ? (
+        <div className="track__type-picker">
+          <SegmentedControl
+            label="Mozgásforma"
+            block
+            value={type}
+            onChange={setPendingType}
+            options={[
+              { value: 'run', label: 'Futás' },
+              { value: 'walk', label: 'Séta' },
+              { value: 'ride', label: 'Bringa' },
+            ]}
+          />
+          <Button block variant="ghost" size="sm" onClick={() => setSavedRoutesOpen(true)}>
+            Mentett útvonalak
+          </Button>
         </div>
       ) : null}
 
