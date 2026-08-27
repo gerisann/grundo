@@ -45,7 +45,7 @@ export function FinishGestureScreen() {
           tried={tried.hold}
           onSelect={() => setFinishGesture('hold')}
         >
-          <HoldFinishButton onFinish={() => tryOut('hold')} />
+          <HoldFinishButton onFinish={() => tryOut('hold')} showOverlay={false} />
         </FinishGestureOption>
 
         <FinishGestureOption

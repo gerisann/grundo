@@ -37,7 +37,19 @@ const FINISH_HOLD_MS = 1000;
  */
 const FINISH_RELEASE_MS = 350;
 
-export function HoldFinishButton({ onFinish }: { onFinish: () => void }) {
+export function HoldFinishButton({
+  onFinish,
+  showOverlay = true,
+}: {
+  onFinish: () => void;
+  /** `false`: a képernyő közepére kitett, teljes képernyős visszajelzés
+      NEM jelenik meg — csak az önmagában is elég a kis gomb. Geri kérése
+      (2026-08-27): a `/beallitasok/mukodes` kipróbáló-előnézetén az
+      overlay (ami `document.body`-ba portál, tehát FÜGGETLEN attól, hol
+      áll a gomb) eltakarta a lap többi részét, holott ott a lényeg maga
+      a gomb viselkedése, nem a teljes rögzítés-élmény felidézése. */
+  showOverlay?: boolean;
+}) {
   const [progress, setProgress] = useState(0);
   const holding = useRef(false);
   const frame = useRef(0);
@@ -123,7 +135,7 @@ export function HoldFinishButton({ onFinish }: { onFinish: () => void }) {
         mutatót, különben a `pointerup`/`pointerleave` nem a gombhoz érkezne,
         és a nyomva tartás beragadna.
       */}
-      {holdingNow && typeof document !== 'undefined'
+      {showOverlay && holdingNow && typeof document !== 'undefined'
         ? createPortal(
             <div className="finish-overlay" aria-hidden="true">
               {/* A sötétítés a haladással ARÁNYOS, és 50%-nál megáll: a
