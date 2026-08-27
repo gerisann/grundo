@@ -488,7 +488,11 @@ export function TrackingScreen() {
   // A képernyő-figyelmeztetés bezárható: aki egyszer elolvasta, tudja.
   const [showWakeNote, setShowWakeNote] = useState(() => readFlag(WAKE_NOTE_KEY) === null);
   return (
-    <div className={`track${done ? ' track--finished' : ''}${savePanelOpen ? ' track--save-open' : ''}`}>
+    <div
+      className={`track${done ? ' track--finished' : ''}${savePanelOpen ? ' track--save-open' : ''}${
+        pickerOpen ? ' track--picker-open' : ''
+      }`}
+    >
       <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
         {mapboxConfigured ? (
           <Suspense fallback={null}>

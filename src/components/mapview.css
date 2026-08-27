@@ -70,37 +70,21 @@
    nem takarja a nyomvonalat. */
 
 /*
-  „Vissza a pozíciómra" — a jobb alsó sarokban, a DOCK FÖLÖTT.
+  „Vissza a pozíciómra" — a jobb oldali oszlop FELSŐ helyén.
+
+  ⚠️ Geri kérése (2026-08-27): felcserélve a 2D/3D váltóval. Ez a gomb NEM
+  mindig látható (csak ha a felhasználó elmozdította a nézetet a saját
+  pozíciójától) — az ALSÓ, mindig elérhető helyet ezért a mindig-látható
+  2D/3D váltó kapja, hogy a bal oldali hexagon-gombbal egy vonalban maradjon
+  akkor is, ha épp nincs kirajzolva.
 
   A gomb a térkép dobozához igazodik, az viszont a teljes képernyőt kitölti,
   tehát a puszta `bottom: var(--sp-4)` a Dock ALÁ tette: a gomb ott volt, csak
   nem lehetett elérni. Ezért a dock magassága, a kinyúló középső gomb és a
-  telefon alsó biztonságos sávja is beleszámít.
+  telefon alsó biztonságos sávja is beleszámít. A 48 px eltolás a gomb
+  magassága (40) plusz a köztük hagyott rés.
 */
 .mapview__recenter {
-  position: absolute;
-  right: var(--sp-4);
-  bottom: calc(
-    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3)
-  );
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
-  color: var(--text-primary);
-  z-index: 2;
-}
-
-/* ── 2D / 3D nézetváltó ──────────────────────────────────────────────
-   A „vissza a pozíciómra" gomb FÖLÖTT, ugyanabban az oszlopban: a két
-   térkép-vezérlő így egy csoportot alkot, és a hüvelykujj mindkettőt eléri.
-   A 48 px eltolás a gomb magassága (40) plusz a köztük hagyott rés. */
-
-.mapview__tilt {
   position: absolute;
   right: var(--sp-4);
   bottom: calc(
@@ -115,25 +99,44 @@
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
   color: var(--text-primary);
+  z-index: 2;
+}
+
+/*
+  ── 2D / 3D nézetváltó ──────────────────────────────────────────────
+  A jobb oldali oszlop ALSÓ, mindig elérhető helyén (lásd a `.mapview__
+  recenter` fenti megjegyzését a cseréről) — pontosan egy vonalban a bal
+  oldali hexagon-gombbal, AZONOS `bottom`-képlettel.
+
+  Mindig lila (`--accent`) — Geri kérése (2026-08-27): korábban csak
+  bekapcsolt (3D) állapotban volt kiemelve, most a hexagon-gombbal
+  egységesen mindig aktív-színű, hogy a kettő egy csoportnak látsszon.
+*/
+.mapview__tilt {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3)
+  );
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  color: var(--accent-on);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.02em;
   z-index: 2;
 }
 
-/* Bekapcsolt állapotban kiemelt. A felirat ilyenkor a KIKAPCSOLÁST ígéri
-   („2D"), tehát a szín mondja meg, hogy most a 3D az aktív — a felirat
-   egyedül félreérthető lenne. */
-.mapview__tilt--on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-on);
-}
-
-/* Hexagonréteg — a BAL alsó sarokban, külön oszlopban a jobb oldali
-   recenter/2D-3D vezérlőktől (Geri kérése, 2026-08-27: a jobb alsó sarok
-   ütközött a további képek jelvényével a feed-kártyán). Szándékosan
-   fekete: ez térképi segédkapcsoló, nem kiválasztott játékállapot. */
+/* Hexagonréteg — a BAL alsó sarokban, ugyanabban a sorban, mint a jobb
+   oldali 2D/3D váltó (azonos `bottom`-képlet — Geri kérése, 2026-08-27,
+   korábban a kettő nem volt egy vonalban). Mindig lila, mint a 2D/3D
+   gomb — a kettő egy csoportnak hasson. */
 .mapview__hex-toggle {
   position: absolute;
   left: var(--sp-4);
@@ -145,14 +148,9 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--map-control-bg);
-  border: 1px solid rgb(255 255 255 / 0.16);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
-  color: var(--map-control-text);
-  z-index: 2;
-}
-.mapview__hex-toggle[aria-pressed="true"] {
   background: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
   color: var(--accent-on);
-  border-color: var(--accent);
+  z-index: 2;
 }

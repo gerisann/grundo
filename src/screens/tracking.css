@@ -43,6 +43,16 @@
   display: none;
 }
 
+/*
+  A mozgásforma-választó nyitva — ugyanaz az ok, mint a mentés-panelnél
+  fent: a választó modul (`.track__type-picker`) a Dock fölött, a jobb
+  alsó sarok környékén ül, és a bal/jobb alsó gombok csak zavarnának.
+*/
+.track--picker-open .track__map .mapview__hex-toggle,
+.track--picker-open .track__map .mapview__tilt {
+  display: none;
+}
+
 /* ── A rárétegzett felület ───────────────────────────────────────── */
 
 .track__overlay {
