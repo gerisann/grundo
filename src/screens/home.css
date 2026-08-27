@@ -12,6 +12,26 @@
     a sorra hárul a szűkítés — ott a köszöntés zsugorodik, ahogy kell.
   */
   min-width: 0;
+  /*
+    KONTÉNER-LEKÉRDEZÉS, nem viewport media query, az „Időjárás:" címkéhez
+    (lásd lent). A felület `--app-max-width`-del mobil szélességre korlátozott
+    asztali gépen is, tehát a KÉPERNYŐ szélessége félrevezető lenne — a doboz
+    tényleges szélessége a mérvadó.
+  */
+  container-type: inline-size;
+  container-name: home-hero;
+}
+
+/*
+  „Időjárás:" csak akkor jelenik meg, ha a doboznak elég a szélessége hozzá
+  — Geri kérése (2026-08-27). 420 px-nél a kinyitott sáv (label + 3
+  mérőszám + hőfok+ikon) már kényelmesen elfér e felirat nélkül is szűken;
+  e felett jut hely a feliratnak anélkül, hogy a mérőszámok összezsugorodnának.
+*/
+@container home-hero (min-width: 420px) {
+  .weather__label {
+    display: inline-flex;
+  }
 }
 
 /*

@@ -190,7 +190,25 @@ export function WeatherWidget() {
       {/* Csak a nyílhegy: ennyi elég ahhoz, hogy legyen mire koppintani. */}
       <ChevronIcon />
 
+      {/*
+        KINYITVA A SÁV OLYAN SZÉLES, MINT AZ ALATTA LÉVŐ DOBOZ (a
+        GRUND/AKTIVITÁS/SOROZAT kártya) — Geri kérése (2026-08-27). A négy
+        adat (csapadék, páratartalom, szél, hőfok) a rendelkezésre álló
+        HELY szerint oszlik szét — `justify-content: space-between` —, ezért
+        a köztük lévő rés keskeny telefonon szűk, tágasabb nézetben nő,
+        NEM a szöveg mérete változik.
+
+        A hőfok+ikon ITT, a sávban belül IS megjelenik (lásd lent a
+        `weather__now--inline`-t) — ez a 4. „megálló" a space-between
+        sorban. A gombon kívül álló másolat (`--closed`) ilyenkor elrejtve,
+        nehogy duplán látszódjon a fok.
+      */}
       <span className="weather__detail" aria-hidden={!open}>
+        {/* Csak akkor látszik, ha a sáv elég széles hozzá — lásd a
+            konténer-lekérdezést a CSS-ben. */}
+        <span className="weather__label" aria-hidden="true">
+          Időjárás:
+        </span>
         <Metric
           icon={<PrecipitationIcon />}
           tone="precip"
@@ -209,10 +227,16 @@ export function WeatherWidget() {
           label="szél"
           value={weather.windKph === null ? '–' : `${weather.windKph} km/h`}
         />
+        <span className="weather__now weather__now--inline" aria-hidden="true">
+          <WeatherIcon condition={weather.condition} night={weather.night} />
+          <span className="weather__temp">{weather.tempC} °C</span>
+        </span>
       </span>
 
-      <WeatherIcon condition={weather.condition} night={weather.night} />
-      <span className="weather__temp">{weather.tempC} °C</span>
+      <span className="weather__now weather__now--closed">
+        <WeatherIcon condition={weather.condition} night={weather.night} />
+        <span className="weather__temp">{weather.tempC} °C</span>
+      </span>
     </button>
   );
 }

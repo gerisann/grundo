@@ -121,9 +121,15 @@
   position: relative;
   display: flex;
   align-items: center;
-  /* Szűk térköz: három mérőszámnak KELL elférnie egy 360 pixeles telefonon
-     is, a panel saját ikonja és a fok mellett. Alap (4px) + 5px Geri kérésére. */
-  gap: 9px;
+  /*
+    A NÉGY „MEGÁLLÓ" (csapadék, páratartalom, szél, hőfok+ikon) a
+    rendelkezésre álló hely szerint oszlik szét — Geri kérése (2026-08-27):
+    így különböző képernyőméreteken a RÉS nő/csökken, nem a szöveg zsugorodik
+    vagy a panel lóg ki. Keskeny nézetben a `gap` a padló, tágasabban a
+    `justify-content: space-between` húzza szét a köztük lévő teret.
+  */
+  justify-content: space-between;
+  gap: var(--sp-2);
   min-width: 0;
   /* Zárva nulla széles és láthatatlan — a nyitás ezt a két értéket animálja,
      ezért nő ki a panel balra, ahelyett hogy ugrana. */
@@ -134,24 +140,58 @@
 }
 
 .weather--open .weather__detail {
-  max-width: 260px;
+  /*
+    Nem `none` — a `max-width` átmenet csak SZÁMÉRTÉKEK között animálható.
+    640 px bőven a `--app-max-width` (480 px) fölött van, tehát a felület
+    szélessége gyakorlatban SOSEM ér oda: a szám csak az animációhoz kell,
+    a tényleges korlátot a `flex: 1` és a szülő gomb szélessége adja.
+  */
+  flex: 1 1 auto;
+  max-width: 640px;
   opacity: 1;
 }
 
 /*
-  Nyitva a panel SZŰKEBB béléssel dolgozik, és zsugorodhat is.
-
-  Mérve (360 px széles képernyőn): a három mérőszám és a fok együtt 364 px-t
-  kért egy 348 px-es sorban. A szűkebb bélés és a `flex-shrink` együtt
-  visszahozza a sorba — és ha egyszer mégis kevés lenne a hely (hosszabb
-  szélérték, nagyobb betűméret), a sáv vág, nem a panel lóg ki a képernyőről.
+  KINYITVA A GOMB OLYAN SZÉLES, MINT AZ ALATTA LÉVŐ ÖSSZEGZŐ DOBOZ — Geri
+  kérése (2026-08-27). A köszöntés eltűnésével (lásd `home.css`
+  `:has(.weather--open)`) a sor teljes szélessége a gombé lesz, ez a
+  `width: 100%` pedig továbbadja a `.weather__detail`-nek a `flex: 1`-en át.
 */
 .weather--open {
-  padding-left: var(--sp-2);
-  padding-right: var(--sp-2);
-  /* Szűkebb belső térköz is: minden megspórolt pixel a mérőszámoké. */
-  gap: var(--sp-1);
-  flex-shrink: 1;
+  width: 100%;
+  padding-left: var(--sp-3);
+  padding-right: var(--sp-3);
+}
+
+/* Zárva ELREJTVE — nyitva a `.weather__detail` MOZOG SAJÁT másolatot mutat
+   a sáv végén (`weather__now--inline`), hogy a hőfok is a szétosztott
+   „megállók" egyike legyen, ne csak egy külön, fixen a jobb szélre
+   ragasztott elem. */
+.weather--open .weather__now--closed {
+  display: none;
+}
+
+.weather__now {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+}
+
+/*
+  „Időjárás:" — csak akkor jelenik meg, ha a sávnak (pontosabban a
+  `.home__hero` konténernek, lásd `home.css`) elég a szélessége — Geri
+  kérése (2026-08-27): „ha elég hely van hozzá". Konténer-lekérdezéssel,
+  nem viewport-media query-vel: a felület mobil szélességre korlátozott
+  asztali gépen is (`--app-max-width`), tehát a VALÓS mérvadó a doboz
+  szélessége, nem a képernyőé.
+*/
+.weather__label {
+  display: none;
+  flex: none;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
