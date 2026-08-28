@@ -26,10 +26,11 @@
     ]
   },
   "emulators": {
-    "auth": { "port": 9099 },
-    "firestore": { "port": 8081, "//": "az emulátorban is a groundo adatbázist használjuk" },
-    "storage": { "port": 9199 },
-    "ui": { "enabled": true, "port": 4000 },
+    "//": "A `host: 0.0.0.0` azért kell, hogy a felület TELEFONRÓL is használható legyen a gép IP-címén (pl. http://192.168.1.79:5173). Alapértelmezés szerint az emulátorok csak 127.0.0.1-en hallgatnak, és a telefon böngészője nem érné el őket — az oldal betöltődne, de a bejelentkezés és minden adatlekérés némán elhalna. Csak helyi hálózaton figyelnek, éles telepítésre nincs hatásuk.",
+    "auth": { "host": "0.0.0.0", "port": 9099 },
+    "firestore": { "host": "0.0.0.0", "port": 8081, "//": "az emulátorban is a groundo adatbázist használjuk" },
+    "storage": { "host": "0.0.0.0", "port": 9199 },
+    "ui": { "host": "0.0.0.0", "enabled": true, "port": 4000 },
     "singleProjectMode": true
   }
 }

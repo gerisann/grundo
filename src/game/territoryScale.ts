@@ -19,17 +19,34 @@
  */
 
 /**
- * A küszöb: a folt átmérője a nézetszélesség hány részét érje el.
+ * ESZEN A NÉZETSZÉLESSÉGEN BELÜL SEMMIT NEM SZŰRÜNK — minden folt látszik.
  *
- * Geri döntése (2026-08-28): 2%. Ez azt jelenti, hogy egy 1 km²-es folt
- * 50 km széles nézetig marad látható. (A korábbi javaslat 5% volt — 1 km²
- * húsz kilométerig —, de az országos nézetet gyakorlatilag üresre szűrte:
- * 500 km-nél ~600 km²-es alsó határt adott volna.)
+ * Geri döntése (2026-08-28): „zoom 10 értéken is szeretném ha látszódna még
+ * minden terület." A mérés szerint a 10-es nagyítás ~66 km széles nézetet ad
+ * (lásd a hangoló kijelzőt), ezért a határ 70 km — ennyi alatt a méretszűrés
+ * ki van kapcsolva, bármilyen apró folt kirajzolódik.
  *
- * EGYETLEN SZÁM HANGOLJA az egész megjelenítést. Csökkentése mindent
- * távolabbról láthatóvá tesz (zsúfoltabb kizoomolt kép), növelése ritkítja.
+ * A felső korlátot a szerver `MAX_BLOBS_PER_VIEW` értéke adja: ha nagyon sok
+ * folt esne a nézetbe, a legnagyobbak jönnek. A szűrés hiánya tehát nem tud
+ * elszabadult méretű választ okozni.
  */
-export const TERRITORY_VISIBILITY_RATIO = 0.02;
+export const TERRITORY_FULL_DETAIL_WIDTH_KM = 70;
+
+/**
+ * A küszöb meredeksége a teljes részletesség HATÁRÁN TÚL.
+ *
+ * ⚠️ NEM a nézetszélességhez mérünk, hanem ahhoz, amennyivel TÚLLÉPTÜK a
+ * `TERRITORY_FULL_DETAIL_WIDTH_KM`-t. Enélkül a küszöb ugrana: 66 km-en még
+ * minden látszana, 70 km fölött viszont azonnal több km²-es alsó határ
+ * lépne életbe, és a foltok zöme egyetlen görgetésnyi mozdulattól eltűnne.
+ * Így a küszöb NULLÁRÓL indul a határon, és onnantól nő simán.
+ *
+ * A 0,012-es érték úgy van megválasztva, hogy ~264 km-es (8-as nagyítású)
+ * nézetben ~5 km² legyen az alsó határ — ott már tényleg csak a nagy
+ * birodalmak érdekesek. Ez az EGYETLEN szám, amivel az egész kizoomolt kép
+ * sűrűsége hangolható.
+ */
+export const TERRITORY_VISIBILITY_RATIO = 0.012;
 
 /** Fok → kilométer a hosszúsági körökön, a szélesség összehúzódásával. */
 const KM_PER_DEGREE = 111.32;
@@ -60,7 +77,9 @@ export function viewWidthKm(view: ViewBox): number {
  * kell egyáltalán lekérdeznie.
  */
 export function minVisibleAreaM2(viewWidthInKm: number): number {
-  const diameterKm = TERRITORY_VISIBILITY_RATIO * Math.max(0, viewWidthInKm);
+  const excessKm = Math.max(0, viewWidthInKm) - TERRITORY_FULL_DETAIL_WIDTH_KM;
+  if (excessKm <= 0) return 0;
+  const diameterKm = TERRITORY_VISIBILITY_RATIO * excessKm;
   return diameterKm * diameterKm * 1_000_000;
 }
 
@@ -72,5 +91,8 @@ export function minVisibleAreaM2(viewWidthInKm: number): number {
  * lekérdezni, ameddig a benne tárolt legnagyobb folt még látszik.
  */
 export function maxVisibleViewWidthKm(areaM2: number): number {
-  return Math.sqrt(Math.max(0, areaM2) / 1_000_000) / TERRITORY_VISIBILITY_RATIO;
+  return (
+    TERRITORY_FULL_DETAIL_WIDTH_KM +
+    Math.sqrt(Math.max(0, areaM2) / 1_000_000) / TERRITORY_VISIBILITY_RATIO
+  );
 }

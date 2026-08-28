@@ -71,9 +71,22 @@ export const db: Firestore | null = app ? getFirestore(app, FIRESTORE_DATABASE_I
 export const storage: FirebaseStorage | null = app ? getStorage(app) : null;
 
 if (app && auth && db && storage && import.meta.env.VITE_USE_EMULATORS === '1') {
-  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
-  connectFirestoreEmulator(db, 'localhost', 8081);
-  connectStorageEmulator(storage, 'localhost', 9199);
+  /**
+   * AZ EMULÁTOR AZON A GÉPEN VAN, AHONNAN AZ OLDAL JÖTT — nem „localhost"-on.
+   *
+   * Beégetett `localhost` mellett a fejlesztői build csak azon a gépen
+   * működött, amelyik futtatta. Telefonról megnyitva (`http://192.168.x.y:5173`)
+   * a `localhost` MAGÁT A TELEFONT jelenti: az oldal betöltődött, de a
+   * bejelentkezés és minden adatlekérés némán elhalt.
+   *
+   * A `location.hostname` mindig arra a gépre mutat, ahonnan az oldalt
+   * kaptuk — asztali gépen ez maga a `localhost`, tehát a régi viselkedés
+   * változatlan marad.
+   */
+  const emulatorHost = typeof location === 'undefined' ? 'localhost' : location.hostname;
+  connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, emulatorHost, 8081);
+  connectStorageEmulator(storage, emulatorHost, 9199);
   // eslint-disable-next-line no-console
   console.info('[GRUNDO] Firebase emulátorokhoz csatlakozva.');
 

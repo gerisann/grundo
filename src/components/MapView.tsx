@@ -54,6 +54,15 @@ const CELL_SOURCE = 'grundo-cells';
 const AREA_SOURCE = 'grundo-areas';
 const BLOB_SOURCE = 'grundo-blobs';
 const CELL_DETAIL_MIN_ZOOM = 15;
+/**
+ * A cellánkénti területréteg (`AREA_SOURCE`) alsó nagyítási határa.
+ *
+ * Eggyel a hatszögrács alatt: a védelmi szintek árnyalása még azelőtt
+ * megjelenik, hogy az egyes hatszögek kirajzolódnának, de már nem olyan
+ * távolról, ahonnan a nyers hatszög-körvonal recés szegélyként látszana a
+ * sima területfolton.
+ */
+const AREA_DETAIL_MIN_ZOOM = CELL_DETAIL_MIN_ZOOM - 1;
 const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 const TILTED_PITCH = 55;
 const TILT_KEY = 'grundo.mapTilt';
@@ -529,21 +538,46 @@ function addLayers(instance: mapboxgl.Map): void {
     });
   }
 
+  /**
+   * A CELLÁNKÉNTI területréteg CSAK KÖZELRŐL.
+   *
+   * ⚠️ EZ EGY VALÓDI HIBA VOLT (Geri jelezte, 2026-08-28): a réteg a nyers,
+   * hatszögről hatszögre pontos körvonalat rajzolja, és `minzoom` nélkül
+   * MINDEN nagyításon látszott. Kizoomolva ez a ~9 méteres fűrészfog finom,
+   * recés szegélyként ült rá a sima területfoltra — „túl részletes rajzolat"
+   * olyan távolságból, ahonnan már nem szabadna látszania.
+   *
+   * A birtokviszonyt kizoomolva a foltréteg (`BLOB_SOURCE`) mutatja; ennek a
+   * rétegnek egyetlen dolga maradt, amit a folt nem tud: a védelmi szint
+   * szerinti árnyalás közelről. Ezért indul ott, ahol a hatszögrács is
+   * értelmessé válik.
+   */
   if (!instance.getSource(AREA_SOURCE)) {
     instance.addSource(AREA_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
     instance.addLayer({
       id: `${AREA_SOURCE}-fill`,
       type: 'fill',
       source: AREA_SOURCE,
+      minzoom: AREA_DETAIL_MIN_ZOOM,
       paint: {
         'fill-color': ['get', 'color'],
-        'fill-opacity': ['coalesce', ['get', 'opacity'], 0.2],
+        // Átúszás, hogy a réteg ne pattanjon be egyik képkockáról a másikra.
+        'fill-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          AREA_DETAIL_MIN_ZOOM,
+          0,
+          AREA_DETAIL_MIN_ZOOM + 1,
+          ['coalesce', ['get', 'opacity'], 0.2],
+        ],
       },
     });
     instance.addLayer({
       id: `${AREA_SOURCE}-line`,
       type: 'line',
       source: AREA_SOURCE,
+      minzoom: AREA_DETAIL_MIN_ZOOM,
       layout: { 'line-join': 'round' },
       paint: {
         // A rivális terület kitöltése a tulajdonos választott színe, de a
@@ -560,7 +594,15 @@ function addLayers(instance: mapboxgl.Map): void {
           18,
           ['case', ['get', 'own'], 4.2, 2.6],
         ],
-        'line-opacity': 0.9,
+        'line-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          AREA_DETAIL_MIN_ZOOM,
+          0,
+          AREA_DETAIL_MIN_ZOOM + 1,
+          0.9,
+        ],
       },
     });
   }

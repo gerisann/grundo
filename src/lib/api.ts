@@ -17,7 +17,16 @@ import type { ActivityType } from '@/types';
  * miközben a fejlesztő azt hiszi, hogy homokozóban játszik. A mód és a
  * backend együtt jár: ha emulátor, akkor helyi szerver.
  */
-const EMULATOR_API_BASE = 'http://localhost:8080';
+/**
+ * A helyi backend AZON A GÉPEN fut, ahonnan az oldal jött — nem „localhost"-on.
+ *
+ * Beégetett `localhost` mellett a fejlesztői felület csak a futtató gépen
+ * működött. Telefonról megnyitva (`http://192.168.x.y:5173`) a `localhost`
+ * magát a telefont jelentette volna, és minden API-hívás elhalt. A
+ * `location.hostname` asztali gépen ugyanúgy `localhost`, tehát a korábbi
+ * viselkedés nem változik.
+ */
+const EMULATOR_API_BASE = `http://${typeof location === 'undefined' ? 'localhost' : location.hostname}:8080`;
 
 export const API_BASE = (
   import.meta.env.VITE_USE_EMULATORS === '1'
