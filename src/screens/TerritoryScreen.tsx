@@ -19,6 +19,8 @@ import { useProfile } from '@/hooks/ProfileProvider';
 import { formatArea } from '@/lib/format';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { RIVAL_MAX_COLOR, ROLE_COLOR } from '@/lib/hexColors';
+/* ⚠️ IDEIGLENES import a hangoló kijelzőhöz — lásd `.terr__tune`. */
+import { minVisibleAreaM2, viewWidthKm } from '@/game/territoryScale';
 import type { Layer } from '@/types';
 import './territory.css';
 
@@ -64,6 +66,8 @@ export function TerritoryScreen() {
   }, [layer]);
   const [tiles, setTiles] = useState<TilesResult | null>(null);
   const [blobs, setBlobs] = useState<TerritoryBlobsResult | null>(null);
+  /** ⚠️ IDEIGLENES: a hangoló kijelző adata — lásd `.terr__tune`. */
+  const [view, setView] = useState<View | null>(null);
   const [board, setBoard] = useState<LeaderboardEntry[] | null>(null);
   const [boardWindow, setBoardWindow] = useState<LeaderboardWindow>('alltime');
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -152,6 +156,8 @@ export function TerritoryScreen() {
     (next: View) => {
       viewRef.current = next;
       setZoom(next.zoom);
+      // ⚠️ IDEIGLENES: a hangoló kijelzőhöz kell — lásd `.terr__tune`.
+      setView(next);
       void loadTiles(next);
     },
     [loadTiles],
@@ -315,6 +321,28 @@ export function TerritoryScreen() {
         ) : null}
       </div>
 
+      {/*
+        ⚠️ IDEIGLENES HANGOLÓ KIJELZŐ — Geri kérése (2026-08-28), hogy pontos
+        számokat tudjon mondani ahhoz, melyik nagyításon mekkora terület
+        jelenjen meg. Amint a `TERRITORY_VISIBILITY_RATIO` beállt, ez a blokk
+        és a hozzá tartozó `.terr__tune` szabály TÖRLENDŐ.
+      */}
+      {view ? (
+        <div className="terr__tune">
+          <b>zoom {view.zoom.toFixed(2)}</b>
+          <span>nézet {viewWidthKm(view).toFixed(2)} km széles</span>
+          <span>küszöb {tuneArea(minVisibleAreaM2(viewWidthKm(view)))}</span>
+          <span>
+            {blobs?.blobs.length ?? 0} folt
+            {blobs?.blobs.length
+              ? ` · ${tuneArea(Math.min(...blobs.blobs.map((b) => b.areaM2)))} – ${tuneArea(
+                  Math.max(...blobs.blobs.map((b) => b.areaM2)),
+                )}`
+              : ''}
+          </span>
+        </div>
+      ) : null}
+
       <div className="terr__overlay">
         {/*
           A fejléc pontosan ugyanazt a `screen-header` osztályt és belső
@@ -472,6 +500,19 @@ export function TerritoryScreen() {
       </div>
     </div>
   );
+}
+
+/**
+ * ⚠️ IDEIGLENES: a hangoló kijelző területformázása — lásd `.terr__tune`.
+ *
+ * Kis értéknél m², nagynál km². Közeli nézetben a küszöb néhány száz
+ * négyzetméter, ami km²-ben megjelenítve mindig 0,000 lenne — pont a
+ * használható szám veszne el belőle.
+ */
+function tuneArea(m2: number): string {
+  if (m2 < 10_000) return `${Math.round(m2)} m²`;
+  const km2 = m2 / 1e6;
+  return `${km2 < 1 ? km2.toFixed(3) : km2.toFixed(2)} km²`;
 }
 
 /**

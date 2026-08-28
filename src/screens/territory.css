@@ -23,6 +23,43 @@
   border-radius: 0;
 }
 
+/*
+  ⚠️ IDEIGLENES HANGOLÓ KIJELZŐ — Geri kérése (2026-08-28).
+  Azt mutatja, melyik nagyításon mekkora a látott szakasz és mekkora a
+  megjelenítési méretküszöb, hogy pontos számokat lehessen megadni a
+  `TERRITORY_VISIBILITY_RATIO` beállításához.
+
+  AMINT A SKÁLA BEÁLLT, EZ A SZABÁLY ÉS A HOZZÁ TARTOZÓ JSX TÖRLENDŐ
+  (`TerritoryScreen.tsx`, `.terr__tune`).
+
+  A bal FELSŐ sarok szándékos: a fejléc középre igazítva ül (`--app-max-width`),
+  a jobb alsó sarkot pedig a pozíció- és 2D/3D-gomb foglalja.
+*/
+.terr__tune {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + var(--sp-2));
+  left: var(--sp-2);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  /* Ne fogja el a térkép húzását — csak nézni kell, nem kattintani. */
+  pointer-events: none;
+}
+
+.terr__tune b {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
 .terr__overlay {
   position: absolute;
   inset: 0;
