@@ -26,6 +26,9 @@
   border-color: var(--accent);
 }
 
+/*
+  BEÁGYAZOTT VÁLTOZAT — a Profil „Riválisok" fülén, nem teljes képernyős lapként.
+*/
 .conn--embedded {
   position: static;
   inset: auto;
@@ -36,6 +39,26 @@
   border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--surface-1);
+
+  /*
+    ⚠️ EZ A KÉT SOR NEM DÍSZ — nélkülük a doboz ÖSSZEUGRIK.
+
+    Az alap `.conn` teljes képernyős réteg: `position: fixed` mellett a
+    `max-width` + `margin-inline: auto` páros középre igazítja. Beágyazva
+    viszont `position: static` lesz, és a befoglaló (`.screen-body.stack`)
+    egy CSS GRID. Rácselemen (és flexelemen) az AUTOMATIKUS MARGÓ KIKAPCSOLJA
+    A NYÚJTÁST: az elem nem tölti ki a sávot, hanem a tartalmához zsugorodik.
+
+    Mérve (2026-08-28, 480 px széles felület): 448 px helyett 224 pixelre
+    esett össze — pontosan feleakkorára. A `max-width` ebben ártatlan volt,
+    a `margin-inline` semlegesítése egymagában visszaadta a teljes
+    szélességet; `width: 100%` sem kell hozzá, a nyújtás elvégzi.
+
+    A szélességet a felület külső kerete amúgy is korlátozza, tehát itt
+    nincs szükség saját felső határra.
+  */
+  max-width: none;
+  margin-inline: 0;
 }
 
 .conn--embedded .conn__list {
