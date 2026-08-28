@@ -54,9 +54,25 @@ const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 /** Budapest — a vetített koordináták középpontja. */
 const CENTRE = { lat: 47.4979, lng: 19.0402 };
 
-/** A gócpontok ekkora sugarú körben szóródnak szét a középpont körül. */
-const CLUSTER_SPREAD_KM = 5;
-const CLUSTER_COUNT = 12;
+/**
+ * A gócpontok ekkora sugarú körben szóródnak szét a középpont körül.
+ *
+ * 10 km ≈ Budapest kiterjedése a belvárostól a peremkerületekig, tehát a
+ * körök a TELJES városon oszlanak el, nem egyetlen negyedbe zsúfolódnak.
+ * Terhelési próbához (`--count 1000`) ez a lényeg: sok, egymástól független
+ * folt kell, nem egyetlen óriási összeolvadt tömb.
+ */
+const CLUSTER_SPREAD_KM = argValue('--spread', 10);
+const CLUSTER_COUNT = Math.round(argValue('--clusters', 40));
+
+/**
+ * Egy gócponton BELÜL ekkora sugárban szórnak a körök középpontjai.
+ *
+ * Ez állítja be, mennyire fedik át egymást az azonos gócponthoz tartozó
+ * körök: kisebb érték egyetlen nagy, összeolvadt foltot ad, nagyobb érték
+ * több különálló kisebbet és több lopást. A 1,5 km a kettő között van.
+ */
+const CLUSTER_JITTER_KM = argValue('--jitter', 1.5);
 
 /** A körök területének alsó és felső határa — a feladat kérése. */
 const MIN_AREA_KM2 = 0.1;
@@ -356,7 +372,7 @@ async function main() {
 
     // A kör közepe a gócponton belül szóródik, hogy az azonos gócponthoz
     // tartozó körök átfedjék egymást.
-    const jitterKm = random() * 0.8;
+    const jitterKm = random() * CLUSTER_JITTER_KM;
     const jitterAngle = random() * Math.PI * 2;
     const centre = {
       lat: cluster.lat + (jitterKm / KM_PER_DEG_LAT) * Math.cos(jitterAngle),
@@ -407,7 +423,26 @@ async function main() {
     `\nKész. Új: ${created}, ismétlés: ${duplicate}, hiba: ${failed}. ` +
       `Rajzolt terület összesen ~${totalAreaKm2.toFixed(1)} km² (átfedésekkel).`,
   );
-  console.log('A térképen: /grund — Budapest, 47.4979 / 19.0402 környéke.');
+
+  /**
+   * A FOLTOK VÉGLEGESÍTÉSE — közvetlenül, nem a backend háttérsorán át.
+   *
+   * A mentési út összevonó sorba teszi az újraszámolást (lásd
+   * `territoryBlobStore.ts`), ami éles használatban helyes: a felhasználó nem
+   * vár rá. Egy TESZT-VILÁG feltöltése után viszont pontosan tudni akarjuk,
+   * hogy a foltok készen vannak, mielőtt bármit mérünk rajtuk — ezért itt
+   * egyszer, felhasználónként végigfuttatjuk. Ez egyben a helyes végállapot
+   * garanciája is, ha a sorból menet közben elveszett volna valami.
+   */
+  const { recomputeTerritoryBlobs } = await import('../lib/territoryBlobStore');
+  console.log('\nTerületfoltok véglegesítése…');
+  for (const user of users) {
+    const started = Date.now();
+    const count = await recomputeTerritoryBlobs(user.uid, 'foot');
+    console.log(`  ${user.username}: ${count} folt (${Date.now() - started} ms)`);
+  }
+
+  console.log('\nA térképen: /grund — Budapest, 47.4979 / 19.0402 környéke.');
 }
 
 await main();

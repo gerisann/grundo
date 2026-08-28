@@ -39,6 +39,15 @@ const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default
  */
 const FREE_CELL_MIN_ZOOM = 15;
 
+/**
+ * Az a nagyítás, amitől már MINDEN területfolt látszik.
+ *
+ * A méretszűrés a `TERRITORY_FULL_DETAIL_WIDTH_KM` (70 km) nézetszélességnél
+ * kapcsol be, ami mérve a 10-es nagyítás környéke. Efölött nincs elrejtett
+ * terület, tehát a „közelíts rá" felszólítás sem indokolt.
+ */
+const FULL_DETAIL_MIN_ZOOM = 10;
+
 const LEGEND_KEY = 'grundo.territory.legend';
 const HELP_KEY = 'grundo.territory.help';
 
@@ -459,9 +468,17 @@ export function TerritoryScreen() {
           </div>
         ) : null}
 
-        {/* Ez viszont NEM bezárható: nem magyarázat, hanem a nézet állapota —
-            enélkül a felhasználó szabadnak hinné, amiről nem kérdeztünk. */}
-        {tiles?.partial ? (
+        {/*
+          Ez NEM bezárható: nem magyarázat, hanem a nézet állapota — enélkül a
+          felhasználó szabadnak hinné, amiről nem kérdeztünk.
+
+          ⚠️ CSAK KIZOOMOLVA. Geri kérése (2026-08-28): a 10-es nagyítás fölött
+          elrejtjük. Onnantól ugyanis MINDEN területfolt látszik (lásd
+          `TERRITORY_FULL_DETAIL_WIDTH_KM`), tehát a „közelíts rá" felszólítás
+          félrevezető lenne — nincs elrejtett terület, amit elő kellene hívni.
+          Alatta viszont a méretszűrés valóban elhagy foltokat, ott van értelme.
+        */}
+        {tiles?.partial && zoom <= FULL_DETAIL_MIN_ZOOM ? (
           <p className="terr__legend">Közelíts rá a térképre, hogy lásd a mezőket!</p>
         ) : null}
         {/* A jelmagyarázat legalul: a térképet nézve ritkán kell,

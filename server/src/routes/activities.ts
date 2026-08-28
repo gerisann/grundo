@@ -40,7 +40,7 @@ import {
   notifyTerritoryStolen,
 } from '../lib/notifications';
 import { existingRivals, recordRivalry, toRivalRecord, type RivalRecord } from '../lib/rivals';
-import { recomputeTerritoryBlobsFor } from '../lib/territoryBlobStore';
+import { scheduleTerritoryBlobRecompute } from '../lib/territoryBlobStore';
 import { layerOf } from '../../../src/game/cells';
 
 export const activitiesRouter = Router();
@@ -207,16 +207,13 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
      * közepét vették el, a foltja kettévált, és ezt csak az ő
      * újraszámolása látja.
      *
-     * ⚠️ SOHA NEM BUKTATJA MEG A MENTÉST. A folt megjelenítési adat: ha az
-     * újraszámolás elhasal, a kör akkor is elmentve marad, és a következő
-     * aktivitás (vagy a backfill szkript) helyreteszi a képet. Ezért van
-     * try/catch, és ezért nem a fő tranzakcióban fut.
+     * ⚠️ NEM VÁRJUK MEG. Mérve (2026-08-28): egy ~80 000 cellás terület
+     * újraszámolása ~2,1 másodperc, és egy aktivitás jellemzően 4-5
+     * felhasználót érint — a mentés így ~9 másodpercet állt volna egy
+     * MEGJELENÍTÉSI adat kedvéért. A háttérsor ezt leveszi a kérésről, és
+     * az ugyanarra a felhasználóra érkező igényeket is összevonja.
      */
-    try {
-      await recomputeTerritoryBlobsFor([uid, ...stolenFrom.map(([victimId]) => victimId)], layerOf(type));
-    } catch (error) {
-      console.error('[territoryBlobs] újraszámolás sikertelen', { activityId, error });
-    }
+    scheduleTerritoryBlobRecompute([uid, ...stolenFrom.map(([victimId]) => victimId)], layerOf(type));
 
     /**
      * A jelvény-kiértékelés a FŐ TRANZAKCIÓN KÍVÜL fut, de a válasz ELŐTT,

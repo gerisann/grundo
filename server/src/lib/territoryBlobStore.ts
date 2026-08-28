@@ -171,14 +171,74 @@ export async function recomputeTerritoryBlobs(uid: string, layer: Layer): Promis
   return blobs.length;
 }
 
-/** Több felhasználó egyszerre — a támadó és az áldozatai egy mentés után. */
-export async function recomputeTerritoryBlobsFor(uids: Iterable<string>, layer: Layer): Promise<void> {
-  const unique = [...new Set([...uids].filter(Boolean))];
-  // Sorosan: a mentési úton fut, és nem akarunk egyszerre több száz
-  // blokkolvasást indítani egyetlen kérés miatt.
-  for (const uid of unique) {
+/**
+ * ÖSSZEVONÓ HÁTTÉRSOR a foltok újraszámolásához.
+ *
+ * ⚠️ MIÉRT NEM A KÉRÉS ÚTJÁN FUT? Mert mérve (2026-08-28, ~80 000 cellás
+ * területek): egyetlen felhasználó újraszámolása ~2,1 másodperc (400 blokk
+ * olvasása 630 ms, kibontás 240 ms, komponensek 500 ms, körvonalak 730 ms).
+ * Egy aktivitás a támadót és jellemzően 3-4 áldozatot is érint, tehát a
+ * mentés ~9 másodpercet várt volna a MEGJELENÍTÉSI adat frissítésére.
+ *
+ * Az ÖSSZEVONÁS a másik fele: ha ugyanarra a felhasználóra több kérés is
+ * érkezik, amíg az újraszámolása fut, nem sorakozik fel N futás — egyetlen
+ * ismétlés elég, mert az úgyis a legfrissebb rácsállapotból dolgozik. Sűrű
+ * területi harcnál ez nagyságrendi különbség.
+ *
+ * A KOCKÁZAT VÁLLALT: a folt rövid ideig elavult lehet, és a folyamat
+ * leállása elveszíthet egy frissítést. Megjelenítési adatról van szó — a
+ * következő aktivitás úgyis újraszámolja, és ott a `backfill:territory-blobs`
+ * szkript is. Cserébe a mentés nem várakozik.
+ */
+const pending = new Map<string, 'running' | 'queued'>();
+let draining: Promise<void> = Promise.resolve();
+
+async function runRecompute(key: string, uid: string, layer: Layer): Promise<void> {
+  try {
     await recomputeTerritoryBlobs(uid, layer);
+  } catch (error) {
+    console.error('[territoryBlobs] újraszámolás sikertelen', { uid, layer, error });
   }
+
+  // Amíg futottunk, érkezhetett újabb igény — pontosan EGY ismétlés kell.
+  if (pending.get(key) === 'queued') {
+    pending.set(key, 'running');
+    await runRecompute(key, uid, layer);
+    return;
+  }
+  pending.delete(key);
+}
+
+/**
+ * A támadó és az áldozatai foltjainak frissítése — NEM várjuk meg.
+ *
+ * A hívó azonnal visszatérhet; a munka a háttérsorban fut le.
+ */
+export function scheduleTerritoryBlobRecompute(uids: Iterable<string>, layer: Layer): void {
+  for (const uid of new Set([...uids].filter(Boolean))) {
+    const key = `${layer}:${uid}`;
+    if (pending.has(key)) {
+      // Már fut rá egy számolás — elég egyetlen ismétlést előjegyezni.
+      pending.set(key, 'queued');
+      continue;
+    }
+    pending.set(key, 'running');
+    draining = draining.then(() => runRecompute(key, uid, layer));
+  }
+}
+
+/**
+ * A háttérsor kiürülésének megvárása.
+ *
+ * Szkriptekhez és tesztekhez: a teszt-világ feltöltése után ezzel lehet
+ * megvárni, hogy a foltok is elkészüljenek, mielőtt bármit mérnénk rajtuk.
+ */
+export async function waitForTerritoryBlobQueue(): Promise<void> {
+  // Több körben, mert a lefutó munka újabb ismétlést jegyezhetett elő.
+  while (pending.size > 0) {
+    await draining;
+  }
+  await draining;
 }
 
 /** A nézetet lefedő csempék egy adott szinten. */
