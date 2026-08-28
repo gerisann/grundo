@@ -192,6 +192,17 @@
         { "fieldPath": "areaMonth.bike", "order": "DESCENDING" },
         { "fieldPath": "usernameLower", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "A térkép területfoltjai egy nézethez. A `tile` mezőre `in` szűrő megy (a Firestore ezt egyenlőségként indexeli), az `areaM2`-re pedig méretküszöb és csökkenő rendezés — így a legnagyobb foltok jönnek elöl, a kizoomolt nézet kis foltjaira pedig rá sem kérdezünk.",
+      "collectionGroup": "territoryBlobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "layer", "order": "ASCENDING" },
+        { "fieldPath": "level", "order": "ASCENDING" },
+        { "fieldPath": "tile", "order": "ASCENDING" },
+        { "fieldPath": "areaM2", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -199,6 +210,12 @@
       "//": "A blokklista tömb NEM indexelendő. A Firestore alapból minden tömbelemre külön indexbejegyzést készít, dokumentumonként 40 000-es plafonnal — egy nagy birodalomnál ez betelne. Lekérdezni sosem kell rá: mindig a teljes listát olvassuk ki egyetlen dokumentumból.",
       "collectionGroup": "blockIndex",
       "fieldPath": "blocks",
+      "indexes": []
+    },
+    {
+      "//": "A körvonal JSON szövegként tárolódik (a Firestore nem enged tömböt tömbben), és több kilobájt is lehet. Szűrni sosem szűrünk rá, tehát az indexelése tiszta írási költség lenne.",
+      "collectionGroup": "territoryBlobs",
+      "fieldPath": "rings",
       "indexes": []
     }
   ]

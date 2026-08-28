@@ -16,7 +16,7 @@ import { GAMEPLAY } from '@/config/gameplay';
 import { layerOf, traceToCellPath } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
 import { IncrementalActivityGeometry, processActivityGeometry } from '@/game';
-import { api, apiConfigured, type Mission, type TilesResult } from '@/lib/api';
+import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import { isNativeIos } from '@/lib/platform';
 import {
@@ -146,6 +146,7 @@ export function TrackingScreen() {
   const cellRevision = `${cellPath.length}:${cellPath.at(-1) ?? ''}`;
 
   const [nearby, setNearby] = useState<TilesResult | null>(null);
+  const [nearbyBlobs, setNearbyBlobs] = useState<TerritoryBlobsResult | null>(null);
   const [nearbyView, setNearbyView] = useState<{
     south: number;
     west: number;
@@ -313,6 +314,21 @@ export function TrackingScreen() {
         setNearby(result);
       })
       // Hálózati hiba alatt a legutolsó ismert pillanatkép marad látható.
+      .catch(() => undefined);
+
+    /**
+     * A TERÜLETFOLTOK — ugyanaz a réteg, mint a Grundon.
+     *
+     * Külön kérés, mert más a természete: a `tiles` a nézet közepének
+     * celláit adja a hatszögrácshoz, ez viszont a nézettől független,
+     * előszámolt foltokat. Rögzítés közben ettől látszik a környék teljes
+     * birtokképe akkor is, amikor kizoomolsz.
+     */
+    void api
+      .territoryBlobs(layer, box)
+      .then((result) => {
+        if (alive) setNearbyBlobs(result);
+      })
       .catch(() => undefined);
 
     // Gyors oda-vissza váltásnál a lassabban visszaérő régi kérés nem írhatja
@@ -540,8 +556,10 @@ export function TrackingScreen() {
                 onToggleHexes={() => setShowHexes((visible) => !visible)}
                 follow={running || remoteState?.status === 'recording'}
                 onViewport={setNearbyView}
+                /* A hexagon-kapcsoló a rácsot rejti, a birtokviszonyt nem. */
+                blobs={showHexes ? nearbyBlobs?.blobs : undefined}
                 /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon. */
-                ownerColors={nearby?.ownerColors}
+                ownerColors={{ ...nearbyBlobs?.ownerColors, ...nearby?.ownerColors }}
                 fill
               />
             </Suspense>

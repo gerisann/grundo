@@ -24,6 +24,8 @@
     "backfill:area-windows": "tsx src/scripts/backfillAreaWindows.ts",
     "backfill:rivals": "tsx src/scripts/backfillRivals.ts",
     "backfill:activity-rivals": "tsx src/scripts/backfillActivityRivals.ts",
+    "backfill:territory-blobs": "tsx src/scripts/backfillTerritoryBlobs.ts",
+    "seed:budapest": "tsx src/scripts/seedBudapestActivities.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts",
     "inspect:push": "tsx src/scripts/inspectPushTokens.ts",
     "probe:apns": "tsx src/scripts/probeApns.ts",

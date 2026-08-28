@@ -40,6 +40,8 @@ import {
   notifyTerritoryStolen,
 } from '../lib/notifications';
 import { existingRivals, recordRivalry, toRivalRecord, type RivalRecord } from '../lib/rivals';
+import { recomputeTerritoryBlobsFor } from '../lib/territoryBlobStore';
+import { layerOf } from '../../../src/game/cells';
 
 export const activitiesRouter = Router();
 
@@ -194,6 +196,26 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       : new Set<string>();
     if (stolenFrom.length > 0) {
       await recordRivalry(uid, Object.fromEntries(stolenFrom));
+    }
+
+    /**
+     * A TÉRKÉP TERÜLETFOLTJAINAK ÚJRASZÁMOLÁSA — a támadóra és az áldozataira.
+     *
+     * A foltok előszámolt, nézettől független egységek (lásd
+     * `territoryBlobStore.ts`), ezért a birtokviszony minden változása után
+     * frissülniük kell. Az ÁLDOZATOK is kellenek: ha valakinek a területe
+     * közepét vették el, a foltja kettévált, és ezt csak az ő
+     * újraszámolása látja.
+     *
+     * ⚠️ SOHA NEM BUKTATJA MEG A MENTÉST. A folt megjelenítési adat: ha az
+     * újraszámolás elhasal, a kör akkor is elmentve marad, és a következő
+     * aktivitás (vagy a backfill szkript) helyreteszi a képet. Ezért van
+     * try/catch, és ezért nem a fő tranzakcióban fut.
+     */
+    try {
+      await recomputeTerritoryBlobsFor([uid, ...stolenFrom.map(([victimId]) => victimId)], layerOf(type));
+    } catch (error) {
+      console.error('[territoryBlobs] újraszámolás sikertelen', { activityId, error });
     }
 
     /**

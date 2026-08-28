@@ -24,6 +24,14 @@ export interface MapViewProps {
   track?: readonly { lat: number; lng: number }[];
   ghostTrack?: readonly { lat: number; lng: number }[];
   layers?: { role: HexRole; cells: Iterable<CellId | MapHexCell> }[];
+  /**
+   * AZ ÖSSZEFÜGGŐ TERÜLETFOLTOK — a térkép fő területrétege.
+   *
+   * Előszámolt, nézettől független egységek a `/api/tiles/blobs`-ból. Ezek
+   * adják a birtokviszony képét MINDEN nagyításon; a `layers` cellái csak
+   * közelről, a hatszögrács és a védelmi szintek megmutatására jönnek rá.
+   */
+  blobs?: readonly { id: string; owner: string; areaM2: number; rings: [number, number][][] }[];
   /** uid → választott cellaszín kulcsa, a `/api/tiles` válaszából. */
   ownerColors?: Record<string, string>;
   position?: { lat: number; lng: number } | null;
@@ -44,6 +52,7 @@ const TRACK_SOURCE = 'grundo-track';
 const GHOST_SOURCE = 'grundo-ghost';
 const CELL_SOURCE = 'grundo-cells';
 const AREA_SOURCE = 'grundo-areas';
+const BLOB_SOURCE = 'grundo-blobs';
 const CELL_DETAIL_MIN_ZOOM = 15;
 const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 const TILTED_PITCH = 55;
@@ -108,6 +117,7 @@ export function MapView({
   track,
   ghostTrack,
   layers,
+  blobs,
   ownerColors,
   position,
   follow = true,
@@ -133,11 +143,13 @@ export function MapView({
   const ghostTrackRef = useRef(ghostTrack);
   const layersRef = useRef(layers);
   const ownerColorsRef = useRef(ownerColors);
+  const blobsRef = useRef(blobs);
   const fitTrackRef = useRef(fitTrack);
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
   layersRef.current = layers;
   ownerColorsRef.current = ownerColors;
+  blobsRef.current = blobs;
   fitTrackRef.current = fitTrack;
   const viewportRef = useRef(onViewport);
   viewportRef.current = onViewport;
@@ -177,7 +189,7 @@ export function MapView({
     instance.on('load', () => {
       ready.current = true;
       addLayers(instance);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, blobsRef.current);
       fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
       report(instance);
     });
@@ -254,7 +266,7 @@ export function MapView({
     if (instance === null || !ready.current) return;
     const restore = () => {
       addLayers(instance);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, blobsRef.current);
     };
     instance.once('style.load', restore);
     instance.setStyle(mapStyleFor(theme));
@@ -280,6 +292,12 @@ export function MapView({
     syncAreaData(instance, layers, ownerColors);
     syncCellData(instance, layers, ownerColors);
   }, [layers, ownerColors]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    syncBlobData(instance, blobs, ownerColors);
+  }, [blobs, ownerColors]);
 
   useEffect(() => {
     const instance = map.current;
@@ -472,6 +490,45 @@ function fitTrackOnce(
 }
 
 function addLayers(instance: mapboxgl.Map): void {
+  /**
+   * A FOLTRÉTEG MEGY LEGALULRA — szándékosan ELSŐKÉNT hozzáadva.
+   *
+   * A Mapbox a hozzáadás sorrendjében rétegez, tehát ami előbb kerül fel, az
+   * kerül hátrébb. Így a közeli nézet cellánkénti hatszögei (`AREA`/`CELL`)
+   * ráülnek a foltra, nem alá. A kettő ugyanazt a területet írja le, csak más
+   * részletességgel: a folt minden nagyításon ott van, a hatszögek csak
+   * közelről jönnek rá.
+   */
+  if (!instance.getSource(BLOB_SOURCE)) {
+    instance.addSource(BLOB_SOURCE, { type: 'geojson', data: emptyCollection() });
+    instance.addLayer({
+      id: `${BLOB_SOURCE}-fill`,
+      type: 'fill',
+      source: BLOB_SOURCE,
+      paint: {
+        'fill-color': ['get', 'color'],
+        /**
+         * KÖZELRŐL HALVÁNYABB. Ott a cellánkénti réteg mutatja a részleteket
+         * (védelmi szint, rács), és ha a folt teli erővel alatta maradna, a
+         * kettő egymásra rakódva sötét, olvashatatlan pacát adna.
+         */
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], CELL_DETAIL_MIN_ZOOM - 1, 0.34, CELL_DETAIL_MIN_ZOOM + 1, 0.16],
+      },
+    });
+    instance.addLayer({
+      id: `${BLOB_SOURCE}-line`,
+      type: 'line',
+      source: BLOB_SOURCE,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': ['get', 'outlineColor'],
+        // Kizoomolva vékonyabb, hogy a kis foltok ne olvadjanak vonalpacává.
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1, 12, 1.8, 16, 2.6],
+        'line-opacity': 0.95,
+      },
+    });
+  }
+
   if (!instance.getSource(AREA_SOURCE)) {
     instance.addSource(AREA_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
     instance.addLayer({
@@ -594,11 +651,42 @@ function syncData(
   ghostTrack: MapViewProps['ghostTrack'],
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
+  blobs: MapViewProps['blobs'],
 ): void {
+  syncBlobData(instance, blobs, ownerColors);
   syncAreaData(instance, layers, ownerColors);
   syncCellData(instance, layers, ownerColors);
   syncTrackData(instance, track);
   syncGhostData(instance, ghostTrack);
+}
+
+/**
+ * AZ ÖSSZEFÜGGŐ FOLTOK kirajzolása.
+ *
+ * A körvonal készen érkezik a szerverről (előszámolt, egyszerűsített), ezért
+ * itt nincs se cellaösszevonás, se geometriai munka — pontosan ettől stabil
+ * a kép: ugyanaz a folt ugyanazt a poligont adja, akárhonnan nézzük.
+ */
+function syncBlobData(
+  instance: mapboxgl.Map,
+  blobs: MapViewProps['blobs'],
+  ownerColors: MapViewProps['ownerColors'],
+): void {
+  const source = instance.getSource(BLOB_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+  if (!source) return;
+
+  const features = [];
+  for (const blob of blobs ?? []) {
+    if (blob.rings.length === 0) continue;
+    const color = cellColorHex(ownerColors?.[blob.owner]);
+    features.push({
+      type: 'Feature' as const,
+      properties: { id: blob.id, owner: blob.owner, color, outlineColor: color },
+      geometry: { type: 'Polygon' as const, coordinates: blob.rings },
+    });
+  }
+
+  source.setData({ type: 'FeatureCollection', features });
 }
 
 function syncAreaData(

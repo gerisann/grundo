@@ -44,6 +44,8 @@ export const COLLECTIONS = {
   modifiers: 'modifiers',
   metricsDaily: 'metricsDaily',
   rolloverRuns: 'rolloverRuns',
+  /** Előszámolt, összefüggő területfoltok a térkép távoli nézetéhez. */
+  territoryBlobs: 'territoryBlobs',
 } as const;
 
 /** Az `appConfig` dokumentumainak azonosítói. */

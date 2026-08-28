@@ -9,6 +9,7 @@ import {
   loadUserBlockIds,
   type GridBlock,
 } from '../lib/grid';
+import { loadBlobsForView } from '../lib/territoryBlobStore';
 import { isCellColor } from '../../../src/lib/cellColors';
 import { cellsToM2 } from '../../../src/game/cells';
 import { levelFor } from '../../../src/game/levels';
@@ -100,7 +101,7 @@ function parseLayer(raw: unknown): Layer {
   return value;
 }
 
-/** Négy gyűrű = 61 blokk. Ennyi a FINOM (hatszögenként kibontott) szakasz. */
+/** Négy gyűrű = 61 blokk. Ennyi az a legnagyobb szakasz, amit lefedünk. */
 const MAX_VIEW_BLOCKS = 61;
 
 /**
@@ -112,35 +113,26 @@ const MAX_VIEW_BLOCKS = 61;
 const BLOCK_SPAN_KM = 0.3;
 
 /**
- * A FINOM (res 12-ig kibontott, hatszögenkénti) lefedés sugara gyűrűkben.
+ * A nézetet LEFEDŐ blokkok sugara gyűrűkben.
  *
- * Ezen belül minden cella egyenként rajzolódik ki — ennyi az, ami egy
- * telefon képernyőjén még értelmesen olvasható (lásd lent a `partial`
- * melletti megjegyzést).
+ * Négy gyűrűnél (61 blokk, ~2,4 km) nem megyünk tovább. Nem a lekérdezés
+ * miatt: egy res 12 hatszög ekkora nézetben már képpontnyi, a háló pedig
+ * olvashatatlan szürkeséggé folyna össze.
+ *
+ * ⚠️ EZ A KÖZELI RÉTEG, ÉS SZÁNDÉKOSAN MARAD SZŰK. Kizoomolva NEM ez tartja
+ * életben a térképet, hanem az előszámolt területfoltok (`/blobs`) — azok
+ * nézettől függetlenül léteznek, ezért nem vágódnak el és nem ugrálnak.
+ * Korábban itt próbáltunk durva, blokkonkénti hatszögeket visszaadni; az
+ * pontatlan volt és pásztázáskor villódzott, ezért került ki.
  */
-const NEAR_MAX_RINGS = 4;
-
-/**
- * A DURVA (blokkonként EGY foltként kirajzolt) lefedés sugara gyűrűkben.
- *
- * ~8 km — Geri kérése (2026-08-27): kizoomolva se tűnjenek el a foglalt
- * területek. A finom sugáron TÚL, egészen eddig, blokkonként egyetlen
- * (a blokk domináns tulajdonosának színében kitöltött) hatszöget adunk
- * vissza a 343 gyerekcella helyett — így a kirajzolandó alakzatok száma
- * nem nő az olvashatatlanságig, miközben a folt nem tűnik el.
- *
- * Csak akkor olvasunk plusz dokumentumot, ha a nézet TÉNYLEG ennyire ki van
- * zoomolva: közeli nézetnél a `far` lista üres, a Firestore-terhelés a
- * korábbival azonos marad.
- */
-const FAR_MAX_RINGS = 27;
+const MAX_RINGS = 4;
 
 function coveringBlocks(view: {
   south: number;
   west: number;
   north: number;
   east: number;
-}): { near: string[]; far: string[]; partial: boolean } {
+}): { blocks: string[]; partial: boolean } {
   const centerLat = (view.north + view.south) / 2;
   const centerLng = (view.east + view.west) / 2;
 
@@ -152,41 +144,14 @@ function coveringBlocks(view: {
   // Legalább egy gyűrű: erős ráközelítésnél a nézet kisebb egy blokknál, de
   // a középső cellát és a szomszédjait akkor is meg kell mutatni.
   const needed = Math.max(1, Math.ceil(radiusKm / BLOCK_SPAN_KM));
-  const nearRings = Math.min(NEAR_MAX_RINGS, needed);
-  const farRings = Math.min(FAR_MAX_RINGS, needed);
-
-  const center = latLngToCell(centerLat, centerLng, BLOCK_RESOLUTION);
-  const near = gridDisk(center, nearRings);
-  // A durva gyűrű csak akkor kell, ha a nézet TÚLNYÚLIK a finom sugáron —
-  // ilyenkor a `far` a köztes GYŰRŰ (a durva korong mínusz a finom korong),
-  // nem a teljes korong, hogy a finom cellákat ne olvassuk kétszer.
-  const far = farRings > nearRings ? diffBlocks(gridDisk(center, farRings), near) : [];
+  const rings = Math.min(MAX_RINGS, needed);
 
   return {
-    near,
-    far,
-    // Ha még a durva sugáron is túlnyúlik, a széleken NEM tudjuk, mi van.
-    partial: needed > FAR_MAX_RINGS,
+    blocks: gridDisk(latLngToCell(centerLat, centerLng, BLOCK_RESOLUTION), rings),
+    // Ha levágtuk, a háló csak a nézet közepét fedi le — a kliensnek tudnia
+    // kell róla, hogy ne higgye tévesen szabadnak a széleket.
+    partial: needed > MAX_RINGS,
   };
-}
-
-function diffBlocks(all: string[], exclude: string[]): string[] {
-  const excluded = new Set(exclude);
-  return all.filter((id) => !excluded.has(id));
-}
-
-/** A blokk legtöbb cellával rendelkező tulajdonosa — ő adja a folt színét. */
-function dominantOwner(block: GridBlock): string | null {
-  if (block.uniform) return block.uniform.o;
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [owner, count] of Object.entries(block.ownerCounts ?? {})) {
-    if (count > bestCount) {
-      best = owner;
-      bestCount = count;
-    }
-  }
-  return best;
 }
 
 /**
@@ -212,31 +177,16 @@ tilesRouter.get('/', async (req, res, next) => {
       throw badRequest('invalid_bbox', 'Hibás térképszakasz.');
     }
 
-    /**
-     * A NÉZET közepéből induló finom (`near`) és durva (`far`) gyűrű — lásd
-     * `coveringBlocks`. A `far` a legtöbb nézetnél üres: csak erős
-     * kizoomolásnál nő plusz Firestore-olvasássá.
-     */
-    const { near: nearBlockIds, far: farBlockIds, partial } = coveringBlocks({
-      south,
-      west,
-      north,
-      east,
-    });
+    const { blocks: blockIds, partial } = coveringBlocks({ south, west, north, east });
 
     const today = gameDay(new Date());
-    const nearRefs = nearBlockIds.map((id) => db.collection(COLLECTIONS.grid).doc(`${layer}_${id}`));
-    const [nearSnapshots, farSnapshots] = await Promise.all([
-      db.getAll(...nearRefs),
-      farBlockIds.length > 0
-        ? db.getAll(...farBlockIds.map((id) => db.collection(COLLECTIONS.grid).doc(`${layer}_${id}`)))
-        : Promise.resolve([]),
-    ]);
+    const refs = blockIds.map((id) => db.collection(COLLECTIONS.grid).doc(`${layer}_${id}`));
+    const snapshots = await db.getAll(...refs);
 
     const cells: { cell: CellId; owner: string; defense: number }[] = [];
     const ownerIds = new Set<string>();
 
-    for (const snapshot of nearSnapshots) {
+    for (const snapshot of snapshots) {
       if (!snapshot.exists) continue;
       const block = snapshot.data() as GridBlock;
       for (const [cell, stored] of expandBlock(block, GAMEPLAY.H3_RESOLUTION)) {
@@ -245,34 +195,11 @@ tilesRouter.get('/', async (req, res, next) => {
       }
     }
 
-    /**
-     * A TÁVOLI gyűrű blokkonként EGY foltot ad, nem 343 gyerekcellát.
-     *
-     * A blokk domináns tulajdonosa az `ownerCounts`-ból jön — ez már eleve
-     * karban van tartva minden íráskor, tehát nem kell újraszámolni a teljes
-     * cellalistát. A védelmi szint csak megközelítő (a `uniform` blokknál
-     * pontos, kevert blokknál a köztes 3-as szintet mutatjuk) — ez a nézet
-     * úgyis csak a folt HELYÉT és SZÍNÉT közvetíti, nem a pontos harci
-     * állapotot.
-     */
-    for (const snapshot of farSnapshots) {
-      if (!snapshot.exists) continue;
-      const block = snapshot.data() as GridBlock;
-      const owner = dominantOwner(block);
-      if (!owner) continue;
-      const defense = block.uniform ? effectiveDefense(block.uniform, today) : 3;
-      cells.push({ cell: block.parent as CellId, owner, defense });
-      ownerIds.add(owner);
-    }
-
     res.json({
       layer,
       // A blokkokat is visszaadjuk: ezekből tudja a kliens kiszámolni, mely
       // cellák SZABADOK — a szabad cella nem tárolódik sehol, az a hiánya.
-      // Szándékosan csak a FINOM gyűrű: a távoli blokkok gyerekeit nem
-      // bontjuk ki, ezért ott a szabad cellák számítása sem indulna el —
-      // ez a zoomszint amúgy is a `FREE_CELL_MIN_ZOOM` alatt van a kliensen.
-      blocks: nearBlockIds,
+      blocks: blockIds,
       cells,
       ...(await ownerProfiles(ownerIds).then(({ names, colors }) => ({
         owners: names,
@@ -280,6 +207,58 @@ tilesRouter.get('/', async (req, res, next) => {
       }))),
       // A háló csak a nézet közepét fedi le — a széleken NEM tudjuk, mi van.
       partial,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/tiles/blobs?layer=foot&south=&west=&north=&east=
+ *
+ * AZ ÖSSZEFÜGGŐ TERÜLETFOLTOK — a térkép fő területrétege minden nagításon.
+ *
+ * MIÉRT KÜLÖN VÉGPONT A `/`-tól? Mert más a természetük. A `/` a nézet
+ * közepének CELLÁIT adja vissza a hatszögrácshoz és a védelmi szintekhez,
+ * és ezért szűk sugarú. Ez viszont NÉZETTŐL FÜGGETLEN, előszámolt egységeket
+ * ad: a folt akkor is teljes, ha kilóg a képernyőről, és ugyanaz a folt
+ * ugyanakkora marad, akárhonnan nézzük. Ettől nem ugrálnak és nem
+ * csonkulnak a területek pásztázás közben.
+ *
+ * A méretszűrés a szerveren történik (`territoryScale.ts`): kizoomolva a
+ * kis foltokat be sem töltjük, ezért a válasz mérete nem nő a nagyítással.
+ */
+tilesRouter.get('/blobs', async (req, res, next) => {
+  try {
+    const layer = parseLayer(req.query.layer);
+    const south = Number(req.query.south);
+    const west = Number(req.query.west);
+    const north = Number(req.query.north);
+    const east = Number(req.query.east);
+
+    if (![south, west, north, east].every(Number.isFinite) || north <= south || east <= west) {
+      throw badRequest('invalid_bbox', 'Hibás térképszakasz.');
+    }
+
+    const { blobs, minAreaM2, truncated } = await loadBlobsForView(layer, { south, west, north, east });
+
+    const ownerIds = new Set(blobs.map((blob) => blob.owner));
+    const { names, colors } = await ownerProfiles(ownerIds);
+
+    res.json({
+      layer,
+      blobs: blobs.map((blob) => ({
+        id: blob.id,
+        owner: blob.owner,
+        areaM2: blob.areaM2,
+        cellCount: blob.cellCount,
+        rings: blob.rings,
+      })),
+      owners: names,
+      ownerColors: colors,
+      // A kliens jelezni tudja, ha a nagyítás miatt szűrtünk.
+      minAreaM2,
+      truncated,
     });
   } catch (error) {
     next(error);

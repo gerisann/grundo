@@ -412,6 +412,26 @@ export interface TilesResult {
   partial?: boolean;
 }
 
+/** Egy összefüggő területfolt — a térkép fő területrétegének egysége. */
+export interface TerritoryBlob {
+  id: string;
+  owner: string;
+  areaM2: number;
+  cellCount: number;
+  /** GeoJSON gyűrűk: [gyűrű][pont][lng, lat]. Az első a külső, a többi lyuk. */
+  rings: [number, number][][];
+}
+
+export interface TerritoryBlobsResult {
+  layer: 'foot' | 'bike';
+  blobs: TerritoryBlob[];
+  owners: Record<string, string>;
+  ownerColors?: Record<string, string>;
+  /** Ekkora terület alatt ezen a nagyításon nem rajzolunk — a felület jelezheti. */
+  minAreaM2: number;
+  truncated?: boolean;
+}
+
 export interface LeaderboardEntry {
   uid: string;
   username: string;
@@ -1085,6 +1105,23 @@ export const api = {
   ) =>
     request<TilesResult>(
       `/api/tiles?layer=${layer}&south=${view.south}&west=${view.west}` +
+        `&north=${view.north}&east=${view.east}`,
+    ),
+
+  /**
+   * Az ÖSSZEFÜGGŐ TERÜLETFOLTOK a látott szakaszon.
+   *
+   * A `tiles`-tól eltérően ez NÉZETTŐL FÜGGETLEN, előszámolt egységeket ad:
+   * egy folt akkor is teljes, ha kilóg a képernyőről, és ugyanaz a folt
+   * ugyanakkora marad, akárhonnan nézzük. A méretszűrés a szerveren megy
+   * (lásd `territoryScale.ts`), ezért a válasz mérete nem nő a nagyítással.
+   */
+  territoryBlobs: (
+    layer: 'foot' | 'bike',
+    view: { south: number; west: number; north: number; east: number },
+  ) =>
+    request<TerritoryBlobsResult>(
+      `/api/tiles/blobs?layer=${layer}&south=${view.south}&west=${view.west}` +
         `&north=${view.north}&east=${view.east}`,
     ),
 

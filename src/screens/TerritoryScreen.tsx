@@ -11,6 +11,7 @@ import {
   apiConfigured,
   type LeaderboardEntry,
   type LeaderboardWindow,
+  type TerritoryBlobsResult,
   type TileOwner,
   type TilesResult,
 } from '@/lib/api';
@@ -62,6 +63,7 @@ export function TerritoryScreen() {
     write(LAYER_KEY, layer);
   }, [layer]);
   const [tiles, setTiles] = useState<TilesResult | null>(null);
+  const [blobs, setBlobs] = useState<TerritoryBlobsResult | null>(null);
   const [board, setBoard] = useState<LeaderboardEntry[] | null>(null);
   const [boardWindow, setBoardWindow] = useState<LeaderboardWindow>('alltime');
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -126,11 +128,22 @@ export function TerritoryScreen() {
   const loadTiles = useCallback(
     async (next: View) => {
       if (!apiConfigured) return;
-      try {
-        setTiles(await api.tiles(layer, next));
-      } catch {
-        setTiles(null);
-      }
+      /**
+       * A KÉT RÉTEG EGYSZERRE, de EGYMÁSTÓL FÜGGETLENÜL.
+       *
+       * A `tiles` a nézet közepének celláit adja (hatszögrács, védelmi
+       * szintek), a `blobs` az összefüggő területfoltokat — az utóbbi
+       * nézettől független, előszámolt egység, ezért az marad a
+       * birtokviszony képe akkor is, amikor a cellák már rég kiestek a
+       * szűk sugárból. `allSettled`, hogy az egyik hibája ne vigye el a
+       * másikat: inkább lássunk foltokat rács nélkül, mint üres térképet.
+       */
+      const [tilesResult, blobsResult] = await Promise.allSettled([
+        api.tiles(layer, next),
+        api.territoryBlobs(layer, next),
+      ]);
+      setTiles(tilesResult.status === 'fulfilled' ? tilesResult.value : null);
+      setBlobs(blobsResult.status === 'fulfilled' ? blobsResult.value : null);
     },
     [layer],
   );
@@ -280,8 +293,14 @@ export function TerritoryScreen() {
                     ]
                   : []
               }
+              /*
+                A területfoltok MINDEN nagyításon látszanak — a hexagonok
+                csak közelről jönnek rájuk. A hexagon-kapcsoló a rácsot
+                rejti el, nem a birtokviszonyt.
+              */
+              blobs={cellsVisible ? blobs?.blobs : undefined}
               /* Mindenki a saját választott színében látszik a térképen. */
-              ownerColors={tiles?.ownerColors}
+              ownerColors={{ ...blobs?.ownerColors, ...tiles?.ownerColors }}
               position={position}
               follow={false}
               /* Nyitott ranglistánál a pozíció-gomb a lista elé lógna. */
