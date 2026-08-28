@@ -21,6 +21,9 @@ tmp/*
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+# Az `emulators:export` a repo gyökerébe teszi a kimentett emulátor-állapotot,
+# ha nem adunk meg célmappát — és megszakadt exportnál is otthagyja.
+firebase-export-*/
 
 # Editor / OS
 .DS_Store
