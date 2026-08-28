@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!--
+      Az adaptív ikon HÁTTERE. Pontosan ugyanaz a szín, mint a forráskép saját
+      háttere (`scripts/generate-icons.mjs` → BACKGROUND), mert az előtér
+      körüli sávban ez látszik ki: eltérő színnél a rendszer maszkja alatt
+      sötét négyzet ülne világos kereten. Fehér volt, ami a sötét ikonhoz
+      látványos keretet rajzolt.
+    -->
+    <color name="ic_launcher_background">#131314</color>
 </resources>

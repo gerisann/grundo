@@ -9,7 +9,16 @@
     <meta name="theme-color" content="#f7f7fa" />
     <meta name="description" content="GRUNDO — fuss, sétálj vagy bringázz, és foglald el a várost." />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+    <!--
+      ⚠️ NINCS TÖBBÉ SVG FAVICON. A korábbi `favicon.svg` a RÉGI logót
+      tartalmazta, és mivel a böngésző a vektoros változatot részesíti
+      előnyben, a PNG-k cseréje után is az régi ikon látszott volna a fülön.
+      Az ikon most bitképként, egyetlen forrásból készül —
+      lásd `npm run icons:generate`.
+    -->
+    <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>GRUNDO</title>
 
     <!--
