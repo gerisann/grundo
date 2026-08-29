@@ -1,0 +1,12 @@
+{
+  "priority": [
+    { "if": "road_class == CYCLEWAY || bike_network != MISSING", "multiply_by": "1.6" },
+    { "if": "road_class == PRIMARY || road_class == SECONDARY", "multiply_by": "0.35" },
+    { "if": "surface == GRAVEL || surface == DIRT || surface == SAND || surface == GROUND", "multiply_by": "0.5" },
+    { "if": "road_environment == FERRY", "multiply_by": "0" }
+  ],
+  "turn_penalty": [
+    { "if": "change_angle >= 25 && change_angle < 80", "add": "10" },
+    { "else_if": "change_angle >= 80 && change_angle <= 180", "add": "30" }
+  ]
+}

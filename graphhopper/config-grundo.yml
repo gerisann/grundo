@@ -1,0 +1,65 @@
+# GRUNDO útvonalmotor — GraphHopper 11 konfiguráció
+#
+# MIÉRT SAJÁT MOTOR? Mert a küldetés-ajánlónak KÖRT kell terveznie adott
+# hosszra, kevés kanyarral, futásra/bringára alkalmas utakon. A Mapbox
+# Directions egyiket sem tudja: nincs kör-generálása, nincs kanyarbüntetése,
+# és az útsúlyozása fekete doboz. Mérés a 2026-08-29-i menetből: 204 Mapbox
+# jelöltből 1 volt hibátlan, egy 16 km-es bringakör az azonos hosszú kör
+# területének 4-6 %-át zárta be.
+#
+# HELYI FUTTATÁS (lásd README.md a mappában):
+#   java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml
+#
+# ⚠️ HÁROM BUKTATÓ, MIND MÉRVE — ne vedd ki őket:
+#   1. A `turn_penalty` (kanyarbüntetés) NEM fordul le `orientation` nélkül:
+#      "Cannot compile expression: Variable not supported: orientation".
+#   2. A profilon kell `turn_costs`, benne NEM ÜRES `vehicle_types`, és
+#      `allow_turn_penalty_in_request: true` — enélkül a kérésben küldött
+#      egyedi modell kanyarbüntetését a szerver visszautasítja.
+#   3. Ezek megváltoztatása UTÁN a gráfot újra kell importálni (töröld a
+#      graph-cache mappát), különben a régi adatokkal indul.
+
+graphhopper:
+  datareader.file: hungary-latest.osm.pbf
+  graph.location: graph-cache
+
+  custom_models.directory: custom_models
+
+  profiles:
+    - name: foot
+      turn_costs:
+        vehicle_types: [foot]
+        u_turn_costs: 40
+        allow_turn_penalty_in_request: true
+      custom_model_files: [foot.json]
+    - name: bike
+      turn_costs:
+        vehicle_types: [bicycle]
+        u_turn_costs: 30
+        allow_turn_penalty_in_request: true
+      custom_model_files: [bike.json]
+
+  # A kör-generálás (`algorithm=round_trip`) csak rugalmas módban fut
+  # (`ch.disable=true`), ezért nincs CH-előkészítés. A landmark (LM)
+  # előkészítés a válaszidőt javítaná — ha élesben kell, itt kapcsold be.
+  profiles_ch: []
+  profiles_lm: []
+
+  graph.encoded_values: foot_access, foot_priority, foot_average_speed, foot_network, hike_rating, bike_access, bike_priority, bike_average_speed, bike_network, get_off_bike, mtb_rating, roundabout, road_class, road_class_link, road_environment, road_access, surface, smoothness, track_type, max_speed, country, foot_road_access, bike_road_access, orientation
+
+  import.osm.ignored_highways: motorway,trunk
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 127.0.0.1
+
+logging:
+  appenders:
+    - type: console
+      threshold: WARN

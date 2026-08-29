@@ -210,6 +210,17 @@ A GRUNDO szíve (képek #49, #21).
   A Beállítások → Értesítések alatt kikapcsolható; a változás a következő
   rögzítéstől érvényes. Androidon ennek megfelelője későbbi foreground service.
 
+### Élő útszakasz-visszajelzés *(döntés: 2026-08-29)*
+
+Rögzítés közben a felhasználó **az éppen futott útszakaszra** adhat visszajelzést egyetlen koppintással. Ez a jövőbeli útvonaltervezés legfontosabb saját adatforrása: nem általános ízlést kérdezünk, hanem konkrét utcákat, ott, ahol éppen jár.
+
+- **Két gomb**: hüvelykujj fel / hüvelykujj le, a jobb oldali térképvezérlő-oszlopban, a 2D/3D váltó és a középre-igazítás **fölött**, azonos 40×40 px méretben. Nézetváltás után, amikor csak a statisztika-panel látszik, ugyanez a két gomb ott is megjelenik.
+- **Visszajelzés**: rövid, magától eltűnő üzenet — „Útszakasz kedvelve" zöldes, „Nem kedvelt útszakasz" pirosas kerettel —, a gomb pillanatnyi színváltásával és rezgéssel. Futás közben senki nem néz oda: a gomb nagy, a találati terület nagyobb.
+- **Ki-be kapcsolható** a Beállításokban; kikapcsolva a két gomb nem foglal helyet.
+- **Mi az „útszakasz"**: az OSM `way` azonosítója (utcanévvel), amit a saját útvonalmotorunk ad. Küldetés futásakor a tervezett útvonal szakaszlistája előre letöltődik, tehát a gomb **hálózat nélkül is működik**; szabad futásnál a koppintás a nyers koordinátával mentődik, és a szakaszhoz **utólag, mentéskor** rendeljük hozzá. A gomb sosem „nem működik".
+- **Tárolás**: a felhasználó saját adata, blokkonként tömörítve (a birtokviszony `blockIndex` mintájára), hogy egyetlen felhasználó se termeljen dokumentum-robbanást. **Soha nem publikus**: se a feed, se a ranglista, se más felhasználó nem látja, hol jár szívesen valaki.
+- **Felhasználás a küldetés-ajánlóban** három kapcsolóval: *kedvenc szakaszaim előnyben* · *nem kedvelt szakaszok kizárva* · *csak olyan úton, ahol még nem jártam*. Az utolsóhoz a visszajelzés hiánya **és** a saját korábbi aktivitások cellái adják az alapot — így az első naptól működik, nem kell hozzá hónapokig gyűjteni.
+
 ### Szüneteltetve (kép #03)
 - Folytatás · stop · fotó. Az értesítés is jelzi: „Szüneteltetve — koppints a visszatéréshez".
 
@@ -374,7 +385,11 @@ Időalapú tervezésnél a távot a rendszer a felhasználó **saját átlagtemp
 
 Opcionális finomhangolás: elsődleges cél (`legjobb ajánlat` · `új terület` · `rablás` · `grund erősítése` · `felfedezés`) és égtáj. A cél a találatok sorrendjét, az égtáj a körjelöltek vizsgálati sorrendjét adja; egyik sem ígér eredményt, ha a valós úthálózat vagy birtokviszony nem ad megfelelő kört.
 
-**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel. A Mapbox minden bemeneti koordinátát sorrendben, kötelező pontként látogat meg, és a mértani körpontot a járható úthálózatra illeszti; ezért egy zsákutcára pattant köztes pont önmagában oda-vissza nyúlványt okozhat. A GRUNDO ezt nem légvonalas vonalradírral javítja, hanem irányhelyes útszakaszra illesztéssel (`bearings`, `continue_straight`), Mapbox-alternatívákkal, majd a hibát kiváltó köztes pont úthálózaton fekvő bejárathoz igazításával és teljes újratervezéssel.
+**A kimenet normál esetben 3–4 küldetés-kártya**, mind más karakterrel.
+
+**Az útvonalmotor saját üzemeltetésű GraphHopper** *(döntés: 2026-08-29)*, nem a Mapbox Directions. Az ok mérés: a Mapbox nem tud kört generálni, ezért mértani körpontokat kényszerítettünk rá kötelező köztes pontként, azokat pedig sorrendben, legrövidebb úton kötötte össze — ebből jött a cikcakk, a visszafordulás és a szétcsúszó hossz. 204 mért jelöltből **1** volt hibátlan, egy 16 km-es bringakör pedig az azonos hosszú szabályos kör területének **4–6 %-át** zárta be.
+
+A GraphHopperben három olyan eszköz van, ami a Mapboxban elvileg sincs: **kör-generáló algoritmus** célhosszra (`round_trip`), **kanyarbüntetés** az irányváltás szöge szerint (`turn_penalty` / `change_angle`), és **egyedi útsúlyozás** OSM-tulajdonságokból (kerékpárút, kerékpáros útvonalhálózat, burkolat, úttípus). Mivel a szolgáltatás a miénk, a kérés ingyenes és ~15 ms — ezért generáláskor **több tucat jelöltet** kérünk, és a végső választást a saját pontozásunk végzi (bezárt terület, hibátlanság, hosszeltérés, kanyarszám).
 
 A minőségi kapu külön kezeli a valódi visszafordulást és az enyhébb helyi kerülőt: 6–20 méteres léptékben keresi a közel 180°-os fordulatot, továbbá felismeri a legfeljebb 350 méteres olyan rövid hurkot vagy háromoldalas „dobozkerülőt”, amelynek végpontjai légvonalban az út hosszának legfeljebb felére vannak egymástól. U-fordulásmentes jelölt mindig elsőbbséget élvez; azon belül a kevesebb helyi kerülő nyer. Ha egy ritka úthálózat egyetlen teljesen tiszta kört sem ad, a rendszer a helyi legjobbakat mutatja ahelyett, hogy használhatatlan nulla találatot adna.
 
@@ -390,11 +405,22 @@ Minden kártyán: térkép-előnézet a javasolt körrel és a megszerezhető ce
 Gombok: `Indítás most` (egyenesen a trackingbe, az útvonal navigációként a térképen) · `Mentés` · `Újragenerálás`.
 Szűrők megmaradnak: kevés útkereszteződés · zöldterület · lapos terep.
 
+**Útvonal-karakter kapcsoló** *(döntés: 2026-08-29)* — a részletes keresőben, két állással:
+
+| Választás | Mit állít | Kinek |
+|---|---|---|
+| **Kanyargós** | nincs kanyarbüntetés; a kisebb utcák, ösvények, parkok előnyben | felfedezős kör, több utcát érint |
+| **Hosszú egyenesek** | erős kanyarbüntetés; a folytonos, összefüggő utak előnyben | tempózható kör — a derékszögű sarok belefér, a cikcakk nem |
+
+Ugyanaz a tervező futtatja mindkettőt, csak más súllyal (a kérésbe ágyazott egyedi modell `turn_penalty` szakasza). **Séta mozgásformánál a kapcsoló nem jelenik meg** — ott nincs értelme.
+
 **Hogyan számol:**
 
 ```
-1. Kör-jelöltek generálása a jelenlegi pozíció körül (út-gráf, célhossz ±15 %, 8 irányban)
-2. Útvonalminőség: irányhelyes illesztés, hibás köztes pont újratervezése, U-fordulás/helyi kerülő rangsor
+1. Kör-jelöltek generálása a jelenlegi pozíció körül (saját GraphHopper, célhossz ±15 %,
+   8 irány × több változat — a kérés ingyenes, ezért bőven generálunk, nem takarékoskodunk)
+2. Útvonalminőség: U-fordulás, helyi kerülő, kanyarszám és átlagos egyenes szakasz;
+   a felhasználó kanyargós/egyenes választása már a tervezésbe beépül
 3. Minden jelöltre: a bezáruló cellahalmaz kiszámítása (ugyanaz a flood fill, mint élesben)
 4. Értékelés a JELENLEGI birtokviszonyok ellen:
      szabad cellák          → új terület
@@ -410,6 +436,8 @@ Szűrők megmaradnak: kevés útkereszteződés · zöldterület · lapos terep.
 **Home-integráció:** a legjobb ajánlat **napi küldetés-kártyaként** megjelenik a Home tetején is („A mai küldetésed"), egy koppintással indítható. Ez a legerősebb visszahívó elem az egész appban — nem általános biztatás, hanem konkrét, helyi, mérhető tét.
 
 **Mentett küldetések** listája a Profil › Küldetések fülön él, és indítás előtt közvetlenül a Trackingből is megnyitható (kép #27 „Mentett útvonalak" gomb). A mentett számok generáláskori pillanatképek; indításkor a szerver a friss birtokviszonyból számol.
+
+**Útvonal-visszajelzés** *(döntés: 2026-08-29)* — minden felajánlott küldetésen egy hüvelykujj fel / le páros. A „nem tetszett" nem csak elrejti az adott kártyát: a rendszer **eltárolja az útvonal cellahalmazát**, és a következő generálásoknál kiesik minden olyan jelölt, amelynek a cella-átfedése egy elutasított útvonallal a küszöb fölött van. Így nem kell külön hasonlósági modell — pontosan azt méri, ami a felhasználónak számít: ugyanoda visz-e. A „tetszett" ugyanezt fordítva teszi: az ilyen útvonalak cellái előnyt adnak a pontozásban.
 
 ### Edzés fül (képek #16, #40) `[Pro]`
 - Regeneráció-kártya.

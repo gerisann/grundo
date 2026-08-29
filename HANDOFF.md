@@ -1,179 +1,194 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · átadás a területmegjelenítés átépítése után
+> Frissítve: **2026-08-29** · átadás a **GRUNDO #17** menetből a **#18**-ra
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · implementációs HEAD: **`d0f97f0`**
-> (`Profil fülsáv: az aktív fül középre kerül`) · pusholva, `origin/main` egyezik
+> Ág: **`main`** · ez a menet **kódot nem változtatott**: mérés, döntés,
+> specifikáció és az útvonalmotor konfigurációja került be.
 
-## ⚠️ ELSŐ OLVASNIVALÓ — ÉLESBEN EL VAN TÖRVE A TERÜLETMEGJELENÍTÉS
+## ⚠️ ELSŐ OLVASNIVALÓ
 
-A kód kint van (frontend és backend is), de a **Firestore composite index nincs
-kitelepítve**, ezért a `/api/tiles/blobs` végpont MINDEN hívása hibára fut
-élesben. Éles adaton lefuttatva pontosan azt a lekérdezést, amit a végpont
-használ:
+**1. A területmegjelenítés ügye LEZÁRVA.** Az előző handoff figyelmeztetése
+elavult; éles adaton ellenőrizve 2026-08-29-én:
 
-```
-FAILED_PRECONDITION — The query requires an index.
-```
+- a `territoryBlobs` composite index **READY** (mezők: `layer, level, tile,
+  areaM2, __name__`), a 24 éles index között;
+- a végpont lekérdezés-alakja éles adaton **lefut, nincs `FAILED_PRECONDITION`**,
+  valódi tile-okra 9 foltot ad vissza (68 174 … 307 m²);
+- a **backfill lefutott**: 14 folt, mind 2026-08-29 08:10:01–08:10:04 CEST
+  között írva, 5 tulajdonos/réteg csoportban (kötegelt futás lenyomata).
 
-A kliens `Promise.allSettled`-del kezeli, tehát nem omlik össze, csak néma:
-közelre zoomolva a hatszögek még látszanak a régi `/api/tiles`-ból, kizoomolva
-viszont **egyetlen terület sem jelenik meg**.
+Nincs teendő. A térkép **vizuális** ellenőrzése (kizoomolva látszanak-e a
+területek) továbbra is Gerire vár, de az adatút bizonyítottan él.
 
-Javítás (Cloud Shell, repo gyökere) — ez a következő menet első dolga:
+**2. A küldetés-ajánló élesben nem ad útvonalat.** A felület minden kérésre az
+`no_routes` üzenetet adja („Az útvonaltervező most nem adott vissza útvonalat
+erről a pontról"). Amit kizártam méréssel:
+
+- **nem kódhiba**: ugyanaz a `planLoop` a fejlesztői gépről **72/72** kérésre
+  adott útvonalat, 100–200 ms-mal, a `.env.local` tokenjével;
+- **nem elavult telepítés**: a `directions.ts` 2026-08-23 óta változatlan, a
+  backend 08-28 23:34-kor települt, tehát élesben ez a kód fut;
+- **nem elállított hangolható konstans**: az éles `appConfig/gameplay`
+  `overrides` mezője üres;
+- **nem hiányzó változó**: a `MAPBOX_TOKEN` létezik a Cloud Runon (ha üres
+  lenne, a `directions_unavailable` 503 menne, más szöveggel).
+
+Marad a szerverre telepített token értéke, URL-korlátozása vagy a Mapbox-kvóta.
+A Cloud Run környezetének kiolvasását a jogosultság-osztályozó blokkolta, ezért
+**Geri futtatja Cloud Shellben** (a fejlesztői gépen működő token 93 karakter,
+`pk.eyJ1IjoiZ` kezdetű):
 
 ```bash
-scripts/deploy.sh indexek
+gcloud run services describe grundo-api --region=europe-west1 --project=grundo --format=json | python3 -c "import json,sys;e={v['name']:v.get('value','') for v in json.load(sys.stdin)['spec']['template']['spec']['containers'][0]['env']};t=e.get('MAPBOX_TOKEN','');print('token hossz:',len(t),'eleje:',t[:12]);open('/tmp/mbtoken','w').write(t)"
 ```
-
-Az index elkészülte UTÁN a backfill is kell, különben csak azoknak lesz
-foltjuk, akik a backend telepítése óta mentettek kört:
 
 ```bash
-cd ~/grundo/server && npm run backfill:territory-blobs
-cd ~/grundo/server && npm run backfill:territory-blobs -- --apply --allow-production
+curl -s -o /dev/null -w '%{http_code}\n' "https://api.mapbox.com/directions/v5/mapbox/walking/19.0537,47.4979;19.0600,47.5000?access_token=$(cat /tmp/mbtoken)"
 ```
 
-## ÁLLAPOT
+200 → a token jó, a Mapbox-fiók oldalán a limit. 401/403 → rossz vagy
+korlátozott token. **Ez rövid távú javítás**: a #18-as menetben az egész motor
+lecserélődik, és a Mapbox kikerül a küldetés-ajánlóból.
 
-### A területmegjelenítés átépítése (a menet fő munkája)
+## A MENET FŐ EREDMÉNYE: DÖNTÉS AZ ÚTVONALMOTORRÓL
 
-A térkép korábban a BETÖLTÖTT cellákból vonta össze a területfoltokat menet
-közben. Három hiba jött ebből, mindet Geri jelezte: a folt széle ott tört el,
-ahol a betöltési ablak véget ért; pásztázáskor ugyanarra a területre más-más
-folt rajzolódott („ugráltak"); kizoomolva pedig elfogyott az adat.
+Geri panasza (cikcakk, 180 fokos visszafordulás, fölösleges hurok) mérve
+igazolódott, és **szerkezeti**, nem hangolási kérdés. A Mapbox Directions nem
+tud kört generálni; mértani körpontokat kényszerítettünk rá kötelező köztes
+pontként, azokat pedig sorrendben, legrövidebb úton kötötte össze.
 
-Mostantól a folt **világ-szintű, állandó egység**: mentéskor kiszámoljuk és
-eltároljuk (körvonal + pontos km² + tulajdonos), a térkép ezt kéri le.
-Akárhonnan nézzük, ugyanaz a folt ugyanakkora.
+**A jelenlegi lánc, 204 jelölten (3 helyszín, 3 eset):**
 
-- `src/game/territoryBlobs.ts` — összefüggő komponensek a hatszögrácson,
-  Douglas–Peucker körvonal-egyszerűsítés (15 m tűrés), pontos terület a
-  cellaszámból. 11 egységteszt.
-- `src/game/territoryScale.ts` — a méret szerinti láthatóság KÖZÖS szabálya
-  kliensnek és szervernek. 9 egységteszt.
-- `server/src/lib/territoryBlobStore.ts` — tárolás, méret szerinti szintek,
-  lekérdezés, és az összevonó háttérsor.
-- `GET /api/tiles/blobs` — nézettől független foltok, a méretszűrés a szerveren.
-- `server/src/scripts/backfillTerritoryBlobs.ts` — a meglévő területekhez.
+| eset | hibátlan jelölt | köralak (medián) | kapott hossz |
+|---|---|---|---|
+| futás 2,5 km | 1 / 56 | 0,32–0,48 | 2,2–4,1 km |
+| futás 7,5 km | 0 / 59 | 0,30–0,56 | 5,9–14,6 km |
+| bringa 16 km | 0 / 89 | **0,04–0,05** | 15,5–27,4 km |
 
-Egy korábbi, elvetett kísérlet tanulsága: a `/api/tiles` végpontban próbáltunk
-durva, blokkonkénti hatszögeket visszaadni távoli nézetre. Pontatlan volt és
-pásztázáskor villódzott — ez a megközelítés ki lett vezetve, ne térjen vissza.
+(„Köralak" = a bezárt terület az azonos hosszú szabályos körhöz mérve; 1,00 a
+tökéletes kör. Egy 16 km-es bringakör tehát a lehetséges terület 4–5 %-át zárja
+be.)
 
-### A méretskála (Geri döntése)
+**Ugyanez saját GraphHopperrel** (Magyarország OSM, helyi szerver), mindkét
+oldalon a legjobb jelöltet választva:
 
-- **70 km nézetszélességig NEM szűrünk semmit** — a 10-es nagyítás mérve
-  ~66 km, tehát zoom 10-en és közelebb MINDEN folt látszik.
-- Azon túl a küszöb nulláról indul és simán nő (arány: 0,012). Nem a teljes
-  nézetszélességhez mérünk, hanem a túllépéshez — enélkül a küszöb ugrana, és
-  a foltok zöme egyetlen görgetésnyi mozdulattól eltűnne.
-- Mérve: zoom 10 → 0 m², zoom 9 → 0,56 km², zoom 8 → 5,4 km².
-- Egyetlen szám hangolja: `TERRITORY_VISIBILITY_RATIO`.
+| eset | hely | GraphHopper (köralak · kanyar · átlag egyenes) | Mapbox |
+|---|---|---|---|
+| futás 2,5 km | Deák tér | 0,42 · 8 · **264 m** | 0,69 · 14 · 149 m |
+| futás 2,5 km | Budaörs | **0,79** · 7 · **324 m** | 0,60 · 20 · 117 m |
+| futás 7,5 km | Deák tér | 0,59 · 21 · **304 m** | 0,64 · 30 · 206 m |
+| futás 7,5 km | Budaörs | 0,48 · 21 · **314 m** | 0,55 · 38 · 171 m |
+| bringa 16 km | Deák tér | **0,22** · 50 · 303 m | 0,06 · 59 · 277 m |
+| bringa 16 km | Budaörs | **0,39** · 54 · 265 m | 0,06 · 58 · 263 m |
 
-### Teljesítményjavítás a mentési úton
+- hibátlan (0 U-forduló, 0 kerülő) jelölt: **14 / 216** a GraphHoppernél,
+  **1 / 216** a Mapboxnál;
+- kanyarból feleannyi, egyenes szakaszból 1,5–2,7-szer hosszabb — **és ez még a
+  kanyarbüntetés bekapcsolása előtt**;
+- bringán 3–6-szoros bezárt terület;
+- **14 ms / kérés** (357 kérésen mérve) a Mapbox 100–200 ms-jával szemben, és
+  ingyen: körönként több tucat jelölt generálható, a választást a saját
+  pontozásunk végzi.
 
-Terhelési méréssel kiderült, hogy a foltok újraszámolása a kérés útján futott,
-és felhasználónként ~2,1 másodperc (400 blokk olvasása 630 ms, kibontás 240 ms,
-komponensek 500 ms, körvonalak 730 ms, ~80 000 cellás területnél). Egy aktivitás
-a támadót és 3-4 áldozatot is érint → **a mentés ~9 másodpercet várt**.
+**Miért nem hosztolt szolgáltatás:** a GraphHopper ingyenes csomagja nem
+kereskedelmi célra szól (500 kredit/nap, egy körkérés 2 kredit), a kereskedelmi
+€69/hó-tól indul 1 kérés/mp korláttal; az openrouteservice ingyenes kulcsa napi
+2000 irány-kérés, szintén nem kereskedelmi. A motor maga **Apache 2.0**, tehát
+saját konténerben korlátlanul és díjmentesen futtatható — ez illik ahhoz is,
+hogy a jelöltgenerálást bőkezűen akarjuk használni.
 
-Megoldás: összevonó háttérsor (`scheduleTerritoryBlobRecompute`). A kérés nem
-várja meg, és az ugyanarra a felhasználóra érkező igényekből egyetlen ismétlés
-elég. Mérve: **6,7 → 40 aktivitás/perc**.
+**Mapboxon belül nincs megoldás:** a Directionsnek nincs kör-generálása, az
+Optimization API `roundtrip=true` paramétere pedig más feladat (megadott
+pontokat jár be és tér vissza), nem hurokgenerálás.
 
-Vállalt kockázat: a folt rövid ideig elavult lehet, és a folyamat leállása
-elveszíthet egy frissítést. Megjelenítési adat — a következő aktivitás úgyis
-újraszámolja, és ott a backfill szkript is.
+### A kanyargós ↔ hosszú egyenesek kapcsoló — mérve
 
-### Egyéb elkészült dolgok
+A kanyarbüntetés (`turn_penalty` a `change_angle` szerint) bekapcsolva,
+ugyanazon a jelöltkészleten:
 
-- **Új app ikon** minden platformon, egyetlen forrásból:
-  `assets/app-icon-source.png` + `npm run icons:generate` (20 fájl).
-  A régi `favicon.svg` TÖRÖLVE — a böngésző a vektorosat részesíti előnyben,
-  tehát a PNG-k cseréje után is a régi logó látszott volna. Az Android adaptív
-  háttér fehérről `#131314`-re váltott, a forráskép saját háttérszínére.
-- **Riválisok fül**: a doboz 448 helyett 224 pixelre ugrott össze. Ok: az alap
-  `.conn` teljes képernyős rétegre készült, és a `margin-inline: auto`
-  RÁCSELEMEN KIKAPCSOLJA A NYÚJTÁST. A `max-width` ártatlan volt.
-- **Profil fülsáv**: fülváltáskor visszaugrott az elejére (minden fül külön
-  képernyő, a sáv újraépül). Most az aktív fül középre görget, a sáv határaira
-  vágva — ettől a szélső fülek a szélükön maradnak, a középsők középre kerülnek.
-- **Telefonos fejlesztői elérés**: a kliens négy helyen beégetett `localhost`-ot
-  használt; most `location.hostname`. Az emulátorok `0.0.0.0`-n hallgatnak, a
-  `dev:emulator` felveszi a gép LAN-címeit a CORS-listára és ki is írja.
-- A cellánkénti területréteg (`AREA_SOURCE`) csak zoom 14-től rajzol — korábban
-  `minzoom` nélkül minden nagyításon látszott a nyers hatszög-fűrészfog.
-- A menet első felében: feed-fotógaléria, mentés-panel, indítási folyamat
-  (3-2-1 + RAJT), statisztika-panel harmadik nézete, húzásos befejezés-gesztus,
-  időjárás-widget szélessége. Ezek élesben vannak és visszaigazoltak.
+| eset | hely | kanyargós (kanyar · átlag egyenes · terület) | hosszú egyenesek |
+|---|---|---|---|
+| bringa 16 km | Deák tér | 37 · 375 m · 3,16 km² | **26 · 518 m** · 1,12 km² |
+| bringa 16 km | Budaörs | 58 · 249 m · 6,59 km² | **33 · 487 m** · 1,46 km² |
+| futás 7,5 km | Budaörs | 21 · 350 m · 1,98 km² | 20 · 331 m · 1,82 km² |
 
-## ÉLESBEN FUT / TELEPÍTVE
+**A kapcsoló működik, és van ára**: bringán 30–43 %-kal kevesebb kanyar és
+40–95 %-kal hosszabb egyenesek, cserébe **lényegesen kevesebb bezárt terület**
+(a tempózható kör keskenyebb). Ezt a felületen ki kell mondani, nem elrejteni:
+a „hosszú egyenesek" kevesebb területet hoz. Futásnál a különbség kicsi.
+⚠️ A két oszlop rangsorolása szándékosan más volt (terület, illetve egyenes
+hossz szerint), tehát ez irány, nem tizedespontos összevetés.
 
-Ellenőrizve 2026-08-29-én, nem feltételezve:
+### Amit a saját motor ezen felül tud (Geri kérései a menetből)
 
-- **Frontend telepítve.** A `MapView-*.js` darabban ott a `grundo-blobs` réteg,
-  az `index-*.js`-ben a `tiles/blobs` hívás, és az `index.html`-ben az új
-  ikonhivatkozások (`favicon-32.png`, `apple-touch-icon.png`).
-- **Backend telepítve.** `grundo-api-00094-r5s`, létrehozva
-  2026-08-28 23:34 CEST — az utolsó szerveroldali commit (`71deda0`, 18:47)
-  után. A `territoryBlobs` kollekcióban vannak élesben írt dokumentumok.
-- Minden commit pusholva; `origin/main` = `d0f97f0`.
-- Az éles frontend a `https://grundo.web.app` címen fut. A
-  `https://grundo.ai.studio` 404-et ad — nem ez a kiszolgált cím.
+- **Bringázhatóság valódi adatból**: `road_class` (van-e kerékpárút),
+  `bike_network` (kerékpáros útvonalhálózat), `surface`, `smoothness`,
+  `max_speed`, `urban_density`; az egyirányúságot a profil betartja.
+  ⚠️ Valódi **forgalomszám nincs** az OSM-ben — az úttípus, sávszám és
+  sebességkorlát a közelítés; fizetős forgalmi adat autós torlódást mérne, nem
+  bringás kényelmet, ezért nem javasolt.
+- **AI szerepe**: a geometriát ne az AI adja (nem ismeri az úthálózatot).
+  Ahol értelme van: szándék → paraméter („van 45 percem, lapos, ne legyen
+  forgalmas"), és a küldetés megfogalmazása/elnevezése. A kiválasztás maradjon
+  determinisztikus, mert mérhető.
+- **Saját hőtérkép**: a rögzített aktivitások celláiból idővel tudjuk, hol
+  futnak/bringáznak ténylegesen az emberek — ez a jelöltek pontozásában
+  használható, külső szolgáltató nélkül.
 
-## TELEPÍTETLEN / MŰKÖDÉSKÉPTELEN
+## AMI BEKERÜLT A REPÓBA EBBEN A MENETBEN
 
-- **Firestore index: NINCS kitelepítve** — lásd a fájl elején. A definíció
-  bent van a feltolt `firestore.indexes.json`-ban, csak a deploy hiányzik.
-  (23 másik composite index READY, `territoryBlobs` nincs köztük.)
-- **Backfill nem futott** élesben. Enélkül csak a backend telepítése óta
-  mentett körökhöz tartozik folt.
-- A **natív alkalmazások** ikonja csak új buildben cserélődik (`npx cap sync`
-  + Codemagic build).
+- `graphhopper/` — a motor konfigurációja, két egyedi modell (futás/bringa) és
+  README a helyi futtatással, a mért számokkal és a buktatókkal.
+- `docs/02-funkcionalis-spec.md` — a küldetés-ajánló szakasza átírva a saját
+  motorra, plusz három új, dátumozott döntés: **útvonal-karakter kapcsoló**,
+  **utólagos hüvelykujjas értékelés**, **élő útszakasz-visszajelzés** (a
+  tracking képernyő szakaszában, a gombok pontos helyével).
+- `AGENTS.md` — a mappaszerkezetben megjelenik a `graphhopper/`.
+
+**Kód nem változott**, tehát telepíteni sincs mit.
+
+## A KÖVETKEZŐ MENETEK — GERI JÓVÁHAGYTA A SORRENDET
+
+1. **#18 — a GraphHopper bekötése + a kanyargós/egyenes kapcsoló.** Ez egy
+   munka: szolgáltató-réteg a `server/src/lib/directions.ts` helyén
+   (`GRAPHHOPPER_URL` env, Mapbox marad tartaléknak), `round_trip` alapú
+   jelöltgenerálás sok jelölttel, a saját pontozás kiterjesztése kanyarszámmal
+   és átlagos egyenes szakasszal, a felületen a karakterválasztó. A
+   `loopWaypoints`-os geometria a Mapbox-ághoz tartozik, nem kell átvinni.
+2. **#19 — élesítés**: a GraphHopper konténerbe (gráf a képbe sütve), Cloud Run
+   vagy kis VM. A #18 e nélkül nem élesíthető.
+3. **#20 — utólagos hüvelykujj** a küldetés-kártyán (kicsi).
+4. **#21 — élő útszakasz-visszajelzés** és a tervezői felhasználása.
+
+### Nyitott kérdések a következő menetekhez
+
+- **Az élő útszakasz-visszajelzés alapból be- vagy kikapcsolva induljon?**
+  (Enélkül nem gyűlik adat, viszont két gomb helyet foglal a térképen.)
+- **Hol fusson a motor élesben**: Cloud Run min-instance=1, vagy kis VM? A mért
+  igény: gráf 184 MB lemezen, futó szerver ~1,5 GB memóriában (6 GB-ot kapott),
+  tehát kicsi gép is elég.
+- **Kell-e landmark (LM) előkészítés?** Kanyarköltséges profillal a kérés
+  14 ms-ról 75–250 ms-ra lassul. Több tucat jelöltnél ez már számít.
+- A `round_trip` a kért hosszat **közelíti** (7,5 km-re 5,8–8,9 km) — a hossz
+  szerinti szűrés tehát marad, ahogy eddig is.
 
 ## ELLENŐRZÉSEK
 
-- `npx tsc --noEmit` (kliens és `server/` is): sikeres.
-- Kliens `vitest`: **387 sikeres**. Szerver `vitest`: **165 sikeres**,
-  122 emulátoros kihagyva.
-- **Terhelési próba helyi emulátoron: 1000 aktivitás, 0 hiba**, 26 perc 39 mp
-  (~1,6 s/kör), 170 folt, ~2100 km² átfedésekkel. Öt teszt-felhasználó,
-  mindegyik saját cellaszínnel.
-- Térkép-válaszidő 1000 aktivitás mellett — **nem nő a kizoomolással**:
+Ebben a menetben nem változott kód, tehát tesztfutás sem volt. A legutóbbi
+ismert állapot (#16): kliens `vitest` 387 sikeres, szerver 165 sikeres
+(122 emulátoros kihagyva), `npx tsc --noEmit` mindkét oldalon tiszta.
 
-  | nézet | válasz | méret | foltok | küszöb |
-  |---|---|---|---|---|
-  | 2 km | 87 ms | 7 KB | 1 | 0 |
-  | 15 km | 98 ms | 258 KB | 153 | 0 |
-  | 66 km (zoom 10) | 97 ms | 295 KB | 170 (mind) | 0 |
-  | 132 km | 87 ms | 235 KB | 33 | 0,55 km² |
-  | 264 km | 55 ms | 77 KB | 8 | 5,4 km² |
-
-- **Stabilitás**: ±8 km pásztázás azonos nagyításon — a mindenhol látható
-  foltok területe ÉS teljes körvonala bitre azonos. Ugyanaz a folt
-  3/10/30/60/120 km-es nézetben egységesen 7,296 km², 215 pontos körvonal.
-  170 folt, 170 egyedi azonosító, nincs duplikátum.
-- **Nem ellenőrzött**: a térkép TÉNYLEGES kinézete. A fejlesztői böngészőablak
-  nem kompozitál, ezért a Mapbox el sem indul benne — az adatutat és a
-  `MapView` propjait mértem helyette. A vizuális ellenőrzés Gerire vár.
-
-## KÖVETKEZŐ MENET — CLAUDE ELSŐ FELADATA
-
-1. **Index telepítése és ellenőrzése.** `scripts/deploy.sh indexek`, majd
-   győződj meg róla, hogy a `territoryBlobs` index READY állapotú.
-2. **Backfill futtatása** élesben, előbb szárazon, majd `--apply
-   --allow-production`. Jegyezd fel, hány felhasználót és foltot érintett.
-3. **Éles ellenőrzés** a `/grund` oldalon: kizoomolva látszanak-e a területek,
-   zoom 10-en minden folt megjelenik-e, pásztázáskor stabil-e a kép.
-4. Ha Geri visszaigazolta, rögzítsd az eredményt ebben a fájlban, és töröld a
-   fájl elejéről a figyelmeztető szakaszt.
+A mérőszkriptek a `tmp/` alatt maradtak (nincsenek verziókövetve):
+`probe-matrix.ts` (Mapbox-lánc), `probe-graphhopper.ts` (round_trip),
+`probe-compare.ts` (három stratégia egymás mellett), `probe-final.ts`
+(kanyargós/egyenes). A `tmp/` takarítása után a `graphhopper/README.md`
+alapján újra előállíthatók.
 
 ## HELYI FEJLESZTŐI KÖRNYEZET
 
-Négy dolog kell, ebben a sorrendben:
+Változatlan (emulátor + seed + dev szerver):
 
 ```bash
 firebase.cmd emulators:start --only auth,firestore --project demo-grundo
@@ -184,71 +199,49 @@ cd server && npm run dev:emulator
 ```
 
 ```bash
-cd server && npm run seed:emulator
-```
-
-```bash
 npm run dev:emulator
 ```
 
-Teszt-világ Budapest fölé (a `server/` mappából), 0,1–10 km² közötti, szögletes
-utcakövető körökkel:
-
-```bash
-npm run seed:budapest -- --reset --count 1000
-```
-
-Kapcsolók: `--spread` (gócpontok szórása km-ben), `--clusters`, `--jitter`,
-`--count`, `--reset`. A szkript a végén felhasználónként újraszámolja a
-foltokat, hogy a mért végállapot biztosan helyes legyen.
-
 Belépés: `geri@grundo.local` / `grundo-emulator`, vagy a böngészőkonzolból
-`await __grundoDevSignIn()`.
+`await __grundoDevSignIn()`. Teszt-világ: `npm run seed:budapest -- --reset --count 1000` a `server/` mappából.
 
-Telefonról: `http://<gép-IP>:5173` — a backend induláskor kiírja a pontos
-címet. ⚠️ A `firebase.json` `host: 0.0.0.0` beállítása csak az emulátorok
-ÚJRAINDÍTÁSA után lép életbe; enélkül az oldal betöltődik, de a belépés némán
-lóg. HTTP-n a telefon böngészője letiltja a helymeghatározást, tehát
-GPS-rögzítést így nem lehet próbálni.
+**Új**: az útvonalmotor helyi indítása a `graphhopper/README.md` szerint (két
+letöltés, majd `java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml`).
+A Git Bash PATH-ja nem látja a Javát, ezért kell elé:
+`export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`.
 
 ## NYITOTT KISEBB ÜGYEK
 
-- **295 KB-os válaszcsúcs** a 33–66 km-es sávban, minden térképmozgatásnál.
-  Wi-Fi-n észrevehetetlen, mobiladaton érezhető. Két olcsó út, ha szűkíteni
-  kell: erősebb körvonal-egyszerűsítés távoli nézetre (a nagy foltok viszik a
-  méret nagy részét), vagy kliensoldali gyorsítótár. Geri egyelőre nem kérte.
-- A háttérsor Cloud Runon elveszíthet egy frissítést, ha a példány a válasz
-  után leáll. Ha ez gondot okoz, a `backfill:territory-blobs` időzített
-  futtatása a legegyszerűbb védőháló.
-- A `MAX_BLOCKS_PER_USER = 400` korlát a foltszámolásban: nagyon nagy
-  birodalomnál a folt hiányos lehet. Ma nem éles probléma.
-
-### Korábbi menetből áthozva (nem ehhez a munkához tartozik)
-
-- A natív **Android Google-belépés** készülékes eredményéről még nincs
-  visszaigazolás, és a meglévő e-mail/jelszavas fiók Google-fiókkal való
-  összekapcsolása sincs készüléken ellenőrizve.
-- **Google Play Console / Play App Signing** beállítása szándékosan későbbre
-  maradt; az AAB még nincs feltöltve. Play App Signing bekapcsolása után a Play
-  által adott **app signing certificate SHA-1**-et is fel kell venni a Firebase
-  Android apphoz, majd frissíteni a `google-services.json`-t a Codemagic
-  Secretben — enélkül a Playből telepített app Google-belépése elbukik.
-- Windows alatt az iOS Swift Package Manager auth-plugin symlink `EPERM` hibával
-  kimaradt; a macOS Codemagic `npx cap sync ios` lépésének kell létrehoznia.
-- Android 13+ engedélyág, lezárt kijelzős 3+ perces út, appváltás,
-  szünet/folytatás, offline pontsor, FCM, és az OEM akkumulátorkezelés
-  (Samsung/Xiaomi/Huawei) terepi ellenőrzése.
+- **295 KB-os válaszcsúcs** a 33–66 km-es térképnézetben minden mozgatásnál.
+  Wi-Fi-n észrevehetetlen, mobiladaton érezhető. Olcsó javítás: erősebb
+  körvonal-egyszerűsítés távoli nézetre, vagy kliensoldali gyorsítótár.
+- A foltok háttérsora Cloud Runon elveszíthet egy frissítést, ha a példány a
+  válasz után leáll; védőháló a `backfill:territory-blobs` időzítése.
+- `MAX_BLOCKS_PER_USER = 400` a foltszámolásban — nagyon nagy birodalomnál
+  hiányos folt. Ma nem éles probléma.
+- A **natív alkalmazások** ikonja csak új buildben cserélődik (`npx cap sync`
+  + Codemagic).
+- Natív **Android Google-belépés** készüléken még nincs visszaigazolva; a Play
+  Console / Play App Signing beállítása szándékosan későbbre maradt (az app
+  signing SHA-1-et fel kell venni a Firebase Android apphoz, és frissíteni a
+  `google-services.json`-t a Codemagic Secretben).
+- Windows alatt az iOS SPM auth-plugin symlink `EPERM`-mel kimaradt; a macOS
+  Codemagic `npx cap sync ios` lépésének kell létrehoznia.
+- Android 13+ engedélyág, lezárt kijelzős hosszú út, appváltás,
+  szünet/folytatás, offline pontsor, FCM és OEM akkumulátorkezelés terepi
+  ellenőrzése.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-- Index- és backfill-telepítés, éles ellenőrzés: **Sonnet, normál mélység**.
-- Ha a foltok élesben sem jelennek meg az index után, vagy geometriai/
-  teljesítménybeli hibát kell keresni: **Opus, emelt mélység**.
+- **#18 bekötés és felület**: **Sonnet, normál mélység** — a döntés megvan, ez
+  meglévő minta kiterjesztése és UI-munka.
+- Ha a jelöltpontozás hangolása vagy mért anomália kerül elő (nem stimmelnek a
+  hosszak, gyanúsan kevés a tiszta jelölt): **Opus, emelt mélység**.
 
 ## FORRÁSOK SORRENDJE
 
 1. `AGENTS.md` — különösen a Munkamódszer szakasz
 2. `HANDOFF.md` (ez a fájl)
-3. `src/game/territoryBlobs.ts` és `src/game/territoryScale.ts` fejlécei
-4. `server/src/lib/territoryBlobStore.ts` fejléce
-5. `docs/README.md` és a kapcsolódó funkcionális/architektúra dokumentumok
+3. `graphhopper/README.md` — a motor, a mért számok és a buktatók
+4. `docs/02-funkcionalis-spec.md` → Küldetés-ajánló és Élő útszakasz-visszajelzés
+5. `server/src/routes/missions.ts` és `server/src/lib/directions.ts` fejlécei

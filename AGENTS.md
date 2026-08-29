@@ -102,6 +102,7 @@ server/
   src/trust/  Trust Score számítás
   src/jobs/   ütemezett feladatok (napi forduló, ranglista…)
 scripts/      egyszeri és üzemeltetési szkriptek
+graphhopper/  a küldetés-ajánló saját útvonalmotorja (konfiguráció, egyedi modellek)
 public/       statikus fájlok, ikonok, manifest
 tmp/          átmeneti fájlok — soha ne kerüljön verziókövetésbe
 _archive/     leváltott kód, amit még nem törlünk
