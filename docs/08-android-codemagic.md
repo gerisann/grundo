@@ -1,6 +1,6 @@
 # GRUNDO Android · Capacitor · Codemagic
 
-**Állapot:** natív Android projekt, release workflow és Google-belépés elkészült · 2026-08-27
+**Állapot:** natív Android projekt, release workflow, Google-belépés és zárolt képernyős élő mérés elkészült · 2026-08-29
 
 **App:** GRUNDO · **Application ID:** `app.grundo.android`
 
@@ -94,7 +94,9 @@ A felhasználó a látható appból indítja el a `location` típusú
 - Fused Location Providerrel, nagy pontossággal és 5 méteres minimum
   elmozdulással kér pontokat;
 - futás közben folyamatos, nem elnémítható alkalmazáslogikájú foreground
-  notificationt tart fenn;
+  notificationt tart fenn; engedélyezett élő mérésnél ennek kompakt és
+  kibontott nézete mutatja a távot, a natív chronometerrel tovább járó időt,
+  az aktuális sebességet, a mozgásformát és a szünet állapotát;
 - szünetnél leállítja a GPS-frissítést, folytatásnál újraindítja;
 - minden pontot a WebView-tól független SQLite-sorba ír, időrendben;
 - legfeljebb 25 000 natív pontot őriz, majd a legöregebbeket dobja;
@@ -112,7 +114,7 @@ A felhasználó a látható appból indítja el a `location` típusú
 | `ACCESS_FINE_LOCATION` | a H3 res 12 játékhoz szükséges pontos GPS; csak hozzávetőleges engedélynél az indítás érthető hibával leáll |
 | `FOREGROUND_SERVICE` | hosszú idejű foreground service |
 | `FOREGROUND_SERVICE_LOCATION` | Android 14+ kötelező location service-típus |
-| `POST_NOTIFICATIONS` | Android 13+ FCM és notification runtime engedély; az FCM kapcsoló felhasználói gesztusra kéri |
+| `POST_NOTIFICATIONS` | Android 13+ FCM és notification runtime engedély; az FCM kapcsoló vagy az alapból engedélyezett zárolt képernyős élő mérés indítása felhasználói gesztusra kéri |
 
 Szándékosan nincs `ACCESS_BACKGROUND_LOCATION`: a mérés a látható appban,
 felhasználói gombnyomásra induló location foreground service, ezért a
@@ -210,6 +212,14 @@ Az Android Capacitor originje `https://localhost`. Ez bekerült a Cloud Run
   rögzítést, haladj legalább 100 métert, közben zárd le a kijelzőt.
 - Ellenőrizd a folyamatos foreground notificationt, majd feloldás után a
   hézagmentes nyomvonalat.
+- Zárolt képernyőn ellenőrizd a kompakt, majd kibontott GRUNDO-kártyán a
+  mozgásformát, távot, tovább járó időt és sebességet. Szünetnél az idő és a
+  GPS-adatok álljanak meg, folytatásnál ne ugorjon bele a szünet alatt megtett
+  távolság. A kártyára koppintva a GRUNDO nyíljon meg.
+- Kapcsold ki a Beállítások → Értesítések → Élő mérés a zárolt képernyőn
+  opciót, indíts új rögzítést, és ellenőrizd, hogy csak az Android által
+  kötelező egyszerű foreground service értesítés marad; a kapcsoló a már futó
+  rögzítést szándékosan nem alakítja át.
 - Ismételd meg appváltással, 5 perces szünettel/folytatással és hálózat nélkül.
 - Próbáld ki a csak hozzávetőleges helyet és a megtagadást: az aktivitás nem
   maradhat látszólag futó állapotban.

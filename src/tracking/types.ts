@@ -94,7 +94,7 @@ export interface PositionSource {
     activityType?: ActivityType,
     activityState?: PositionActivityState,
   ): Promise<void>;
-  /** Előtérben a pontos, szűrt recorder-állapotot átadja a Live Activitynek. */
+  /** Előtérben a pontos, szűrt recorder-állapotot átadja a natív élő értesítésnek. */
   syncActivity?(state: PositionActivityState): void | Promise<void>;
   /**
    * Csak a JavaScript-oldali feliratkozást bontja le.

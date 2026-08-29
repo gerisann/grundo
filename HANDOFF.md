@@ -1,105 +1,133 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · a **GRUNDO #19** menet vége
+> Frissítve: **2026-08-29** · átadás a **#21**-re
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · **telepítve és élesben ellenőrizve** (frontend + backend).
-> ⚠️ A telepítés kiütötte a Mapbox tokent — javítva, a részletek lent.
+> Ág: **`main`** · két párhuzamos menet összeolvasztva:
+> **Android zárolt képernyős élő mérés** (Codex, #20) +
+> **kétfázisú küldetés-ajánló** (Claude, #19).
+>
+> ⚠️ **A kettő telepítési állapota KÜLÖNBÖZŐ** — lásd „ÉLESBEN FUT /
+> TELEPÍTETLEN". A küldetés-ajánló már élesben fut és ellenőrizve van; az
+> Android rész még nincs készüléken.
 
-## ⚠️ ELSŐ OLVASNIVALÓ
+## ÁLLAPOT
 
-A #19 fő eredménye: **a küldetés-ajánló 62 s-ról 1,6 s-ra gyorsult** (7,5 km
-séta), és a kártyák már **0,5 s-nál megjelennek** az útvonaltervvel, a
-terület/GP/mező mezők pedig utólag töltődnek ki.
+### 1. Android zárolt képernyős élő mérés (Codex, #20)
 
-⚠️ **A #18-as HANDOFF diagnózisa TÉVES VOLT.** Nem a flood fill és nem az
-értékelés vitte az időt:
+Elkészült az iOS Live Activity Android megfelelője a már működő location
+foreground service-re építve.
 
-| szakasz (bringa 16 km, 2 jelölt) | idő |
-|---|---|
+- A kompakt notification mutatja a távot, időt és sebességet.
+- A kibontott/zárolt képernyős nézet mutatja a mozgásformát, az `Élő` /
+  `Szünet` állapotot, valamint külön oszlopban a távot, időt és sebességet.
+- Az időt natív Android `Chronometer` rajzolja, ezért lezárt képernyőn és
+  felfüggesztett WebView mellett is tovább jár; szünetnél megáll.
+- A háttér-GPS a WebView nélkül is frissíti a távot és sebességet. Előtérben a
+  közös TypeScript recorder visszaszinkronizálja a pontos, szűrt állapotot.
+- A notification állapota `SharedPreferences`-ben is megmarad, ezért a
+  foreground service rendszer általi újraindítása után helyreáll.
+- Android 13+-on a rögzítés indításakor a plugin kéri a
+  `POST_NOTIFICATIONS` engedélyt. Megtagadáskor a GPS-rögzítés nem áll le, de
+  a kártya nem jelenik meg a notification drawerben.
+- A Beállítások → Értesítések → „Élő mérés a zárolt képernyőn” kapcsoló már
+  Androidon is megjelenik. Kikapcsolva a következő rögzítés csak a kötelező,
+  egyszerű foreground service értesítést használja.
+- Új notification channel: `grundo_tracking_live_v2`.
+
+Android 12+ alatt teljesen egyedi notification nem készíthető: a rendszer a
+saját app-fejlécét, ikonját és kibontó vezérlőjét kötelezően hozzáadja. A
+csatolt iOS-kártya adatai és hierarchiája átvihető, de a pixelpontos külső nem.
+
+### 2. Kétfázisú és felgyorsított küldetés-ajánló (Claude, #19)
+
+A küldetés-ajánló 7,5 km-es sétánál **62,13 s-ról 1,58 s-ra gyorsult**, és a
+kártyák az útvonaltervvel **fél másodpercen belül megjelennek**; a
+terület/GP/cella mezők utólag töltődnek ki.
+
+#### A mért szűk keresztmetszet
+
+⚠️ **A #18-as HANDOFF diagnózisa téves volt.** Nem a végső flood fill és nem a
+GraphHopper volt lassú. Bringa 16 km, két jelölt:
+
+| szakasz | idő |
+|---|---:|
 | cellalánc (`traceToCellPath`) | 0,01 s |
 | **hurokdetektálás (`detectLoopsDetailed`)** | **9,56 s** |
-| flood fill (`loopCells`) | 0,00 s |
+| végső flood fill (`loopCells`) | 0,00 s |
 | claim + GP | 0,20 s |
 
-A drága rész a `loopDetection.ts` `append()`-je, ami **minden cellánál, minden
-jelölt kapura teljes `buildLoopInterior` flood fillt futtat** — a flood fill
-tehát a detektoron BELÜL fut, sokszor, nem a végén egyszer. Ezért nem a
-hosszal arányos az idő, hanem a kontaktfoltok számával. A #18-ban
-„értékelés"-nek mért 8,73 s valójában a **duplán lefuttatott hurokdetektálás**
-volt (a `processActivity` újra hívta a `buildActivityGeometry`-t).
+A detektor (`loopDetection.ts` → `append`) **minden cellánál, minden jelölt
+kapura** teljes `buildLoopInterior` flood fillt futtat — a flood fill tehát a
+detektoron BELÜL fut, sokszor. Ezért az idő nem a hosszal arányos, hanem a
+kontaktfoltok számával. A #18-ban „értékelés"-nek mért 8,73 s valójában a
+**duplán lefuttatott hurokdetektálás** volt.
 
-**A detektorhoz NEM nyúltam** — az az éles mentési út is, és a spec 2. döntése
-szerint ugyanannak a motornak kell futnia. A 19-szeres szorzót szüntettem meg.
+**A közös játékmotorhoz nem nyúltunk** (az az éles mentési út is, és a spec 2.
+döntése szerint ugyanannak a motornak kell futnia). A fölösleges, 19 jelöltre
+futó és később duplázott geometriamunkát szüntettük meg.
 
-## AMI ELKÉSZÜLT
+#### Elkészült változások
 
-### 1. A válogatás a drága geometria ELÉ került (ez a nagy nyereség)
+- A `selectMissionRoutes` válogatása a drága geometria elé került. A geometria
+  csak a ténylegesen megjelenő jelölteken fut (`shapedCandidateLimit`:
+  ≤30 km → 6, ≤100 km → 4, felette → 2).
+- A geometria nem épül fel kétszer: az `evaluateCandidate` a kész geometriát
+  kapja meg (`processActivityGeometry`). Mérve: a cella/GP/terület bitre
+  azonos maradt.
+- ⚠️ A `no_fit` diagnózis ismét helyes: a sorrend megfordításával
+  elérhetetlenné vált volna (ha a hossz-szűrés mindent kidobott, a
+  geometriaciklus le sem fut, tehát `closedLoops === 0`, ami `no_loops`-ot
+  jelentett volna — „az úthálózat nem ad kört", pedig a méret nem stimmelt).
+  A `no_fit` vizsgálata most megelőzi a `no_loops`-ot; a diagnosztika
+  `preselected` mezőt kapott.
+- Kétfázisú API készült:
+  - `POST /api/missions/generate` változatlanul teljes választ ad régi
+    klienseknek (⚠️ a `full` az alapértelmezés, mert a backend külön
+    települ, és a már telepített web/iOS kliens `phase` nélkül hív);
+  - `phase: 'plan'` gyorsan visszaadja a `routes[]` listát;
+  - `POST /api/missions/evaluate` végzi a lassú geometriát és értékelést.
+- ⚠️ **Miért két kérés, és nem háttérmunka a válasz után?** Cloud Runon a
+  konténer CPU-ja a válasz elküldése után nem garantáltan fut tovább — egy
+  „majd befejezem a háttérben" megoldás ott némán félbemaradna. Így minden
+  kérés önmagában zárt: nincs job-állapot, nincs poll, nincs új adatmodell.
+- Nincs állapot a két fázis között: a kliens visszaküldi a vonalláncot, a
+  szerver pedig abból újraszámolja a hosszt (`polylineLengthM`), nem hisz a
+  kliens számának. A kvótát csak a `plan` fogyasztja. A lassú fél egyetlen
+  közös függvényben van (`evaluateShapedCandidates`), hogy a két út ne
+  csússzon el egymástól.
+- A köztes kártyák **nem mutatnak becslést**: „Területszámítás”,
+  „Pontszámítás” és „Cellakalkuláció” töltőállapot látszik, majd a valódi
+  érték veszi át. (A „NEM BECSLÉS" szabály sértetlen.)
+- A tempó/sebesség és célhossz mező gépelhető és léptethető közös `Stepper`
+  komponenssel. A célhossz maximuma 300 km; lépték 10 km alatt 1, 10 fölött
+  5, 50 fölött 10 (a határon lefelé a kisebb lépték: 50 → 45, 10 → 9).
+  Mozgásforma-váltáskor a tempómező kiürül, mert más a mértékegysége
+  (perc/km ↔ km/h) — a felület egy ideig „5:15 km/h"-t írt ki.
+- A töltő animáció támogatja a `prefers-reduced-motion` beállítást, a kártya
+  töltés közben nem ugrik (mérve: töltő 56 px = kész 56 px).
 
-A `selectMissionRoutes` csak `uTurns`/`shortDetours`/`turnCount`-ot néz — mind
-a vonalláncból számolható —, a tűréshatár pedig a hosszból. Ezért a válogatás
-előrekerült, és a geometria már csak a ténylegesen kártyára kerülő
-jelölteken fut le (`MAX_SHAPED_CANDIDATES = 6`, nagy körökre kevesebb).
+⚠️ **Két hibát a mérés fogott meg, nem a szem:**
+1. A töltő mező színe/mérete némán a kész értékét vette fel — az új
+   CSS-szabály a `.mission__stat-value` ELÉ került, és azonos specificitásnál
+   a fájlban későbbi nyer. (Ezért áll kommentben, hogy a sorrend kötelező.)
+2. A beviteli mező csak a beírt szöveg szélességét foglalta, tehát a doboz
+   nagy részére koppintva nem lehetett beleírni. Javítva: a mező `label`, ami
+   a saját területén belül bárhol az inputra adja a fókuszt.
 
-| | előtte | utána |
-|---|---|---|
-| gyalog 7,5 km | 62,13 s | **1,58 s** |
-| bringa 16 km | ~80 s (#18 mérése) | **5,42 s** |
-| bringa 25 km | — | 12,73 s |
+#### Teljesítménymérések
 
-⚠️ **Csapda, amit javítottam:** a sorrend megfordításával a `no_fit` diagnózis
-elérhetetlenné vált (ha a hossz-szűrés mindent kidobott, a geometriaciklus le
-sem fut, tehát `closedLoops === 0`, ami `no_loops`-ot jelentett volna — „az
-úthálózat nem ad kört", pedig a méret nem stimmelt). A `no_fit` vizsgálata
-most megelőzi a `no_loops`-ot, és a diagnosztika kapott egy `preselected`
-mezőt.
+| eset | eredmény |
+|---|---:|
+| gyalog 7,5 km | 1,58 s |
+| bringa 16 km | 5,42 s |
+| bringa 25 km | 12,73 s |
 
-### 2. Kétfázisú végpont — a kártya nem várja meg a területszámítást
-
-```
-POST /api/missions/generate  { ...input }                  -> teljes válasz (VÁLTOZATLAN)
-POST /api/missions/generate  { ...input, phase: 'plan' }   -> gyors: routes[]
-POST /api/missions/evaluate  { type, priority, routes[] }  -> lassú: missions[]
-```
-
-⚠️ **A `full` az alapértelmezés, szándékosan**: a backend külön települ, és egy
-már telepített web/iOS kliens `phase` nélkül hív — annak továbbra is a kész
-küldetéslistát kell kapnia.
-
-⚠️ **Miért két kérés, és nem háttérmunka a válasz után?** Cloud Runon a
-konténer CPU-ja a válasz elküldése után nem garantáltan fut tovább — egy
-„majd befejezem a háttérben" megoldás ott némán félbemaradna. Így minden kérés
-önmagában zárt: nincs job-állapot, nincs poll, nincs új adatmodell.
-
-⚠️ **Nincs állapot a két fázis között**: a kliens visszaküldi a vonalláncot, a
-hosszt a szerver ABBÓL számolja újra (`polylineLengthM`), nem hisz a kliens
-számának. A kvótát csak a `plan` fázis fogyasztja.
-
-A lassú fél egyetlen közös függvényben van (`evaluateShapedCandidates`), hogy a
-`full` és a `plan`+`evaluate` út ne csússzon el egymástól.
-
-**Élőben mérve, a böngészőből (MutationObserver-rel):**
-```
-ms:   18  → pending: 0, done: 0   (kattintás)
-ms:  497  → pending: 2, done: 0   (kártyák MEGJELENNEK útvonallal)
-ms: 1746  → pending: 0, done: 2   (kész adatok átveszik)
-```
-
-### 3. Felület: töltő állapot (Geri kérése)
-
-A kártya azonnal látszik térképpel és hosszal; a hiányzó mezők helyén
-„Területszámítás" / „Pontszámítás" / „Cellakalkuláció" felirat pulzál, a
-jelvényben forgó gyűrű. Semleges színű kártya (a karaktere még nem dőlt el),
-`prefers-reduced-motion` alatt animáció nélkül.
-
-⚠️ **A „NEM BECSLÉS" szabály sértetlen**: a köztes állapotban nincs közelítő
-szám, amit később felülírnánk — a mező üres, csak jelezzük, hogy számolunk.
-
-### 4. Célhossz 50 → 300 km (Geri kérése), és a mérés hozzá
+Nagy célhossznál a mért tervezés/geometria:
 
 | célhossz | tényleges | tervezés | geometria/jelölt | eredmény |
-|---|---|---|---|---|
+|---|---:|---:|---:|---|
 | 50 km | 64,7 km | 0,42 s | 1,05 s | 3 hurok, 16 611 cella |
 | 100 km | 130,9 km | 0,31 s | 2,09 s | 2 hurok, 34 567 cella |
 | 200 km | 289,6 km | 1,14 s | **15,93 s** | 7 hurok, 80 386 cella |
@@ -107,83 +135,40 @@ szám, amit később felülírnánk — a mező üres, csak jelezzük, hogy szá
 
 Az előzetes félelem (a `MAX_LOOP_BBOX_CELLS` ≈150 km² miatt minden nagy kör
 elutasításra kerül) **nem igazolódott**: a GraphHopper nem tömör nagy kört
-tervez, hanem kanyargósat, ami több kisebb hurkot zár be.
+tervez, hanem kanyargósat, ami több kisebb hurkot zár be. Ezért kapott a
+jelöltszám célhossz-arányos plafont — enélkül egy 300 km-es kérés egymagában
+~2 perc lenne.
 
-Ezért kapott a jelöltszám célhossz-arányos plafont
-(`shapedCandidateLimit`): ≤30 km → 6, ≤100 km → 4, felette → 2. Enélkül egy
-300 km-es kérés egymagában ~2 perc lenne.
+## ÉLESBEN FUT / TELEPÍTETLEN
 
-### 5. Léptethető ÉS gépelhető mezők (Geri kérése)
+⚠️ **A két menet állapota eltér — ezt a #21 elején tisztán kell látni.**
 
-- A tempó/sebesség mezőbe és a célhossz mezőbe **kézzel is lehet írni**
-  (eddig csak −/+ volt). Közös `Stepper` komponens.
-- Célhossz lépték: **10 alatt 1, 10 fölött 5, 50 fölött 10**. A határon lefelé
-  a kisebb lépték érvényes (50 → 45, nem 40; 10 → 9, nem 5). Mérve:
-  `5→6→7→8→9→10→15→…→50→60→70→80`, visszafelé szimmetrikusan.
+### A küldetés-ajánló MÁR ÉLESBEN FUT (telepítve 2026-08-29)
 
-⚠️ **Két hibát a mérés fogott meg, nem a szemem:**
-1. A töltő mező színe/mérete némán a kész értékét vette fel — az új CSS-szabály
-   a `.mission__stat-value` ELÉ került, és azonos specificitásnál a későbbi
-   nyer. (Ezért áll most kommentben, hogy a sorrend kötelező.)
-2. A beviteli mező csak a beírt szöveg szélességét foglalta, tehát a doboz nagy
-   részére koppintva nem lehetett beleírni. Javítva: a mező `label`, ami a
-   saját területén belül bárhol az inputra adja a fókuszt.
-
-Ezen kívül: **mozgásforma-váltáskor a tempómező kiürül**, mert a mértékegysége
-más (perc/km ↔ km/h) — a felület egy ideig „5:15 km/h"-t írt ki. (Korábban ez
-rejtve maradt: a mező csak olvasható volt, és a `Number('5:15')` NaN-ja miatt
-némán a 22-es alapértéket mutatta.)
-
-## FÁJL-ÖSSZEFOGLALÓ
-
-| Fájl | +/− | Mit tartalmaz |
-|---|---|---|
-| `server/src/routes/missions.ts` | +445/−87 | A válogatás a geometria elé; `phase: 'plan'` ág; új `/evaluate` végpont; közös `evaluateShapedCandidates`; `shapedCandidateLimit`; `MAX_TARGET_KM` 300; `no_fit`/`no_loops` sorrend javítva. |
-| `src/screens/MissionsScreen.tsx` | +280/−21 | Kétfázisú hívás; `PendingResults`/`PendingMissionCard`/`PendingStat`; közös gépelhető `Stepper`; `distanceStepKm`; célhossz-stepper; `changeType` (tempó ürítése). |
-| `src/screens/missions.css` | +132 | Töltő kártya, forgó gyűrű, pulzáló felirat, `prefers-reduced-motion`, szerkeszthető stepper-mező. |
-| `src/lib/api.ts` | +67 | `PlannedRoute`, `MissionPlanResult` típusok; `missionsPlan` és `missionsEvaluate` hívások. |
-| `server/src/lib/missionEvaluate.ts` | +32/−4 | `ShapedCandidate.geometry`; `shapeCandidateCells` visszaadja a geometriát; `evaluateCandidate` `processActivityGeometry`-t hív (nem építi újra). |
-
-**Teendők sorrendje**: push → **nincs adatbázis-lépés** → **kész, telepítve**
-(frontend és backend).
-
-## NYITOTT ÜGYEK
-
-1. ⚠️ **Nagy körnél a GYORS fázis is lassú**: 300 km-es kérésnél 17 s, mert a
-   route-tervezés 8 irányban, két menetben 16 GraphHopper-hívás. A
-   szétválasztás előnye ilyenkor elvész. Lehetséges irány: nagy célhossznál
-   kevesebb irány (`MISSION_BEARINGS`). Nem kezdtem el — Geri döntése.
-2. ⚠️ **Nagy bringakör + meglévő ownership = nincs küldetés.** A
-   `processActivityGeometry` compact ága hibát DOB, ha `ownership.size > 0`
-   („Compact hurok ownership-feldolgozása csak a blokkos backend útvonalon
-   engedett"), az `evaluateCandidate` pedig elnyeli és `null`-t ad. Emulátoron
-   reprodukálva 16 km-es bringakörrel. **Ez NEM az én változtatásom**:
-   ellenőriztem, a régi `full` út ugyanezt adja ugyanazokkal a paraméterekkel.
-   Éles hiba lehet, külön menetet érdemel.
-3. A „Sík / Mászás" választó (a #18-as kérés) — még nincs kidolgozva.
-4. GraphHopper élesítés (konténer, `_GRAPHHOPPER_URL`) — továbbra is nyitott,
-   élesben még a Mapbox-ág fut.
-
-## ÉLESBEN FUT — TELEPÍTVE ÉS ELLENŐRIZVE
-
-A #19 anyaga **élesben fut** (frontend + backend telepítve 2026-08-29).
-Éles méréssel igazolva a `grundo.web.app/kuldetesek` oldalon:
+Frontend + backend telepítve, és éles méréssel igazolva a
+`grundo.web.app/kuldetesek` oldalon:
 
 | | |
-|---|---|
+|---|---:|
 | gyors fázis (`phase: 'plan'`) | 680 ms |
 | lassú fázis (`/evaluate`) | 1 833 ms |
 | **teljes** | **2,5 s** |
 | felületen: töltő kártya megjelenik | **1,0 s** |
 | felületen: kész kártya | 2,0 s |
 
-- A `GRAPHHOPPER_URL` élesben **továbbra is üres**, tehát a Mapbox-ág fut. A
-  gyorsítás ezen az ágon is érvényes — a szűk keresztmetszet a geometria volt,
-  nem a tervező.
+Ehhez a részhez tehát **nem kell újratelepítés**. A `GRAPHHOPPER_URL` élesben
+továbbra is üres, tehát a Mapbox-ág fut — a gyorsítás ezen az ágon is
+érvényes, mert a szűk keresztmetszet a geometria volt, nem a tervező.
 
-### ⚠️ A TELEPÍTÉS KIÜTÖTTE A MAPBOX TOKENT — ÚJ CSAPDA
+### Az Android rész TELEPÍTETLEN
 
-A backend telepítése után a küldetés-generálás **`no_routes`-t adott**: a
+- Codemagic **GRUNDO Android Release** build és készülékre telepítés kell.
+- Külön backend nem kell hozzá.
+- Adatbázis-, Firestore-szabály- és indexváltozás egyik menetben sincs.
+
+### ⚠️ A TELEPÍTÉS KIÜTI A MAPBOX TOKENT — VISSZATÉRŐ CSAPDA
+
+A #19-es backend-telepítés után a küldetés-generálás **`no_routes`-t adott**: a
 `cloudbuild.yaml`-ban `_MAPBOX_TOKEN: ''` az alapértelmezés, és a
 `--set-env-vars` a szolgáltatás TELJES környezetét felülírja. Az élesbe így
 egy rossz (403 Forbidden) token került.
@@ -193,8 +178,8 @@ Amit tudni kell:
   **200 + `no_routes`** — mert a `directionsConfigured()` csak azt nézi, hogy
   a token NEM ÜRES, azt nem, hogy érvényes-e.
 - A hiba a #17-ben már előfordult, a #18-ban javítva lett, és a #19-es
-  telepítés **visszahozta**. Ez tehát nem egyszeri baleset: minden
-  `gcloud builds submit` megismétli, ha nincs átadva a substitution.
+  telepítés **visszahozta**. Ez tehát nem egyszeri baleset: **minden
+  `gcloud builds submit` megismétli**, ha nincs átadva a substitution.
 - Javítás újratelepítés nélkül (ez futott le, `grundo-api-00098-g8h`):
   `gcloud run services update grundo-api --region europe-west1 --update-env-vars MAPBOX_TOKEN=pk.…`
   ⚠️ `--update-env-vars`, NEM `--set-env-vars` — az utóbbi elvinné az SMTP-t
@@ -203,76 +188,122 @@ Amit tudni kell:
   ad). Működik, de a `cloudbuild.yaml` kommentje jogosan kér külön,
   korlátozás nélküli szerver tokent: ha a kliens tokenre valaha URL-korlátozás
   kerül (a böngészős térképek miatt ésszerű), a küldetés-generálás azonnal
-  elhasal. **Nyitott ügy** — érdemes a tokent Secret Managerbe tenni, vagy a
-  `_MAPBOX_TOKEN` alapértékét kivenni a felülírásból.
+  elhasal.
+
+## FÁJL-ÖSSZEFOGLALÓ
+
+### Android (Codex, #20)
+
+| Fájl | +/− | Mit tartalmaz |
+|---|---|---|
+| `android/…/TrackingLocationService.java` | +168/−16 | Élő notification, `Chronometer`, `SharedPreferences` állapot, háttér-GPS frissítés. |
+| `android/…/BackgroundLocationPlugin.java` | +81/−3 | `POST_NOTIFICATIONS` engedélykérés Android 13+-on, folytatás-callbackek. |
+| `android/…/notification_tracking_expanded.xml` | +112 | Kibontott/zárolt képernyős nézet. |
+| `android/…/notification_tracking_compact.xml` | +41 | Kompakt notification nézet. |
+| `android/…/TrackingNotificationFormatterTest.java` | +41 | 3 JUnit teszt a formázóra. |
+| `android/…/TrackingNotificationFormatter.java` | +29 | Táv/idő/sebesség formázás natív oldalon. |
+| `docs/08-android-codemagic.md` | +13/−3 | Az Android build és a notification leírása. |
+| `docs/02-funkcionalis-spec.md` | +9/−3 | Az élő mérés specifikációja. |
+| `src/screens/settings/NotificationsScreen.tsx` | +5/−3 | A kapcsoló Androidon is megjelenik. |
+| `android/…/values/strings.xml` | +5 | Notification szövegek. |
+| `src/tracking/types.ts` | +1/−1 | Típus a natív állapothoz. |
+| `src/tracking/nativeSource.ts` | +1 | Natív állapot átvezetése. |
+
+### Küldetés-ajánló (Claude, #19)
+
+| Fájl | +/− | Mit tartalmaz |
+|---|---|---|
+| `server/src/routes/missions.ts` | +445/−87 | A válogatás a geometria elé; `phase: 'plan'` ág; új `/evaluate` végpont; közös `evaluateShapedCandidates`; `shapedCandidateLimit`; `MAX_TARGET_KM` 300; `no_fit`/`no_loops` sorrend javítva. |
+| `src/screens/MissionsScreen.tsx` | +280/−21 | Kétfázisú hívás; `PendingResults`/`PendingMissionCard`/`PendingStat`; közös gépelhető `Stepper`; `distanceStepKm`; célhossz-stepper; `changeType`. |
+| `src/screens/missions.css` | +132 | Töltő kártya, forgó gyűrű, pulzáló felirat, `prefers-reduced-motion`, szerkeszthető stepper-mező. |
+| `src/lib/api.ts` | +67 | `PlannedRoute`, `MissionPlanResult` típusok; `missionsPlan` és `missionsEvaluate` hívások. |
+| `server/src/lib/missionEvaluate.ts` | +32/−4 | `ShapedCandidate.geometry`; `shapeCandidateCells` visszaadja a geometriát; `evaluateCandidate` `processActivityGeometry`-t hív. |
 
 ## ELLENŐRZÉSEK
 
-- `npx tsc --noEmit` mindkét oldalon tiszta.
-- Teljes `npx vitest run`: **556 sikeres, 122 kihagyva** — ugyanaz, mint a #18
-  végén, nincs regresszió.
-- Emulátoros készlet: 120 sikeres, **2 bukó** az
-  `activitiesCompact.emulator.test.ts`-ben. ⚠️ **NEM regresszió**: `git
-  stash`-sel ellenőriztem, a tiszta HEAD-en ugyanaz a 2 teszt bukik ugyanazon
-  az emulátoron (időtúllépés). Az ok a #18 óta futó, kézi tesztadattal teli
-  emulátor — friss `emulators:exec` indítással érdemes újramérni.
-- Élő böngészős ellenőrzés emulátoron: kétfázisú betöltés (0,5 s / 1,75 s),
-  világos és sötét téma, stepper-léptékek, kézi beírás, a töltő felirat
-  elfér (77 px a 125 px-es dobozban), és a kártya **nem ugrik** (töltő 56 px =
-  kész 56 px).
-- Production build **nem futott** (nem volt csomagméretet érintő változás).
+Az Android commit önálló ellenőrzései:
 
-## HELYI KÖRNYEZET
+- `npm run typecheck`: sikeres.
+- Teljes `npm test`: **556 sikeres**, 122 emulátoros teszt kihagyva.
+- `npm run build`: sikeres production build.
+- `npx cap sync android`: sikeres, 4 plugin felismerve.
+- Android JUnit: **3 sikeres**.
+- Android `lintDebug`, `lintRelease`, `assembleRelease`, `bundleRelease`:
+  sikeres.
+- Csatlakoztatott Android készülék nem volt, ezért a lock-screen megjelenés
+  még nincs vizuálisan ellenőrizve.
 
-Fut (a #18 óta): Firestore/Auth emulátor, `server/`
-(`GRAPHHOPPER_URL=http://localhost:8989`), GraphHopper, és a #19-ben indított
-Vite. Indítás, ha nem futnak:
+A küldetés-ajánló commit önálló ellenőrzései:
 
-```bash
-export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"
-```
-```bash
-cd graphhopper && java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml
-```
-```bash
-firebase.cmd emulators:start --only auth,firestore --project demo-grundo
-```
-```bash
-cd server && GRAPHHOPPER_URL=http://localhost:8989 npm run dev:emulator
-```
-```bash
-npm run dev:emulator
-```
+- Kliens- és szerver-TypeScript tiszta.
+- Teljes Vitest: **556 sikeres**, 122 kihagyva.
+- Élő böngészős ellenőrzés emulátoron: kétfázisú betöltés, világos/sötét téma,
+  stepper, kézi beírás és stabil kártyamagasság sikeres.
+- Éles ellenőrzés a `grundo.web.app`-on: a kétfázisú betöltés a fenti
+  időkkel működik.
+- Az emulátoros készletben 120 sikeres és 2, már a tiszta alap-HEAD-en is
+  reprodukálható `activitiesCompact` timeout volt; `git stash`-sel igazolva,
+  hogy **nem regresszió** (az ok a régóta futó, tesztadattal teli emulátor).
 
-Belépés: `geri@grundo.local` / `grundo-emulator`. Geolokáció a böngészőben:
-```js
-navigator.geolocation.getCurrentPosition = (s) => s({ coords: { latitude: 47.4979, longitude: 19.0537, accuracy: 10 } });
-```
+A két ág összeolvasztása után külön `npm run build` futott: a TypeScript és a
+Vite production build is sikeres; a meglévő nagy chunk figyelmeztetés maradt.
 
-⚠️ A #19-ben a tesztek futtatása **törölte az emulátor felhasználóit** — a
-profilt újra létre kellett hozni a felületen. A kvóta nullázása méréshez (a
-`firestore.rules` megkerülésével, ezért csak emulátoron működik):
-```bash
-curl -s -X PATCH "http://localhost:8081/v1/projects/demo-grundo/databases/grundo-db/documents/users/demo-geri?updateMask.fieldPaths=missionQuota" -H "Authorization: Bearer owner" -H "Content-Type: application/json" -d '{"fields":{"missionQuota":{"mapValue":{"fields":{"week":{"integerValue":"0"},"used":{"integerValue":"0"}}}}}}'
-```
+## KÖVETKEZŐ MENET — #21
 
-Mérőszkriptek a `tmp/`-ben (nem verziókövetett), a `server/` mappából
-futtatva `npx tsx ../tmp/<fájl>`:
-`measure-mission-perf.ts`, `measure-geometry-reuse.ts`, `measure-phase-split.ts`
-(ez mutatta meg, hol az idő), `measure-endpoint.ts`, `measure-huge-loops.ts`.
+1. Geri pusholja az összeolvasztott commitot.
+2. Nincs adatbázis-lépés.
+3. ⚠️ **A küldetés-ajánlóhoz nem kell telepítés** — az már élesben fut. Ha
+   mégis megy backend-telepítés (bármi másért), utána **ellenőrizni kell a
+   Mapbox tokent**, mert a `--set-env-vars` kiüti (lásd fent).
+4. Codemagicben készüljön **GRUNDO Android Release**, majd az APK kerüljön
+   valódi Android készülékre.
+5. Androidon legalább 3 perces és 100 méteres rögzítés közben ellenőrizendő:
+   kijelzőzár, kompakt/kibontott notification, táv/idő/sebesség, 30 mp szünet,
+   folytatás, notification-koppintás és feloldás után hézagmentes nyomvonal.
+6. A kapcsolót kikapcsolva új rögzítésnél csak az egyszerű foreground
+   notification maradjon.
+
+## NYITOTT ÜGYEK
+
+1. ⚠️ **Nagy bringakör + meglévő ownership = nincs küldetés.** A
+   `processActivityGeometry` compact ága hibát dob, ha `ownership.size > 0`
+   („Compact hurok ownership-feldolgozása csak a blokkos backend útvonalon
+   engedett"), az `evaluateCandidate` pedig elnyeli és `null`-t ad. 16 km-es
+   bringakörrel reprodukálható emulátoron, és a régi `full` út is ugyanígy
+   viselkedik — **nem a #19 okozta**. Külön, Opus-szintű menet kell.
+2. 300 km-es kérésnél a **gyors `plan` fázis is kb. 17 s** lehet a 16
+   GraphHopper-hívás miatt (8 irány × 2 menet). Ilyenkor a szétválasztás
+   előnye elvész. Lehetséges irány: nagy célhossznál kevesebb bearing
+   (`MISSION_BEARINGS`).
+3. **Külön, korlátozás nélküli Mapbox szerver token** — élesben most a kliens
+   token fut szerveroldalon. Érdemes Secret Managerbe tenni, vagy a
+   `_MAPBOX_TOKEN` alapértékét kivenni a `--set-env-vars` felülírásából.
+4. A „Sík / Mászás” választó még nincs kidolgozva.
+5. GraphHopper élesítése (`_GRAPHHOPPER_URL`) továbbra is nyitott.
+6. Az Android notification tényleges mérete és alapértelmezett kibontottsága
+   OEM-függő; készülékes képernyőkép alapján lehet finomhangolni.
+7. Samsung/Xiaomi/Huawei akkumulátorkezelésnél lezárt képernyős terepi teszt
+   kell; nyitott továbbá a csak hozzávetőleges hely, helymegtagadás, appváltás,
+   offline pontsor, force stop és Active apps → Stop.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-- **A 2. nyitott ügy (compact + ownership) hibakeresése: Opus, emelt mélység**
-  — mért anomália a játékmotor magjában.
-- A „Sík/Mászás" választó vagy a GraphHopper élesítése: **Sonnet**, normál
-  mélység (meglévő minta kiterjesztése).
+- Android készülékes megjelenéshez vagy kisebb layout-finomításhoz:
+  **Sonnet, normál mélység**.
+- Compact + ownership anomáliához vagy Android háttérben elcsúszó idő/táv
+  hibához: **Opus, emelt mélység**.
+- „Sík/Mászás” választóhoz vagy GraphHopper élesítéshez:
+  **Sonnet, normál mélység**.
 
 ## FORRÁSOK SORRENDJE
 
-1. `AGENTS.md` — különösen a Munkamódszer szakasz
+1. `AGENTS.md`
 2. `HANDOFF.md` (ez a fájl)
-3. `server/src/routes/missions.ts` — a kétfázisú lánc és a plafonok
-4. `src/screens/MissionsScreen.tsx` — a kétfázisú hívás és a töltő kártya
-5. `src/game/loopDetection.ts` — a valódi szűk keresztmetszet (`append`)
-6. `docs/02-funkcionalis-spec.md` → Küldetés-ajánló
+3. `server/src/routes/missions.ts`
+4. `src/screens/MissionsScreen.tsx`
+5. `server/src/lib/missionEvaluate.ts`
+6. `src/game/loopDetection.ts`
+7. `android/app/src/main/java/app/grundo/android/TrackingLocationService.java`
+8. `android/app/src/main/java/app/grundo/android/BackgroundLocationPlugin.java`
+9. `docs/08-android-codemagic.md`
+10. `docs/02-funkcionalis-spec.md`

@@ -3,7 +3,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { ScreenHeader, Switch } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
 import { db } from '@/lib/firebase';
-import { isNativeIos } from '@/lib/platform';
+import { isNativeApp, isNativeIos } from '@/lib/platform';
 import { liveActivityEnabled, setLiveActivityEnabled } from '@/tracking/liveActivity';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_ORDER, type NotificationType } from '@/lib/notificationTypes';
 import {
@@ -125,7 +125,7 @@ export function NotificationsScreen() {
           {pushError ? <p className="field__error" role="alert">{pushError}</p> : null}
         </section>
 
-        {isNativeIos() ? (
+        {isNativeApp() ? (
           <section className="card">
             <Switch
               checked={liveStats}
@@ -134,7 +134,9 @@ export function NotificationsScreen() {
                 setLiveActivityEnabled(value);
               }}
               label="Élő mérés a zárolt képernyőn"
-              description="A következő rögzítéstől az idő, táv és sebesség megjelenik a Live Activityben és a Dynamic Islanden."
+              description={isNativeIos()
+                ? 'A következő rögzítéstől az idő, táv és sebesség megjelenik a Live Activityben és a Dynamic Islanden.'
+                : 'A következő rögzítéstől az idő, táv és sebesség megjelenik a folyamatos rendszerértesítésben. Kikapcsolva a rögzítéshez kötelező egyszerű Android-értesítés megmarad.'}
             />
           </section>
         ) : null}
