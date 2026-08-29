@@ -54,8 +54,29 @@ info "Projekt beállítása: $PROJECT"
 gcloud config set project "$PROJECT" >/dev/null
 
 info "Friss kód lehúzása"
+before_pull="$(git rev-parse HEAD)"
 git pull --ff-only
 printf '   HEAD: %s\n' "$(git log --oneline -1)"
+
+# ⚠️ HA MAGA EZ A SZKRIPT FRISSÜLT, ÚJRA KELL INDÍTANI MAGUNKAT.
+#
+# A bash a futó szkriptet a lemezről olvassa, de a már beolvasott részt nem
+# olvassa újra. A fenti `git pull` tehát kicserélheti a fájlt a lábunk alatt,
+# miközben a RÉGI változat fut tovább — a friss javítás pedig csak a
+# következő indításnál érvényesülne.
+#
+# Konkrét eset (2026-08-29): a token Secret Managerre állítása után a pull
+# lehozta a javított szkriptet, de a régi kód futott tovább, és a build
+# ugyanazzal a `_MAPBOX_TOKEN`-hibával hasalt el, mint előtte. Kívülről úgy
+# nézett ki, mintha a javítás nem működne.
+#
+# Végtelen ciklus nem lehet belőle: a második futásban a pull már nem hoz
+# újat, tehát a `before_pull` és a HEAD megegyezik.
+if [ "$before_pull" != "$(git rev-parse HEAD)" ] \
+   && ! git diff --quiet "$before_pull" HEAD -- scripts/deploy.sh; then
+  info "A telepítő szkript frissült — újraindítás a friss változattal"
+  exec "$REPO_ROOT/scripts/deploy.sh" "$MODE"
+fi
 
 deploy_backend() {
   # A `--set-secrets` LÉTEZŐ titkot vár: ha hiányzik, a `gcloud run deploy`
