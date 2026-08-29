@@ -9,6 +9,34 @@
 > működik.** Van egy NYITOTT, nem kis súlyú hiba: GPS-drift hamis
 > aktivitásokat hoz létre — lásd lent, ELSŐ OLVASNIVALÓ.
 
+## HARMADIK NYITOTT TÉMA — Grund-térkép: cellák szemmel láthatóan töltődnek be
+
+Geri megfigyelése: bizonyos nagyítási szinten a folytonos terület (a zöld
+folt) egyszerre látszik, de a hatszögrács-cellák RÉSZLETEKBEN, a felhasználó
+szeme láttára töltődnek fel a látható területen — zavaró, félreérthető.
+
+**Az ok megvan, pontos helymegjelöléssel, javítás még NEM történt:**
+
+- `src/components/MapView.tsx` → `report()` (kb. 248-258. sor): a térkép
+  mozgás/nagyítás végén (`moveend`) a PONTOS, aktuális látható határt
+  (`target.getBounds()`) küldi tovább, semmilyen ráhagyás nélkül.
+- `src/screens/TerritoryScreen.tsx` → `loadTiles()` (kb. 137-156. sor): ez a
+  határ megy egyenesen az `api.tiles(layer, next)` hívásba.
+- `src/lib/api.ts` → `tiles()` (kb. 1147-1154. sor): a `south/west/north/east`
+  paraméterek PONTOSAN ez a nézet — nincs kliensoldali kibővítés.
+- A `territoryBlobs()` (ugyanott, ~1156-től) ETTŐL FÜGGETLENÜL, előszámolt
+  egységben jön — ezért látszik egyben azonnal, míg a `tiles` szűk sávban,
+  fokozatosan.
+
+**Geri kérése**: a `tiles`-hívás határát a képernyő méretének 2-3×-osára
+kell kitolni minden irányban, mielőtt elmegy a szerverre — így a cellák a
+látható terület SZÉLE ELŐTT betöltődnek, nem a user szeme láttára.
+
+**Amire figyelni kell a javításnál**: a kibővített bbox nagyobb válasz
+méretet jelent minden mozdulatnál — érdemes megnézni, mekkora ez nagy
+nagyításnál (sok cella) és kicsi nagyításnál (nagy terület), nehogy a
+javítás egy másik teljesítményproblémát nyisson ki. Nem kezdve, nem mérve.
+
 ## ⚠️ ELSŐ OLVASNIVALÓ — #22 fő feladata
 
 **Beltéri/álló helyzeti GPS-zaj hamis aktivitást hoz létre.** Geri jelentése:
