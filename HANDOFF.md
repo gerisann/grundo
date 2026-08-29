@@ -166,29 +166,51 @@ továbbra is üres, tehát a Mapbox-ág fut — a gyorsítás ezen az ágon is
 - Külön backend nem kell hozzá.
 - Adatbázis-, Firestore-szabály- és indexváltozás egyik menetben sincs.
 
-### ⚠️ A TELEPÍTÉS KIÜTI A MAPBOX TOKENT — VISSZATÉRŐ CSAPDA
+### A MAPBOX TOKEN — MEGOLDVA, de érdemes tudni, mi volt
 
-A #19-es backend-telepítés után a küldetés-generálás **`no_routes`-t adott**: a
-`cloudbuild.yaml`-ban `_MAPBOX_TOKEN: ''` az alapértelmezés, és a
-`--set-env-vars` a szolgáltatás TELJES környezetét felülírja. Az élesbe így
-egy rossz (403 Forbidden) token került.
+⚠️ **A token 2026-08-29 óta a Secret Managerből jön** (`--set-secrets`), ezért
+a telepítés NEM tudja többé kiütni. Ha a jövőben mégis `no_routes` jönne, az
+már nem ez az ok.
 
-Amit tudni kell:
-- A tünet félrevezető: nem 503 („az útvonaltervező nincs beállítva"), hanem
-  **200 + `no_routes`** — mert a `directionsConfigured()` csak azt nézi, hogy
-  a token NEM ÜRES, azt nem, hogy érvényes-e.
-- A hiba a #17-ben már előfordult, a #18-ban javítva lett, és a #19-es
-  telepítés **visszahozta**. Ez tehát nem egyszeri baleset: **minden
-  `gcloud builds submit` megismétli**, ha nincs átadva a substitution.
-- Javítás újratelepítés nélkül (ez futott le, `grundo-api-00098-g8h`):
-  `gcloud run services update grundo-api --region europe-west1 --update-env-vars MAPBOX_TOKEN=pk.…`
-  ⚠️ `--update-env-vars`, NEM `--set-env-vars` — az utóbbi elvinné az SMTP-t
-  és az `ALLOWED_ORIGINS`-t is.
-- Élesben most a **kliens** token fut szerveroldalon (az egyetlen, ami 200-at
-  ad). Működik, de a `cloudbuild.yaml` kommentje jogosan kér külön,
-  korlátozás nélküli szerver tokent: ha a kliens tokenre valaha URL-korlátozás
-  kerül (a böngészős térképek miatt ésszerű), a küldetés-generálás azonnal
-  elhasal.
+A történet, mert a tünete félrevezető volt és **háromszor** megismétlődött
+(#17, #19, #20):
+
+- A `cloudbuild.yaml` `--set-env-vars` kapcsolója a szolgáltatás TELJES
+  környezetét felülírja, a `_MAPBOX_TOKEN` substitution alapértéke pedig üres
+  volt. Így minden telepítés, ami nem adta át kézzel a kapcsolót, némán
+  kiütötte a tokent.
+- **A tünet nem az, amire számítanál**: nem 503 („az útvonaltervező nincs
+  beállítva"), hanem **200 + `no_routes`** — mert a `directionsConfigured()`
+  csak azt nézi, hogy a token nem üres, azt nem, hogy érvényes-e. Emiatt úgy
+  tűnt, mintha az útvonaltervezővel lenne baj.
+- A `scripts/deploy.sh` átadta ugyan a tokent, de a **`.env.local`-ból** — az
+  viszont gitignore-olt, tehát a Cloud Shell másolatában MÁS (régi, 403-as)
+  token állt, mint a fejlesztői gépen. Ez rejtette el az okot a legtovább.
+- ⚠️ **Ráadás-csapda ugyanabból a körből:** a `deploy.sh` a futása elején
+  `git pull`-t csinál, de a bash a már beolvasott szkriptet futtatja tovább.
+  A javított szkript tehát lehúzódott, miközben a régi kód futott — a build
+  ugyanazzal a hibával hasalt el, mintha a javítás nem működne. A szkript
+  mostantól `exec`-cel újraindítja magát, ha a pull épp őt frissítette.
+
+Mérve a javítás után (éles, `grundo-api-00102-dvz`):
+
+| kérés | gyors fázis | lassú fázis | teljes |
+|---|---:|---:|---:|
+| első (hidegindítás) | 11 945 ms | 345 ms | 12,3 s |
+| második | 439 ms | 335 ms | **0,77 s** |
+| harmadik | 376 ms | 357 ms | **0,73 s** |
+
+⚠️ **A hidegindítás megmarad**: a Cloud Run nullára skálázódik, ezért hosszú
+szünet után az első kérés 10–12 s. Ez nem a küldetés-ajánló sajátja. Ha
+zavaró lesz, `--min-instances=1` megoldja, de az folyamatos költség — csak
+felhasználói panasz esetén érdemes.
+
+Ami nyitva maradt: élesben a **kliens** token fut szerveroldalon (az egyetlen,
+ami 200-at ad). Működik, de ha a kliens tokenre valaha URL-korlátozás kerül (a
+böngészős térképek miatt ésszerű), a küldetés-generálás azonnal elhasal.
+Külön, korlátozás nélküli szerver token kell — a csere most már egy
+`gcloud secrets versions add MAPBOX_TOKEN` és egy újratelepítés, kódváltozás
+nélkül (`docs/06-architektura-es-admin.md`).
 
 ## FÁJL-ÖSSZEFOGLALÓ
 
@@ -276,8 +298,9 @@ Vite production build is sikeres; a meglévő nagy chunk figyelmeztetés maradt.
    előnye elvész. Lehetséges irány: nagy célhossznál kevesebb bearing
    (`MISSION_BEARINGS`).
 3. **Külön, korlátozás nélküli Mapbox szerver token** — élesben most a kliens
-   token fut szerveroldalon. Érdemes Secret Managerbe tenni, vagy a
-   `_MAPBOX_TOKEN` alapértékét kivenni a `--set-env-vars` felülírásából.
+   token fut szerveroldalon. A tárolás már megoldott (Secret Manager), csak a
+   token maga közös. Csere: `gcloud secrets versions add MAPBOX_TOKEN` +
+   újratelepítés, kódváltozás nélkül.
 4. A „Sík / Mászás” választó még nincs kidolgozva.
 5. GraphHopper élesítése (`_GRAPHHOPPER_URL`) továbbra is nyitott.
 6. Az Android notification tényleges mérete és alapértelmezett kibontottsága
