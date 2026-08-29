@@ -1,4 +1,7 @@
 {
+  "speed": [
+    { "if": "true", "limit_to": "foot_average_speed" }
+  ],
   "priority": [
     { "if": "road_class == PRIMARY || road_class == SECONDARY", "multiply_by": "0.4" },
     { "if": "road_class == CYCLEWAY || road_class == FOOTWAY || road_class == PATH", "multiply_by": "1.3" },

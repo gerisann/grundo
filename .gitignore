@@ -16,6 +16,14 @@ serviceAccountKey.json
 tmp/*
 !tmp/.gitkeep
 
+# GraphHopper helyi futtatás — a jar (~47 MB) és az OSM-kivonat (~320 MB) a
+# graphhopper/README.md szerint tölthető le, a gráf-gyorsítótár pedig belőlük
+# épül; egyik sem verziókövetésre való.
+graphhopper/*.jar
+graphhopper/*.osm.pbf
+graphhopper/graph-cache/
+graphhopper/*.log
+
 # Firebase
 .firebase/
 firebase-debug.log

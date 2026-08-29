@@ -1,4 +1,7 @@
 {
+  "speed": [
+    { "if": "true", "limit_to": "bike_average_speed" }
+  ],
   "priority": [
     { "if": "road_class == CYCLEWAY || bike_network != MISSING", "multiply_by": "1.6" },
     { "if": "road_class == PRIMARY || road_class == SECONDARY", "multiply_by": "0.35" },

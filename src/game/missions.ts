@@ -209,6 +209,8 @@ export interface MissionCandidate {
   uTurns: number;
   /** Rövid visszatérő hurok vagy háromoldalas dobozkerülő. */
   shortDetours?: number;
+  /** 30 m-es léptékű kanyarszám — lásd `routeShape.ts` → `measureStraightness`. */
+  turnCount?: number;
   /** Az összes érintett (fal + belső) cella — az átfedés-vizsgálathoz. */
   cells: ReadonlySet<string>;
 }

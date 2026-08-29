@@ -4,7 +4,7 @@ import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, HttpError } from '../lib/errors';
 import { gameDay, loadOwnership, weekOf } from '../lib/grid';
 import { getGameplaySnapshot } from '../lib/gameplayConfig';
-import { directionsConfigured, planLoop, routeToTracePoints } from '../lib/directions';
+import { directionsConfigured, planMissionLoop, routeToTracePoints, type RouteCharacter } from '../lib/directions';
 import {
   evaluateCandidate,
   limitByBlocks,
@@ -18,12 +18,12 @@ import { layerOf } from '../../../src/game/cells';
 import {
   countShortDetours,
   countUTurns,
+  measureStraightness,
   selectMissionRoutes,
 } from '../../../src/game/routeShape';
 import {
   averagePaceSecPerKm,
   directionsProfile,
-  loopWaypoints,
   missionBearings,
   pickMissions,
   targetDistanceKm,
@@ -77,7 +77,7 @@ const MAX_TARGET_KM = 50;
  *
  * A MENET (docs/02-funkcionalis-spec.md → Küldetés-ajánló):
  *   1. célhossz a felhasználó SAJÁT átlagtempójából
- *   2. kör-jelöltek nyolc irányban, valódi úthálózaton (Mapbox Directions)
+ *   2. kör-jelöltek nyolc irányban, valódi úthálózaton (saját GraphHopper, Mapbox tartalékban)
  *   3. mindegyikre a bezáruló cellahalmaz — UGYANAZ a motor, mint élesben
  *   4. értékelés a JELENLEGI birtokviszonyok ellen
  *   5. karakterenként a legjobb, érdemben különböző ajánlat
@@ -161,8 +161,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
     const bearings = orderBearings(missionBearings(cfg), input.preferredBearing);
 
     const planAt = async (bearing: number, wantedKm: number) => {
-      const waypoints = loopWaypoints(origin, bearing, wantedKm, cfg);
-      const routes = await planLoop(origin, waypoints, profile);
+      const routes = await planMissionLoop(origin, bearing, wantedKm, profile, cfg, input.routeCharacter);
       return routes.length > 0 ? { bearing, routes } : null;
     };
 
@@ -256,6 +255,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           // U-fordulásmentes jelöltek is hibásnak látszottak.
           uTurns: countUTurns(coordinates),
           shortDetours: countShortDetours(coordinates),
+          turnCount: measureStraightness(coordinates).turnCount,
           error: relativeError(distanceKm),
         });
       } catch {
@@ -384,6 +384,11 @@ interface MissionInput {
   priority: 'balanced' | 'conquest' | 'raid' | 'fortify' | 'explore';
   preferredBearing?: number;
   type: ActivityType;
+  /**
+   * Útvonal-karakter kapcsoló (döntés: 2026-08-29). A felület sétánál nem
+   * kínálja fel, de itt nincs rá külön ág — hiányzó/ismeretlen érték `twisty`.
+   */
+  routeCharacter: RouteCharacter;
 }
 
 function parseInput(body: unknown): MissionInput {
@@ -435,6 +440,8 @@ function parseInput(body: unknown): MissionInput {
     throw badRequest('invalid_type', 'Ismeretlen mozgásforma.');
   }
 
+  const routeCharacter = raw.routeCharacter === 'straight' ? 'straight' : 'twisty';
+
   return {
     lat,
     lng,
@@ -443,6 +450,7 @@ function parseInput(body: unknown): MissionInput {
     priority,
     ...(preferredBearing === undefined ? {} : { preferredBearing }),
     type,
+    routeCharacter,
   };
 }
 

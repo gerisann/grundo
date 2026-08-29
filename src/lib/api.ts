@@ -460,6 +460,13 @@ export type LeaderboardWindow = 'day' | 'week' | 'month' | 'alltime';
 export type MissionKind = 'conquest' | 'raid' | 'fortify' | 'explore';
 export type MissionPriority = 'balanced' | MissionKind;
 
+/**
+ * Útvonal-karakter kapcsoló (döntés: 2026-08-29) — ugyanaz a GraphHopper-
+ * tervező futtatja mindkettőt, csak a kanyarbüntetéssel vagy anélkül.
+ * Séta mozgásformánál a felület nem kínálja fel.
+ */
+export type RouteCharacter = 'twisty' | 'straight';
+
 export interface Mission {
   kind: MissionKind;
   distanceKm: number;
@@ -1161,6 +1168,8 @@ export const api = {
     priority?: MissionPriority;
     preferredBearing?: number;
     type: ActivityType;
+    /** Séta mozgásformánál nincs értelme — a felület akkor nem küldi. */
+    routeCharacter?: RouteCharacter;
   }) =>
     request<MissionResult>('/api/missions/generate', {
       method: 'POST',

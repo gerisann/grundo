@@ -46,6 +46,14 @@ substitutions:
   # kezdődő tokent ad, ami VALÓDI titok, és Secret Managerbe való.
   _MAPBOX_TOKEN: ''
 
+  # A saját GraphHopper-szolgáltatás belső címe (döntés: 2026-08-29, lásd
+  # graphhopper/README.md). ÜRESEN a szerver a Mapbox-ágra esik vissza —
+  # ez a mai állapot, a GraphHopper-konténer élesítése a #19-es menet
+  # feladata. Ha egyszer fut a konténer, add át:
+  #
+  #   gcloud builds submit --config cloudbuild.yaml --substitutions=_GRAPHHOPPER_URL=http://…
+  _GRAPHHOPPER_URL: ''
+
 steps:
   # FIGYELEM: a címke $BUILD_ID, NEM $SHORT_SHA.
   #
@@ -112,7 +120,7 @@ steps:
       # A levelezés a SAJÁT domain szerverén megy (nincs harmadik fél).
       # A 25-ös port a Google Cloudon kifelé tiltva van, ezért 465 (vagy 587).
       - >-
-        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##MAIL_PROVIDER=smtp##MAIL_FROM=GRUNDO <no-reply@grundo.ultimateteam.hu>##SMTP_HOST=${_SMTP_HOST}##SMTP_PORT=${_SMTP_PORT}##SMTP_USER=${_SMTP_USER}##MAPBOX_TOKEN=${_MAPBOX_TOKEN}##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173,capacitor://localhost,https://localhost
+        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##MAIL_PROVIDER=smtp##MAIL_FROM=GRUNDO <no-reply@grundo.ultimateteam.hu>##SMTP_HOST=${_SMTP_HOST}##SMTP_PORT=${_SMTP_PORT}##SMTP_USER=${_SMTP_USER}##MAPBOX_TOKEN=${_MAPBOX_TOKEN}##GRAPHHOPPER_URL=${_GRAPHHOPPER_URL}##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173,capacitor://localhost,https://localhost
       # Az SMTP-jelszó az EGYETLEN valódi titok a szolgáltatásban, ezért nem
       # env-változóként, hanem Secret Managerből érkezik: a repóba így soha nem
       # kerül bele, és cserélni is lehet a kód érintése nélkül.

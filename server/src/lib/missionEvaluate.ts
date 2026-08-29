@@ -34,6 +34,8 @@ export interface ShapedCandidate {
   uTurns: number;
   /** Rövid visszatérő hurok vagy háromoldalas dobozkerülő. */
   shortDetours: number;
+  /** 30 m-es léptékű kanyarszám — lásd `routeShape.ts` → `measureStraightness`. */
+  turnCount?: number;
 }
 
 /**
@@ -127,6 +129,7 @@ export function evaluateCandidate(
       cells: result.claimedCells,
       uTurns: shaped.uTurns,
       shortDetours: shaped.shortDetours,
+      turnCount: shaped.turnCount,
     };
   } catch {
     return null;

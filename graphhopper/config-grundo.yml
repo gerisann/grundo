@@ -10,7 +10,7 @@
 # HELYI FUTTATÁS (lásd README.md a mappában):
 #   java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml
 #
-# ⚠️ HÁROM BUKTATÓ, MIND MÉRVE — ne vedd ki őket:
+# ⚠️ ÖT BUKTATÓ, MIND MÉRVE — ne vedd ki őket:
 #   1. A `turn_penalty` (kanyarbüntetés) NEM fordul le `orientation` nélkül:
 #      "Cannot compile expression: Variable not supported: orientation".
 #   2. A profilon kell `turn_costs`, benne NEM ÜRES `vehicle_types`, és
@@ -18,6 +18,17 @@
 #      egyedi modell kanyarbüntetését a szerver visszautasítja.
 #   3. Ezek megváltoztatása UTÁN a gráfot újra kell importálni (töröld a
 #      graph-cache mappát), különben a régi adatokkal indul.
+#   4. A `custom_model_files` a `custom_models/` alatti TÉNYLEGES fájlneveket
+#      várja (`grundo_run.json`, `grundo_bike.json`).
+#   5. A `custom_model_files` HIÁNYA a profilon nem "nincs alapmodell", hanem
+#      induláskori hiba: "Missing 'custom_model' or 'custom_model_files'
+#      field". A hivatkozott fájlnak pedig KÖTELEZŐ `speed` szakasza is
+#      (mérve: "At least one initial statement under 'speed' is required"
+#      enélkül) — ezért van `speed` a `custom_models/*.json`-ökben, a
+#      `foot_average_speed`/`bike_average_speed` kódolt értékre korlátozva.
+#      Ez CSAK a szerver szintű alapmodellre igaz: a `server/`
+#      (`directions.ts`) minden kéréshez küldött, `speed` nélküli egyedi
+#      modellje simán működik, mert az erre az alapra RÁÉPÜL, nem helyettesíti.
 
 graphhopper:
   datareader.file: hungary-latest.osm.pbf
@@ -31,13 +42,13 @@ graphhopper:
         vehicle_types: [foot]
         u_turn_costs: 40
         allow_turn_penalty_in_request: true
-      custom_model_files: [foot.json]
+      custom_model_files: [grundo_run.json]
     - name: bike
       turn_costs:
         vehicle_types: [bicycle]
         u_turn_costs: 30
         allow_turn_penalty_in_request: true
-      custom_model_files: [bike.json]
+      custom_model_files: [grundo_bike.json]
 
   # A kör-generálás (`algorithm=round_trip`) csak rugalmas módban fut
   # (`ch.disable=true`), ezért nincs CH-előkészítés. A landmark (LM)

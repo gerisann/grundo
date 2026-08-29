@@ -58,6 +58,20 @@ Mért méretek (2026-08-29, teljes Magyarország): a gráf a lemezen **184 MB**,
 futó szerver **~1,5 GB** memóriában (6 GB-ot kapott). Élesben ez kicsi
 konténer, nem nagygép.
 
+## A szerver bekötése (döntés/menet: 2026-08-29, #18)
+
+A `server/` a `GRAPHHOPPER_URL` env-változóból tudja, hol fut ez a motor —
+lásd `server/src/lib/directions.ts`. Helyi fejlesztéshez a `server/`
+indítása ELŐTT exportáld (a `dev-emulator.mjs` a teljes `process.env`-et
+továbbadja, tehát ez elég):
+
+```bash
+export GRAPHHOPPER_URL=http://localhost:8989
+```
+
+Üresen hagyva a szerver a Mapbox-ágra esik vissza (ha van `MAPBOX_TOKEN`),
+vagy `directions_unavailable` 503-at ad, ha egyik sincs beállítva.
+
 ## Amibe bele fogsz futni
 
 - **`snap_prevention` vesszős listát nem fogad** GET-ben: ismételni kell

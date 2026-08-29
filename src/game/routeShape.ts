@@ -210,18 +210,62 @@ export function countRouteDefects(points: readonly LatLng[]): number {
   return countUTurns(points) + countShortDetours(points);
 }
 
+/**
+ * 30 méteres léptékben mért kanyarszám és átlagos egyenes szakasz.
+ *
+ * MIÉRT MÁS LÉPTÉK, MINT A `countUTurns`? Az a valódi visszafordulást keresi
+ * (6–20 m), ez itt a „mennyire tempózható" érzetet: a GraphHopper
+ * `turn_penalty`-kapcsoló (docs/02 → „kanyargós ↔ hosszú egyenesek") ezen a
+ * durvább léptéken hoz mérhető különbséget (2026-08-29-i mérés:
+ * `tmp/probe-final.ts`) — 30 m alatt szinte minden útvonal „kanyargósnak"
+ * látszana a járdaszegélyek miatt.
+ *
+ * NEM kizáró kapu, csak pontszám: `routeDefectScore` az U-fordulás és a
+ * helyi kerülő UTÁN, gyenge súllyal nézi — a „hosszú egyenesek" választás
+ * elsősorban a GraphHopper KÉRÉSÉBE ágyazva hat (`turn_penalty`), ez a
+ * mérőszám csak a döntetlent bontja tovább.
+ */
+const STRAIGHTNESS_SAMPLE_STEP_M = 30;
+const STRAIGHTNESS_TURN_DEGREES = 35;
+
+export interface RouteStraightness {
+  turnCount: number;
+  averageStraightM: number;
+}
+
+export function measureStraightness(points: readonly LatLng[]): RouteStraightness {
+  const sampled = resample(points, STRAIGHTNESS_SAMPLE_STEP_M);
+  let totalM = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    totalM += distanceM(points[index - 1]!, points[index]!);
+  }
+
+  let turnCount = 0;
+  for (let index = 2; index < sampled.length; index += 1) {
+    const delta = Math.abs(
+      ((bearingDeg(sampled[index - 1]!, sampled[index]!) - bearingDeg(sampled[index - 2]!, sampled[index - 1]!) + 540) % 360) - 180,
+    );
+    if (delta >= STRAIGHTNESS_TURN_DEGREES) turnCount += 1;
+  }
+
+  return { turnCount, averageStraightM: totalM / (turnCount + 1) };
+}
+
 export interface RouteQuality {
   uTurns: number;
   shortDetours?: number;
+  /** Lásd `measureStraightness` — csak gyenge súllyal bontja a döntetlent. */
+  turnCount?: number;
 }
 
 /**
  * Rendezési pontszám: egy valódi megfordulás mindig rosszabb bármennyi
- * enyhébb helyi kerülőnél. A mezőnevek külön maradnak, mert a korábbi közös
- * szám miatt U-fordulásmentes útvonalak is „hibásnak" látszottak.
+ * enyhébb helyi kerülőnél, az pedig rosszabb bármennyi 30 méteres kanyarnál.
+ * A mezőnevek külön maradnak, mert a korábbi közös szám miatt U-fordulásmentes
+ * útvonalak is „hibásnak" látszottak.
  */
 export function routeDefectScore(route: RouteQuality): number {
-  return route.uTurns * 1_000 + (route.shortDetours ?? 0);
+  return route.uTurns * 1_000 + (route.shortDetours ?? 0) + (route.turnCount ?? 0) * 0.01;
 }
 
 /**

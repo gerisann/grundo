@@ -13,7 +13,7 @@ import { MISSION_KIND_META, missionAreaStat } from '@/lib/missionMeta';
 import { isRouteSaved, saveRoute } from '@/lib/savedRoutes';
 import { formatArea, formatDistance, formatNumber } from '@/lib/format';
 import { compatibleDistanceTarget } from '@/lib/missionTarget';
-import { api, ApiError, apiConfigured, type Mission, type MissionPriority, type MissionResult } from '@/lib/api';
+import { api, ApiError, apiConfigured, type Mission, type MissionPriority, type MissionResult, type RouteCharacter } from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
 import type { ActivityType } from '@/types';
 import './missions.css';
@@ -124,6 +124,7 @@ export function MissionsScreen() {
   const [distanceValue, setDistanceValue] = useState('5');
   const [paceValue, setPaceValue] = useState('');
   const [priority, setPriority] = useState<MissionPriority>('balanced');
+  const [routeCharacter, setRouteCharacter] = useState<RouteCharacter>('twisty');
   const [preferredBearing, setPreferredBearing] = useState('');
   const [savedOpen, setSavedOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -223,6 +224,8 @@ export function MissionsScreen() {
         priority,
         ...(preferredBearing === '' ? {} : { preferredBearing: Number(preferredBearing) }),
         type,
+        // Sétánál a kapcsoló nincs a felületen — nincs értelme kanyarbüntetésnek.
+        ...(type === 'walk' ? {} : { routeCharacter }),
       });
       setResult(generated);
       setFromToday(false);
@@ -372,7 +375,28 @@ export function MissionsScreen() {
                 <option value="270">Nyugat</option><option value="315">Északnyugat</option>
               </select>
             </label>
-          </div></div> : null}
+          </div>
+
+          {/*
+            ÚTVONAL-KARAKTER — sétánál nincs értelme (döntés: 2026-08-29,
+            docs/02-funkcionalis-spec.md → Küldetés-ajánló), ezért csak
+            futásnál és bringánál jelenik meg.
+          */}
+          {type !== 'walk' ? (
+            <div className="mission__field">
+              <SegmentedControl
+                options={[
+                  { value: 'twisty', label: 'Kanyargós' },
+                  { value: 'straight', label: 'Hosszú egyenesek' },
+                ]}
+                value={routeCharacter}
+                onChange={setRouteCharacter}
+                label="Útvonal jellege"
+                block
+              />
+            </div>
+          ) : null}
+          </div> : null}
           </div>
 
           <Button block onClick={() => void generate()} loading={loading}>

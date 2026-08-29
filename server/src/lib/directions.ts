@@ -1,23 +1,38 @@
 /**
- * Mapbox Directions — a küldetés-ajánló úthálózata.
+ * Útvonalmotor a küldetés-ajánlóhoz — GraphHopper elsődlegesen, Mapbox tartalékban.
  *
  * MIÉRT KELL EGYÁLTALÁN? Mert a küldetés csak akkor ér valamit, ha VÉGIG IS
  * lehet menni rajta. Egy mértani kör átvágna kerteken, síneken és a Dunán —
  * a felhasználó pedig azt látná, hogy az app olyat kér, amit nem lehet
  * megcsinálni. A rács-logika (mit szerzel vele) a miénk, az úthálózat nem.
  *
- * NEM ÚJ SZOLGÁLTATÓ. Ugyanaz a Mapbox-fiók és ugyanaz a token-típus, ami a
- * térkép megjelenítéséhez már megvan — csak eddig kizárólag a kliens
- * használta (`VITE_MAPBOX_TOKEN`, a bundle-be sütve). A szervernek külön
- * env-változó kell (`MAPBOX_TOKEN`), mert innen nem látszik a kliensé.
+ * KÉT MOTOR, KÉT MÁSFAJTA GEOMETRIA (döntés: 2026-08-29, HANDOFF #17→#18):
  *
- * ⚠️ EZ NEM TITOK, tehát nem Secret Manager, hanem sima env-változó: a
- * Mapbox publikus tokenje minden kliens-bundle-ben benne van. (A
- * `SMTP_PASSWORD` az egyetlen valódi titok a projektben.)
+ *   - A **GraphHopper** saját üzemeltetésű (lásd `graphhopper/README.md`),
+ *     `algorithm=round_trip`-pel tud KÖRT generálni adott hosszra egyetlen
+ *     kiindulópontból és iránytól — nincs szükség mértani köztes pontokra.
+ *     Ez a fő út, `planMissionLoop` dönti el, hogy ez fut-e.
+ *   - A **Mapbox Directions**nek nincs kör-generálása, ezért az eredeti
+ *     megoldás mértani köztes pontokat (`loopWaypoints`) kényszerít rá
+ *     kötelező, sorrendben bejárandó állomásként. Ez a `planLoop` függvény
+ *     VÁLTOZATLAN — tartalék, ha a `GRAPHHOPPER_URL` nincs beállítva, vagy
+ *     egy adott irányra a GraphHopper nem ad jelöltet.
+ *
+ * NEM ÚJ SZOLGÁLTATÓ (a Mapbox-ágra nézve). Ugyanaz a Mapbox-fiók és
+ * ugyanaz a token-típus, ami a térkép megjelenítéséhez már megvan — csak
+ * eddig kizárólag a kliens használta (`VITE_MAPBOX_TOKEN`, a bundle-be
+ * sütve). A szervernek külön env-változó kell (`MAPBOX_TOKEN`), mert innen
+ * nem látszik a kliensé.
+ *
+ * ⚠️ EGYIK TOKEN SEM TITOK, tehát nem Secret Manager, hanem sima
+ * env-változó: a Mapbox publikus tokenje minden kliens-bundle-ben benne
+ * van, a `GRAPHHOPPER_URL` pedig egy belső hálózati cím, nem hitelesítő
+ * adat. (A `SMTP_PASSWORD` az egyetlen valódi titok a projektben.)
  */
 
-import { GAMEPLAY } from '../../../src/config/gameplay';
+import { GAMEPLAY, type GameplayConfig } from '../../../src/config/gameplay';
 import { distanceM, type LatLng } from '../../../src/game/geo';
+import { loopWaypoints } from '../../../src/game/missions';
 import { decodePolyline } from '../../../src/game/polyline';
 import {
   countShortDetours,
@@ -56,8 +71,18 @@ export function mapboxToken(): string {
   return (process.env.MAPBOX_TOKEN ?? '').trim();
 }
 
+/** A belső GraphHopper-cím, sorvégi `/`-ek nélkül. Nincs alapérték: ha üres, nem hívjuk. */
+export function graphhopperUrl(): string {
+  return (process.env.GRAPHHOPPER_URL ?? '').trim().replace(/\/+$/, '');
+}
+
+export function graphhopperConfigured(): boolean {
+  return graphhopperUrl().length > 0;
+}
+
+/** Igaz, ha VALAMELYIK motor élesíthető — a hívó ez alapján dönt a 503-ról. */
 export function directionsConfigured(): boolean {
-  return mapboxToken().length > 0;
+  return graphhopperConfigured() || mapboxToken().length > 0;
 }
 
 /**
@@ -322,3 +347,184 @@ function round6(value: number): number {
 
 /** Hány irányban keresünk kört — az API-költség ennek a többszöröse. */
 export const BEARING_COUNT = GAMEPLAY.MISSION_BEARINGS;
+
+/* ════════════════════════════════════════════════════════════════════════
+   GraphHopper — a fő útvonalmotor (döntés: 2026-08-29, lásd graphhopper/README.md)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A „kanyargós ↔ hosszú egyenesek" felületi kapcsoló (döntés: 2026-08-29,
+ * docs/02-funkcionalis-spec.md → Küldetés-ajánló). Ugyanaz a tervező futtatja
+ * mindkettőt, csak a kérésbe ágyazott egyedi modell `turn_penalty` szakaszával
+ * vagy anélkül — séta mozgásformánál a felület nem is kínálja fel, de a
+ * szerver oldalon nincs rá külön ág: `twisty` a hatása.
+ */
+export type RouteCharacter = 'twisty' | 'straight';
+
+/** Egy irányra hány magot (`round_trip.seed`) kérünk le — ebből válogat a saját pontozás. */
+const GH_SEEDS_PER_BEARING = 3;
+
+/**
+ * Az útsúlyozás és a kanyarbüntetés PONTOSAN a `graphhopper/custom_models/`
+ * alatti fájlok tartalma, ide másolva.
+ *
+ * MIÉRT MÁSOLAT, NEM FÁJLBEOLVASÁS? A `graphhopper/` mappa a GraphHopper
+ * KONTÉNERÉHEZ tartozik (lásd README → Élesítés), a `server/` egy másik
+ * Cloud Run szolgáltatás — a kettő külön képre épül, a kettő között nincs
+ * közös fájlrendszer élesben. Ha itt módosítasz egy súlyt, a
+ * `graphhopper/custom_models/*.json`-t is frissítsd — ez a helyi
+ * alapértelmezés (ha a kérés NEM ágyaz egyedi modellt), emitt pedig a
+ * ténylegesen küldött modell.
+ */
+const GH_PRIORITY: Record<'foot' | 'bike', unknown[]> = {
+  foot: [
+    { if: 'road_class == PRIMARY || road_class == SECONDARY', multiply_by: '0.4' },
+    { if: 'road_class == CYCLEWAY || road_class == FOOTWAY || road_class == PATH', multiply_by: '1.3' },
+    { if: 'foot_network != MISSING', multiply_by: '1.2' },
+    { if: 'road_environment == FERRY', multiply_by: '0' },
+  ],
+  bike: [
+    { if: 'road_class == CYCLEWAY || bike_network != MISSING', multiply_by: '1.6' },
+    { if: 'road_class == PRIMARY || road_class == SECONDARY', multiply_by: '0.35' },
+    { if: 'surface == GRAVEL || surface == DIRT || surface == SAND || surface == GROUND', multiply_by: '0.5' },
+    { if: 'road_environment == FERRY', multiply_by: '0' },
+  ],
+};
+
+/** Csak a `straight` (hosszú egyenesek) állásnál kerül a kérésbe. */
+const GH_TURN_PENALTY: Record<'foot' | 'bike', unknown[]> = {
+  foot: [
+    { if: 'change_angle >= 25 && change_angle < 80', add: '8' },
+    { else_if: 'change_angle >= 80 && change_angle <= 180', add: '25' },
+  ],
+  bike: [
+    { if: 'change_angle >= 25 && change_angle < 80', add: '10' },
+    { else_if: 'change_angle >= 80 && change_angle <= 180', add: '30' },
+  ],
+};
+
+/** Mapbox-profilnév → GraphHopper-profilnév (lásd `graphhopper/config-grundo.yml`). */
+function graphhopperProfile(profile: 'walking' | 'cycling'): 'foot' | 'bike' {
+  return profile === 'cycling' ? 'bike' : 'foot';
+}
+
+interface GraphHopperPath {
+  distance?: number;
+  time?: number;
+  points?: string;
+}
+
+/**
+ * Egy kör-jelölt lekérése `algorithm=round_trip`-pel.
+ *
+ * A HIBA ITT IS NEM DOBÁS, hanem `null` — ugyanaz az elv, mint a Mapbox-ágon:
+ * egyetlen mag vagy irány elhasalása nem viheti el a többi jelöltet.
+ */
+async function requestGraphHopperRoundTrip(
+  origin: LatLng,
+  profile: 'foot' | 'bike',
+  targetKm: number,
+  headingDeg: number,
+  seed: number,
+  customModel: Record<string, unknown>,
+): Promise<DirectionsRoute | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${graphhopperUrl()}/route`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        points: [[origin.lng, origin.lat]],
+        profile,
+        'ch.disable': true,
+        algorithm: 'round_trip',
+        'round_trip.distance': Math.round(targetKm * 1000),
+        'round_trip.seed': seed,
+        headings: [headingDeg],
+        custom_model: customModel,
+        points_encoded: true,
+        instructions: false,
+        elevation: false,
+      }),
+    });
+    if (!response.ok) return null;
+
+    const body = (await response.json()) as { paths?: GraphHopperPath[] };
+    const path = body.paths?.[0];
+    if (!path || typeof path.points !== 'string') return null;
+
+    return {
+      distanceM: Number(path.distance ?? 0),
+      // A GraphHopper `time` mezője MILLISZEKUNDUM, a `DirectionsRoute.durationS`
+      // szerződése szerint másodperc kell — enélkül a küldetés tízszer olyan
+      // gyorsnak tűnne, mint amennyi idő alatt valóban végigmenne rajta.
+      durationS: Number(path.time ?? 0) / 1000,
+      polyline: path.points,
+    };
+  } catch {
+    // Időtúllépés vagy hálózati hiba — ez a jelölt egyszerűen kimarad.
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Egy irányra több mag — a párhuzamos kérések mindegyike ingyenes és ~15 ms. */
+async function planLoopGraphHopper(
+  origin: LatLng,
+  bearingDeg: number,
+  targetKm: number,
+  profile: 'walking' | 'cycling',
+  character: RouteCharacter,
+): Promise<DirectionsRoute[]> {
+  const ghProfile = graphhopperProfile(profile);
+  const customModel: Record<string, unknown> =
+    character === 'straight'
+      ? { priority: GH_PRIORITY[ghProfile], turn_penalty: GH_TURN_PENALTY[ghProfile] }
+      : { priority: GH_PRIORITY[ghProfile] };
+
+  const results = await Promise.all(
+    Array.from({ length: GH_SEEDS_PER_BEARING }, (_unused, seed) =>
+      requestGraphHopperRoundTrip(origin, ghProfile, targetKm, bearingDeg, seed, customModel),
+    ),
+  );
+
+  const seen = new Set<string>();
+  const routes: DirectionsRoute[] = [];
+  for (const route of results) {
+    if (!route || seen.has(route.polyline)) continue;
+    seen.add(route.polyline);
+    routes.push(route);
+  }
+  return routes;
+}
+
+/**
+ * A küldetés-ajánló belépési pontja EGY irányra: GraphHopper elsőként, Mapbox
+ * tartalékban.
+ *
+ * A `bearing` és a `targetKm` itt egyetlen kör leírása — a GraphHopper
+ * `round_trip` algoritmusa nem vár mértani köztes pontokat, azokat csak a
+ * Mapbox-ág számolja (lásd `loopWaypoints`), ott is BELÜL, hívó nélkül.
+ * Ha a GraphHopper egy adott irányra nem ad jelöltet (ritka úthálózat,
+ * időtúllépés), a Mapbox-ág — ha van tokene — még megpróbálja ugyanazt az
+ * irányt a saját geometriájával.
+ */
+export async function planMissionLoop(
+  origin: LatLng,
+  bearingDeg: number,
+  targetKm: number,
+  profile: 'walking' | 'cycling',
+  cfg: GameplayConfig,
+  character: RouteCharacter,
+): Promise<DirectionsRoute[]> {
+  if (graphhopperConfigured()) {
+    const routes = await planLoopGraphHopper(origin, bearingDeg, targetKm, profile, character);
+    if (routes.length > 0) return routes;
+  }
+  if (!mapboxToken()) return [];
+  const waypoints = loopWaypoints(origin, bearingDeg, targetKm, cfg);
+  return planLoop(origin, waypoints, profile);
+}

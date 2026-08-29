@@ -1,247 +1,215 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · átadás a **GRUNDO #17** menetből a **#18**-ra
+> Frissítve: **2026-08-29** · átadás a **GRUNDO #18** menetből a **#19**-re
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · ez a menet **kódot nem változtatott**: mérés, döntés,
-> specifikáció és az útvonalmotor konfigurációja került be.
+> Ág: **`main`** · kód változott, de **nincs mit telepíteni** — a GraphHopper
+> csak localhoston fut, az élesben futó szerver változatlanul a Mapbox-ágon
+> megy tovább (lásd lent, „ÉLESBEN FUT / TELEPÍTETLEN").
 
 ## ⚠️ ELSŐ OLVASNIVALÓ
 
-**1. A területmegjelenítés ügye LEZÁRVA.** Az előző handoff figyelmeztetése
-elavult; éles adaton ellenőrizve 2026-08-29-én:
+**A #19 fő feladata: a küldetés-ajánló válaszideje TÚL LASSÚ nagy körökre.**
+Mérve élő GraphHopperrel, bringa 16 km, „hosszú egyenesek" karakter:
 
-- a `territoryBlobs` composite index **READY** (mezők: `layer, level, tile,
-  areaM2, __name__`), a 24 éles index között;
-- a végpont lekérdezés-alakja éles adaton **lefut, nincs `FAILED_PRECONDITION`**,
-  valódi tile-okra 9 foltot ad vissza (68 174 … 307 m²);
-- a **backfill lefutott**: 14 folt, mind 2026-08-29 08:10:01–08:10:04 CEST
-  között írva, 5 tulajdonos/réteg csoportban (kötegelt futás lenyomata).
+| szakasz | idő |
+|---|---|
+| GraphHopper (route-tervezés, 19 jelölt) | 0,72 s |
+| **Cellafeldolgozás (flood fill, mind a 19 jelölten)** | **1:09,78** |
+| Birtokviszony betöltése (Firestore) | 0,09 s |
+| **Értékelés (GP/claim, csak a 3 kiválasztotton)** | **8,73 s** |
+| **ÖSSZESEN** | **~80 s** |
 
-Nincs teendő. A térkép **vizuális** ellenőrzése (kizoomolva látszanak-e a
-területek) továbbra is Gerire vár, de az adatút bizonyítottan él.
+Futásra/sétára kisebb, de ott is ~15–20 s. Geri kifejezetten kimondta: erre
+**másodpercek** vannak, nem percek — jelenleg webes kérésként ez élesben
+időtúllépést vagy egyszerűen elfogadhatatlan várakozást jelentene.
 
-**2. A küldetés-ajánló élesben nem ad útvonalat.** A felület minden kérésre az
-`no_routes` üzenetet adja („Az útvonaltervező most nem adott vissza útvonalat
-erről a pontról"). Amit kizártam méréssel:
+**A ok NEM a GraphHopper.** A route-tervezés 0,7 másodperc. A teljes idő a
+**cellafeldolgozásban** (flood fill a hexrácson) és az **értékelésben** megy
+el — ez ARÁNYOS a bezárt terület méretével (egy 16-18 km-es bringakör
+15 000+ cellát zár be *jelöltenként*), és ma **mind a 19 nyers jelölten**
+lefut, mielőtt a legjobb 3-4-et kiválasztanánk.
 
-- **nem kódhiba**: ugyanaz a `planLoop` a fejlesztői gépről **72/72** kérésre
-  adott útvonalat, 100–200 ms-mal, a `.env.local` tokenjével;
-- **nem elavult telepítés**: a `directions.ts` 2026-08-23 óta változatlan, a
-  backend 08-28 23:34-kor települt, tehát élesben ez a kód fut;
-- **nem elállított hangolható konstans**: az éles `appConfig/gameplay`
-  `overrides` mezője üres;
-- **nem hiányzó változó**: a `MAPBOX_TOKEN` létezik a Cloud Runon (ha üres
-  lenne, a `directions_unavailable` 503 menne, más szöveggel).
+**A megbeszélt irány (Geri döntése, 2026-08-29):** a route-tervezést
+(gyors) és a terület/cella-számítást (lassú) SZÉT KELL VÁLASZTANI — gyors
+útvonal-lista azonnal a felhasználónak, a terület/GP a háttérben számolódik,
+és a felület utólag frissül, amint kész. **Ez adatmodell- és API-szerződés-
+döntés** (mit ad vissza azonnal a `/api/missions/generate`, kell-e
+poll-végpont vagy valami más frissítési mechanizmus a kliensen, hogyan néz ki
+a „még számol" kártyaállapot) — az AGENTS.md 0. pontja szerint ez **Opus,
+emelt mélység**, nem rutin kiterjesztés.
 
-Marad a szerverre telepített token értéke, URL-korlátozása vagy a Mapbox-kvóta.
-A Cloud Run környezetének kiolvasását a jogosultság-osztályozó blokkolta, ezért
-**Geri futtatja Cloud Shellben** (a fejlesztői gépen működő token 93 karakter,
-`pk.eyJ1IjoiZ` kezdetű):
+⚠️ **A „NEM BECSLÉS" szabály (AGENTS.md 2. döntés) idekerül a döntés
+közepébe** — eddig a küldetés-kártya MINDIG a valódi motor pontos eredményét
+mutatta. A szétválasztás nem ezt a szabályt töri meg (a végleges szám
+továbbra is a valódi motorból jön, csak később), hanem az eddigi „egy
+kérés → egy azonnali, teljes válasz" mintát. Első lépésként érdemes
+tisztázni Gerivel: a gyors fázis milyen adatot mutasson a kártyán a lassú
+fázis befejezéséig (semmit? útvonal + hossz, terület nélkül? egy laza
+becslés, amit a végleges felülír?) — ez már önmagában ütközhet a szabállyal,
+ha „laza becslés" irányba mennénk.
+
+**Egy olcsó, kockázatmentes RÉSZLEGES javítás is elérhető, ha a teljes
+szétválasztás nem fér bele egy menetbe**: a 19 nyers jelöltet ingyenes
+jelekből (hosszeltérés a célhossztól, U-fordulás, kanyarszám — mind a
+polyline-ból, cella nélkül számolható) 5-6-ra szűrni A CELLAFELDOLGOZÁS
+ELŐTT. Ez nagyjából harmadára-negyedére vágja a nagy körök idejét
+(~80 s → ~20-25 s) anélkül, hogy bármit is becslne — de a Geri által kért
+„pár másodperc"-et önmagában NEM éri el.
+
+## MÁSODIK NYITOTT KÉRÉS EBBŐL A MENETBŐL
+
+Geri: a részletes keresőbe kerüljön egy **„Sík / Mászás" választó**, ahol a
+felhasználó megadhatja, hogy sík terepet vagy sok szintkülönbséget keres.
+Még nincs kidolgozva — se UI, se szerver oldalon. Jó eséllyel a GraphHopper
+egyedi modell egy `elevation`/`average_slope`-szerű OSM-alapú szabályával
+oldható meg, hasonlóan a kanyargós/egyenes kapcsolóhoz, de ehhez a
+`graph.encoded_values` listát bővíteni kell (`average_slope` vagy hasonló
+kódolt érték felvétele + újraimportálás), és meg kell nézni, van-e elég
+domborzati adat a magyar OSM-kivonatban. **Nem méretezve, nem kezdve.**
+
+## ÉLESBEN FUT / TELEPÍTETLEN
+
+- Élesben (`grundo-api`, Cloud Run) **változatlanul a Mapbox-ág fut** —
+  a `#17`-ben talált token-hiba (rossz, URL-korlátozott token volt
+  beállítva) javítva van (`grundo-server-directions` tokenre cserélve,
+  ellenőrizve `curl`-lal, 200 OK).
+- A GraphHopper **csak localhoston** fut ebben a menetben. A
+  `cloudbuild.yaml` `_GRAPHHOPPER_URL` substitution előkészítve, de
+  **üresen** — élesítés a `#19` UTÁNI menet feladata (korábbi tervben
+  `#19` volt, most csak azért csúszik, mert a teljesítmény-kérdés elébe
+  került).
+- **Kód készen áll, de NINCS mit push/deploy-olni ezen felül** — a
+  `directions.ts` GraphHopper-ága és a felületi kapcsoló a `main`-en van,
+  de amíg a `GRAPHHOPPER_URL` élesben üres, a szerver a régi Mapbox-utat
+  használja. Semmi nem törik el attól, ha ez a commit push-olva/deployolva
+  lesz — csak nem aktiválódik semmi új.
+
+## A #18 MENETBEN KÉSZ ÉS ÉLŐBEN TESZTELT
+
+1. **GraphHopper bekötve** (`server/src/lib/directions.ts` → `planMissionLoop`):
+   `algorithm=round_trip`, irányonként 3 mag, Mapbox-tartalék változatlan
+   marad, ha a `GRAPHHOPPER_URL` üres vagy a GraphHopper nem ad jelöltet.
+2. **A kanyargós ↔ hosszú egyenesek kapcsoló** működik — a felületen
+   (részletes kereső, séta esetén rejtve) és a szerveren (a kérésbe ágyazott
+   `turn_penalty` szakasz csak `straight`-nál kerül be). ÉLŐ teszttel
+   igazolva: ugyanaz a hely/hossz, kanyargós vs. egyenes karakterrel
+   **láthatóan más geometriát** ad (kevesebb kanyar, hosszabb szakaszok).
+3. **Két, korábban rejtve maradt GraphHopper-config hiba javítva**
+   (`graphhopper/config-grundo.yml`, most 5 dokumentált buktató):
+   - `custom_model_files` rossz fájlnévre mutatott (`foot.json`/`bike.json`
+     nem létezett; a valódiak `grundo_run.json`/`grundo_bike.json`);
+   - a szerver szintű alapmodellnek kötelező `speed` szakasza is — enélkül
+     a szerver INDULÁSKOR elhasal. Hozzáadva mindkét `custom_models/*.json`-hoz
+     (`foot_average_speed`/`bike_average_speed`).
+   Mindkettőt élő szerver-indítással fedeztem fel és igazoltam a javítást.
+4. **`turnCount`/`measureStraightness`** új mérték a `routeShape.ts`-ben —
+   gyenge súlyú tiebreaker a válogatásban, nem írja felül a játékértéket.
+5. `.gitignore` kiegészítve — a GraphHopper jar (~47 MB), az OSM-kivonat
+   (~320 MB) és a `graph-cache/` **korábban NEM volt kizárva**, majdnem
+   bekerültek volna a repóba. Most `graphhopper/*.jar`, `*.osm.pbf`,
+   `graph-cache/`, `*.log`.
+
+## FÁJL-ÖSSZEFOGLALÓ
+
+| Fájl | +/− | Mit tartalmaz |
+|---|---|---|
+| `server/src/lib/directions.ts` | +226/−17 | Új `planMissionLoop` (GraphHopper elsőként, Mapbox tartalékban), a régi `planLoop` (Mapbox) érintetlen. |
+| `server/src/lib/directions.test.ts` | +74 | 4 új teszt: GraphHopper-hívás alakja, straight/twisty, Mapbox-fallback, egyik motor sincs beállítva. |
+| `server/src/routes/missions.ts` | +18/−9 | A régi `loopWaypoints`-hívás lecserélve `planMissionLoop`-ra, `routeCharacter` bemenet. |
+| `server/src/lib/missionEvaluate.ts` | +3 | `turnCount` mező átvezetve `ShapedCandidate`-en. |
+| `src/game/missions.ts` | +2 | `turnCount?` a `MissionCandidate`-en. |
+| `src/game/routeShape.ts` | +50/−3 | Új `measureStraightness` export, `routeDefectScore` kiterjesztve. |
+| `src/lib/api.ts` | +9 | `RouteCharacter` típus, `generateMissions` bemenet bővítve. |
+| `src/screens/MissionsScreen.tsx` | +28/−1 | „Kanyargós / Hosszú egyenesek” kapcsoló a részletes keresőben (séta esetén rejtve). |
+| `graphhopper/config-grundo.yml` | +17/−9 | `custom_model_files` javítva, öt dokumentált buktató. |
+| `graphhopper/custom_models/grundo_run.json`, `grundo_bike.json` | +3/+3 | `speed` szakasz hozzáadva. |
+| `graphhopper/README.md` | +14 | A szerver bekötésének leírása (`GRAPHHOPPER_URL`). |
+| `cloudbuild.yaml` | +10/−1 | `_GRAPHHOPPER_URL` substitution előkészítve, üresen. |
+| `.gitignore` | +8 | GraphHopper jar/pbf/graph-cache/log kizárva. |
+
+**Teendők sorrendje**: push → **nincs adatbázis-lépés** → **nincs
+telepítés szükséges** (a `GRAPHHOPPER_URL` élesben üres marad, amíg a
+teljesítmény-kérdés meg nem oldódik és a motor élesítve nincs).
+
+## HELYI KÖRNYEZET — LEHET, HOGY MÉG FUT
+
+Ebben a menetben a localhoston egyszerre futott: Firestore/Auth emulátor,
+`server/` (`GRAPHHOPPER_URL=http://localhost:8989`-cel indítva), és a
+GraphHopper maga (Magyarország importálva, `graph-cache/` már kész — **nem
+kell újraimportálni**, csak újraindítani). Ha a folyamatok még futnak (a
+munkamenet háttérfolyamataiként), a #19 rögtön tud rajtuk mérni; ha nem,
+indítás:
 
 ```bash
-gcloud run services describe grundo-api --region=europe-west1 --project=grundo --format=json | python3 -c "import json,sys;e={v['name']:v.get('value','') for v in json.load(sys.stdin)['spec']['template']['spec']['containers'][0]['env']};t=e.get('MAPBOX_TOKEN','');print('token hossz:',len(t),'eleje:',t[:12]);open('/tmp/mbtoken','w').write(t)"
+export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"
 ```
-
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' "https://api.mapbox.com/directions/v5/mapbox/walking/19.0537,47.4979;19.0600,47.5000?access_token=$(cat /tmp/mbtoken)"
+cd graphhopper && java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml
 ```
-
-200 → a token jó, a Mapbox-fiók oldalán a limit. 401/403 → rossz vagy
-korlátozott token. **Ez rövid távú javítás**: a #18-as menetben az egész motor
-lecserélődik, és a Mapbox kikerül a küldetés-ajánlóból.
-
-## A MENET FŐ EREDMÉNYE: DÖNTÉS AZ ÚTVONALMOTORRÓL
-
-Geri panasza (cikcakk, 180 fokos visszafordulás, fölösleges hurok) mérve
-igazolódott, és **szerkezeti**, nem hangolási kérdés. A Mapbox Directions nem
-tud kört generálni; mértani körpontokat kényszerítettünk rá kötelező köztes
-pontként, azokat pedig sorrendben, legrövidebb úton kötötte össze.
-
-**A jelenlegi lánc, 204 jelölten (3 helyszín, 3 eset):**
-
-| eset | hibátlan jelölt | köralak (medián) | kapott hossz |
-|---|---|---|---|
-| futás 2,5 km | 1 / 56 | 0,32–0,48 | 2,2–4,1 km |
-| futás 7,5 km | 0 / 59 | 0,30–0,56 | 5,9–14,6 km |
-| bringa 16 km | 0 / 89 | **0,04–0,05** | 15,5–27,4 km |
-
-(„Köralak" = a bezárt terület az azonos hosszú szabályos körhöz mérve; 1,00 a
-tökéletes kör. Egy 16 km-es bringakör tehát a lehetséges terület 4–5 %-át zárja
-be.)
-
-**Ugyanez saját GraphHopperrel** (Magyarország OSM, helyi szerver), mindkét
-oldalon a legjobb jelöltet választva:
-
-| eset | hely | GraphHopper (köralak · kanyar · átlag egyenes) | Mapbox |
-|---|---|---|---|
-| futás 2,5 km | Deák tér | 0,42 · 8 · **264 m** | 0,69 · 14 · 149 m |
-| futás 2,5 km | Budaörs | **0,79** · 7 · **324 m** | 0,60 · 20 · 117 m |
-| futás 7,5 km | Deák tér | 0,59 · 21 · **304 m** | 0,64 · 30 · 206 m |
-| futás 7,5 km | Budaörs | 0,48 · 21 · **314 m** | 0,55 · 38 · 171 m |
-| bringa 16 km | Deák tér | **0,22** · 50 · 303 m | 0,06 · 59 · 277 m |
-| bringa 16 km | Budaörs | **0,39** · 54 · 265 m | 0,06 · 58 · 263 m |
-
-- hibátlan (0 U-forduló, 0 kerülő) jelölt: **14 / 216** a GraphHoppernél,
-  **1 / 216** a Mapboxnál;
-- kanyarból feleannyi, egyenes szakaszból 1,5–2,7-szer hosszabb — **és ez még a
-  kanyarbüntetés bekapcsolása előtt**;
-- bringán 3–6-szoros bezárt terület;
-- **14 ms / kérés** (357 kérésen mérve) a Mapbox 100–200 ms-jával szemben, és
-  ingyen: körönként több tucat jelölt generálható, a választást a saját
-  pontozásunk végzi.
-
-**Miért nem hosztolt szolgáltatás:** a GraphHopper ingyenes csomagja nem
-kereskedelmi célra szól (500 kredit/nap, egy körkérés 2 kredit), a kereskedelmi
-€69/hó-tól indul 1 kérés/mp korláttal; az openrouteservice ingyenes kulcsa napi
-2000 irány-kérés, szintén nem kereskedelmi. A motor maga **Apache 2.0**, tehát
-saját konténerben korlátlanul és díjmentesen futtatható — ez illik ahhoz is,
-hogy a jelöltgenerálást bőkezűen akarjuk használni.
-
-**Mapboxon belül nincs megoldás:** a Directionsnek nincs kör-generálása, az
-Optimization API `roundtrip=true` paramétere pedig más feladat (megadott
-pontokat jár be és tér vissza), nem hurokgenerálás.
-
-### A kanyargós ↔ hosszú egyenesek kapcsoló — mérve
-
-A kanyarbüntetés (`turn_penalty` a `change_angle` szerint) bekapcsolva,
-ugyanazon a jelöltkészleten:
-
-| eset | hely | kanyargós (kanyar · átlag egyenes · terület) | hosszú egyenesek |
-|---|---|---|---|
-| bringa 16 km | Deák tér | 37 · 375 m · 3,16 km² | **26 · 518 m** · 1,12 km² |
-| bringa 16 km | Budaörs | 58 · 249 m · 6,59 km² | **33 · 487 m** · 1,46 km² |
-| futás 7,5 km | Budaörs | 21 · 350 m · 1,98 km² | 20 · 331 m · 1,82 km² |
-
-**A kapcsoló működik, és van ára**: bringán 30–43 %-kal kevesebb kanyar és
-40–95 %-kal hosszabb egyenesek, cserébe **lényegesen kevesebb bezárt terület**
-(a tempózható kör keskenyebb). Ezt a felületen ki kell mondani, nem elrejteni:
-a „hosszú egyenesek" kevesebb területet hoz. Futásnál a különbség kicsi.
-⚠️ A két oszlop rangsorolása szándékosan más volt (terület, illetve egyenes
-hossz szerint), tehát ez irány, nem tizedespontos összevetés.
-
-### Amit a saját motor ezen felül tud (Geri kérései a menetből)
-
-- **Bringázhatóság valódi adatból**: `road_class` (van-e kerékpárút),
-  `bike_network` (kerékpáros útvonalhálózat), `surface`, `smoothness`,
-  `max_speed`, `urban_density`; az egyirányúságot a profil betartja.
-  ⚠️ Valódi **forgalomszám nincs** az OSM-ben — az úttípus, sávszám és
-  sebességkorlát a közelítés; fizetős forgalmi adat autós torlódást mérne, nem
-  bringás kényelmet, ezért nem javasolt.
-- **AI szerepe**: a geometriát ne az AI adja (nem ismeri az úthálózatot).
-  Ahol értelme van: szándék → paraméter („van 45 percem, lapos, ne legyen
-  forgalmas"), és a küldetés megfogalmazása/elnevezése. A kiválasztás maradjon
-  determinisztikus, mert mérhető.
-- **Saját hőtérkép**: a rögzített aktivitások celláiból idővel tudjuk, hol
-  futnak/bringáznak ténylegesen az emberek — ez a jelöltek pontozásában
-  használható, külső szolgáltató nélkül.
-
-## AMI BEKERÜLT A REPÓBA EBBEN A MENETBEN
-
-- `graphhopper/` — a motor konfigurációja, két egyedi modell (futás/bringa) és
-  README a helyi futtatással, a mért számokkal és a buktatókkal.
-- `docs/02-funkcionalis-spec.md` — a küldetés-ajánló szakasza átírva a saját
-  motorra, plusz három új, dátumozott döntés: **útvonal-karakter kapcsoló**,
-  **utólagos hüvelykujjas értékelés**, **élő útszakasz-visszajelzés** (a
-  tracking képernyő szakaszában, a gombok pontos helyével).
-- `AGENTS.md` — a mappaszerkezetben megjelenik a `graphhopper/`.
-
-**Kód nem változott**, tehát telepíteni sincs mit.
-
-## A KÖVETKEZŐ MENETEK — GERI JÓVÁHAGYTA A SORRENDET
-
-1. **#18 — a GraphHopper bekötése + a kanyargós/egyenes kapcsoló.** Ez egy
-   munka: szolgáltató-réteg a `server/src/lib/directions.ts` helyén
-   (`GRAPHHOPPER_URL` env, Mapbox marad tartaléknak), `round_trip` alapú
-   jelöltgenerálás sok jelölttel, a saját pontozás kiterjesztése kanyarszámmal
-   és átlagos egyenes szakasszal, a felületen a karakterválasztó. A
-   `loopWaypoints`-os geometria a Mapbox-ághoz tartozik, nem kell átvinni.
-2. **#19 — élesítés**: a GraphHopper konténerbe (gráf a képbe sütve), Cloud Run
-   vagy kis VM. A #18 e nélkül nem élesíthető.
-3. **#20 — utólagos hüvelykujj** a küldetés-kártyán (kicsi).
-4. **#21 — élő útszakasz-visszajelzés** és a tervezői felhasználása.
-
-### Nyitott kérdések a következő menetekhez
-
-- **Az élő útszakasz-visszajelzés alapból be- vagy kikapcsolva induljon?**
-  (Enélkül nem gyűlik adat, viszont két gomb helyet foglal a térképen.)
-- **Hol fusson a motor élesben**: Cloud Run min-instance=1, vagy kis VM? A mért
-  igény: gráf 184 MB lemezen, futó szerver ~1,5 GB memóriában (6 GB-ot kapott),
-  tehát kicsi gép is elég.
-- **Kell-e landmark (LM) előkészítés?** Kanyarköltséges profillal a kérés
-  14 ms-ról 75–250 ms-ra lassul. Több tucat jelöltnél ez már számít.
-- A `round_trip` a kért hosszat **közelíti** (7,5 km-re 5,8–8,9 km) — a hossz
-  szerinti szűrés tehát marad, ahogy eddig is.
-
-## ELLENŐRZÉSEK
-
-Ebben a menetben nem változott kód, tehát tesztfutás sem volt. A legutóbbi
-ismert állapot (#16): kliens `vitest` 387 sikeres, szerver 165 sikeres
-(122 emulátoros kihagyva), `npx tsc --noEmit` mindkét oldalon tiszta.
-
-A mérőszkriptek a `tmp/` alatt maradtak (nincsenek verziókövetve):
-`probe-matrix.ts` (Mapbox-lánc), `probe-graphhopper.ts` (round_trip),
-`probe-compare.ts` (három stratégia egymás mellett), `probe-final.ts`
-(kanyargós/egyenes). A `tmp/` takarítása után a `graphhopper/README.md`
-alapján újra előállíthatók.
-
-## HELYI FEJLESZTŐI KÖRNYEZET
-
-Változatlan (emulátor + seed + dev szerver):
-
 ```bash
 firebase.cmd emulators:start --only auth,firestore --project demo-grundo
 ```
-
 ```bash
-cd server && npm run dev:emulator
+cd server && GRAPHHOPPER_URL=http://localhost:8989 npm run dev:emulator
 ```
-
 ```bash
 npm run dev:emulator
 ```
 
-Belépés: `geri@grundo.local` / `grundo-emulator`, vagy a böngészőkonzolból
-`await __grundoDevSignIn()`. Teszt-világ: `npm run seed:budapest -- --reset --count 1000` a `server/` mappából.
+Belépés: `geri@grundo.local` / `grundo-emulator`. Böngészőből geolokáció
+nélkül teszteléshez (a headless böngésző nem ad valódi pozíciót):
+```js
+navigator.geolocation.getCurrentPosition = (s) => s({ coords: { latitude: 47.4979, longitude: 19.0537, accuracy: 10 } });
+```
 
-**Új**: az útvonalmotor helyi indítása a `graphhopper/README.md` szerint (két
-letöltés, majd `java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml`).
-A Git Bash PATH-ja nem látja a Javát, ezért kell elé:
-`export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`.
+A `tmp/verify-planMissionLoop.ts` egy kész, élő GraphHopper elleni
+ellenőrző szkript (`npx tsx tmp/verify-planMissionLoop.ts` a `server/`
+mappából) — gyors szemrevételezéshez kód nélkül is futtatható, nem
+verziókövetett.
 
-## NYITOTT KISEBB ÜGYEK
+## NYITOTT KÉRDÉSEK A #19-HEZ
 
-- **295 KB-os válaszcsúcs** a 33–66 km-es térképnézetben minden mozgatásnál.
-  Wi-Fi-n észrevehetetlen, mobiladaton érezhető. Olcsó javítás: erősebb
-  körvonal-egyszerűsítés távoli nézetre, vagy kliensoldali gyorsítótár.
-- A foltok háttérsora Cloud Runon elveszíthet egy frissítést, ha a példány a
-  válasz után leáll; védőháló a `backfill:territory-blobs` időzítése.
-- `MAX_BLOCKS_PER_USER = 400` a foltszámolásban — nagyon nagy birodalomnál
-  hiányos folt. Ma nem éles probléma.
-- A **natív alkalmazások** ikonja csak új buildben cserélődik (`npx cap sync`
-  + Codemagic).
-- Natív **Android Google-belépés** készüléken még nincs visszaigazolva; a Play
-  Console / Play App Signing beállítása szándékosan későbbre maradt (az app
-  signing SHA-1-et fel kell venni a Firebase Android apphoz, és frissíteni a
-  `google-services.json`-t a Codemagic Secretben).
-- Windows alatt az iOS SPM auth-plugin symlink `EPERM`-mel kimaradt; a macOS
-  Codemagic `npx cap sync ios` lépésének kell létrehoznia.
-- Android 13+ engedélyág, lezárt kijelzős hosszú út, appváltás,
-  szünet/folytatás, offline pontsor, FCM és OEM akkumulátorkezelés terepi
-  ellenőrzése.
+- **Milyen adatot mutasson a kártya a gyors fázis után, a lassú fázis
+  végéig?** (Ez az első döntés — lásd fent, „NEM BECSLÉS" ütközés.)
+- **Frissítési mechanizmus**: polling (`GET /api/missions/{jobId}`), SSE,
+  vagy valami egyszerűbb (pl. csak a kis körökre menjen szinkron, a nagyokra
+  adjon vissza egy `pending` állapotot)?
+- **Meddig „kicsi” egy kör, ami még szinkron elfér pár másodpercben?** Ezt
+  méréssel kell megállapítani (a mai adat csak két pontot ad: 7,5 km ~15-20 s,
+  16-18 km ~80 s).
+- A korábbi #18-as tervben szereplő „élesítés” (GraphHopper konténerbe,
+  Cloud Run/VM) ez után a menet után jön — a teljesítmény-architektúra
+  eldöntése előtt nincs értelme élesíteni.
+- A „Sík/Mászás” kapcsoló (lásd fent) — külön menet, miután a #19
+  lezárult, vagy bele fér a #19-be, ha a teljesítmény-döntés gyorsan megy?
+  Geri döntése.
+
+## ELLENŐRZÉSEK
+
+`npx tsc --noEmit` mindkét oldalon tiszta. Teljes `npx vitest run`: **556
+sikeres, 122 kihagyva** (emulátoros). Élő, valódi GraphHopper elleni teszt:
+futás 2,5 km (kanyargós/egyenes) és bringa 16-18 km (kanyargós/egyenes) —
+mind helyes, bezáruló geometriát adott, a Missions képernyőn keresztül
+végigvíve a böngészőben.
+
+Production build **nem futott** ebben a menetben (nem volt csomagméretet
+érintő változás).
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-- **#18 bekötés és felület**: **Sonnet, normál mélység** — a döntés megvan, ez
-  meglévő minta kiterjesztése és UI-munka.
-- Ha a jelöltpontozás hangolása vagy mért anomália kerül elő (nem stimmelnek a
-  hosszak, gyanúsan kevés a tiszta jelölt): **Opus, emelt mélység**.
+**#19 — a route-tervezés/terület-számítás szétválasztása: Opus, emelt
+mélység.** Ez adatmodell- és API-szerződés-döntés (mit ad vissza azonnal a
+végpont, kell-e új frissítési mechanizmus, hogyan él ez együtt a „NEM
+BECSLÉS" szabállyal) — pontosan az AGENTS.md 0. pontjában megnevezett eset,
+nem rutin kiterjesztés.
 
 ## FORRÁSOK SORRENDJE
 
 1. `AGENTS.md` — különösen a Munkamódszer szakasz
 2. `HANDOFF.md` (ez a fájl)
-3. `graphhopper/README.md` — a motor, a mért számok és a buktatók
-4. `docs/02-funkcionalis-spec.md` → Küldetés-ajánló és Élő útszakasz-visszajelzés
-5. `server/src/routes/missions.ts` és `server/src/lib/directions.ts` fejlécei
+3. `server/src/routes/missions.ts` — a mért szűk keresztmetszet pontosan itt van (`shapeCandidateCells` a `withLoops` ciklusban, majd `evaluateCandidate`)
+4. `server/src/lib/directions.ts` fejléce — a GraphHopper/Mapbox kettősség
+5. `graphhopper/README.md` — a motor, a mért számok és a buktatók
+6. `docs/02-funkcionalis-spec.md` → Küldetés-ajánló
