@@ -225,12 +225,24 @@ mindkét útján, az API továbbadja, a kliens `expandActivityCells()`-szel
 bontja ki res12-re (`src/lib/activityCells.ts`, saját tesztekkel). Az
 `activityCells` plafonja 5 000 → 20 000, a parenteké 4 000.
 
-⚠️ **A RÉGI aktivitásokban nincs `activityCellParents`.** A kliens
-visszaesési ága ezért maga számolja ki a compact parenteket a nyomvonalból
-(`ActivityScreen`, `ActivityCard`) — a NÉZŐ viszont csak a levágott
-nyomvonalat kapja, tehát a régi, idegen aktivitásoknál a kitöltés
-közelítő maradhat. Végleges megoldás egy migrációs szkript lenne, ami
-`activityCellParents`-et ír a meglévő dokumentumokba — **nincs megírva.**
+A RÉGI aktivitásokhoz **migrációs szkript készült**:
+`server/src/scripts/migrateActivityCellParents.ts`. Csak MEGJELENÍTÉSI
+mezőt ír (`activityCells`, `activityCellParents`), foglalást/GP-t nem
+számol újra, és idempotens. Olcsó előszűrője a `claimCounts`-ot hasonlítja
+a tárolt cellaszámhoz, tehát csak az érintetteken futtat geometriát.
+
+⚠️ **ÉLES DRY-RUN LEFUTOTT** (2026-08-29, olvasó fiókkal): 40 aktivitásból
+2 jelölt, **1 valóban javítandó** — pont a bejelentett `77cbb397…`:
+`tarolt=6582 -> cellak=6582 + parentek=85`, **9 163 pótolt cella**. Az írás
+Gerié, Cloud Shellben:
+
+```bash
+cd ~/grundo/server && npm run migrate:cell-parents -- --apply --allow-production
+```
+
+(`--limit N` kapcsolóval előbb néhány darabon is kipróbálható. A kliens
+visszaesési ága addig is számol parenteket a nyomvonalból, de a NÉZŐ csak a
+levágott nyomvonalat kapja, ezért migráció nélkül a kitöltés közelítő.)
 
 ### Dock: 50/50 arány és a húzásos felirat — KÉSZ
 
@@ -255,9 +267,10 @@ létezik.
 4. **100 km fölött a jelöltszám 2** (`shapedCandidateLimit`) — ez korlátozza
    a találatszám-beállítást. Emeléshez előbb újramérni a geometria idejét az
    élesített GraphHopperrel.
-5. **Migrációs szkript az `activityCellParents`-hez** — a régi aktivitások
-   hexagon-kitöltése enélkül közelítő marad idegen nézőnél (lásd fent).
-   Nincs megírva; a `planActivity` a nyomvonalból ki tudja számolni.
+5. **Az `activityCellParents` migrációt LE KELL FUTTATNI** — a szkript kész
+   és éles dry-runon igazolt, de az írás még nem történt meg (lásd fent a
+   parancsot). Amíg nem fut le, a régi nagy hurkok kitöltése idegen nézőnél
+   közelítő marad.
 
 ## ÉLESBEN FUT — ELLENŐRIZVE
 

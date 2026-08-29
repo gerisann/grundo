@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate:activity-privacy": "tsx src/scripts/migrateActivityPrivacy.ts",
+    "migrate:cell-parents": "tsx src/scripts/migrateActivityCellParents.ts",
     "role:set": "tsx src/scripts/setUserRole.ts",
     "inspect:world": "tsx src/scripts/inspectWorld.ts",
     "replay:world": "tsx src/scripts/replayWorld.ts",
