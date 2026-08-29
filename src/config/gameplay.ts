@@ -376,6 +376,22 @@ export const GAMEPLAY = {
   MISSION_DEFAULT_PACE_S_PER_KM: { run: 360, walk: 780, ride: 165 } as const,
   /** Ennyi korábbi aktivitásból számolunk átlagtempót. */
   MISSION_PACE_SAMPLE_ACTIVITIES: 10,
+  /**
+   * Hány ajánlatot kérünk alapból, és mennyi állítható be a részletes
+   * keresőben (Geri kérése, 2026-08-29).
+   *
+   * A szám FELSŐ KORLÁT, nem garancia: a `missions.ts` `pickMissions` a
+   * szigorú menetben karakterenként egy ajánlatot ad, és ha így kevesebb jön
+   * ki a kértnél, fokozatosan lazít a hasonlóság-szűrésen, hogy elérje a
+   * számot — ugyanazt az útvonalat viszont soha nem adja vissza kétszer.
+   *
+   * ⚠️ Nagyon hosszú (100 km fölötti) körnél a gyakorlati plafon ettől
+   * függetlenül alacsonyabb, mert a szerver `shapedCandidateLimit`-je
+   * teljesítményi okból csak 2-4 jelöltre futtatja a drága geometriát.
+   */
+  MISSION_RESULT_DEFAULT: 3,
+  MISSION_RESULT_MIN: 1,
+  MISSION_RESULT_MAX: 5,
 
   // ── Ingyenes korlátok (a Pro ezeket oldja fel — játékbeli előnyt SOHA) ──
   FREE_ROUTE_GENERATIONS_PER_WEEK: 5,

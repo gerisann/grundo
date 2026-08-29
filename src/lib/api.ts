@@ -1195,6 +1195,8 @@ export const api = {
     distanceKm?: number;
     paceSecPerKm?: number;
     priority?: MissionPriority;
+    /** Hány ajánlatot kérünk (1-5). Felső korlát, nem garancia. */
+    limit?: number;
     preferredBearing?: number;
     type: ActivityType;
     /** Séta mozgásformánál nincs értelme — a felület akkor nem küldi. */
@@ -1219,6 +1221,7 @@ export const api = {
     distanceKm?: number;
     paceSecPerKm?: number;
     priority?: MissionPriority;
+    limit?: number;
     preferredBearing?: number;
     type: ActivityType;
     routeCharacter?: RouteCharacter;
@@ -1236,6 +1239,7 @@ export const api = {
   missionsEvaluate: (input: {
     type: ActivityType;
     priority?: MissionPriority;
+    limit?: number;
     routes: { polyline: string; bearing: number }[];
   }) =>
     request<{ missions: Mission[]; reason?: string }>('/api/missions/evaluate', {

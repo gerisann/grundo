@@ -194,12 +194,17 @@ describe('4. Átfedés', () => {
 
 describe('5. Válogatás', () => {
   it('karakterenként legfeljebb egy ajánlat, és mindegyik más jelöltből', () => {
-    const missions = pickMissions([
-      candidate({ claim: claimOf({ free: 40 }), cells: new Set(['a1']) }),
-      candidate({ claim: claimOf({ stolen: 30 }), cells: new Set(['b1']) }),
-      candidate({ claim: claimOf({ reclaimed: 20 }), cells: new Set(['c1']) }),
-      candidate({ claim: claimOf({ free: 1 }), newBlocks: 9, cells: new Set(['d1']) }),
-    ]);
+    // Négyet kérünk, hogy mind a négy karakter beférjen — a darabszám
+    // alapértéke 3, és itt nem azt mérjük, hanem a kiosztás egyediségét.
+    const missions = pickMissions(
+      [
+        candidate({ claim: claimOf({ free: 40 }), cells: new Set(['a1']) }),
+        candidate({ claim: claimOf({ stolen: 30 }), cells: new Set(['b1']) }),
+        candidate({ claim: claimOf({ reclaimed: 20 }), cells: new Set(['c1']) }),
+        candidate({ claim: claimOf({ free: 1 }), newBlocks: 9, cells: new Set(['d1']) }),
+      ],
+      { limit: 4 },
+    );
 
     expect(missions).toHaveLength(4);
     expect(new Set(missions.map((m) => m.kind)).size).toBe(4);
@@ -247,6 +252,48 @@ describe('5. Válogatás', () => {
     ]);
     expect(missions[0]?.topVictimUid).toBe('peti');
     expect(missions[0]?.topVictimCells).toBe(9);
+  });
+
+  it('a kért darabszám felső korlát, és a szigorú menet betartja', () => {
+    const many = [40, 35, 30, 25, 20].map((free, index) =>
+      candidate({ claim: claimOf({ free }), cells: new Set([`x${index}`]) }),
+    );
+    expect(pickMissions(many, { limit: 1 })).toHaveLength(1);
+    expect(pickMissions(many, { limit: 5 }).length).toBeGreaterThan(1);
+  });
+
+  it('a darabszám eléréséért ugyanazt a karaktert másodszor is kiosztja', () => {
+    /*
+      Öt tisztán HÓDÍTÁS-jelölt, egymástól teljesen eltérő cellákkal. A
+      szigorú menet karakterenként egyet ad, tehát egyetlen ajánlatot — ez
+      volt a 100 km fölötti eset (üres ownership mellett a rajtaütés és az
+      erősítés pontszáma nulla, csak a hódítás marad).
+    */
+    const conquests = [40, 35, 30, 25, 20].map((free, index) =>
+      candidate({ claim: claimOf({ free }), cells: new Set([`c${index}`]) }),
+    );
+    expect(pickMissions(conquests, { limit: 3 })).toHaveLength(3);
+    expect(pickMissions(conquests, { limit: 3 }).every((m) => m.kind === 'conquest')).toBe(true);
+  });
+
+  it('az elsődleges cél viszi el a jelöltet, ha egy másik karakter is pályázik rá', () => {
+    /*
+      EGYETLEN jelölt, ami rajtaütésre is és erősítésre is alkalmas. Ha a
+      felhasználó az erősítést kérte, azt kell kapnia — nem azt, amelyik a
+      saját mezőnyében történetesen kiugróbb.
+    */
+    const both = candidate({ claim: claimOf({ stolen: 30, reclaimed: 5 }), cells: new Set(['z']) });
+    expect(pickMissions([both], { limit: 1, priority: 'fortify' })[0]?.kind).toBe('fortify');
+    expect(pickMissions([both], { limit: 1, priority: 'raid' })[0]?.kind).toBe('raid');
+  });
+
+  it('nulla pontszámú karakterre akkor sem gyárt ajánlatot, ha a felhasználó azt kérte', () => {
+    // Csak szabad mezők: erősítésre nincs mit ajánlani, a kérés nem varázsol
+    // elő nem létező jelöltet — de a meglévőket sem nyomja el.
+    const missions = pickMissions([candidate({ claim: claimOf({ free: 10 }), cells: new Set(['a']) })], {
+      priority: 'fortify',
+    });
+    expect(missions.map((m) => m.kind)).toEqual(['conquest']);
   });
 
   it('nulla pontszámú karakterre nem gyárt ajánlatot', () => {

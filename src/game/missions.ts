@@ -280,6 +280,48 @@ export function cellOverlap(a: ReadonlySet<string>, b: ReadonlySet<string>): num
 const MAX_MISSION_OVERLAP = 0.6;
 
 /**
+ * Az átfedés-küszöb LAZÍTÁSI LÉPCSŐI, ha a szigorú menet kevesebb ajánlatot
+ * adna a kértnél.
+ *
+ * Geri döntése (2026-08-29): a kért találatszám FELSŐ KORLÁT, és ha a
+ * szűrés miatt kevesebb jönne ki, inkább a szűrés lazuljon a szám
+ * eléréséért — városban „kizárt", hogy ne legyen néhány érdemi variáció.
+ *
+ * ⚠️ A 0,75-nél MEGÁLLUNK, és ez mért határ, nem óvatosság. Efölött a két
+ * útvonal már ugyanaz a kör: a „tíz közös cella, egyikben eggyel több"
+ * teszteset (`missions.test.ts` → „a majdnem azonos útvonalat nem ajánlja fel
+ * kétszer") Jaccard-értéke 0,909 — egy 0,92-es lépcső ezt átengedte volna, és
+ * a felhasználó ugyanazt a kört kapta volna kétszer, más címkével. Pont ezt a
+ * csapdát zárja ki az alap `MAX_MISSION_OVERLAP`.
+ *
+ * A darabszám elérésében amúgy sem az átfedés a szűk keresztmetszet (mérve
+ * 2026-08-29: két nagy budapesti kör átfedése 0,0027), hanem az, hogy
+ * ugyanaz a karakter másodszor is jöhessen — azt a menetek `uniqueKinds`
+ * kapcsolója engedi el, nem ez a küszöb.
+ */
+const OVERLAP_RELAXATION = [MAX_MISSION_OVERLAP, 0.75] as const;
+
+/** Alapértelmezett találatszám, ha a hívó nem kér mást (docs/02: „3 ajánlat"). */
+export const DEFAULT_MISSION_LIMIT = DEFAULT_GAMEPLAY.MISSION_RESULT_DEFAULT;
+export const MIN_MISSION_LIMIT = DEFAULT_GAMEPLAY.MISSION_RESULT_MIN;
+export const MAX_MISSION_LIMIT = DEFAULT_GAMEPLAY.MISSION_RESULT_MAX;
+
+export interface PickMissionOptions {
+  /** Legfeljebb ennyi ajánlat. `MIN`…`MAX` közé vágva. */
+  limit?: number;
+  /**
+   * Melyik karakter kapja az ELSŐ választást a jelöltek közül?
+   *
+   * Nem garancia: ha egyetlen jelölt sem ér el pozitív pontszámot ezen a
+   * karakteren (pl. „erősítés", miközben egyik kör sem megy át saját
+   * területen), ilyen ajánlat egyszerűen nem létezik. A beállítás azt dönti
+   * el, hogy AMIKOR van ilyen jelölt, azt ne vigye el előle egy másik
+   * karakter, ami ugyanarra a körre szintén pályázik.
+   */
+  priority?: MissionKind | 'balanced';
+}
+
+/**
  * Ekkora normalizált különbségen belül két jelölt DÖNTETLEN.
  *
  * A döntetlent az útvonal tisztasága bontja fel (kevesebb visszafordulás nyer).
@@ -308,10 +350,26 @@ const SCORE_TIE_BAND = 0.05;
  * normalizálunk (a legjobbhoz viszonyítva 0…1), és mindig a globálisan
  * legerősebb párt kötjük össze. Így az nyer, ami a saját mezőnyében a
  * legkiugróbb — függetlenül attól, melyik karakter került előre a listán.
+ *
+ * A KÉRT DARABSZÁMOT több menetben próbáljuk elérni. Az első menet a szigorú:
+ * karakterenként legfeljebb egy ajánlat, egymástól érdemben eltérő
+ * útvonalakkal. Ha ez kevesebbet ad a kértnél, a további menetek engedik
+ * ugyanazt a karaktert másodszor is, és fokozatosan lazítanak az
+ * átfedés-küszöbön (`OVERLAP_RELAXATION`). UGYANAZT A JELÖLTET viszont soha
+ * nem adjuk vissza kétszer — az szó szerint ugyanaz az útvonal lenne.
  */
-export function pickMissions(candidates: readonly MissionCandidate[]): Mission[] {
+export function pickMissions(
+  candidates: readonly MissionCandidate[],
+  options: PickMissionOptions = {},
+): Mission[] {
   const usable = candidates.filter((candidate) => candidate.claim !== null);
   if (usable.length === 0) return [];
+
+  const limit = Math.max(
+    MIN_MISSION_LIMIT,
+    Math.min(MAX_MISSION_LIMIT, Math.round(options.limit ?? DEFAULT_MISSION_LIMIT)),
+  );
+  const priority = options.priority ?? 'balanced';
 
   const best = new Map<MissionKind, number>();
   for (const kind of MISSION_KINDS) {
@@ -346,6 +404,9 @@ export function pickMissions(candidates: readonly MissionCandidate[]): Mission[]
   const band = (value: number) => Math.round(value / SCORE_TIE_BAND);
   pairs.sort(
     (a, b) =>
+      // A kért karakter választ először a jelöltek közül — különben egy másik
+      // karakter elvihetné előle ugyanazt a kört (lásd `PickMissionOptions`).
+      Number(b.kind === priority) - Number(a.kind === priority) ||
       band(b.normalized) - band(a.normalized) ||
       routeDefectScore(a.candidate) - routeDefectScore(b.candidate) ||
       b.normalized - a.normalized ||
@@ -357,16 +418,23 @@ export function pickMissions(candidates: readonly MissionCandidate[]): Mission[]
   const usedKinds = new Set<MissionKind>();
   const usedCandidates = new Set<MissionCandidate>();
 
-  for (const pair of pairs) {
-    if (usedKinds.has(pair.kind) || usedCandidates.has(pair.candidate)) continue;
-    // Túl hasonló ajánlatot nem veszünk fel másodszor, más címkével.
-    if (missions.some((mission) => cellOverlap(mission.cells, pair.candidate.cells) > MAX_MISSION_OVERLAP)) {
-      continue;
-    }
+  for (const [round, maxOverlap] of OVERLAP_RELAXATION.entries()) {
+    if (missions.length >= limit) break;
+    // Az első menet a szigorú: karakterenként legfeljebb egy ajánlat.
+    const uniqueKinds = round === 0;
 
-    usedKinds.add(pair.kind);
-    usedCandidates.add(pair.candidate);
-    missions.push(toMission(pair.candidate, pair.kind, pair.raw));
+    for (const pair of pairs) {
+      if (missions.length >= limit) break;
+      if (usedCandidates.has(pair.candidate)) continue;
+      if (uniqueKinds && usedKinds.has(pair.kind)) continue;
+      if (missions.some((mission) => cellOverlap(mission.cells, pair.candidate.cells) > maxOverlap)) {
+        continue;
+      }
+
+      usedKinds.add(pair.kind);
+      usedCandidates.add(pair.candidate);
+      missions.push(toMission(pair.candidate, pair.kind, pair.raw));
+    }
   }
 
   return missions;

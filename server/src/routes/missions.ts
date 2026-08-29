@@ -28,6 +28,9 @@ import {
   pickMissions,
   targetDistanceKm,
   withinTolerance,
+  DEFAULT_MISSION_LIMIT,
+  MAX_MISSION_LIMIT,
+  MIN_MISSION_LIMIT,
   type Mission,
   type MissionCandidate,
 } from '../../../src/game/missions';
@@ -461,6 +464,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
       cfg,
       streakDays: Number(user.streak?.current ?? 0),
       priority: input.priority,
+      limit: input.limit,
     });
 
     if (!isPro) {
@@ -567,6 +571,7 @@ missionsRouter.post('/evaluate', async (req: AuthedRequest, res: Response, next)
       cfg,
       streakDays: Number(user.streak?.current ?? 0),
       priority: input.priority,
+      limit: input.limit,
     });
 
     res.json({ missions });
@@ -611,14 +616,20 @@ async function evaluateShapedCandidates(args: {
   cfg: GameplayConfig;
   streakDays: number;
   priority: MissionInput['priority'];
+  limit: number;
 }): Promise<MissionPayload[]> {
-  const { uid, shaped, layer, type, today, cfg, streakDays, priority } = args;
+  const { uid, shaped, layer, type, today, cfg, streakDays, priority, limit } = args;
 
   /* ── Birtokviszony EGY olvasásban, az összes jelöltre ────────────── */
 
   const affordable = limitByBlocks(shaped, layer, MAX_OWNERSHIP_BLOCKS);
   const allCells = new Set<CellId>();
-  for (const candidate of affordable) for (const cell of candidate.cells) allCells.add(cell);
+  for (const candidate of affordable) {
+    // A compact (nagy) jelölteket üres ownershippel értékeljük — nekik nem
+    // kell birtokviszonyt olvasni (lásd `evaluateCandidate` és `limitByBlocks`).
+    if (candidate.compact) continue;
+    for (const cell of candidate.cells) allCells.add(cell);
+  }
 
   const ownership = await loadOwnership(layer, allCells, today);
 
@@ -643,7 +654,7 @@ async function evaluateShapedCandidates(args: {
 
   /* ── Válogatás és a célpontok feloldása ──────────────────────────── */
 
-  const missions = prioritizeMissions(pickMissions(candidates), priority);
+  const missions = prioritizeMissions(pickMissions(candidates, { limit, priority }), priority);
   const named = await resolveVictimNames(uid, missions, today);
 
   return missions.map((mission) => ({
@@ -673,6 +684,7 @@ function polylineLengthM(coordinates: readonly { lat: number; lng: number }[]): 
 interface EvaluateInput {
   type: ActivityType;
   priority: MissionInput['priority'];
+  limit: number;
   routes: { polyline: string; bearing: number }[];
 }
 
@@ -695,6 +707,7 @@ function parseEvaluateInput(body: unknown): EvaluateInput {
   const priority = typeof raw.priority === 'string' && priorities.has(raw.priority)
     ? raw.priority as MissionInput['priority']
     : 'balanced';
+  const limit = parseLimit(raw.limit);
 
   if (!Array.isArray(raw.routes) || raw.routes.length === 0) {
     throw badRequest('invalid_routes', 'Nem érkezett kiértékelendő útvonal.');
@@ -711,7 +724,7 @@ function parseEvaluateInput(body: unknown): EvaluateInput {
     };
   });
 
-  return { type, priority, routes };
+  return { type, priority, limit, routes };
 }
 
 interface MissionInput {
@@ -721,6 +734,11 @@ interface MissionInput {
   distanceKm?: number;
   paceSecPerKm?: number;
   priority: 'balanced' | 'conquest' | 'raid' | 'fortify' | 'explore';
+  /**
+   * Hány ajánlatot kérünk (1–5). FELSŐ KORLÁT, nem garancia — ha ennyi
+   * érdemben különböző kör nem jön össze, kevesebb jön (lásd `pickMissions`).
+   */
+  limit: number;
   preferredBearing?: number;
   type: ActivityType;
   /**
@@ -805,11 +823,25 @@ function parseInput(body: unknown): MissionInput {
     ...(hasDistance ? { distanceKm } : { minutes }),
     ...(paceSecPerKm === undefined ? {} : { paceSecPerKm }),
     priority,
+    limit: parseLimit(raw.limit),
     ...(preferredBearing === undefined ? {} : { preferredBearing }),
     type,
     routeCharacter,
     phase,
   };
+}
+
+/**
+ * A kért találatszám — hiányzó/hibás érték az alapértelmezett.
+ *
+ * NEM dobunk hibát a tartományon kívüli értékre, csak vágunk: a darabszám
+ * kényelmi beállítás, nem az kérés érvényességének a feltétele, és egy régi
+ * kliens (ami nem küldi) sem kaphat hibát tőle.
+ */
+function parseLimit(raw: unknown): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return DEFAULT_MISSION_LIMIT;
+  return Math.max(MIN_MISSION_LIMIT, Math.min(MAX_MISSION_LIMIT, Math.round(value)));
 }
 
 function orderBearings(bearings: number[], preferred?: number): number[] {

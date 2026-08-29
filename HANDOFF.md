@@ -8,10 +8,12 @@
 > Ág: **`main`**, MÉG NEM pusholva (Geri dolga). **GraphHopper élesítve és
 > bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
 > aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
-> "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), admin
-> oldalak szélessége, dock háttere/border-je. `npx tsc --noEmit` tiszta,
-> teljes `npx vitest run`: 559/682 sikeres (123 kihagyva, nincs
-> regresszió — egy ÚJ teszt emulátor hiányában kihagyva, lásd lent).
+> "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), a
+> küldetés-ajánló kevés találata (MÉRVE: a blokk-plafon volt az ok), az
+> 1-5 találatszám beállítás, admin oldalak szélessége, dock
+> háttere/border-je. `npx tsc --noEmit` tiszta, teljes `npx vitest run`:
+> 563/686 sikeres (123 kihagyva, nincs regresszió — egy ÚJ teszt emulátor
+> hiányában kihagyva, lásd lent).
 
 ## #20 MENETBEN JAVÍTVA
 
@@ -110,22 +112,81 @@ lab.css` `:has(.lab-shell)`), az a szabály most redundáns, de nem árt.
 `.dock--paused` állapotváltozatok érintetlenek, mert Geri kifejezetten csak
 a háttért és a bordert kérte).
 
-## NYITOTT TÉMA — küldetés-ajánló finomítás
+### Küldetés-ajánló: kevés/egyetlen ajánlat — MEGOLDVA, MÉRVE
 
-Geri visszajelzései (#21, GraphHopper élesítés UTÁN kezdhetők):
+Geri #20-as bejelentése: „100 km fölött először bead két opciót, de mire
+befejezi a számítást, már csak 1 marad", és „csak 1 rajtaütés + 1 hódítás".
 
-1. **Találatszám 1–5, állítható a részletes keresőben.** Geri döntése: a
-   beállítás felső korlát; ha az átfedés-szűrés (`MAX_MISSION_OVERLAP = 0.6`
-   a `src/game/missions.ts`-ben) miatt kevesebb jönne ki a kértnél, a szűrés
-   LAZULJON a szám eléréséért; csak ha úgy sem megy, adjon kevesebbet és
-   mondja meg miért. Geri szerint városban „kizárt", hogy ne legyen 5 érdemi
-   variáció — a mai mérés (5-6 útvonalból 1 kártya) ezt alátámasztja: a
-   szűk keresztmetszet a válogatás, nem az úthálózat.
+**MÉRVE, nem tippelve** (`src/game/` próbaszkript, azóta törölve):
+
+- A HASONLÓSÁG-SZŰRÉS ÁRTATLAN: két nagy budapesti kör átfedése **0,0027**,
+  meg sem közelíti a 0,6-os küszöböt. A korábbi gyanú téves volt.
+- **A VALÓDI OK a blokk-plafon**: egyetlen 113 km-es kör **431 res9 blokkot**
+  érint — már önmagában a `MAX_OWNERSHIP_BLOCKS = 400` FÖLÖTT —, két ilyen
+  kör együtt 844-et. A `limitByBlocks` ezért mindig eldobta a második
+  jelöltet. Referencia-számok: 63 km → 230 blokk, 31 km → 118, 12,5 km → 42.
+- A plafon célja a Firestore-olvasás korlátozása. De a compact (nagy)
+  jelöltekhez a mai javítás óta EGYETLEN blokkot sem olvasunk (üres
+  ownershippel értékeljük őket) — vagyis pont azok buktak el egy keretet,
+  amit nem is használtak.
+
+**Javítás** (`server/src/lib/missionEvaluate.ts`): a `ShapedCandidate` kap egy
+`compact` mezőt (a `shapeCandidateCells` tölti), a `limitByBlocks` a compact
+jelölteket kihagyja a plafonból, az `evaluateShapedCandidates` pedig a
+`loadOwnership` cellahalmazából is — kevesebb olvasás, több ajánlat.
+**Igazolva ugyanazzal a méréssel: ugyanaz a két nagy kör most 2 ajánlatot ad
+(hódítás + felfedezés) az eddigi 1 helyett.**
+
+⚠️ **Ami MEGMARAD korlátnak**: 100 km fölött a `shapedCandidateLimit`
+(`routes/missions.ts`) teljesítményi okból csak **2 jelöltre** futtatja a
+drága geometriát (200 km → 15,9 s/jelölt), tehát ott a gyakorlati plafon 2
+ajánlat, akármennyit kér a felhasználó. 30 km alatt 6, 100 km-ig 4. Ezt nem
+emeltem — előbb mérni kellene, elfér-e a válaszidőben.
+
+### Találatszám 1–5 — KÉSZ
+
+Geri régi kérése bekötve: a részletes kereső „Hány ajánlatot kérsz?"
+steppere (`GAMEPLAY.MISSION_RESULT_DEFAULT/_MIN/_MAX` = 3/1/5), a `limit`
+végigmegy az API-n (`generateMissions`, `missionsPlan`, `missionsEvaluate`)
+a `pickMissions`-ig.
+
+A szám FELSŐ KORLÁT, ahogy Geri kérte: a `pickMissions` első menete a
+szigorú (karakterenként egy ajánlat), és ha az kevesebbet ad, egy második
+menet ugyanazt a KARAKTERT is kiosztja másodszor, valamint 0,75-ig lazít az
+átfedés-küszöbön. ⚠️ **0,75-nél megáll, mérésből**: a „tíz közös cella,
+egyikben eggyel több" teszteset Jaccard-értéke 0,909, tehát egy magasabb
+lépcső ugyanazt a kört adta volna vissza kétszer, más címkével — pont az a
+csapda, ami ellen az eredeti küszöb véd.
+
+### Elsődleges cél — RÉSZBEN javítva, korlátjával együtt
+
+`prioritizeMissions` eddig CSAK sorrendezett a kész listán. Mostantól a
+`pickMissions` is megkapja a `priority`-t, és a kért karakter választ először
+a jelöltek közül — így ha egy kör rajtaütésre ÉS erősítésre is alkalmas, a
+kért karakter viszi el, nem az, amelyik a saját mezőnyében kiugróbb.
+
+⚠️ **Amit ez NEM old meg, és Geri esete valószínűleg ez**: ha EGYETLEN
+jelölt sem megy át a saját területén, az „erősítés" pontszáma
+(`kindScore` → `counts.reclaimed`) mindenhol nulla, tehát ilyen ajánlat nem
+létezik — a beállítás nem tud elővarázsolni nem létező kört. Ehhez az
+útvonal-GENERÁLÁSNAK kellene a saját terület felé irányítania (a
+`missionBearings` ma vakon oszt nyolc irányt), és a felületnek meg kellene
+mondania, ha a kért karakterre nem sikerült ajánlatot találni. Egyik sincs
+kész — **ez a küldetés-ajánló következő érdemi köre.**
+
+## NYITOTT TÉMA — küldetés-ajánló, ami MÉG hátravan
+
+1. **A kért „Elsődleges cél"-ra nincs visszajelzés, ha nem teljesíthető** —
+   lásd fent. Az irányított generálás + felületi üzenet együtt egy önálló kör.
 2. **GPS-ingadozás → más eredmény ugyanarra a kérésre.** Mérve: 10-20 m
    eltolt kiindulópont 1 vs. 3 kártyát ad. Javaslat (még nem kezdve): a
    kiindulópont rácsra kerekítése a küldetés-generáláshoz.
 3. **Sík / emelkedős választó.** GraphHopperrel megoldható, de domborzati
    adat (SRTM) és TELJES újraimportálás kell hozzá — külön, hosszabb kör.
+   **Ez a felületen ma NINCS ott, és nem is volt** — Geri #20-ban kereste.
+4. **100 km fölött a jelöltszám 2** (`shapedCandidateLimit`) — ez korlátozza
+   a találatszám-beállítást. Emeléshez előbb újramérni a geometria idejét az
+   élesített GraphHopperrel.
 
 ## ÉLESBEN FUT — ELLENŐRIZVE
 

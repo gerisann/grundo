@@ -43,6 +43,14 @@ export interface ShapedCandidate {
   /** 30 m-es léptékű kanyarszám — lásd `routeShape.ts` → `measureStraightness`. */
   turnCount?: number;
   /**
+   * Compact (nagy) belsejű-e a hurok?
+   *
+   * Ilyenkor az `evaluateCandidate` ÜRES ownershippel értékel (a motor őre
+   * miatt), tehát ehhez a jelölthez NEM olvasunk Firestore-blokkot — ezért a
+   * `limitByBlocks` plafonja sem vonatkozik rá.
+   */
+  compact?: boolean;
+  /**
    * A már felépített geometria — hogy az `evaluateCandidate` NE építse fel újra.
    *
    * ⚠️ MÉRT OK, nem elegancia. A geometriaépítés drága fele a hurokdetektálás
@@ -72,6 +80,8 @@ export interface ShapedCandidate {
 export function shapeCandidateCells(points: readonly TracePoint[]): {
   loopCount: number;
   cells: Set<CellId>;
+  /** Lásd `ShapedCandidate.compact`. */
+  compact: boolean;
   /** Add tovább az `evaluateCandidate`-nek — lásd `ShapedCandidate.geometry`. */
   geometry: ActivityGeometry;
 } {
@@ -80,7 +90,12 @@ export function shapeCandidateCells(points: readonly TracePoint[]): {
   for (const loop of geometry.loops) {
     for (const cell of loopCells(loop)) cells.add(cell);
   }
-  return { loopCount: geometry.loops.length, cells, geometry };
+  return {
+    loopCount: geometry.loops.length,
+    cells,
+    compact: geometry.loops.some(hasCompactInterior),
+    geometry,
+  };
 }
 
 export interface EvaluateContext {
@@ -196,19 +211,31 @@ export function blocksOf(cells: Iterable<CellId>, layer: Layer): Set<string> {
  * A RÖVIDEBB JELÖLTEK MARADNAK. Nem véletlenszerűen vágunk: a kisebb körök
  * olcsóbbak, és belőlük több fér bele — így több karakterre marad ajánlat,
  * mint ha egyetlen óriási kör vinné el az egész keretet.
+ *
+ * ⚠️ A COMPACT (nagy) JELÖLTEK KIVÉTELEK, és ez nem kivételezés, hanem a
+ * plafon értelme: hozzájuk EGYETLEN blokkot sem olvasunk be, mert az
+ * `evaluateCandidate` üres ownershippel értékeli őket (a motor őre miatt).
+ * Amíg mégis beleszámítottak, pont ők bukták el a keretet, amit nem is
+ * használtak: MÉRVE (2026-08-29) egyetlen 113 km-es kör 431 res9 blokkot
+ * érint — már önmagában a 400-as plafon FÖLÖTT —, két ilyen kör együtt 844-et,
+ * ezért a második jelölt mindig kiesett. Ez adta a „100 km fölött előbb két
+ * ajánlat jön, aztán már csak egy marad" hibát (HANDOFF #20).
  */
 export function limitByBlocks(
   candidates: readonly ShapedCandidate[],
   layer: Layer,
   maxBlocks: number,
 ): ShapedCandidate[] {
+  const free = candidates.filter((candidate) => candidate.compact);
+  const paying = candidates.filter((candidate) => !candidate.compact);
+
   const all = new Set<string>();
-  for (const candidate of candidates) {
+  for (const candidate of paying) {
     for (const id of blocksOf(candidate.cells, layer)) all.add(id);
   }
   if (all.size <= maxBlocks) return [...candidates];
 
-  const sorted = [...candidates].sort((a, b) => a.cells.size - b.cells.size);
+  const sorted = [...paying].sort((a, b) => a.cells.size - b.cells.size);
   const kept: ShapedCandidate[] = [];
   const keptBlocks = new Set<string>();
 
@@ -222,7 +249,7 @@ export function limitByBlocks(
     for (const id of merged) keptBlocks.add(id);
   }
 
-  return kept;
+  return [...free, ...kept];
 }
 
 /** A birtokviszony beolvasásának plafonja EGY generálásra. */

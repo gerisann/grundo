@@ -136,6 +136,12 @@ export function MissionsScreen() {
   const [distanceValue, setDistanceValue] = useState('5');
   const [paceValue, setPaceValue] = useState('');
   const [priority, setPriority] = useState<MissionPriority>('balanced');
+  /**
+   * Hány ajánlatot kérünk. FELSŐ KORLÁT: ha ennyi érdemben különböző kör nem
+   * jön össze, kevesebb jön — a szerver lazít a hasonlóság-szűrésen a szám
+   * eléréséért, de ugyanabból a körből nem gyárt kettőt.
+   */
+  const [limit, setLimit] = useState<number>(GAMEPLAY.MISSION_RESULT_DEFAULT);
   const [routeCharacter, setRouteCharacter] = useState<RouteCharacter>('twisty');
   const [preferredBearing, setPreferredBearing] = useState('');
   const [savedOpen, setSavedOpen] = useState(false);
@@ -269,6 +275,7 @@ export function MissionsScreen() {
             )),
         ...(paceSecPerKm === null ? {} : { paceSecPerKm }),
         priority,
+        limit,
         ...(preferredBearing === '' ? {} : { preferredBearing: Number(preferredBearing) }),
         type,
         // Sétánál a kapcsoló nincs a felületen — nincs értelme kanyarbüntetésnek.
@@ -291,6 +298,7 @@ export function MissionsScreen() {
       const evaluated = await api.missionsEvaluate({
         type,
         priority,
+        limit,
         routes: plan.routes.map((route) => ({
           polyline: route.polyline,
           bearing: route.bearing,
@@ -446,6 +454,30 @@ export function MissionsScreen() {
             <PaceStepper type={type} value={paceValue} onChange={setPaceValue} />
           </div>
 
+          {/* Lásd a `limit` állapot magyarázatát: felső korlát, nem garancia. */}
+          <div className="mission__field">
+            <span>Hány ajánlatot kérsz?</span>
+            <Stepper
+              value={String(limit)}
+              unit="db"
+              inputMode="numeric"
+              ariaLabel="Kért ajánlatok száma"
+              onChange={(next) => {
+                const parsed = Number(next.replace(/\D/g, ''));
+                if (!Number.isFinite(parsed) || parsed === 0) return;
+                setLimit(Math.max(GAMEPLAY.MISSION_RESULT_MIN, Math.min(GAMEPLAY.MISSION_RESULT_MAX, parsed)));
+              }}
+              onStep={(direction) => {
+                setLimit((current) =>
+                  Math.max(
+                    GAMEPLAY.MISSION_RESULT_MIN,
+                    Math.min(GAMEPLAY.MISSION_RESULT_MAX, current + direction),
+                  ),
+                );
+              }}
+            />
+          </div>
+
           <div className="mission__select-grid">
             <label className="mission__field">
               <span>Elsődleges cél</span>
@@ -574,7 +606,7 @@ function Stepper({
   unit: string;
   ariaLabel: string;
   placeholder?: string;
-  inputMode?: 'decimal' | 'text';
+  inputMode?: 'decimal' | 'text' | 'numeric';
   onStep: (direction: 1 | -1) => void;
 }) {
   return (
