@@ -1,0 +1,78 @@
+# GRUNDO GraphHopper — build és telepítés (Cloud Run).
+#
+#   cd graphhopper && gcloud builds submit --config cloudbuild.yaml
+#
+# ⚠️ RITKÁN FUT, NEM MINDEN BACKEND-TELEPÍTÉSNÉL. A gráf csak akkor változik,
+# ha az OSM-adat frissül, vagy a `config-cloudrun.yml`/`custom_models/`
+# módosul — ezért ez SZÁNDÉKOSAN KÜLÖN pipeline a `../cloudbuild.yaml`-tól,
+# nem annak egy lépése. A backend minden telepítése a MEGLÉVŐ GraphHopper-
+# szolgáltatást hívja, nem építi újra.
+#
+# ELŐFELTÉTEL (egyszeri, Cloud Shellből — lásd docs/06-architektura-es-admin.md):
+#   1. Artifact Registry repo (ha még nincs a backendhez sem):
+#        gcloud artifacts repositories create grundo --repository-format=docker --location=europe-west1
+#   2. Miután ELŐSZÖR lefutott ez a build, a `grundo-api` service accountjának
+#      hívási jogot kell adni az ÚJ szolgáltatásra (a szolgáltatás neve és
+#      URL-je csak az első telepítés UTÁN ismert):
+#        gcloud run services add-iam-policy-binding grundo-graphhopper \
+#          --region=europe-west1 \
+#          --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" \
+#          --role="roles/run.invoker"
+#   3. A `grundo-api`-t újra kell telepíteni a `_GRAPHHOPPER_URL`
+#      substitutionnel (lásd a fő `cloudbuild.yaml` megjegyzését), hogy
+#      egyáltalán ezt a szolgáltatást hívja.
+
+substitutions:
+  _REGION: europe-west1
+  _SERVICE: grundo-graphhopper
+  _REPO: grundo
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: push
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --platform=managed
+      # ⚠️ SOSEM `--allow-unauthenticated` — ez a szolgáltatás csak a
+      # `grundo-api`-nak szól, lásd a fájl tetején az IAM-lépést.
+      - --no-allow-unauthenticated
+      - --port=8080
+      # Nullára skálázódik: hosszú szünet után az első kérés kb. 8–15 s (a
+      # gráf memóriába töltése), utána percekig meleg marad. Ez a nullára
+      # skálázás ára — cserébe a szolgáltatás forgalom nélkül nem kerül
+      # pénzbe. Ha ez élesben zavaró lesz, `--min-instances=1` megoldja,
+      # de az folyamatos költség.
+      - --min-instances=0
+      - --max-instances=3
+      - --cpu=2
+      # 2 GiB: a jar + a betöltött gráf + a JVM-többlet fér bele kényelmesen
+      # (mérve: 1 GB heap is elég volt a kiszolgáláshoz, lásd Dockerfile).
+      - --memory=2Gi
+      # A küldetés-ajánló körönként akár 8 irány × 3 mag × 2 menet = 48
+      # párhuzamos kérést is küldhet — ennyi elfér egy példányon belül is.
+      - --concurrency=40
+
+options:
+  # Az import -Xmx4g heapet igényel (lásd Dockerfile) — az alapértelmezett
+  # build géptípus ehhez kevés lenne.
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY

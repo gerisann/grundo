@@ -142,7 +142,17 @@ gcloud secrets add-iam-policy-binding JOBS_TOKEN --member="serviceAccount:656896
 
 3. Backend telepítése (ekkor kerül a titok a szolgáltatásra).
 
-### A Mapbox token — szintén Secret Managerben (2026-08-29 óta)
+4. Az ütemező bejegyzése. A titkot nem kell kimásolni — a parancs maga olvassa ki:
+
+```
+gcloud scheduler jobs create http grundo-daily-rollover --location=europe-west1 --schedule="0 * * * *" --time-zone="Etc/UTC" --uri="https://grundo-api-irb5rjve6a-ew.a.run.app/api/jobs/daily-rollover" --http-method=POST --headers="X-Job-Token=$(gcloud secrets versions access latest --secret=JOBS_TOKEN)" --attempt-deadline=540s
+```
+
+A parancsok EGY SORBAN vannak, sorvégi backslash nélkül. Ez szándékos: a többsoros, escape-elt alak egyszer már szétvágta a `cloudbuild.yaml`-t (2026-08-19), és a build a megjegyzés miatt hasalt el, nem a konfiguráció miatt.
+
+⚠️ **A meglévő felhasználókat egyszer be kell jegyezni.** A job a `users.rollover.nextDueAt` mezőre keres; akinél ez nincs meg, azt a lekérdezés sosem hozná vissza, és Firestore-ban hiányzó mezőre nem lehet keresni. Az új fiókoknál a `newUserDoc` kitölti; a régiekhez a `server/`-ből: `npm.cmd run rollover:seed -- --apply`.
+
+### A Mapbox token — Secret Managerben (2026-08-29 óta)
 
 ⚠️ **Nem azért, mert titok** (a `pk.` kezdetű token nem az; a kliens-bundle-ben
 is van egy), **hanem mert a telepítés háromszor is némán kiütötte.** A
@@ -178,15 +188,33 @@ printf %s 'pk.uj-token' | gcloud secrets versions add MAPBOX_TOKEN --data-file=-
 védi (Referer-alapú), de egy Cloud Run hívásnak nincs Referer-je — a
 korlátozott token 403-at ad, és pontosan ez okozta a fenti hibákat.
 
-4. Az ütemező bejegyzése. A titkot nem kell kimásolni — a parancs maga olvassa ki:
+### GraphHopper — külön Cloud Run szolgáltatás (2026-08-29 óta)
+
+A saját útvonalmotor (`graphhopper/README.md`) NEM a fő `cloudbuild.yaml`-lal
+települ, hanem a `graphhopper/cloudbuild.yaml`-lal, külön:
 
 ```
-gcloud scheduler jobs create http grundo-daily-rollover --location=europe-west1 --schedule="0 * * * *" --time-zone="Etc/UTC" --uri="https://grundo-api-irb5rjve6a-ew.a.run.app/api/jobs/daily-rollover" --http-method=POST --headers="X-Job-Token=$(gcloud secrets versions access latest --secret=JOBS_TOKEN)" --attempt-deadline=540s
+~/grundo/scripts/deploy.sh graphhopper
 ```
 
-A parancsok EGY SORBAN vannak, sorvégi backslash nélkül. Ez szándékos: a többsoros, escape-elt alak egyszer már szétvágta a `cloudbuild.yaml`-t (2026-08-19), és a build a megjegyzés miatt hasalt el, nem a konfiguráció miatt.
+⚠️ **Ritkán fut** — csak ha az OSM-adat frissül, vagy a `graphhopper/` mappa
+változik. A build géptípusa nagyobb az alapértelmezettnél
+(`E2_HIGHCPU_8`), mert a gráf importja build közben zajlik, `-Xmx4g`-vel.
 
-⚠️ **A meglévő felhasználókat egyszer be kell jegyezni.** A job a `users.rollover.nextDueAt` mezőre keres; akinél ez nincs meg, azt a lekérdezés sosem hozná vissza, és Firestore-ban hiányzó mezőre nem lehet keresni. Az új fiókoknál a `newUserDoc` kitölti; a régiekhez a `server/`-ből: `npm.cmd run rollover:seed -- --apply`.
+A szolgáltatás `--no-allow-unauthenticated`: a `grundo-api` Google-aláírt
+ID-tokennel hívja (a metaadat-szervertől, saját titok nélkül — lásd
+`server/src/lib/directions.ts` → `graphhopperIdToken`). Ehhez **az ELSŐ
+telepítés UTÁN** egyszeri IAM-jog kell:
+
+```
+gcloud run services add-iam-policy-binding grundo-graphhopper --region=europe-west1 --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" --role="roles/run.invoker"
+```
+
+Utána a backendet a saját `_GRAPHHOPPER_URL`-jével kell újratelepíteni:
+
+```
+gcloud builds submit --config cloudbuild.yaml --substitutions=_GRAPHHOPPER_URL=https://…
+```
 
 ---
 

@@ -7,6 +7,7 @@
 #   ~/grundo/scripts/deploy.sh              # backend, majd frontend
 #   ~/grundo/scripts/deploy.sh backend
 #   ~/grundo/scripts/deploy.sh frontend
+#   ~/grundo/scripts/deploy.sh graphhopper  # az útvonalmotor — lásd lent
 #   ~/grundo/scripts/deploy.sh szabalyok    # Firestore + Storage szabályok
 #   ~/grundo/scripts/deploy.sh indexek      # Firestore indexek
 #
@@ -30,9 +31,12 @@
 #    frontend. Így egy új végpontot hívó felület sosem ér oda a végpont elé.
 #    (Fordítva a felhasználó 404-et kapna, amíg a backend build tart.)
 #
-# ⚠️ A `szabalyok` és az `indexek` szándékosan NEM része a „mindkettő"-nek:
-#    azokat csak akkor futtasd, ha tényleg változott a `firestore.rules` /
-#    `storage.rules` / `firestore.indexes.json`.
+# ⚠️ A `szabalyok`, az `indexek` ÉS A `graphhopper` SZÁNDÉKOSAN NEM RÉSZE a
+#    „mindkettő"-nek (`all`). A `graphhopper` külön ok: a gráf csak akkor
+#    változik, ha az OSM-adat frissül vagy a GraphHopper-konfiguráció módosul
+#    — ezt minden backend-telepítésnél újraépíteni percekig tartana,
+#    feleslegesen. Csak akkor futtasd, ha tényleg a `graphhopper/` mappában
+#    változott valami.
 
 set -euo pipefail
 
@@ -46,8 +50,8 @@ info() { printf '\n\033[36m▸ %s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
 case "$MODE" in
-  all|backend|frontend|szabalyok|indexek) ;;
-  *) fail "Ismeretlen mód: $MODE. Használható: all, backend, frontend, szabalyok, indexek" ;;
+  all|backend|frontend|graphhopper|szabalyok|indexek) ;;
+  *) fail "Ismeretlen mód: $MODE. Használható: all, backend, frontend, graphhopper, szabalyok, indexek" ;;
 esac
 
 info "Projekt beállítása: $PROJECT"
@@ -101,12 +105,21 @@ deploy_frontend() {
   firebase deploy --only hosting
 }
 
+deploy_graphhopper() {
+  info "GraphHopper build és telepítés (Cloud Run) — ez EGYSZERI HÍVÁS UTÁN percekig tart"
+  printf '   Az import a build alatt fut (Xmx4g) — lásd graphhopper/Dockerfile.\n'
+  (cd "$REPO_ROOT/graphhopper" && gcloud builds submit --config cloudbuild.yaml)
+  printf '\n\033[33m⚠ Ha ez az ELSŐ telepítés, az IAM-jog és a %s\033[0m\n' \
+    "backend _GRAPHHOPPER_URL substitution EZUTÁN kell — lásd graphhopper/cloudbuild.yaml fejléce."
+}
+
 case "$MODE" in
-  backend)   deploy_backend ;;
-  frontend)  deploy_frontend ;;
-  all)       deploy_backend; deploy_frontend ;;
-  szabalyok) info "Firestore + Storage szabályok"; firebase deploy --only firestore:rules,storage ;;
-  indexek)   info "Firestore indexek"; firebase deploy --only firestore:indexes ;;
+  backend)     deploy_backend ;;
+  frontend)    deploy_frontend ;;
+  all)         deploy_backend; deploy_frontend ;;
+  graphhopper) deploy_graphhopper ;;
+  szabalyok)   info "Firestore + Storage szabályok"; firebase deploy --only firestore:rules,storage ;;
+  indexek)     info "Firestore indexek"; firebase deploy --only firestore:indexes ;;
 esac
 
 printf '\n\033[32m✓ Kész: %s\033[0m\n' "$MODE"

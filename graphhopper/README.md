@@ -88,8 +88,50 @@ vagy `directions_unavailable` 503-at ad, ha egyik sincs beállítva.
   helyett ~250 ms. Ha ez élesben szűk lesz, a `profiles_lm` (landmark)
   előkészítés a megoldás.
 
-## Élesítés
+## Élesítés (kész, 2026-08-29 óta)
 
-Külön Cloud Run szolgáltatás vagy kis VM, a gráffal a képbe sütve — a
-`#19`-es menet feladata. A kliens felé sosem nyílik meg: csak a `server/`
-hívja, belső címen.
+Külön Cloud Run szolgáltatás, a gráffal a KÉPBE SÜTVE (`Dockerfile`, build
+közben importál — lásd a fájl fejlécét). A kliens felé sosem nyílik meg:
+`--no-allow-unauthenticated`, csak a `server/` hívhatja, Google-aláírt
+ID-tokennel (`server/src/lib/directions.ts` → `graphhopperIdToken`).
+
+**Telepítés** (Cloud Shellből):
+
+```bash
+~/grundo/scripts/deploy.sh graphhopper
+```
+
+⚠️ **RITKÁN FUT**, nem minden backend-telepítésnél — csak ha az OSM-adat
+frissül, vagy ez a mappa változik. Lásd `cloudbuild.yaml` fejlécét: a build
+géptípusa (`E2_HIGHCPU_8`) az importhoz kell (`-Xmx4g`), az alapértelmezett
+kevés lenne hozzá.
+
+**Egyszeri beüzemelés, csak az ELSŐ telepítés után** (a szolgáltatás neve
+csak ekkor ismert):
+
+1. Hívási jog a `grundo-api`-nak:
+   ```bash
+   gcloud run services add-iam-policy-binding grundo-graphhopper \
+     --region=europe-west1 \
+     --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" \
+     --role="roles/run.invoker"
+   ```
+2. A backend újratelepítése a `_GRAPHHOPPER_URL` substitutionnel (a saját
+   URL a `gcloud run services describe grundo-graphhopper --region
+   europe-west1 --format='value(status.url)'` kimenete):
+   ```bash
+   gcloud builds submit --config cloudbuild.yaml --substitutions=_GRAPHHOPPER_URL=https://…
+   ```
+
+**Mérve (2026-08-29, éles teszt-példány, 1 GB heap — a valódi 1536m-nél
+kevesebbel):**
+
+| | eredmény |
+|---|---|
+| indulás (hidegen) | 8 s |
+| kör-tervezés (bringa, 10 km) | 200, 365 ms |
+| memóriahiba | 0 |
+
+A nullára skálázás ára a hidegindítás: hosszú szünet után az első kérés
+kb. 8–15 s hosszabb, utána percekig meleg marad. Ez a backend saját
+hidegindításával összemérhető (mérve: ~12 s), tehát nem tűnik ki külön.

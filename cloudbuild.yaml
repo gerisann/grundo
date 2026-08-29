@@ -41,11 +41,21 @@ substitutions:
   # kód érintése nélkül. Lásd lent a `--set-secrets` sort.
 
   # A saját GraphHopper-szolgáltatás belső címe (döntés: 2026-08-29, lásd
-  # graphhopper/README.md). ÜRESEN a szerver a Mapbox-ágra esik vissza —
-  # ez a mai állapot, a GraphHopper-konténer élesítése a #19-es menet
-  # feladata. Ha egyszer fut a konténer, add át:
+  # graphhopper/README.md → Élesítés). A konténer és a telepítése a
+  # `graphhopper/cloudbuild.yaml`-ban van, KÜLÖN pipeline-ként — az ritkán
+  # fut, nem minden backend-telepítésnél.
   #
-  #   gcloud builds submit --config cloudbuild.yaml --substitutions=_GRAPHHOPPER_URL=http://…
+  # ÜRESEN a szerver a Mapbox-ágra esik vissza. Ha a GraphHopper-szolgáltatás
+  # már fut, add át a saját Cloud Run URL-jét (a `gcloud run services
+  # describe grundo-graphhopper --region europe-west1 --format='value(status.url)'`
+  # kimenete):
+  #
+  #   gcloud builds submit --config cloudbuild.yaml --substitutions=_GRAPHHOPPER_URL=https://…
+  #
+  # ⚠️ A GraphHopper `--no-allow-unauthenticated` — a `server/` a metaadat-
+  # szervertől kér ID-tokent minden híváshoz (lásd `directions.ts` →
+  # `graphhopperIdToken`), nem ez az env-változó hitelesít. Az URL csak azt
+  # mondja meg, HOVA küldjön kérést.
   _GRAPHHOPPER_URL: ''
 
 steps:

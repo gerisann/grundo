@@ -365,6 +365,74 @@ export type RouteCharacter = 'twisty' | 'straight';
 const GH_SEEDS_PER_BEARING = 3;
 
 /**
+ * ID-token cache szolgáltatások közötti hitelesítéshez (Cloud Run → Cloud Run).
+ *
+ * A GraphHopper-szolgáltatás `--no-allow-unauthenticated` (lásd
+ * `graphhopper/README.md` → Élesítés): nem nyílik meg a világ felé, csak
+ * Google-aláírt ID-tokennel hívható, aminek az `aud` mezője PONTOSAN a hívott
+ * szolgáltatás URL-je. Cloud Runon ezt a metaadat-szervertől kapjuk, saját
+ * kulcs vagy Secret Manager nélkül — a service account, amivel a `grundo-api`
+ * fut, automatikusan jogosult tokent kérni saját magának.
+ *
+ * A token kb. egy órát él; a cache 5 perccel a lejárat előtt frissít, hogy
+ * egy hosszan futó kérés közben se járjon le alatta.
+ */
+const idTokenCache = new Map<string, { token: string; expiresAt: number }>();
+
+/**
+ * Folyamatban lévő tokenkérés — hogy 48 párhuzamos jelölt (8 irány × 3 mag ×
+ * 2 menet) NE indítson 48 külön metaadat-hívást az első, még üres cache-nél.
+ * A második hívótól kezdve mindenki ugyanarra a promise-ra vár.
+ */
+let idTokenInFlight: Promise<string | null> | null = null;
+
+/**
+ * ID-token a GraphHopper-híváshoz — `null`, ha nincs rá szükség vagy nem
+ * elérhető a metaadat-szerver.
+ *
+ * ⚠️ HELYI FEJLESZTÉSEN (`GRAPHHOPPER_URL=http://localhost:8989`) EZ MINDIG
+ * `null`. A metaadat-szerver csak GCP-n belül létezik, és a helyi GraphHopper
+ * nincs is hitelesítés mögé zárva — a `fetch` erre a címre helyben egyszerűen
+ * elhasalna (DNS-hiba), ezért localhost/loopback címnél meg sem próbáljuk.
+ */
+async function graphhopperIdToken(): Promise<string | null> {
+  const audience = graphhopperUrl();
+  if (!audience || /^https?:\/\/(localhost|127\.0\.0\.1)/.test(audience)) return null;
+
+  const cached = idTokenCache.get(audience);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+  if (idTokenInFlight) return idTokenInFlight;
+
+  idTokenInFlight = fetchGraphhopperIdToken(audience).finally(() => {
+    idTokenInFlight = null;
+  });
+  return idTokenInFlight;
+}
+
+async function fetchGraphhopperIdToken(audience: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2_000);
+  try {
+    const response = await fetch(
+      `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(audience)}`,
+      { headers: { 'Metadata-Flavor': 'Google' }, signal: controller.signal },
+    );
+    if (!response.ok) return null;
+    const token = (await response.text()).trim();
+    // A Google ID-token kb. 1 órát él — 5 perccel korábban frissítünk.
+    idTokenCache.set(audience, { token, expiresAt: Date.now() + 55 * 60 * 1000 });
+    return token;
+  } catch {
+    // Nem GCP-n futunk, vagy a metaadat-szerver átmenetileg nem elérhető.
+    // A hívó ilyenkor token nélkül próbálja — ha a GraphHopper hitelesítést
+    // követel, 403-at ad, ami a szokásos „ez a jelölt kimarad" ágba fut.
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Az útsúlyozás és a kanyarbüntetés PONTOSAN a `graphhopper/custom_models/`
  * alatti fájlok tartalma, ide másolva.
  *
@@ -431,9 +499,13 @@ async function requestGraphHopperRoundTrip(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    const idToken = await graphhopperIdToken();
     const response = await fetch(`${graphhopperUrl()}/route`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
       signal: controller.signal,
       body: JSON.stringify({
         points: [[origin.lng, origin.lat]],
