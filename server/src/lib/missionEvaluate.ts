@@ -17,7 +17,13 @@
  */
 
 import { GAMEPLAY, type GameplayConfig } from '../../../src/config/gameplay';
-import { buildActivityGeometry, loopCells, processActivity } from '../../../src/game';
+import {
+  buildActivityGeometry,
+  loopCells,
+  processActivity,
+  processActivityGeometry,
+  type ActivityGeometry,
+} from '../../../src/game';
 import { blockIdFor } from './gridMath';
 import type { ActivityType, CellId, Layer, OwnershipMap, TracePoint } from '../../../src/types';
 import type { MissionCandidate } from '../../../src/game/missions';
@@ -36,6 +42,17 @@ export interface ShapedCandidate {
   shortDetours: number;
   /** 30 m-es léptékű kanyarszám — lásd `routeShape.ts` → `measureStraightness`. */
   turnCount?: number;
+  /**
+   * A már felépített geometria — hogy az `evaluateCandidate` NE építse fel újra.
+   *
+   * ⚠️ MÉRT OK, nem elegancia. A geometriaépítés drága fele a hurokdetektálás
+   * (`detectLoopsDetailed`), ami jelöltkapunként flood fillt futtat: egy 16 km-es
+   * bringakörnél ~4,8 s. Enélkül a mező nélkül az `evaluateCandidate` a
+   * `processActivity`-n át MÉGEGYSZER lefuttatta ugyanezt ugyanarra a
+   * nyomvonalra. Mérve 2026-08-29 (élő GraphHopper, 2 jelölt/táv): a
+   * megtakarítás 43–50 %, és a kapott cella/GP/terület bitre azonos maradt.
+   */
+  geometry?: ActivityGeometry;
 }
 
 /**
@@ -55,13 +72,15 @@ export interface ShapedCandidate {
 export function shapeCandidateCells(points: readonly TracePoint[]): {
   loopCount: number;
   cells: Set<CellId>;
+  /** Add tovább az `evaluateCandidate`-nek — lásd `ShapedCandidate.geometry`. */
+  geometry: ActivityGeometry;
 } {
   const geometry = buildActivityGeometry(points);
   const cells = new Set<CellId>();
   for (const loop of geometry.loops) {
     for (const cell of loopCells(loop)) cells.add(cell);
   }
-  return { loopCount: geometry.loops.length, cells };
+  return { loopCount: geometry.loops.length, cells, geometry };
 }
 
 export interface EvaluateContext {
@@ -101,7 +120,7 @@ export function evaluateCandidate(
   ownedBlocks: ReadonlySet<string>,
 ): MissionCandidate | null {
   try {
-    const result = processActivity({
+    const input = {
       points: shaped.points,
       type: context.type,
       distanceKm: shaped.distanceKm,
@@ -110,7 +129,16 @@ export function evaluateCandidate(
       streakDays: context.streakDays,
       gpEarnedToday: context.gpEarnedToday,
       cfg: context.cfg,
-    });
+    };
+    /*
+      A `processActivity` ugyanez, plusz egy `buildActivityGeometry` hívás. Ha a
+      hívó már felépítette a geometriát (a `shapeCandidateCells`-ben úgyis kellett),
+      azt használjuk — különben a drága hurokdetektálás kétszer futna le
+      ugyanarra a nyomvonalra. Ha nincs geometria, a régi út marad érvényes.
+    */
+    const result = shaped.geometry
+      ? processActivityGeometry(input, shaped.geometry)
+      : processActivity(input);
     if (!result.claim) return null;
 
     const touched = new Set<string>();

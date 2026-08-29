@@ -497,6 +497,35 @@ export interface MissionResult {
   reason?: string;
 }
 
+/**
+ * Egy jelölt útvonal a GYORS fázisból — terület és GP nélkül.
+ *
+ * Ennyi elég a kártya kirajzolásához: a vonalláncból megvan a térkép, a
+ * hosszból a fejléc. A többi mező a `missionsEvaluate` válaszából érkezik.
+ */
+export interface PlannedRoute {
+  polyline: string;
+  distanceKm: number;
+  /** Csak diagnosztikához és a kiértékelő kéréshez — a felület nem mutatja. */
+  bearing: number;
+}
+
+/**
+ * A `phase: 'plan'` válasza — a küldetés-ajánló gyors fele.
+ *
+ * ⚠️ NINCS BENNE TERÜLET, ÉS EZ SZÁNDÉKOS. A „NEM BECSLÉS" szabály szerint
+ * nem adunk közelítő számot, amit később felülírnánk: a kártya addig töltő
+ * jelzést mutat, amíg a valódi motor ki nem számolja az értéket.
+ */
+export interface MissionPlanResult {
+  targetKm: number;
+  paceSecPerKm: number;
+  quota?: { unlimited: true } | { unlimited: false; used: number; limit: number };
+  routes: PlannedRoute[];
+  /** `no_routes` vagy `no_fit` — a `no_loops` csak a kiértékelésből derülhet ki. */
+  reason?: string;
+}
+
 export interface OtpSendResult {
   sent?: boolean;
   alreadyVerified?: boolean;
@@ -1172,6 +1201,44 @@ export const api = {
     routeCharacter?: RouteCharacter;
   }) =>
     request<MissionResult>('/api/missions/generate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /**
+   * A küldetés-ajánló GYORS fele: útvonalak terület és GP nélkül.
+   *
+   * Mérve (2026-08-29): 0,5–2,2 s, míg a teljes lánc nagy bringakörnél
+   * 12,7 s. A kártya ebből már kirajzolható, a többi mező a
+   * `missionsEvaluate` válaszával töltődik ki.
+   */
+  missionsPlan: (input: {
+    lat: number;
+    lng: number;
+    minutes?: number;
+    distanceKm?: number;
+    paceSecPerKm?: number;
+    priority?: MissionPriority;
+    preferredBearing?: number;
+    type: ActivityType;
+    routeCharacter?: RouteCharacter;
+  }) =>
+    request<MissionPlanResult>('/api/missions/generate', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, phase: 'plan' }),
+    }),
+
+  /**
+   * A LASSÚ fele: a megtervezett útvonalakra terület, mező, GP és karakter.
+   *
+   * Nem fogyaszt kvótát — azt a `missionsPlan` már elszámolta.
+   */
+  missionsEvaluate: (input: {
+    type: ActivityType;
+    priority?: MissionPriority;
+    routes: { polyline: string; bearing: number }[];
+  }) =>
+    request<{ missions: Mission[]; reason?: string }>('/api/missions/evaluate', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

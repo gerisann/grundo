@@ -39,6 +39,59 @@
 .mission__stepper button { width: 44px; height: 44px; border: 1px solid var(--accent-border); border-radius: var(--r-sm); background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 22px; font-weight: 700; }
 .mission__stepper-value { min-height: 44px; display: grid; place-items: center; border: 1px solid var(--input-border); border-radius: var(--r-sm); background: var(--input-bg); color: var(--text-primary); font-weight: 700; }
 
+/*
+  A léptethető mező szerkeszthető is: a keret a `span`-en van, benne egy
+  keret nélküli `input` és az egység. Így a beírt szám és a mértékegység egy
+  dobozban ül, a fókuszkeret pedig az egész mezőt jelöli — nem csak a szám
+  körüli sávot.
+*/
+.mission__stepper-field {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r-sm);
+  background: var(--input-bg);
+  /* A teljes doboz a beviteli mező kattintófelülete — lásd a `label`-t a
+     `Stepper`-ben. Enélkül csak a szöveg néhány képpontja fogadna kattintást. */
+  cursor: text;
+}
+
+.mission__stepper-field:focus-within {
+  border-color: var(--accent);
+}
+
+/* ⚠️ A `.mission__field input` szabályt kell felülírni (teljes szélesség,
+   keret, padding) — ezért a `.mission__field` szülőt is megnevezzük, hogy a
+   specificitás elég legyen. */
+.mission__field .mission__stepper-field input,
+.mission__stepper-field input {
+  width: auto;
+  min-width: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: right;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mission__stepper-field input:focus {
+  outline: none;
+}
+
+.mission__stepper-unit {
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .mission__question {
   margin: var(--sp-3) 0 var(--sp-2);
   font-size: var(--fs-heading);
@@ -202,6 +255,10 @@
 .mission__card--fortify  { border-left-color: var(--info); }
 .mission__card--explore  { border-left-color: var(--success); }
 
+/* A számítás alatti kártya szándékosan SEMLEGES: a karaktere (hódítás,
+   rajtaütés…) még nem dőlt el, tehát nem szabad egyik szín sem. */
+.mission__card--pending { border-left-color: var(--border-default); }
+
 .mission__head {
   display: flex;
   align-items: center;
@@ -238,6 +295,56 @@
 .mission__badge--explore {
   color: var(--success);
   background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.mission__badge--pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+}
+
+/* Forgó gyűrű a jelvényben. A `currentColor` miatt a témaváltás magától
+   követi a felirat színét — nincs külön sötét változat. */
+.mission__spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: mission-spin 0.7s linear infinite;
+}
+
+@keyframes mission-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mission__headline--pending {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* A felirat lélegzik, nem villog: a 0.45 alsó érték elég ahhoz, hogy a
+   szöveg végig olvasható maradjon. */
+.mission__pending-text {
+  animation: mission-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mission-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/*
+  Mozgáscsökkentés: aki ezt kéri az operációs rendszerében, ne kapjon se
+  forgást, se pulzálást — a felirat magától is elmondja, hogy számolunk.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .mission__spinner,
+  .mission__pending-text {
+    animation: none;
+  }
 }
 
 .mission__distance {
@@ -289,6 +396,31 @@
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+  ⚠️ EZ A SZABÁLY A `.mission__stat-value` UTÁN KELL ÁLLJON. Mindkettő egy
+  osztály, tehát azonos a specificitásuk, és ilyenkor a fájlban KÉSŐBBI nyer.
+  Először a `.mission__distance` elé került, és emiatt a szín, a méret és a
+  vastagság némán a kész értékét vette fel — mérés fogta meg (2026-08-29):
+  a számított szín a `--text-primary` volt a kért `--text-tertiary` helyett.
+*/
+.mission__stat-value--pending {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  /*
+    A kiszámolt érték nagyobb betűs; ez a sor tartja a doboz magasságát,
+    hogy a kártya ne ugorjon meg, amikor a szám a helyére kerül.
+
+    Az 1,45 a törzsszöveg sorköze — a kész `.mission__stat-value` magassága
+    pontosan `--fs-body × 1,45` (mérve: 15 px → 21,75 px). Korábban 1,2 állt
+    itt, és emiatt a kártya 4 px-et ugrott a szám megjelenésekor.
+  */
+  min-height: calc(var(--fs-body) * 1.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .mission__actions {
