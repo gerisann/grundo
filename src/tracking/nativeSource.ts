@@ -35,6 +35,7 @@ interface BackgroundLocationPlugin {
   }): Promise<{
     permission: 'granted' | 'prompt';
     backgroundPermission?: 'granted' | 'not_granted';
+    notificationPermission?: 'granted' | 'not_granted';
   }>;
   stop(): Promise<void>;
   syncActivity(options: PositionActivityState): Promise<void>;

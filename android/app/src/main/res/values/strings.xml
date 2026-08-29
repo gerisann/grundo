@@ -10,4 +10,9 @@
     <string name="tracking_notification_walk">Séta rögzítése folyamatban</string>
     <string name="tracking_notification_ride">Kerékpározás rögzítése folyamatban</string>
     <string name="tracking_notification_paused">A rögzítés szünetel</string>
+    <string name="tracking_status_live">Élő</string>
+    <string name="tracking_status_paused">Szünet</string>
+    <string name="tracking_metric_distance">TÁV</string>
+    <string name="tracking_metric_time">IDŐ</string>
+    <string name="tracking_metric_speed">SEBESSÉG</string>
 </resources>

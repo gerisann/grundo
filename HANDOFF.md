@@ -1,175 +1,141 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · átadás a **GRUNDO #19** menetből a **#20**-ra
+> Frissítve: **2026-08-29** · átadás a **GRUNDO #20** menetből a **#21**-re
 >
-> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
+> Repo: `C:\Users\Geri\Documents\ChatGPT\GRUNDO` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · ebben a menetben **nem változott kód** (csak mérés és
-> döntés) — a #18 óta a HEAD-en lévő GraphHopper-kód változatlanul él,
-> lásd lent, „ÉLESBEN FUT / TELEPÍTETLEN".
+> Ág: **`main`** · HEAD: **`Android zárolt képernyős élő mérés`**
+> (a jelen `HANDOFF.md`-t tartalmazó commit)
 
-## ⚠️ ELSŐ OLVASNIVALÓ
+## ÁLLAPOT
 
-**A #20 fő feladata: a küldetés-ajánló route-tervezésének és
-terület/cella-számításának SZÉTVÁLASZTÁSA.** A #19-ben megmértük a
-küszöböt és Geri döntött a felületi viselkedésről — a tervezés kész, a
-megvalósítás a #20 feladata. **AGENTS.md 0. pont szerint Opus, emelt
-mélység** — ez adatmodell- és API-szerződés-döntés, nem rutin kiterjesztés.
+Elkészült az iOS Live Activity Android megfelelője a már működő location
+foreground service-re építve.
 
-### A mérés (#19-ben végzett)
+- Az Android foreground notification kompakt nézete folyamatosan mutatja a
+  távot, időt és sebességet.
+- A kibontott/zárolt képernyős nézet mutatja a mozgásformát, a `Élő` / `Szünet`
+  állapotot, valamint külön oszlopban a távot, időt és sebességet.
+- Az időt natív Android `Chronometer` rajzolja, ezért lezárt képernyőn és
+  felfüggesztett WebView mellett is tovább jár; szünetnél megáll.
+- A háttér-GPS a WebView nélkül is frissíti a notification táv- és
+  sebességértékét. Előtérben a közös TypeScript recorder minden elfogadott
+  mintánál visszaszinkronizálja a pontos, szűrt állapotot.
+- A notification állapota (`startedAt`, táv, összes szünet, nyitott szünet,
+  sebesség) `SharedPreferences`-ben is megmarad, ezért a foreground service
+  rendszer általi újraindítása után helyreáll.
+- A notification nyilvános lock-screen tartalmat kér és koppintásra megnyitja
+  a GRUNDO-t. A felhasználó Android rendszerbeállítása és az OEM felülete
+  mindig elsőbbséget élvez.
+- Android 13+-on az első, élő mérésre engedélyezett rögzítés indításakor a
+  plugin kéri a `POST_NOTIFICATIONS` engedélyt. Megtagadáskor a GPS-rögzítés
+  nem áll le, de az Android a foreground service-t csak az Active apps /
+  feladatkezelő felületen mutatja.
+- A Beállítások → Értesítések → „Élő mérés a zárolt képernyőn” kapcsoló már
+  Androidon is megjelenik. Kikapcsolva a következő rögzítés csak a kötelező,
+  egyszerű foreground service értesítést használja.
+- Új notification channel készült: `grundo_tracking_live_v2`. A régi
+  `grundo_tracking` channel megmaradhat a készülék rendszerbeállításaiban, de
+  az új build már nem használja.
 
-Egyetlen irányban (2 jelölt/irány), `straight` karakterrel, élő helyi
-GraphHopperrel, csak a nehéz fél (`shapeCandidateCells` +
-`evaluateCandidate`):
+## ANDROID RENDSZERKORLÁT
 
-| táv | terv | cellafeldolg | értékelés | ÖSSZ (2 jelölt) |
-|---|---|---|---|---|
-| gyalog 2 km | 0,11s | 0,18s | 0,12s | 0,41s |
-| gyalog 4 km | 0,04s | 0,25s | 0,31s | 0,60s |
-| gyalog 6 km | 0,07s | 1,42s | 1,42s | 2,90s |
-| gyalog 8 km | 0,08s | 3,87s | 3,87s | 7,82s |
-| gyalog 10 km | 0,09s | 2,85s | 3,06s | 6,00s |
-| gyalog 12 km | 0,10s | 1,23s | 1,57s | 2,91s |
-| bringa 4 km | 0,13s | 1,03s | 1,12s | 2,27s |
-| bringa 8 km | 0,06s | 3,15s | 3,30s | 6,51s |
-| bringa 12 km | 0,07s | 5,08s | 5,30s | 10,45s |
-| bringa 16 km | 0,09s | 9,52s | 9,68s | 19,29s |
-
-Tanulságok:
-- A route-terv (GraphHopper) mindig elhanyagolható (~0,1s) — **nem a
-  GraphHopper a szűk keresztmetszet**, a HANDOFF #19-es diagnózisa helyes
-  volt.
-- A gyalog 8/10 km sorrend fordított a 6/12-höz képest — **nem mérési
-  hiba**: az idő a **bezárt cellák számával** arányos, nem a km-rel
-  (ugyanolyan hosszú kör más helyen más méretű területet zárhat be).
-- A tábla **csak 1 irányt, 2 jelöltet** mér. Az éles kérés 8 irányban, két
-  menetben, akár **19 jelölttel** fut — a teljes idő ennek kb.
-  **8-9-szerese** ugyanerre a távra (ez magyarázza a #18-as 80s-os mérést
-  16 km bringára, `twisty` karakterrel).
-- **Küszöb**, ha a cél "pár másodperc" a TELJES kérésre: jelöltenként kb.
-  0,2-0,3s büdzsé fér bele. Ez alapján gyalog/futásra kb. **4-5 km** az,
-  ami még szinkron elfér — **bringára gyakorlatilag semmi**, már a 4 km-es
-  kör is ~1,1s/jelölt, ami 8 iránnyal 8-10s fölé megy.
-- Az olcsó előszűrés (19→5-6 jelölt, cella nélküli jelekből) ÖNMAGÁBAN
-  **nem elég** bringára, ahogy a #18-as HANDOFF is sejtette.
-
-### A döntés (Geri, 2026-08-29)
-
-**A kártyák jelenjenek meg AMILYEN GYORSAN LEHET, az útvonaltervvel** (a
-gyors fázis: route-tervezés, ~0,1-0,7s). Amelyik mező még nem kész
-(terület, cella, GP, stb.), ott **helyőrző szöveg + animáció** menjen:
-„terület számítás", „cella kalkulálás" (vagy hasonló, mezőnként külön
-felirat), amíg a lassú fázis be nem fejeződik és a kártya frissül a
-végleges számmal.
-
-Ez **nem sérti** az AGENTS.md „NEM BECSLÉS" szabályát (2. döntés) — nincs
-laza becslés, a mező egyszerűen üres/töltő állapotban van, amíg a valódi
-motor nem ad számot. A #19-ben felvetett kérdés („mit mutasson a kártya a
-köztes állapotban") ezzel eldőlt: **semmit, csak töltő jelzést**.
-
-### Ami a #20-ban MÉG NYITOTT (a tervezés első lépései)
-
-- **API-szerződés**: mit adjon vissza AZONNAL a `POST
-  /api/missions/generate`? Valószínűleg: a küldetés-lista route-tervvel
-  (polyline, distanceKm, bearing, kind) + egy azonosító (jobId vagy
-  missionId), terület/cella/GP mezők nélkül vagy `null`-lal/`pending`
-  jelzéssel.
-- **Frissítési mechanizmus**: polling (`GET
-  /api/missions/{jobId}/status` vagy hasonló), SSE, vagy valami
-  egyszerűbb. Polling a legkisebb kockázatú első lépésnek tűnik (a repo
-  már használ TanStack Query-t a kliensen), de Geri döntése.
-- **Hol fut a lassú fázis?** Ugyanabban a Cloud Run kérésben
-  (`res.write`/streaming?), külön háttérfolyamatban (Cloud Tasks?), vagy
-  egyszerűen a kliens indít egy második kérést, ami szinkron vár, amíg a
-  szerver az első válasz visszaküldése UTÁN elvégzi a számítást és
-  Firestore-ba írja az eredményt? Ez a legfontosabb architektúra-döntés,
-  Opus-szintű mérlegelést igényel (Cloud Run kérés-időkorlát, memória,
-  hidegindítás hatása).
-- **Melyik jelölteken fusson a lassú fázis?** A gyors fázis a jelenlegi 8
-  irány × 2 menet route-jait adja vissza — a lassú fázisnak nem kell
-  MIND a 19-et feldolgoznia, ha a gyors fázis már kiszűrte, melyik
-  kerül ténylegesen kártyára (`selectMissionRoutes` már most
-  karakterenkénti legjobbat választ INNEN). Érdemes a szűrést (kanyar/
-  hossz-eltérés alapú, cella nélküli) a gyors fázisba tenni, és a lassú
-  fázis csak a ténylegesen megjelenő 3-4 kártyára fusson — ez már
-  önmagában a 19-ből 3-4-re vágja a drága munkát, a teljes
-  átszervezés mellett.
-- A „Sík/Mászás" választó (lásd #18-as HANDOFF) — külön menet marad, a
-  teljesítmény-architektúra után.
+Android 12+ alatt teljesen egyedi notification nem készíthető: a rendszer a
+saját app-fejlécét, ikonját és kibontó vezérlőjét kötelezően hozzáadja. Emiatt
+a csatolt iOS-kártya információs hierarchiája és adatai átvihetők, de a
+pixelpontos külső nem. A megvalósítás a hivatalos
+`DecoratedCustomViewStyle` + `RemoteViews` mintát használja; a kompakt nézet
+48 dp-es, a kibontott nézet a nagyobb tartalmi területet használja.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-Változatlan a #18 óta:
-- Élesben (`grundo-api`, Cloud Run) a Mapbox-ág fut, a token-hiba javítva.
-- A GraphHopper csak localhoston fut. `cloudbuild.yaml`
-  `_GRAPHHOPPER_URL` substitution előkészítve, üresen.
-- Kód a `main`-en, de amíg a `GRAPHHOPPER_URL` élesben üres, semmi új nem
-  aktiválódik. Push/deploy bármikor biztonságos, csak nem történik tőle
-  semmi látható.
-
-## FÁJL-ÖSSZEFOGLALÓ (#19 menet)
-
-| Fájl | +/− | Mit tartalmaz |
-|---|---|---|
-| `HANDOFF.md` | felülírva | Ez a fájl — mérési eredmények, felületi döntés, #20 terve. |
-| `tmp/measure-mission-perf.ts` | új, NEM verziókövetett | A fenti mérést végző szkript, élő GraphHopper ellen. Újrafuttatható: `npx tsx ../tmp/measure-mission-perf.ts` a `server/` mappából. |
-
-**Kódváltozás nem történt ebben a menetben** — csak mérés és tervezési
-döntés. **Teendők sorrendje**: push (a `HANDOFF.md` miatt) → nincs
-adatbázis-lépés → nincs telepítés szükséges.
-
-## HELYI KÖRNYEZET — LEHET, HOGY MÉG FUT
-
-Ugyanaz, mint a #18-ban: Firestore/Auth emulátor, `server/`
-(`GRAPHHOPPER_URL=http://localhost:8989`-cel indítva), GraphHopper
-(Magyarország importálva, `graph-cache/` kész). A #19-ben mindhárom élt a
-mérés alatt. Ha nem futnak, indítás:
-
-```bash
-export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"
-```
-```bash
-cd graphhopper && java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml
-```
-```bash
-firebase.cmd emulators:start --only auth,firestore --project demo-grundo
-```
-```bash
-cd server && GRAPHHOPPER_URL=http://localhost:8989 npm run dev:emulator
-```
-```bash
-npm run dev:emulator
-```
-
-Belépés: `geri@grundo.local` / `grundo-emulator`. Böngészőből geolokáció
-nélkül teszteléshez:
-```js
-navigator.geolocation.getCurrentPosition = (s) => s({ coords: { latitude: 47.4979, longitude: 19.0537, accuracy: 10 } });
-```
-
-`tmp/verify-planMissionLoop.ts` (a #18-ból) és `tmp/measure-mission-perf.ts`
-(a #19-ből) mindkettő kód nélkül futtatható ellenőrzéshez, egyik sem
-verziókövetett.
+- A mostani Android zárolt képernyős nézet **még nincs pusholva és nincs
+  készülékre telepítve**.
+- Backend-, Firestore-szabály-, index- és adatbázis-változás nincs.
+- A webes felületen a kapcsoló továbbra sem jelenik meg; a TypeScript-változás
+  csak a natív iOS/Android appban aktív.
+- A korábbi GraphHopper-kód továbbra is a `main` ágon van, de élesben a
+  `GRAPHHOPPER_URL` üres, ezért a Mapbox-ág fut. A #19-ben eldöntött
+  küldetés-ajánló route/terület számítás szétválasztása e menet miatt
+  szándékosan nem kezdődött el.
 
 ## ELLENŐRZÉSEK
 
-Nem futott ebben a menetben teszt/build (nem történt kódváltozás). A #18
-végén: `npx tsc --noEmit` tiszta, `npx vitest run` 556 sikeres/122
-kihagyva.
+- `npm run typecheck`: sikeres.
+- `npm test`: **556 sikeres**, 122 emulátoros teszt kihagyva.
+- `npm run build`: sikeres production build; a meglévő nagy chunk figyelmeztetés
+  változatlan.
+- `npx cap sync android`: sikeres, 4 Capacitor plugin felismerve.
+- Android célzott JUnit: **3 sikeres**
+  (`TrackingNotificationFormatterTest`: szünetidő és iOS-sel azonos formázás).
+- Android `lintDebug`: sikeres.
+- Android `lintRelease`, `assembleRelease`, `bundleRelease`: **BUILD SUCCESSFUL**.
+- Firestore-emulátoros teszt nem futott, mert sem tranzakció, sem lekérdezés,
+  sem séma, sem biztonsági szabály nem változott.
+- Csatlakoztatott Android készülék nem volt, ezért a tényleges lock-screen
+  layout és OEM-viselkedés még nincs vizuálisan ellenőrizve.
+
+Windows alatt a release build első két próbája nem kódhibán, hanem a generált
+Capacitor `build` könyvtárak `ReadOnly` attribútumán állt meg. Az attribútum
+feloldása után ugyanaz a release parancs teljesen sikeres lett; forrásfájl vagy
+verziókövetett fájl emiatt nem változott.
+
+## KÖVETKEZŐ MENET — #21
+
+1. Geri pusholja a commitot.
+2. Codemagicben készüljön **GRUNDO Android Release** build; adatbázis-lépés,
+   backend-, frontend-, szabály- vagy indextelepítés nem kell.
+3. Az új APK kerüljön valódi Android készülékre.
+4. Beállítások → Értesítések alatt legyen bekapcsolva az élő mérés. Android
+   13+-on az első rögzítés indításakor engedélyezni kell a rendszerértesítést.
+5. Legalább 3 perces és 100 méteres futás/séta közben:
+   - kijelző lezárása;
+   - kompakt és kibontott notification ellenőrzése;
+   - táv, idő, sebesség és mozgásforma ellenőrzése;
+   - szünet legalább 30 másodpercig, majd folytatás;
+   - ellenőrizni, hogy az idő megáll, a sebesség 0, és folytatáskor nem kerül
+     bele a szünet alatt megtett távolság;
+   - notificationre koppintva a GRUNDO nyíljon meg;
+   - feloldás után a nyomvonal legyen hézagmentes.
+6. A kapcsolót kikapcsolva új rögzítésnél csak az egyszerű, kötelező Android
+   foreground notification maradjon.
+7. Külön érdemes megtagadott notification permissionnel ellenőrizni, hogy a
+   GPS-rögzítés nem vész el, miközben a kártya a notification drawerből a
+   rendszer Active apps felületére kerül.
+8. Ha a készülékes ellenőrzés zöld, a következő fejlesztési feladat visszatérhet
+   a #19-ben megtervezett küldetés-ajánló gyors/lassú fázis szétválasztására.
+
+## NYITOTT KISEBB ÜGYEK
+
+- A notification tényleges mérete, alapértelmezett kibontottsága és tipográfiája
+  Android-verzió- és OEM-függő; készülékes képernyőkép alapján lehet még
+  finomhangolni.
+- Samsung/Xiaomi/Huawei akkumulátorkezelésnél továbbra is kell lezárt
+  képernyős terepi teszt.
+- A notification permission közös az FCM push engedéllyel. Ha a felhasználó a
+  tracking indításakor engedélyezi, a Beállítások push-kapcsolója a képernyő
+  következő megnyitásakor olvassa vissza a friss rendszerállapotot; FCM-token
+  ettől még csak a push-kapcsoló bekapcsolásakor készül.
+- A korábbról nyitott Android GPS-esetek: csak hozzávetőleges hely,
+  helymegtagadás, appváltás, offline pontsor, force stop és Active apps → Stop.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**#20 — a route-tervezés/terület-számítás tényleges szétválasztása:
-Opus, emelt mélység.** A célfelület-viselkedés már eldőlt (lásd fent), de
-az API-szerződés, a frissítési mechanizmus és a lassú fázis futtatási
-helye (Cloud Run kérésen belül vs. külön) architektúra-döntés — pontosan
-az AGENTS.md 0. pontjában megnevezett eset.
+- Készülékes megjelenés-ellenőrzéshez és kisebb layout-finomításhoz:
+  **Sonnet, normál mélység**.
+- Ha a notification nem frissül lezárt képernyőn, a service újraindulásakor
+  elcsúszik az idő/táv, vagy OEM-specifikus háttérleállás jelentkezik:
+  **Opus, emelt mélység**.
+- A küldetés-ajánló API-szerződésének és háttérszámításának szétválasztásához:
+  **Opus, emelt mélység**.
 
 ## FORRÁSOK SORRENDJE
 
-1. `AGENTS.md` — különösen a Munkamódszer szakasz
-2. `HANDOFF.md` (ez a fájl) — a mérés és a felületi döntés itt van
-3. `server/src/routes/missions.ts` — a szétválasztandó folyam pontosan itt van (`withLoops` ciklus + az azt megelőző `planned` lista)
-4. `server/src/lib/missionEvaluate.ts` — `shapeCandidateCells`, `evaluateCandidate` (a lassú fél)
-5. `tmp/measure-mission-perf.ts` — a mérőszkript, újrafuttatható más távokra/irányokra
-6. `docs/02-funkcionalis-spec.md` → Küldetés-ajánló
+1. `AGENTS.md`
+2. `HANDOFF.md` (ez a fájl)
+3. `android/app/src/main/java/app/grundo/android/TrackingLocationService.java`
+4. `android/app/src/main/java/app/grundo/android/BackgroundLocationPlugin.java`
+5. `android/app/src/main/res/layout/notification_tracking_compact.xml`
+6. `android/app/src/main/res/layout/notification_tracking_expanded.xml`
+7. `docs/08-android-codemagic.md` → GPS és háttérmérés / készülékes ellenőrzés
+8. `docs/02-funkcionalis-spec.md` → Rögzítés / élő rendszerértesítés

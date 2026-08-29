@@ -194,10 +194,10 @@ A GRUNDO szíve (képek #49, #21).
 - Gombok: szünet · **stop** · kamera.
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
-- **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás gyűjti a pontokat lezárt képernyőnél is; a rendszer helyengedélyénél a **„Mindig”** opció kell. Ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. A natív sor az ébredő WebView-nak adódik át, ezért a háttérben tett út nem a felfüggesztett JavaScripttől függ.
+- **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás, Androidon location típusú foreground service gyűjti a pontokat lezárt képernyőnél is. iOS-en a rendszer helyengedélyénél a **„Mindig”** opció kell; ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. A natív sor az ébredő WebView-nak adódik át, ezért a háttérben tett út egyik platformon sem a felfüggesztett JavaScripttől függ.
 - A natív WebView memória- vagy rendszeresemény miatti újraindulása **nem
   félbehagyás**: az app kérdés nélkül visszaveszi a helyi recorder-állapotot,
-  visszakapcsolódik a tovább futó Core Location sorhoz, és ugyanazt a mérést
+  visszakapcsolódik a tovább futó natív helyszolgáltatás sorához, és ugyanazt a mérést
   folytatja. A kézi „Folytatom / Eldobom” döntés a webes/PWA helyreállításé.
 - A térkép nyomvonal-, küldetés- és cella-GeoJSON forrása külön frissül. Egy
   GPS-pont vagy a másodperces stopper nem építheti újra a teljes cellaréteget;
@@ -208,7 +208,13 @@ A GRUNDO szíve (képek #49, #21).
   valamint támogatott készüléken a Dynamic Islanden. A natív Core Location
   réteg háttérben is frissíti, ezért nem függ a felfüggesztett WebView-tól.
   A Beállítások → Értesítések alatt kikapcsolható; a változás a következő
-  rögzítéstől érvényes. Androidon ennek megfelelője későbbi foreground service.
+  rögzítéstől érvényes. Androidon a location foreground service folyamatos,
+  nyilvános rendszerértesítése mutatja ugyanezeket az adatokat. A stopper natív
+  chronometerként lezárt képernyőn is tovább jár, a távot és a sebességet a
+  háttér-GPS frissíti. A részletes nézet kikapcsolásakor a foreground service-hez
+  kötelező egyszerű rendszerértesítés megmarad. Android 13+-on a zárolt
+  képernyős megjelenéshez rendszerértesítési engedély is szükséges, és a
+  felhasználó készülékszintű adatvédelmi beállítása mindig elsőbbséget élvez.
 
 ### Élő útszakasz-visszajelzés *(döntés: 2026-08-29)*
 

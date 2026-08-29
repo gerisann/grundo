@@ -26,11 +26,16 @@ import java.util.List;
         @Permission(
             alias = BackgroundLocationPlugin.LOCATION_PERMISSION,
             strings = { Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION }
+        ),
+        @Permission(
+            alias = BackgroundLocationPlugin.NOTIFICATION_PERMISSION,
+            strings = { Manifest.permission.POST_NOTIFICATIONS }
         )
     }
 )
 public final class BackgroundLocationPlugin extends Plugin {
     static final String LOCATION_PERMISSION = "location";
+    static final String NOTIFICATION_PERMISSION = "notifications";
 
     private TrackingLocationStore store;
     private boolean receiverRegistered;
@@ -94,7 +99,7 @@ public final class BackgroundLocationPlugin extends Plugin {
             requestPermissionForAlias(LOCATION_PERMISSION, call, "locationPermissionCallback");
             return;
         }
-        startService(call);
+        continueAfterLocationPermission(call);
     }
 
     @PermissionCallback
@@ -106,6 +111,13 @@ public final class BackgroundLocationPlugin extends Plugin {
             );
             return;
         }
+        continueAfterLocationPermission(call);
+    }
+
+    @PermissionCallback
+    private void notificationPermissionCallback(PluginCall call) {
+        // The foreground service may still start after denial, but Android 13+
+        // then shows it only in the system task manager instead of the notification drawer.
         startService(call);
     }
 
@@ -117,7 +129,14 @@ public final class BackgroundLocationPlugin extends Plugin {
 
     @PluginMethod
     public void syncActivity(PluginCall call) {
-        TrackingLocationService.sync(getContext(), null, call.getString("status", "recording"));
+        TrackingLocationService.sync(
+            getContext(),
+            call.getString("status", "recording"),
+            readMillis(call, "startedAt", System.currentTimeMillis()),
+            readDouble(call, "distanceM", 0d),
+            readMillis(call, "pausedMs", 0L),
+            readNullableMillis(call, "pausedAt")
+        );
         call.resolve();
     }
 
@@ -138,15 +157,22 @@ public final class BackgroundLocationPlugin extends Plugin {
     private void startService(PluginCall call) {
         JSObject activityState = call.getObject("activityState");
         String status = activityState == null ? "recording" : activityState.getString("status", "recording");
+        long now = System.currentTimeMillis();
         try {
             TrackingLocationService.start(
                 getContext(),
                 call.getString("activityType", "run"),
-                status
+                status,
+                readMillis(activityState, "startedAt", now),
+                readDouble(activityState, "distanceM", 0d),
+                readMillis(activityState, "pausedMs", 0L),
+                readNullableMillis(activityState, "pausedAt"),
+                call.getBoolean("liveActivityEnabled", true)
             );
             JSObject result = new JSObject();
             result.put("permission", "granted");
             result.put("backgroundPermission", "granted");
+            result.put("notificationPermission", hasNotificationPermission() ? "granted" : "not_granted");
             call.resolve(result);
         } catch (SecurityException error) {
             call.reject("Az Android nem engedte elindítani a helyalapú háttérszolgáltatást.", "permission_denied", error);
@@ -155,9 +181,61 @@ public final class BackgroundLocationPlugin extends Plugin {
         }
     }
 
+    private void continueAfterLocationPermission(PluginCall call) {
+        boolean showLiveStats = call.getBoolean("liveActivityEnabled", true);
+        if (showLiveStats && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission()) {
+            requestPermissionForAlias(NOTIFICATION_PERMISSION, call, "notificationPermissionCallback");
+            return;
+        }
+        startService(call);
+    }
+
     private boolean hasFineLocationPermission() {
         return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
             == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasNotificationPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+            || ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private static long readMillis(PluginCall call, String key, long fallback) {
+        Double value = call.getDouble(key);
+        return finiteMillis(value, fallback);
+    }
+
+    private static double readDouble(PluginCall call, String key, double fallback) {
+        Double value = call.getDouble(key);
+        return value != null && Double.isFinite(value) ? value : fallback;
+    }
+
+    private static Long readNullableMillis(PluginCall call, String key) {
+        if (!call.getData().has(key) || call.getData().isNull(key)) return null;
+        Double value = call.getDouble(key);
+        return value != null && Double.isFinite(value) ? Math.round(value) : null;
+    }
+
+    private static long readMillis(JSObject object, String key, long fallback) {
+        if (object == null || !object.has(key) || object.isNull(key)) return fallback;
+        return finiteMillis(object.optDouble(key, Double.NaN), fallback);
+    }
+
+    private static double readDouble(JSObject object, String key, double fallback) {
+        if (object == null || !object.has(key) || object.isNull(key)) return fallback;
+        double value = object.optDouble(key, Double.NaN);
+        return Double.isFinite(value) ? value : fallback;
+    }
+
+    private static Long readNullableMillis(JSObject object, String key) {
+        if (object == null || !object.has(key) || object.isNull(key)) return null;
+        double value = object.optDouble(key, Double.NaN);
+        return Double.isFinite(value) ? Math.round(value) : null;
+    }
+
+    private static long finiteMillis(Double value, long fallback) {
+        return value != null && Double.isFinite(value) ? Math.round(value) : fallback;
     }
 
     private boolean locationServicesEnabled() {
