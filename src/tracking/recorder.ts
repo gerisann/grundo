@@ -21,7 +21,7 @@
 
 import type { ActivityType, TracePoint } from '@/types';
 import { distanceM } from '@/game/geo';
-import { evaluate, type FilterVerdict } from './filter';
+import { evaluate, FILTER, type FilterVerdict } from './filter';
 import type { PositionSample } from './types';
 
 export type RecorderStatus = 'idle' | 'recording' | 'paused' | 'finished';
@@ -58,6 +58,14 @@ export interface RecorderState {
   points: TracePoint[];
   /** Megtett távolság méterben. */
   distanceM: number;
+  /**
+   * A jelenlegi HORGONY — az a pont, amihez a legutóbbi tényleges elmozdulást
+   * mértük. Amíg az új minták ennek `FILTER.STATIONARY_RADIUS_M` körén belül
+   * maradnak, nem számítanak elmozdulásnak (lásd `filter.ts`
+   * `STATIONARY_RADIUS_M` és `anchoredTotal`). `null`, amíg az első pont be
+   * nem érkezett.
+   */
+  anchor: TracePoint | null;
   startedAt: number | null;
   endedAt: number | null;
   /** Szüneteltetéssel töltött idő összesen, ms. */
@@ -83,6 +91,7 @@ export function createRecorder(type: ActivityType, id = newActivityId()): Record
     type,
     points: [],
     distanceM: 0,
+    anchor: null,
     startedAt: null,
     endedAt: null,
     pausedMs: 0,
@@ -206,20 +215,35 @@ export function applySample(state: RecorderState, sample: PositionSample): Recor
     ...(sample.elevation !== undefined ? { elevation: sample.elevation } : {}),
   };
 
-  // A gyakori eset: a minta a nyomvonal végére kerül. Ilyenkor elég a legutolsó
-  // szakasz hosszát hozzáadni. Beszúrásnál viszont két szakasz alakul át
-  // eggyé-kettővé, ezért a teljes hosszt újraszámoljuk — ritka, és így nem
+  // A gyakori eset: a minta a nyomvonal végére kerül. Ilyenkor elég a
+  // horgonyhoz mérni. Beszúrásnál viszont két szakasz alakul át eggyé-kettővé,
+  // ezért a teljes horgony-alapú összeget újraszámoljuk — ritka, és így nem
   // kell a részleges frissítés hibalehetőségeivel bajlódni.
   const appended = index === state.points.length;
   const points = appended
     ? [...state.points, point]
     : [...state.points.slice(0, index), point, ...state.points.slice(index)];
 
-  const nextDistance = appended
-    ? state.distanceM + (previous === null ? 0 : distanceM(previous, point))
-    : totalDistance(points);
+  if (!appended) {
+    const { distanceM: nextDistance, anchor } = anchoredTotal(points);
+    return { ...state, points, distanceM: nextDistance, anchor };
+  }
 
-  return { ...state, points, distanceM: nextDistance };
+  // Az első pont maga lesz a horgony — nulla távval, hiszen nincs mihez
+  // mérni. `== null`, nem `=== null`: egy korábbi verzióból visszaállított,
+  // `anchor` mező nélküli mentés `undefined`-ot adna, azt is új horgonynak
+  // kell tekinteni, nem hibának.
+  if (state.anchor == null) {
+    return { ...state, points, anchor: point };
+  }
+
+  const delta = distanceM(state.anchor, point);
+  if (delta < FILTER.STATIONARY_RADIUS_M) {
+    // Álló helyzeti zaj: a minta bekerül a nyomvonalba (a térkép/kör-hossz
+    // folytonos marad), de a horgony nem mozdul, és a táv nem nő.
+    return { ...state, points };
+  }
+  return { ...state, points, distanceM: state.distanceM + delta, anchor: point };
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -270,10 +294,11 @@ export function currentSpeedMps(state: RecorderState): number | null {
   const seconds = (last.t - first.t) / 1000;
   if (seconds <= 0) return null;
 
-  let meters = 0;
-  for (let i = index + 1; i < points.length; i += 1) {
-    meters += distanceM(points[i - 1]!, points[i]!);
-  }
+  // Horgony-alapú összeg, NE pontpáronkénti lánc-összeg: utóbbi a beltéri
+  // GPS-zajt is sebességnek olvasná (mért eset — lásd `filter.ts`
+  // `STATIONARY_RADIUS_M`), hiszen minden egyes ugrás önmagában elfogadható
+  // méretű, csak az iránya véletlenszerű.
+  const meters = anchoredTotal(points.slice(index)).distanceM;
   return meters / seconds;
 }
 
@@ -297,12 +322,33 @@ function insertionIndex(points: TracePoint[], t: number): number {
   return low;
 }
 
-function totalDistance(points: TracePoint[]): number {
+/**
+ * A megtett táv horgony-alapú (anchor) számítása egy pontsorozaton.
+ *
+ * Nem pontpáronkénti lánc-összeg: az egymást követő pontok között akkor is
+ * összeadódna a táv, ha azok valójában egy helyben vándorló GPS-zaj részei.
+ * Ehelyett egy horgonyhoz mérünk — amíg a következő pont ezen a körön
+ * (`FILTER.STATIONARY_RADIUS_M`) belül marad, a horgony nem mozdul és a táv
+ * nem nő; csak tartós, a körön kívülre vivő elmozdulásnál „ébred fel".
+ *
+ * Ugyanezt a logikát futtatja `applySample` a gyakori (append) esetben
+ * O(1)-ben — ez a függvény a ritka újraszámolási esetekhez kell (sorrenden
+ * kívüli beszúrás, `currentSpeedMps` ablaka), ahol a teljes sorozatot úgyis
+ * végig kell nézni.
+ */
+function anchoredTotal(points: TracePoint[]): { distanceM: number; anchor: TracePoint | null } {
+  if (points.length === 0) return { distanceM: 0, anchor: null };
+  let anchor = points[0] as TracePoint;
   let sum = 0;
   for (let i = 1; i < points.length; i += 1) {
-    sum += distanceM(points[i - 1] as TracePoint, points[i] as TracePoint);
+    const p = points[i] as TracePoint;
+    const delta = distanceM(anchor, p);
+    if (delta >= FILTER.STATIONARY_RADIUS_M) {
+      sum += delta;
+      anchor = p;
+    }
   }
-  return sum;
+  return { distanceM: sum, anchor };
 }
 
 function withRejection(state: RecorderState, verdict: FilterVerdict): RecorderState {

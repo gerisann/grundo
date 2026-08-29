@@ -180,6 +180,23 @@ describe('részidők', () => {
     expect(profile.gainM).toBeLessThan(62);
     expect(profile.lossM).toBe(0);
   });
+
+  it('beltéri/álló helyzeti GPS-zajra sem táv-, sem szintsort nem ad (HANDOFF #20)', () => {
+    // Mért eset: telefon zárolt képernyővel egy órán át — 4 m sugarú körben
+    // vándorló fix, MELLETTE ingadozó "magassággal". Horizontális elmozdulás
+    // nélkül a szintemelkedést sem szabad számolni, még a zajküszöb (3 m)
+    // fölötti magasságugrásnál sem.
+    let t = Date.UTC(2026, 7, 15, 8, 0, 0);
+    const drift: TracePoint[] = [];
+    for (let i = 0; i <= 120; i += 1) {
+      const angle = i * 0.9;
+      const p = offset(ORIGIN, 4 * Math.sin(angle), 4 * Math.cos(angle));
+      drift.push({ ...p, t, elevation: 100 + (i % 2 ? 4 : 0) });
+      t += 30_000;
+    }
+    expect(elevationProfile(drift).gainM).toBe(0);
+    expect(computeSplits(drift)).toHaveLength(0);
+  });
 });
 
 describe('szintek', () => {

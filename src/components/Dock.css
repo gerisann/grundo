@@ -16,9 +16,9 @@
   align-items: center;
   justify-items: center;
 
-  background: color-mix(in srgb, var(--dock-bg) 88%, transparent);
+  background: none;
   backdrop-filter: blur(18px);
-  border: 1px solid var(--dock-border);
+  border: none;
   border-radius: var(--r-pill);
   box-shadow: var(--shadow-dock);
   z-index: 40;

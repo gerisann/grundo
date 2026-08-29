@@ -7,6 +7,7 @@
  */
 
 import { distanceM } from './geo';
+import { GAMEPLAY } from '@/config/gameplay';
 import type { TracePoint } from '@/types';
 
 export interface Split {
@@ -42,10 +43,19 @@ export function computeSplits(points: readonly TracePoint[]): Split[] {
   let splitElevation = 0;
   let lastElevation = points[0]!.elevation;
 
+  // A HORGONY (anchor) — lásd `tracking/filter.ts` `STATIONARY_RADIUS_M`.
+  // Pontpáronkénti lánc-összegzésnél egy beltéri/álló helyzeti GPS-zaj is
+  // valódi távvá és emelkedéssé adódna össze, hiszen minden egyes lépés
+  // önmagában „elfogadhatónak" tűnik. A horgony ezzel szemben csak akkor
+  // mozdul (és csak akkor számít bele a távba/emelkedésbe), ha egy pont
+  // TARTÓSAN kikerül a köréje rajzolt körből.
+  let anchor = points[0]!;
+  let anchorT = points[0]!.t;
+
   for (let i = 1; i < points.length; i += 1) {
-    const previous = points[i - 1]!;
     const current = points[i]!;
-    const step = distanceM(previous, current);
+    const step = distanceM(anchor, current);
+    if (step < GAMEPLAY.GPS_STATIONARY_RADIUS_M) continue;
 
     const elevation = current.elevation;
     if (elevation !== undefined && lastElevation !== undefined) {
@@ -69,7 +79,7 @@ export function computeSplits(points: readonly TracePoint[]): Split[] {
        */
       const overshoot = accumulated - SPLIT_M;
       const ratio = step > 0 ? 1 - overshoot / step : 1;
-      const boundaryT = previous.t + (current.t - previous.t) * ratio;
+      const boundaryT = anchorT + (current.t - anchorT) * ratio;
 
       const seconds = (boundaryT - splitStartT) / 1000;
       splits.push({
@@ -85,6 +95,9 @@ export function computeSplits(points: readonly TracePoint[]): Split[] {
       splitStartT = boundaryT;
       splitElevation = 0;
     }
+
+    anchor = current;
+    anchorT = current.t;
   }
 
   // A maradék szakasz — csak ha értelmes hosszúságú. Egy 12 méteres „utolsó
@@ -114,8 +127,22 @@ export function elevationProfile(points: readonly TracePoint[]): {
   let loss = 0;
   let last: number | undefined;
   let seen = 0;
+  if (points.length === 0) return { gainM: 0, lossM: 0, hasData: false };
 
-  for (const point of points) {
+  // Ugyanaz a horgony-elv, mint `computeSplits`-ben: egy pont csak akkor
+  // számít új mintának, ha VALÓDI elmozdulás van a legutóbbi horgonyhoz
+  // képest — különben az álló helyzeti GPS-zaj is emelkedésnek látszana.
+  let anchor = points[0]!;
+  if (anchor.elevation !== undefined) {
+    last = anchor.elevation;
+    seen += 1;
+  }
+
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i]!;
+    if (distanceM(anchor, point) < GAMEPLAY.GPS_STATIONARY_RADIUS_M) continue;
+    anchor = point;
+
     if (point.elevation === undefined) continue;
     seen += 1;
     if (last === undefined) {

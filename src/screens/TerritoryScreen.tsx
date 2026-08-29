@@ -52,6 +52,27 @@ const HELP_KEY = 'grundo.territory.help';
 type View = { south: number; west: number; north: number; east: number; zoom: number };
 
 /**
+ * A `tiles`-hívás határát a látható terület szélén TÚLRA kell tolni, hogy a
+ * cellák a képernyő szélének elérése ELŐTT betöltődjenek, ne a felhasználó
+ * szeme láttára, mozgás/nagyítás közben (HANDOFF #20, Geri megfigyelése).
+ * A `blobs` ettől független, előszámolt egységben jön (lásd `api.ts`
+ * `territoryBlobs` docstring), azt nem kell kitolni.
+ */
+const TILE_PREFETCH_PAD = 0.75;
+
+function padView(view: View): View {
+  const latPad = (view.north - view.south) * TILE_PREFETCH_PAD;
+  const lngPad = (view.east - view.west) * TILE_PREFETCH_PAD;
+  return {
+    south: view.south - latPad,
+    west: view.west - lngPad,
+    north: view.north + latPad,
+    east: view.east + lngPad,
+    zoom: view.zoom,
+  };
+}
+
+/**
  * Terület.
  *
  * A térkép MINDIG látszik, akkor is, ha még nincs saját területed — sőt főleg
@@ -148,7 +169,7 @@ export function TerritoryScreen() {
        * másikat: inkább lássunk foltokat rács nélkül, mint üres térképet.
        */
       const [tilesResult, blobsResult] = await Promise.allSettled([
-        api.tiles(layer, next),
+        api.tiles(layer, padView(next)),
         api.territoryBlobs(layer, next),
       ]);
       setTiles(tilesResult.status === 'fulfilled' ? tilesResult.value : null);

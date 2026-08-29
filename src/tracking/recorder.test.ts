@@ -30,6 +30,26 @@ function north(meters: number) {
   return { lat: BASE.lat + meters / 111_320, lng: BASE.lng };
 }
 
+/** Kelet-észak eltolás, tetszőleges irányú zajhoz. */
+function point(eastM: number, northM: number) {
+  return {
+    lat: BASE.lat + northM / 111_320,
+    lng: BASE.lng + eastM / (111_320 * Math.cos((BASE.lat * Math.PI) / 180)),
+  };
+}
+
+/**
+ * Beltéri/álló helyzeti GPS-zajt szimuláló minta: egy 4 m sugarú körön
+ * mozog, tehát BÁRMELY két ilyen minta legfeljebb 8 m-re van egymástól —
+ * garantáltan a `STATIONARY_RADIUS_M` (12 m) horgonysugarán belül, akármelyik
+ * lesz is a horgony. Az `i`-t irracionális szöglépéssel (0,9 rad) forgatva a
+ * sorozat nem ismétlődik periodikusan, mégis determinisztikus.
+ */
+function jitter(i: number, seconds: number, accuracy = 8): PositionSample {
+  const angle = i * 0.9;
+  return { ...point(4 * Math.sin(angle), 4 * Math.cos(angle)), t: T0 + seconds * 1000, accuracy };
+}
+
 function sample(offsetM: number, seconds: number, accuracy = 8): PositionSample {
   return { ...north(offsetM), t: T0 + seconds * 1000, accuracy };
 }
@@ -115,6 +135,33 @@ describe('szűrés', () => {
     // Enélkül a szünet nem lenne megkülönböztethető a jelvesztéstől.
     const state = feed(recording(), [sample(0, 0), sample(2, 45)]);
     expect(state.points).toHaveLength(2);
+  });
+});
+
+describe('GPS-horgony — beltéri/álló helyzeti zaj (HANDOFF #20)', () => {
+  it('egy órányi 5-8 m-es beltéri zajra nem halmoz km-es hamis távot', () => {
+    // A mért eset: telefon zárolt képernyővel egy órán át az asztalon,
+    // 2,99 km "futással". Minden egyes ugrás önmagában 5-8 m — a régi,
+    // pontpáronkénti `MIN_MOVE_M` szűrő ezt mind átengedte és összeadta.
+    let state = recording();
+    const samples: PositionSample[] = [];
+    for (let i = 0; i <= 120; i += 1) samples.push(jitter(i, i * 30));
+    state = feed(state, samples);
+
+    expect(state.points.length).toBeGreaterThan(1);
+    expect(state.distanceM).toBe(0);
+  });
+
+  it('de a valódi elmozdulást a zaj közepette is méri', () => {
+    // Öt percnyi beltéri zaj, majd egy egyértelmű 200 m-es séta.
+    let state = recording();
+    const samples: PositionSample[] = [];
+    for (let i = 0; i <= 10; i += 1) samples.push(jitter(i, i * 30));
+    for (let m = 20; m <= 200; m += 20) samples.push(sample(m, 300 + m));
+    state = feed(state, samples);
+
+    expect(state.distanceM).toBeGreaterThan(190);
+    expect(state.distanceM).toBeLessThan(210);
   });
 });
 

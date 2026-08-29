@@ -54,6 +54,27 @@ export const FILTER = {
    * nyomvonal, és a szünet nem lenne megkülönböztethető a jelvesztéstől.
    */
   MAX_GAP_MS: 30_000,
+
+  /**
+   * A HORGONY (anchor) sugara — ezen belüli vándorlás sosem számít
+   * elmozdulásnak, még akkor sem, ha egyenként minden egyes lépés túl van a
+   * `MIN_MOVE_M`-en.
+   *
+   * Ez a tényleges javítás a beltéri/álló helyzeti GPS-zaj okozta hamis
+   * távra (mért eset, 2026-08: telefon zárolt képernyővel egy órán át
+   * mozdulatlanul, 2,99 km rögzített futással). A `MIN_MOVE_M` PONTPÁRONKÉNT
+   * dönt — egy 5-15 m-es véletlen ugrás önmagában mindig „elfogadható", és
+   * sok ilyen ÖSSZEADÓDIK valódi távolsággá. A horgony ezzel szemben nem a
+   * közvetlenül előző ELFOGADOTT ponthoz mér, hanem egy rögzített
+   * középponthoz: amíg a minta ezen a körön belül marad, a táv nem nő és a
+   * horgony nem mozdul — csak akkor „ébred fel", ha a minta TARTÓSAN
+   * kikerül a körből. Lásd `recorder.ts` `applySample`/`anchoredTotal`.
+   *
+   * `GAMEPLAY.GPS_STATIONARY_RADIUS_M`-ből jön, mert a `game/splits.ts`
+   * (utólagos részidő/szintprofil-számítás) ugyanezt a sugarat használja —
+   * két külön hangolt érték idővel szétcsúszna.
+   */
+  STATIONARY_RADIUS_M: GAMEPLAY.GPS_STATIONARY_RADIUS_M,
 } as const;
 
 export type FilterVerdict =

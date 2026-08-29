@@ -1,103 +1,89 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · a **#21** menet vége, átadás **#22**-re
+> Frissítve: **2026-08-29** · a **#20** menet vége, átadás **#21**-re
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` (EGYETLEN klón — a második
 > `Documents\ChatGPT\GRUNDO` törölve) · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**, mindent pusholva. **GraphHopper élesítve és bizonyítottan
-> működik.** Van egy NYITOTT, nem kis súlyú hiba: GPS-drift hamis
-> aktivitásokat hoz létre — lásd lent, ELSŐ OLVASNIVALÓ.
+> Ág: **`main`**, MÉG NEM pusholva (Geri dolga). **GraphHopper élesítve és
+> bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
+> aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
+> "nincs küldetés" hibája, admin oldalak szélessége, dock háttere/border-je.
+> `npx tsc --noEmit` tiszta, teljes `npx vitest run`: 559/681 sikeres (122
+> kihagyva, nincs regresszió).
 
-## HARMADIK NYITOTT TÉMA — Grund-térkép: cellák szemmel láthatóan töltődnek be
+## #20 MENETBEN JAVÍTVA
 
-Geri megfigyelése: bizonyos nagyítási szinten a folytonos terület (a zöld
-folt) egyszerre látszik, de a hatszögrács-cellák RÉSZLETEKBEN, a felhasználó
-szeme láttára töltődnek fel a látható területen — zavaró, félreérthető.
+### GPS-drift hamis aktivitás — MEGOLDVA
 
-**Az ok megvan, pontos helymegjelöléssel, javítás még NEM történt:**
+A #19 diagnózisa (telefont zárolt képernyővel egy órán át hagyva, meg sem
+mozdulva, az app 2,99 km futást és 703 m emelkedést rögzített) alapján:
 
-- `src/components/MapView.tsx` → `report()` (kb. 248-258. sor): a térkép
-  mozgás/nagyítás végén (`moveend`) a PONTOS, aktuális látható határt
-  (`target.getBounds()`) küldi tovább, semmilyen ráhagyás nélkül.
-- `src/screens/TerritoryScreen.tsx` → `loadTiles()` (kb. 137-156. sor): ez a
-  határ megy egyenesen az `api.tiles(layer, next)` hívásba.
-- `src/lib/api.ts` → `tiles()` (kb. 1147-1154. sor): a `south/west/north/east`
-  paraméterek PONTOSAN ez a nézet — nincs kliensoldali kibővítés.
-- A `territoryBlobs()` (ugyanott, ~1156-től) ETTŐL FÜGGETLENÜL, előszámolt
-  egységben jön — ezért látszik egyben azonnal, míg a `tiles` szűk sávban,
-  fokozatosan.
+- **Horgony (anchor) alapú távolságszámítás.** Új tunable:
+  `GAMEPLAY.GPS_STATIONARY_RADIUS_M = 12` (`src/config/gameplay.ts`). Amíg
+  egy minta ezen a körön belül marad egy rögzített horgonyhoz képest, a táv
+  nem nő és a horgony nem mozdul — csak TARTÓS elmozdulásnál "ébred fel".
+  Ez a régi pontpáronkénti `MIN_MOVE_M` szűrő hibáját oldja: egy 5-15 m-es
+  beltéri ugrás önmagában mindig "elfogadható" volt, és sok ilyen összeadva
+  adta a hamis kilométereket.
+  - `src/tracking/recorder.ts`: `applySample` (O(1) append eset) és az új
+    `anchoredTotal()` (újraszámolási eset + `currentSpeedMps`) — utóbbi
+    javítja az induláskori hamis 10-20 km/h-t is.
+  - `src/tracking/filter.ts`: `FILTER.STATIONARY_RADIUS_M` a közös
+    konstansra mutat.
+  - `src/game/splits.ts`: `computeSplits` és `elevationProfile` UGYANEZT a
+    horgonyt használja — ez oldja az `ELEVATION_NOISE_M` hamis emelkedését
+    is, horizontális elmozdulás nélkül nincs szintszámítás.
+  - Új tesztek: `src/tracking/recorder.test.ts` ("GPS-horgony" leírás, 2
+    teszt: egy órányi beltéri zajra 0 a táv, valódi 200 m-es séta viszont
+    pontosan mérve) és `src/game/presentation.test.ts` (beltéri zaj sem
+    táv-, sem szintsort nem ad).
+  - **NEM lett bevezetve**: `altitudeAccuracy` a típuslánchoz — a horgony
+    már horizontális szinten kiszűri az indoor esetet, ez elegendőnek tűnt
+    a mért esetre. Ha később kiderül, hogy VALÓDI (kültéri, mozgó) aktivitás
+    ad hamis emelkedést, ez még mindig nyitott továbblépés.
 
-**Geri kérése**: a `tiles`-hívás határát a képernyő méretének 2-3×-osára
-kell kitolni minden irányban, mielőtt elmegy a szerverre — így a cellák a
-látható terület SZÉLE ELŐTT betöltődnek, nem a user szeme láttára.
+### Grund-térkép: cellák látható betöltődése — MEGOLDVA
 
-**Amire figyelni kell a javításnál**: a kibővített bbox nagyobb válasz
-méretet jelent minden mozdulatnál — érdemes megnézni, mekkora ez nagy
-nagyításnál (sok cella) és kicsi nagyításnál (nagy terület), nehogy a
-javítás egy másik teljesítményproblémát nyisson ki. Nem kezdve, nem mérve.
+`src/screens/TerritoryScreen.tsx`: új `padView()` a `loadTiles()`-ban, a
+`tiles`-hívás határát 2,5×-ösére tolja ki minden irányban
+(`TILE_PREFETCH_PAD = 0.75`, azaz +75% mindkét oldalon), MIELŐTT elmegy a
+szerverre — a `blobs`-hívás változatlan (előszámolt egység, nem kell). A
+válaszméret-hatást (nagy nagyításnál sok cella, kicsi nagyításnál nagy
+terület) **még nem mértük élesben** — érdemes ránézni, ha a `/api/tiles`
+válaszidő vagy méret gyanúsan megnő.
 
-## ⚠️ ELSŐ OLVASNIVALÓ — #22 fő feladata
+### Nagy bringakör + meglévő birtok = nincs küldetés — MEGOLDVA (élő preview)
 
-**Beltéri/álló helyzeti GPS-zaj hamis aktivitást hoz létre.** Geri jelentése:
-telefont a lakásban zárolt képernyővel egy órán át hagyva, meg sem mozdulva,
-az app **2,99 km futást és 703 m emelkedést** rögzített (kanyargós,
-gombolyag-mintázatú nyomvonal — 2. #21-es üzenet screenshotja).
+A gyanú beigazolódott: `src/screens/TrackingScreen.tsx` `preview` (kb. 190.
+sortól) a `processActivityGeometry`-t VALÓDI `nearby` ownershippel hívta.
+A motor (`src/game/index.ts`) SZÁNDÉKOSAN dob, ha a hurok compact belsejű
+(nagy hurok) ÉS `ownership.size > 0` — ez majdnem MINDIG igaz, mihelyt a
+játékosnak van bármi birtoka a közelben. A `catch` ág ezt "GPS-ugrásnak"
+félreértelmezve némán nullázta a preview-t (0 claim, 0 GP) — a tényleges
+terület a feltöltés után a szerver blokkos útján (`server/src/routes/
+activities.ts` `requiresChunkedClaim`) helyesen bekerült, csak a ÉLŐ
+KIJELZÉS hiányzott. Javítás: nagy/compact huroknál a preview üres
+ownershippel hívja a motort (mint a LAB), ami pontos GP-becslést ad, csak a
+lopott/visszafoglalt cella MEGKÜLÖNBÖZTETÉSE vész el élő nézetben (a
+térképen csak a hurok fal/határsávja jelenik meg claimként, a compact
+belső parent-cellák vizuális kirajzolása még nincs bekötve — ha Geri ezt is
+akarja látni, `result.compactClaim` kellene a `HexMap`-nek).
 
-**A diagnózis KÉSZ, a javítás MÉG NEM KEZDŐDÖTT EL.**
+### Admin oldalak szélesség-maximalizálása — MEGOLDVA
 
-### Ok #1 — hamis táv: `src/tracking/filter.ts`
+`src/admin/admin.css` `.admin__body`: a `max-width: 900px; margin: 0 auto;`
+törölve. A `/admin/lab` már korábban is felülírta ezt (`simulation-
+lab.css` `:has(.lab-shell)`), az a szabály most redundáns, de nem árt.
 
-```ts
-if (dist < MIN_MOVE_M && dt < MAX_GAP_MS) → elutasítva
-```
+### `.dock` háttér/border — MEGOLDVA
 
-`MIN_MOVE_M = 5` méter — de egy beltéri GPS-fix a többutas terjedés miatt
-simán ugrik 5–15 métert, véletlenszerű irányba. Minden ilyen ugrás
-ÖNMAGÁBAN „elfogadható" (5 m fölött van, nem lehetetlen sebesség), tehát a
-szűrő mind átengedi, és ezek ÖSSZEADÓDNAK valódi távolsággá. A szűrő
-pontpáronként dönt, nincs időablakos „helyben vagyunk" detektora.
+`src/components/Dock.css:19-21`: `background: none; border: none;` (a
+`border-radius`, `box-shadow`, `backdrop-filter` és a `.dock--blend`/
+`.dock--paused` állapotváltozatok érintetlenek, mert Geri kifejezetten csak
+a háttért és a bordert kérte).
 
-**Ugyanez adja a korábban jelzett hibát is**: induláskor 10–20 km/h
-sebesség állva — a `currentSpeedMps` (recorder.ts) az utolsó 10 mp
-elfogadott pontjainak távolságösszegéből számol; 5–8 m zaj 3–5 mp-enként
-pont ennyi "sebességnek" adódik.
-
-### Ok #2 — hamis emelkedés: `src/game/splits.ts`
-
-```ts
-const ELEVATION_NOISE_M = 3; // túl kicsi
-```
-
-A GPS-magasság 2-3×-osan pontatlanabb a vízszintesnél, beltérben tovább
-romlik. Nincs `altitudeAccuracy` sehol a láncban (`PositionSample` típus
-sem tartalmazza) — a magasság szűretlenül megy be a nyeselő gain-számításba.
-
-### Amit a javítás igényel (NEM egysoros küszöbállítás)
-
-A nehézség: ne törje el a valós lassú mozgást (piros lámpa, séta). Kell:
-- **időablakos „helyben vagyunk" detektor** — ne pontpáronként, hanem egy
-  horgony/középpont körüli klaszterezéssel döntsön, mozdult-e ténylegesen;
-- **magasság-küszöb újragondolása**, vagy pontossághoz kötése (esetleg
-  `altitudeAccuracy` felvétele a típusba és a natív forrásokba is);
-- **indulási bemelegedési időszak**, mert az első pár fix jellemzően
-  pontatlanabb.
-
-Nincs `filter.test.ts` — a szűrő logikáját csak közvetve, a
-`recorder.test.ts`-en át tesztelik. Egy valódi javításhoz saját teszt kell.
-
-**Modelljavaslat: Opus, emelt mélység** (AGENTS.md 0. pont — mért anomália +
-algoritmus-tervezés, nem rutin küszöbváltoztatás). A #21 végén Geri épp
-váltani készült, amikor a menet lezárult.
-
-Érintett fájlok, ahol a munka kezdődik:
-- `src/tracking/filter.ts` — a szűrő maga
-- `src/tracking/recorder.ts` — `applySample`, `currentSpeedMps`
-- `src/game/splits.ts` — `ELEVATION_NOISE_M`, `elevationProfile`
-- `src/tracking/types.ts`, `browserSource.ts`, `nativeSource.ts` — ha kell
-  `altitudeAccuracy`
-
-## MÁSODIK NYITOTT TÉMA — küldetés-ajánló finomítás
+## NYITOTT TÉMA — küldetés-ajánló finomítás
 
 Geri visszajelzései (#21, GraphHopper élesítés UTÁN kezdhetők):
 
@@ -172,29 +158,41 @@ kézzel gépelhetők (eddig csak −/+), és az érték a doboz KÖZEPÉN áll, 
 szélén (`size` attribútum a tartalomhoz igazítva, mérve: 0 px eltérés a
 középtől minden értéknél).
 
-## NYITOTT ÜGYEK (korábbi menetekből, változatlan)
+## NYITOTT ÜGYEK
 
-1. Nagy bringakör + meglévő birtok = nincs küldetés (`processActivityGeometry`
-   compact ága). NEM a #19/#20/#21 okozta, régóta így van. Opus-szintű menet.
-2. 300 km-es kérésnél a gyors fázis is ~17 s (16 GraphHopper-hívás egyszerre)
-   — GraphHopper élesítése után érdemes újramérni, lehet, hogy javult.
-3. Android: Codemagic build + készülékes teszt még nem történt meg.
+1. 300 km-es kérésnél a gyors fázis is ~17 s (16 GraphHopper-hívás egyszerre)
+   — GraphHopper élesítése után érdemes újramérni, lehet, hogy javult. Még
+   nem mérve.
+2. Android: Codemagic build + készülékes teszt még nem történt meg.
+3. **A nagy/compact hurok élő preview-ja csak a fal/határsávot rajzolja ki**
+   (lásd fent, „Nagy bringakör…" — MEGOLDVA rész). A GP-szám pontos, de a
+   compact belső parent-cellák vizuális kirajzolása nincs bekötve. Ha Geri
+   ezt is látni akarja élőben: `result.compactClaim` kellene átadni a
+   `HexMap`-nek/`MapView`-nak, réteges (parent-szintű) rendereléssel. Nincs
+   megbecsülve, mekkora munka.
 
 ## ELLENŐRZÉSEK
 
-- `npx tsc --noEmit` mindkét oldalon tiszta (a GraphHopper auth-kód után is).
-- Teljes `npx vitest run`: 556 sikeres, 122 kihagyva — nincs regresszió.
+- `npx tsc --noEmit` mindkét oldalon tiszta.
+- Teljes `npx vitest run`: 559 sikeres, 122 kihagyva — nincs regresszió (3 új
+  teszttel bővült: `recorder.test.ts` GPS-horgony leírás, `presentation.
+  test.ts` beltéri zaj eset).
 - GraphHopper Dockerfile: NEM lett helyben lebuildelve (nincs helyi Docker),
   csak a `gcloud builds submit` igazolta — az sikerrel lefutott élesben.
 - Éles kéréssel igazolva: küldetés-generálás, kanyargós/egyenes eltérés,
   Cloud Run napló (`POST /route` → 200).
+- A #20 menet fenti javításai (GPS-horgony, tiles-bbox, compact-preview,
+  admin szélesség, dock) valós telefonon/böngészőben MÉG NINCSENEK
+  kipróbálva — csak tsc + vitest igazolja őket.
 
 ## FORRÁSOK SORRENDJE
 
 1. `AGENTS.md` — Munkamódszer szakasz, és az ÚJ „natív appok" rész
 2. `HANDOFF.md` (ez a fájl)
-3. `src/tracking/filter.ts` — a GPS-drift javítás kezdőpontja
-4. `src/tracking/recorder.ts` — `applySample`, `currentSpeedMps`
-5. `src/game/splits.ts` — `ELEVATION_NOISE_M`
+3. `src/config/gameplay.ts` → `GPS_STATIONARY_RADIUS_M` — a GPS-drift javítás
+   közös konstansa
+4. `src/tracking/recorder.ts` — `applySample`, `anchoredTotal`,
+   `currentSpeedMps`
+5. `src/game/splits.ts` — `computeSplits`, `elevationProfile`
 6. `graphhopper/README.md` → Élesítés — ha a GraphHopper-t kell újratelepíteni
 7. `server/src/lib/directions.ts` → `graphhopperIdToken`

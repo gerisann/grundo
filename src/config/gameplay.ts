@@ -159,6 +159,21 @@ export const GAMEPLAY = {
   /** Két egymást követő pont között ennél több cellát kitölteni gyanús
    *  (~750 m hézag) — a Trust Score jelzi. */
   MAX_GRID_PATH_CELLS: 40,
+  /**
+   * A GPS-horgony (anchor) sugara méterben — ezen belüli vándorlás sosem
+   * számít elmozdulásnak, még akkor sem, ha egyenként minden egyes lépés túl
+   * van az egyszerű pontpáronkénti küszöbön (`tracking/filter.ts`
+   * `MIN_MOVE_M`).
+   *
+   * MÉRT ESET (2026-08): telefon zárolt képernyővel egy órán át
+   * mozdulatlanul, 2,99 km rögzített futással és 703 m hamis emelkedéssel —
+   * a beltéri többutas terjedés miatt egy-egy fix 5-15 métert is ugorhat,
+   * ami pontpáronként nézve mindig „elfogadhatónak" tűnik, csak összeadva
+   * lesz belőle hamis táv. A `tracking/recorder.ts` (élő rögzítés) és a
+   * `game/splits.ts` (utólagos részidő/szintprofil-számítás) EGYARÁNT ezt a
+   * sugarat használja, hogy a két számítás ne térjen el egymástól.
+   */
+  GPS_STATIONARY_RADIUS_M: 12,
 
   // ── Bezárás ─────────────────────────────────────────────────────────────
   /**

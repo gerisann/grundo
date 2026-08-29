@@ -15,7 +15,7 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { layerOf, traceToCellPath } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
-import { IncrementalActivityGeometry, processActivityGeometry } from '@/game';
+import { hasCompactInterior, IncrementalActivityGeometry, processActivityGeometry } from '@/game';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import { isNativeIos } from '@/lib/platform';
@@ -196,9 +196,25 @@ export function TrackingScreen() {
       geometrySession.current = geometrySessionKey;
     }
     try {
-      const ownership = new Map(
-        (nearby?.cells ?? []).map((cell) => [cell.cell, { owner: cell.owner, defense: cell.defense }]),
-      );
+      const geometry = geometryCache.current.update(displayPoints);
+      /**
+       * Nagy (compact belsejű) huroknál a motor SZÁNDÉKOSAN dob, ha valódi
+       * ownershipet kap (`game/index.ts` `processActivityGeometry` őre) — a
+       * valódi elszámolás a szerver blokkos útján történik, itt csak előnézet
+       * kell. Enélkül egy nagy bringakör, ami meglévő birtok mellett halad el
+       * (szinte mindig, hiszen a `nearby` majdnem sosem üres), a `catch`-ig
+       * futott, és a preview NULLA claimet/GP-t mutatott — miközben a
+       * feltöltés után a terület ténylegesen bekerült (HANDOFF #20 nyitott
+       * ügye). Üres ownershippel hívva a compact ág ugyanazt az „üres világ"
+       * elszámolást adja, mint a LAB — a GP-becslés pontos, csak a lopott/
+       * visszafoglalt cellák MEGKÜLÖNBÖZTETÉSE vész el élő nézetben.
+       */
+      const hasCompactLoop = geometry.loops.some(hasCompactInterior);
+      const ownership = hasCompactLoop
+        ? new Map<string, { owner: string; defense: number }>()
+        : new Map(
+            (nearby?.cells ?? []).map((cell) => [cell.cell, { owner: cell.owner, defense: cell.defense }]),
+          );
       const result = processActivityGeometry(
         {
           points: displayPoints,
@@ -209,7 +225,7 @@ export function TrackingScreen() {
           streakDays: 0,
           gpEarnedToday: 0,
         },
-        geometryCache.current.update(displayPoints),
+        geometry,
       );
       const own: { cell: string; defense: number; preview: true }[] = [];
       const stolen: { cell: string; defense: number; preview: true }[] = [];
