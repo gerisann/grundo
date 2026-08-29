@@ -31,7 +31,9 @@ import {
   type Mission,
   type MissionCandidate,
 } from '../../../src/game/missions';
-import type { ActivityType, CellId } from '../../../src/types';
+import { distanceM } from '../../../src/game/geo';
+import type { GameplayConfig } from '../../../src/config/gameplay';
+import type { ActivityType, CellId, Layer, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
 
 export const missionsRouter = Router();
@@ -56,15 +58,57 @@ const ADMIN_ROLES = new Set(['owner', 'admin', 'moderator']);
  *
  * ⚠️ EZ TELJESÍTMÉNYI VÉDŐKORLÁT, nem játékszabály. A bezárt terület a
  * kerület NÉGYZETÉVEL nő: mérve egy 16 km-es kör 52 000 cellát zár be, egy
- * 24 km-es már 116 000-et. Bringával a nyolcórás felső időkeret 170 km
- * fölötti kört jelentene — az több millió cella, jelöltenként, nyolcszor.
- * A `LoopTooLargeError` ezt elkapná, de csak azután, hogy elpazaroltuk rá a
- * memóriát és a másodperceket.
+ * 24 km-es már 116 000-et.
  *
- * 50 km egy hosszú, de valós bringakör; gyalog elérhetetlen, tehát futásra
- * és sétára ez a korlát sosem aktiválódik.
+ * ⚠️ 2026-08-29-től 300 km (Geri kérése; korábban 50). Amit tudni kell hozzá:
+ * a hurok VALÓDI felső korlátja nem ez, hanem a `MAX_LOOP_BBOX_CELLS`
+ * (500 000 cella ≈ 150 km²). Egy 300 km kerületű, tömör kör ~7 150 km²-t
+ * zárna be, tehát az ilyen jelöltet a `LoopTooLargeError` elutasítja — a
+ * felhasználó ilyenkor NEM kap küldetést, csak lassabban tudja meg. A korlát
+ * emelése tehát a TERVEZÉST engedi el, nem a bezárást: nagyon hosszú körre
+ * akkor lesz ajánlat, ha az útvonal nem egy nagy, tömör kör, hanem visszatérő
+ * kisebb hurkokból áll.
+ *
+ * A `MAX_MINUTES` (8 óra) miatt ez az IDŐALAPÚ utat is felszabadítja: nyolc óra
+ * bringával, 30 km/h-val 240 km-es célhossz.
  */
-const MAX_TARGET_KM = 50;
+const MAX_TARGET_KM = 300;
+
+/**
+ * Hány jelöltre fusson le a DRÁGA geometria — abszolút felső korlát.
+ *
+ * ⚠️ TELJESÍTMÉNYI PLAFON, mérésből (2026-08-29). A geometriaépítés drága
+ * fele a `detectLoopsDetailed`, ami jelöltkapunként flood fillt futtat:
+ * mérve 3,4 s/jelölt egy 7,5 km-es sétakörnél, 4,8 s/jelölt egy 16 km-es
+ * bringakörnél. Nyers jelöltből 18–19 érkezik, tehát plafon nélkül ez
+ * egymagában 60–90 s.
+ *
+ * Hatot tartunk meg, nem négyet: a `pickMissions` legfeljebb négy karaktert
+ * oszt ki, de egy jelölt kieshet (nem zár kört, túl nagy hurok, vagy egy
+ * másikkal túl nagy az átfedése). A két tartalék azt fedezi, hogy emiatt ne
+ * fogyjon el a mezőny — cserébe a legrosszabb eset korlátos marad.
+ */
+const MAX_SHAPED_CANDIDATES = 6;
+
+/**
+ * A jelöltszám plafonja a CÉLHOSSZ szerint.
+ *
+ * ⚠️ MÉRÉSBŐL, a 300 km-es felső határ bevezetésekor (2026-08-29). A
+ * geometria ideje nem a hosszal arányos, hanem a nyomvonal pontszámával és a
+ * kontaktfoltokkal — mérve, bringa, egy jelöltre:
+ *
+ *   50 km → 1,0 s ·  100 km → 2,1 s ·  200 km → 15,9 s ·  300 km → 18,9 s
+ *
+ * Hat jelölttel egy 300 km-es kérés így egymagában ~2 perc lenne. A hosszú
+ * körökre ezért kevesebb jelöltet dolgozunk fel: a választék szűkül, de a
+ * várakozás korlátos marad (~40 s a legrosszabb esetben). Rövid körökön —
+ * ahol a felhasználók döntő többsége van — semmi nem változik.
+ */
+function shapedCandidateLimit(targetKm: number): number {
+  if (targetKm <= 30) return MAX_SHAPED_CANDIDATES;
+  if (targetKm <= 100) return 4;
+  return 2;
+}
 
 /**
  * POST /api/missions/generate
@@ -219,49 +263,61 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
       });
     });
 
-    /* ── 3. Geometria: melyik jelölt mely cellákat zárja be? ────────── */
+    /* ── 3. Válogatás CELLÁK NÉLKÜL — a drága geometria elé ─────────── */
+
+    /*
+      ⚠️ A SORREND ITT TELJESÍTMÉNYI DÖNTÉS, MÉRÉSSEL (2026-08-29).
+
+      Korábban a cellafeldolgozás MINDEN nyers jelöltre lefutott, és csak
+      utána válogattunk. Mérve: 7,5 km séta, 18 jelölt → 60,65 s a
+      cellafeldolgozásban, miközben a végén 2 kártya lett belőle. A drága
+      fél a `detectLoopsDetailed` (jelöltkapunként flood fill), nem a
+      `loopCells` — az utóbbi 0,00 s.
+
+      A válogatás viszont NEM igényel cellát: a `selectMissionRoutes` csak
+      `uTurns`/`shortDetours`/`turnCount`-ot néz (mind a vonalláncból), a
+      tűréshatár pedig a hosszból. Ezért a válogatás előre kerül, és a
+      geometria már csak a ténylegesen kártyára kerülő jelölteken fut le.
+    */
 
     /** Diagnosztika: az üres válasz OKA — enélkül nem lehet hangolni. */
     let routesReturned = 0;
     let closedLoops = 0;
 
-    const withLoops: (ShapedCandidate & { error: number })[] = [];
+    interface PlannedCandidate {
+      bearing: number;
+      distanceKm: number;
+      polyline: string;
+      points: TracePoint[];
+      uTurns: number;
+      shortDetours: number;
+      turnCount: number;
+      error: number;
+    }
+
+    const measured: PlannedCandidate[] = [];
     for (const entry of planned) {
       routesReturned += 1;
 
       const distanceKm = entry.route.distanceM / 1000;
       const coordinates = decodePolyline(entry.route.polyline);
       if (coordinates.length < 2) continue;
-      const points = routeToTracePoints(entry.route, coordinates);
 
-      try {
-        // A cellákat a MENTÉS geometriája adja, nem külön detektor — lásd
-        // `shapeCandidateCells`. Enélkül a küldetés mást ígér, mint amit az
-        // `evaluateCandidate` ugyanabból a nyomvonalból kiszámol.
-        const { loopCount, cells } = shapeCandidateCells(points);
-        if (loopCount === 0) continue; // nem zár kört: nincs mit ajánlani
-        closedLoops += 1;
-
-        withLoops.push({
-          bearing: entry.bearing,
-          distanceKm,
-          polyline: entry.route.polyline,
-          points,
-          cells,
-          // Az útvonal ALAKJA — ezzel bontja fel a válogatás a döntetlent, hogy
-          // ne egy mellékutcákba beszaladgáló kör kerüljön a kártyára.
-          // Külön mérték: egy valódi visszafordulás mindig erősebb hiba, mint
-          // a lazább helyi kerülő-heurisztika. Összevonva a teljesen
-          // U-fordulásmentes jelöltek is hibásnak látszottak.
-          uTurns: countUTurns(coordinates),
-          shortDetours: countShortDetours(coordinates),
-          turnCount: measureStraightness(coordinates).turnCount,
-          error: relativeError(distanceKm),
-        });
-      } catch {
-        // Túl nagy hurok (`LoopTooLargeError`) vagy hibás geometria: kimarad.
-        continue;
-      }
+      measured.push({
+        bearing: entry.bearing,
+        distanceKm,
+        polyline: entry.route.polyline,
+        points: routeToTracePoints(entry.route, coordinates),
+        // Az útvonal ALAKJA — ezzel bontja fel a válogatás a döntetlent, hogy
+        // ne egy mellékutcákba beszaladgáló kör kerüljön a kártyára.
+        // Külön mérték: egy valódi visszafordulás mindig erősebb hiba, mint
+        // a lazább helyi kerülő-heurisztika. Összevonva a teljesen
+        // U-fordulásmentes jelöltek is hibásnak látszottak.
+        uTurns: countUTurns(coordinates),
+        shortDetours: countShortDetours(coordinates),
+        turnCount: measureStraightness(coordinates).turnCount,
+        error: relativeError(distanceKm),
+      });
     }
 
     /*
@@ -274,18 +330,92 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
       felhasználó dönthet. Ha van a tűrésen belüli, azok nyernek; ha nincs,
       a legközelebbieket kínáljuk fel, egy józan felső határig.
     */
-    const inTolerance = withLoops.filter((candidate) => candidate.error <= cfg.MISSION_DISTANCE_TOLERANCE);
+    const inTolerance = measured.filter((candidate) => candidate.error <= cfg.MISSION_DISTANCE_TOLERANCE);
     const usable = inTolerance.length > 0
       ? inTolerance
-      : withLoops
+      : measured
           .filter((candidate) => candidate.error <= MAX_FALLBACK_ERROR)
           .sort((a, b) => a.error - b.error)
           .slice(0, FALLBACK_LIMIT);
 
     const directional = preferDirection(usable, input.preferredBearing);
-    const shaped: ShapedCandidate[] = selectMissionRoutes(
+    const preselected = selectMissionRoutes(
       directional.map(({ error: _error, ...candidate }) => candidate),
-    );
+    ).slice(0, shapedCandidateLimit(targetKm));
+
+    /* ── 3a. GYORS FÁZIS VÉGE — itt fordul vissza a `plan` kérés ────── */
+
+    /*
+      A kártya ilyenkor MÁR KIRAJZOLHATÓ: van vonallánc (térkép), hossz és
+      irány. Ami hiányzik — terület, mező, GP, karakter —, az mind a lassú
+      geometriából jön, azt a kliens az `/evaluate` végponttól kéri el, és a
+      kártya utólag egészül ki.
+
+      ⚠️ A „NEM BECSLÉS" SZABÁLY (AGENTS.md 2. döntés) ÉRVÉNYBEN MARAD. Itt
+      nem adunk közelítő területet, amit később felülírnánk: a mező egyszerűen
+      hiányzik, amíg a valódi motor ki nem számolja. A felület ezalatt töltő
+      jelzést mutat, nem számot.
+    */
+    if (input.phase === 'plan') {
+      if (!isPro) {
+        await userRef.set({ missionQuota: { week, used: usedThisWeek + 1 } }, { merge: true });
+      }
+      res.json({
+        targetKm: round2(targetKm),
+        paceSecPerKm: Math.round(pace),
+        quota: isPro
+          ? { unlimited: true as const }
+          : { unlimited: false as const, used: usedThisWeek + 1, limit: cfg.FREE_ROUTE_GENERATIONS_PER_WEEK },
+        routes: preselected.map((candidate) => ({
+          polyline: candidate.polyline,
+          distanceKm: round2(candidate.distanceKm),
+          bearing: candidate.bearing,
+        })),
+        /*
+          A `no_loops` ITT NEM ÁLLAPÍTHATÓ MEG: azt csak a geometria tudná
+          eldönteni, ami ebben a fázisban szándékosan nem futott le. Ha egyik
+          kiválasztott jelölt sem zár kört, az az `/evaluate` üres válaszából
+          derül ki.
+        */
+        reason: preselected.length > 0
+          ? undefined
+          : routesReturned === 0
+            ? 'no_routes'
+            : 'no_fit',
+      });
+      return;
+    }
+
+    /* ── 3b. Geometria: CSAK a kiválasztottakra ─────────────────────── */
+
+    const shaped: ShapedCandidate[] = [];
+    for (const candidate of preselected) {
+      try {
+        // A cellákat a MENTÉS geometriája adja, nem külön detektor — lásd
+        // `shapeCandidateCells`. Enélkül a küldetés mást ígér, mint amit az
+        // `evaluateCandidate` ugyanabból a nyomvonalból kiszámol.
+        const { loopCount, cells, geometry } = shapeCandidateCells(candidate.points);
+        if (loopCount === 0) continue; // nem zár kört: nincs mit ajánlani
+        closedLoops += 1;
+
+        shaped.push({
+          bearing: candidate.bearing,
+          distanceKm: candidate.distanceKm,
+          polyline: candidate.polyline,
+          points: candidate.points,
+          cells,
+          // Az `evaluateCandidate` ezt kapja meg, hogy a hurokdetektálás ne
+          // fusson le másodszor ugyanarra a nyomvonalra.
+          geometry,
+          uTurns: candidate.uTurns,
+          shortDetours: candidate.shortDetours,
+          turnCount: candidate.turnCount,
+        });
+      } catch {
+        // Túl nagy hurok (`LoopTooLargeError`) vagy hibás geometria: kimarad.
+        continue;
+      }
+    }
 
     if (shaped.length === 0) {
       res.json({
@@ -293,51 +423,45 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
         targetKm: round2(targetKm),
         paceSecPerKm: Math.round(pace),
         /*
-          A KÉT OK KÜLÖNVÁLASZTVA. Korábban mindkettő `no_loops` volt, és
+          A HÁROM OK KÜLÖNVÁLASZTVA. Korábban mindegyik `no_loops` volt, és
           emiatt nem lehetett megmondani, hogy az úthálózat nem ad kört,
           vagy csak rossz méretűt kértünk — ez a hangolást lehetetlenné tette.
+
+          ⚠️ A SORREND SZÁMÍT, és 2026-08-29-en meg is fordult. Amióta a
+          válogatás a geometria ELŐTT fut, a `closedLoops` már csak a
+          kiválasztott jelöltekre vonatkozik. Ha a hossz-szűrés mindent
+          kidobott, a geometriaciklus le sem fut — ilyenkor `closedLoops`
+          nulla, de az OK a méret, nem az úthálózat. Ezért a `no_fit`
+          vizsgálata megelőzi a `no_loops`-ot.
         */
         reason: routesReturned === 0
           ? 'no_routes'
-          : closedLoops === 0
-            ? 'no_loops'
-            : 'no_fit',
-        diagnostics: { routesReturned, closedLoops, bearings: bearings.length },
+          : preselected.length === 0
+            ? 'no_fit'
+            : 'no_loops',
+        diagnostics: {
+          routesReturned,
+          /** Hány jelölt jutott el a drága geometriáig (plafon: `MAX_SHAPED_CANDIDATES`). */
+          preselected: preselected.length,
+          closedLoops,
+          bearings: bearings.length,
+        },
       });
       return;
     }
 
-    /* ── 4. Birtokviszony EGY olvasásban, az összes jelöltre ────────── */
+    /* ── 4–6. A lassú fél — UGYANAZ, mint amit az `/evaluate` futtat ── */
 
-    const affordable = limitByBlocks(shaped, layer, MAX_OWNERSHIP_BLOCKS);
-    const allCells = new Set<CellId>();
-    for (const candidate of affordable) for (const cell of candidate.cells) allCells.add(cell);
-
-    const ownership = await loadOwnership(layer, allCells, today);
-
-    /* ── 5. Értékelés a VALÓDI motorral ─────────────────────────────── */
-
-    const context = {
+    const missions = await evaluateShapedCandidates({
       uid,
+      shaped,
       layer,
       type: input.type,
-      ownership,
-      streakDays: Number(user.streak?.current ?? 0),
-      gpEarnedToday: await dailyGpTotal(uid, today),
+      today,
       cfg,
-    };
-    const ownedBlocks = ownedBlockIds(ownership, uid, layer);
-
-    const candidates: MissionCandidate[] = [];
-    for (const candidate of affordable) {
-      const evaluated = evaluateCandidate(candidate, context, ownedBlocks);
-      if (evaluated) candidates.push(evaluated);
-    }
-
-    /* ── 6. Válogatás és a célpontok feloldása ──────────────────────── */
-
-    const missions = prioritizeMissions(pickMissions(candidates), input.priority);
-    const named = await resolveVictimNames(uid, missions, today);
+      streakDays: Number(user.streak?.current ?? 0),
+      priority: input.priority,
+    });
 
     if (!isPro) {
       await userRef.set(
@@ -352,20 +476,100 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
       quota: isPro
         ? { unlimited: true as const }
         : { unlimited: false as const, used: usedThisWeek + 1, limit: cfg.FREE_ROUTE_GENERATIONS_PER_WEEK },
-      missions: missions.map((mission) => ({
-        kind: mission.kind,
-        distanceKm: round2(mission.distanceKm),
-        polyline: mission.polyline,
-        areaM2: mission.gainedM2,
-        estimatedGp: mission.estimatedGp,
-        cellCount: mission.cells.size,
-        counts: mission.claim?.counts ?? null,
-        newBlocks: mission.newBlocks,
-        /** A célpont neve CSAK publikus fióknál — lásd `resolveVictimNames`. */
-        victimName: named.get(mission) ?? null,
-        victimAreaM2: Math.round(mission.topVictimCells * cfg.CELL_AREA_M2),
-      })),
+      missions,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/missions/evaluate
+ *
+ * A LASSÚ FÉL, külön kérésben. A `/generate?phase=plan` már visszaadta a
+ * jelölt útvonalakat, a kártyák tehát kirajzolva állnak — ez a végpont tölti
+ * ki rajtuk a terület, mező, GP és karakter mezőket.
+ *
+ * ⚠️ MIÉRT KÜLÖN KÉRÉS, ÉS NEM HÁTTÉRMUNKA A VÁLASZ UTÁN? Mert Cloud Runon a
+ * konténer CPU-ja a válasz elküldése után nem garantáltan fut tovább — egy
+ * „majd befejezem a háttérben" megoldás ott némán félbemaradna. Így minden
+ * kérés önmagában zárt, nincs job-állapot, nincs poll, nincs új adatmodell.
+ *
+ * ⚠️ NINCS ÁLLAPOT A KÉT FÁZIS KÖZÖTT. A kliens visszaküldi a vonalláncot, és
+ * a hosszt a szerver ABBÓL számolja újra — nem hisz a kliens számának. Ez nem
+ * biztonsági kockázat egyébként sem (a küldetés csak ajánlat, nem ír
+ * játékadatot), de így a GP-becslés sem csúszhat el egy elgépelt mezőtől.
+ *
+ * ⚠️ NEM FOGYASZT KVÓTÁT: azt már a `plan` fázis elszámolta. Különben egy
+ * generálás kétszer terhelné a heti keretet.
+ */
+missionsRouter.post('/evaluate', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const input = parseEvaluateInput(req.body);
+
+    const snapshot = await getGameplaySnapshot(new Date());
+    const cfg = snapshot.config;
+    const layer = layerOf(input.type);
+    const today = gameDay(new Date());
+
+    const userSnap = await db.collection(COLLECTIONS.users).doc(uid).get();
+    const user = (userSnap.data() ?? {}) as { streak?: { current?: number } };
+
+    /* A geometria — ugyanaz a `shapeCandidateCells`, mint a `full` úton. */
+    const shaped: ShapedCandidate[] = [];
+    for (const route of input.routes) {
+      const coordinates = decodePolyline(route.polyline);
+      if (coordinates.length < 2) continue;
+
+      /*
+        A hossz a VONALLÁNCBÓL, nem a kérésből. A `durationS` csak a
+        szintetikus időbélyeghez kell, és a cellalánc-építés nem használja
+        (lásd `routeToTracePoints`) — ezért itt a mért hosszból származó,
+        nagyságrendileg helyes menetidő is elég.
+      */
+      const distanceKm = polylineLengthM(coordinates) / 1000;
+      const points = routeToTracePoints(
+        { polyline: route.polyline, distanceM: distanceKm * 1000, durationS: distanceKm * 300 },
+        coordinates,
+      );
+
+      try {
+        const { loopCount, cells, geometry } = shapeCandidateCells(points);
+        if (loopCount === 0) continue;
+        shaped.push({
+          bearing: route.bearing,
+          distanceKm,
+          polyline: route.polyline,
+          points,
+          cells,
+          geometry,
+          uTurns: countUTurns(coordinates),
+          shortDetours: countShortDetours(coordinates),
+          turnCount: measureStraightness(coordinates).turnCount,
+        });
+      } catch {
+        continue;
+      }
+    }
+
+    if (shaped.length === 0) {
+      res.json({ missions: [], reason: 'no_loops' });
+      return;
+    }
+
+    const missions = await evaluateShapedCandidates({
+      uid,
+      shaped,
+      layer,
+      type: input.type,
+      today,
+      cfg,
+      streakDays: Number(user.streak?.current ?? 0),
+      priority: input.priority,
+    });
+
+    res.json({ missions });
   } catch (error) {
     next(error);
   }
@@ -374,6 +578,141 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
 /* ════════════════════════════════════════════════════════════════════════
    Segédek
    ════════════════════════════════════════════════════════════════════════ */
+
+/** A küldetés kimeneti alakja — a `full` és az `evaluate` út UGYANEZT adja. */
+interface MissionPayload {
+  kind: string;
+  distanceKm: number;
+  polyline: string;
+  areaM2: number;
+  estimatedGp: number;
+  cellCount: number;
+  counts: { free: number; reclaimed: number; stolen: number; breakthrough: number } | null;
+  newBlocks: number;
+  victimName: string | null;
+  victimAreaM2: number;
+}
+
+/**
+ * A lánc lassú fele: birtokviszony → értékelés → válogatás → célpontnevek.
+ *
+ * ⚠️ EGY HELYEN VAN, SZÁNDÉKOSAN. A `full` és a `plan`+`evaluate` út
+ * ugyanezt futtatja, tehát a kétféle hívás ugyanazt a küldetést adja
+ * ugyanarra a jelöltre. Ha ez a rész kettéválna, a két út idővel elcsúszna,
+ * és a felhasználó attól függően kapna más eredményt, hogy melyik kliens
+ * verziót futtatja.
+ */
+async function evaluateShapedCandidates(args: {
+  uid: string;
+  shaped: ShapedCandidate[];
+  layer: Layer;
+  type: ActivityType;
+  today: number;
+  cfg: GameplayConfig;
+  streakDays: number;
+  priority: MissionInput['priority'];
+}): Promise<MissionPayload[]> {
+  const { uid, shaped, layer, type, today, cfg, streakDays, priority } = args;
+
+  /* ── Birtokviszony EGY olvasásban, az összes jelöltre ────────────── */
+
+  const affordable = limitByBlocks(shaped, layer, MAX_OWNERSHIP_BLOCKS);
+  const allCells = new Set<CellId>();
+  for (const candidate of affordable) for (const cell of candidate.cells) allCells.add(cell);
+
+  const ownership = await loadOwnership(layer, allCells, today);
+
+  /* ── Értékelés a VALÓDI motorral ─────────────────────────────────── */
+
+  const context = {
+    uid,
+    layer,
+    type,
+    ownership,
+    streakDays,
+    gpEarnedToday: await dailyGpTotal(uid, today),
+    cfg,
+  };
+  const ownedBlocks = ownedBlockIds(ownership, uid, layer);
+
+  const candidates: MissionCandidate[] = [];
+  for (const candidate of affordable) {
+    const evaluated = evaluateCandidate(candidate, context, ownedBlocks);
+    if (evaluated) candidates.push(evaluated);
+  }
+
+  /* ── Válogatás és a célpontok feloldása ──────────────────────────── */
+
+  const missions = prioritizeMissions(pickMissions(candidates), priority);
+  const named = await resolveVictimNames(uid, missions, today);
+
+  return missions.map((mission) => ({
+    kind: mission.kind,
+    distanceKm: round2(mission.distanceKm),
+    polyline: mission.polyline,
+    areaM2: mission.gainedM2,
+    estimatedGp: mission.estimatedGp,
+    cellCount: mission.cells.size,
+    counts: mission.claim?.counts ?? null,
+    newBlocks: mission.newBlocks,
+    /** A célpont neve CSAK publikus fióknál — lásd `resolveVictimNames`. */
+    victimName: named.get(mission) ?? null,
+    victimAreaM2: Math.round(mission.topVictimCells * cfg.CELL_AREA_M2),
+  }));
+}
+
+/** Egy vonallánc hossza méterben — a kliens számát nem vesszük készpénznek. */
+function polylineLengthM(coordinates: readonly { lat: number; lng: number }[]): number {
+  let total = 0;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    total += distanceM(coordinates[index - 1]!, coordinates[index]!);
+  }
+  return total;
+}
+
+interface EvaluateInput {
+  type: ActivityType;
+  priority: MissionInput['priority'];
+  routes: { polyline: string; bearing: number }[];
+}
+
+/**
+ * Az `/evaluate` bemenete.
+ *
+ * A `MAX_SHAPED_CANDIDATES` itt is plafon: a végpont a drága geometriát
+ * futtatja, tehát nem szabad, hogy egy kérés tetszőleges sok vonallánccal
+ * terhelje a szolgáltatást.
+ */
+function parseEvaluateInput(body: unknown): EvaluateInput {
+  const raw = (body ?? {}) as Record<string, unknown>;
+
+  const type = String(raw.type ?? 'run');
+  if (type !== 'run' && type !== 'walk' && type !== 'ride') {
+    throw badRequest('invalid_type', 'Ismeretlen mozgásforma.');
+  }
+
+  const priorities = new Set(['balanced', 'conquest', 'raid', 'fortify', 'explore']);
+  const priority = typeof raw.priority === 'string' && priorities.has(raw.priority)
+    ? raw.priority as MissionInput['priority']
+    : 'balanced';
+
+  if (!Array.isArray(raw.routes) || raw.routes.length === 0) {
+    throw badRequest('invalid_routes', 'Nem érkezett kiértékelendő útvonal.');
+  }
+
+  const routes = raw.routes.slice(0, MAX_SHAPED_CANDIDATES).map((entry) => {
+    const route = (entry ?? {}) as Record<string, unknown>;
+    const polyline = String(route.polyline ?? '');
+    if (!polyline) throw badRequest('invalid_routes', 'Hiányzik az útvonal vonallánca.');
+    const bearing = Number(route.bearing);
+    return {
+      polyline,
+      bearing: Number.isFinite(bearing) ? bearing : 0,
+    };
+  });
+
+  return { type, priority, routes };
+}
 
 interface MissionInput {
   lat: number;
@@ -389,6 +728,21 @@ interface MissionInput {
    * kínálja fel, de itt nincs rá külön ág — hiányzó/ismeretlen érték `twisty`.
    */
   routeCharacter: RouteCharacter;
+  /**
+   * Melyik fázis fusson le.
+   *
+   * `full` (az ALAPÉRTELMEZETT) — a teljes lánc, ahogy eddig. ⚠️ Azért ez az
+   * alapértelmezés, mert a backend külön települ a klienstől: egy már
+   * telepített web/iOS kliens `phase` nélkül hív, és neki továbbra is a kész
+   * küldetéslistát kell megkapnia.
+   *
+   * `plan` — csak a GYORS fele: útvonaltervezés és cellamentes válogatás.
+   * A válasz a jelölt útvonalakat adja vissza (vonallánc, hossz), terület és
+   * GP nélkül; azokat a kliens a `/evaluate` végponttól kéri el utána.
+   * Mérve (2026-08-29): a gyors fázis 0,5–2,2 s, míg a teljes lánc nagy
+   * bringakörnél 12,7 s — a kártya tehát sokkal hamarabb kirajzolható.
+   */
+  phase: 'full' | 'plan';
 }
 
 function parseInput(body: unknown): MissionInput {
@@ -441,6 +795,9 @@ function parseInput(body: unknown): MissionInput {
   }
 
   const routeCharacter = raw.routeCharacter === 'straight' ? 'straight' : 'twisty';
+  // Ismeretlen érték = `full`: a régi kliens nem küld `phase`-t, és a teljes
+  // választ várja.
+  const phase = raw.phase === 'plan' ? 'plan' : 'full';
 
   return {
     lat,
@@ -451,6 +808,7 @@ function parseInput(body: unknown): MissionInput {
     ...(preferredBearing === undefined ? {} : { preferredBearing }),
     type,
     routeCharacter,
+    phase,
   };
 }
 

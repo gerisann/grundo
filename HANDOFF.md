@@ -1,129 +1,197 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · átadás a **GRUNDO #19** menetből a **#20**-ra
+> Frissítve: **2026-08-29** · a **GRUNDO #19** menet vége
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · ebben a menetben **nem változott kód** (csak mérés és
-> döntés) — a #18 óta a HEAD-en lévő GraphHopper-kód változatlanul él,
-> lásd lent, „ÉLESBEN FUT / TELEPÍTETLEN".
+> Ág: **`main`** · **frontend + backend telepítés kell** (a küldetés-ajánló
+> mindkét oldala változott).
 
 ## ⚠️ ELSŐ OLVASNIVALÓ
 
-**A #20 fő feladata: a küldetés-ajánló route-tervezésének és
-terület/cella-számításának SZÉTVÁLASZTÁSA.** A #19-ben megmértük a
-küszöböt és Geri döntött a felületi viselkedésről — a tervezés kész, a
-megvalósítás a #20 feladata. **AGENTS.md 0. pont szerint Opus, emelt
-mélység** — ez adatmodell- és API-szerződés-döntés, nem rutin kiterjesztés.
+A #19 fő eredménye: **a küldetés-ajánló 62 s-ról 1,6 s-ra gyorsult** (7,5 km
+séta), és a kártyák már **0,5 s-nál megjelennek** az útvonaltervvel, a
+terület/GP/mező mezők pedig utólag töltődnek ki.
 
-### A mérés (#19-ben végzett)
+⚠️ **A #18-as HANDOFF diagnózisa TÉVES VOLT.** Nem a flood fill és nem az
+értékelés vitte az időt:
 
-Egyetlen irányban (2 jelölt/irány), `straight` karakterrel, élő helyi
-GraphHopperrel, csak a nehéz fél (`shapeCandidateCells` +
-`evaluateCandidate`):
+| szakasz (bringa 16 km, 2 jelölt) | idő |
+|---|---|
+| cellalánc (`traceToCellPath`) | 0,01 s |
+| **hurokdetektálás (`detectLoopsDetailed`)** | **9,56 s** |
+| flood fill (`loopCells`) | 0,00 s |
+| claim + GP | 0,20 s |
 
-| táv | terv | cellafeldolg | értékelés | ÖSSZ (2 jelölt) |
+A drága rész a `loopDetection.ts` `append()`-je, ami **minden cellánál, minden
+jelölt kapura teljes `buildLoopInterior` flood fillt futtat** — a flood fill
+tehát a detektoron BELÜL fut, sokszor, nem a végén egyszer. Ezért nem a
+hosszal arányos az idő, hanem a kontaktfoltok számával. A #18-ban
+„értékelés"-nek mért 8,73 s valójában a **duplán lefuttatott hurokdetektálás**
+volt (a `processActivity` újra hívta a `buildActivityGeometry`-t).
+
+**A detektorhoz NEM nyúltam** — az az éles mentési út is, és a spec 2. döntése
+szerint ugyanannak a motornak kell futnia. A 19-szeres szorzót szüntettem meg.
+
+## AMI ELKÉSZÜLT
+
+### 1. A válogatás a drága geometria ELÉ került (ez a nagy nyereség)
+
+A `selectMissionRoutes` csak `uTurns`/`shortDetours`/`turnCount`-ot néz — mind
+a vonalláncból számolható —, a tűréshatár pedig a hosszból. Ezért a válogatás
+előrekerült, és a geometria már csak a ténylegesen kártyára kerülő
+jelölteken fut le (`MAX_SHAPED_CANDIDATES = 6`, nagy körökre kevesebb).
+
+| | előtte | utána |
+|---|---|---|
+| gyalog 7,5 km | 62,13 s | **1,58 s** |
+| bringa 16 km | ~80 s (#18 mérése) | **5,42 s** |
+| bringa 25 km | — | 12,73 s |
+
+⚠️ **Csapda, amit javítottam:** a sorrend megfordításával a `no_fit` diagnózis
+elérhetetlenné vált (ha a hossz-szűrés mindent kidobott, a geometriaciklus le
+sem fut, tehát `closedLoops === 0`, ami `no_loops`-ot jelentett volna — „az
+úthálózat nem ad kört", pedig a méret nem stimmelt). A `no_fit` vizsgálata
+most megelőzi a `no_loops`-ot, és a diagnosztika kapott egy `preselected`
+mezőt.
+
+### 2. Kétfázisú végpont — a kártya nem várja meg a területszámítást
+
+```
+POST /api/missions/generate  { ...input }                  -> teljes válasz (VÁLTOZATLAN)
+POST /api/missions/generate  { ...input, phase: 'plan' }   -> gyors: routes[]
+POST /api/missions/evaluate  { type, priority, routes[] }  -> lassú: missions[]
+```
+
+⚠️ **A `full` az alapértelmezés, szándékosan**: a backend külön települ, és egy
+már telepített web/iOS kliens `phase` nélkül hív — annak továbbra is a kész
+küldetéslistát kell kapnia.
+
+⚠️ **Miért két kérés, és nem háttérmunka a válasz után?** Cloud Runon a
+konténer CPU-ja a válasz elküldése után nem garantáltan fut tovább — egy
+„majd befejezem a háttérben" megoldás ott némán félbemaradna. Így minden kérés
+önmagában zárt: nincs job-állapot, nincs poll, nincs új adatmodell.
+
+⚠️ **Nincs állapot a két fázis között**: a kliens visszaküldi a vonalláncot, a
+hosszt a szerver ABBÓL számolja újra (`polylineLengthM`), nem hisz a kliens
+számának. A kvótát csak a `plan` fázis fogyasztja.
+
+A lassú fél egyetlen közös függvényben van (`evaluateShapedCandidates`), hogy a
+`full` és a `plan`+`evaluate` út ne csússzon el egymástól.
+
+**Élőben mérve, a böngészőből (MutationObserver-rel):**
+```
+ms:   18  → pending: 0, done: 0   (kattintás)
+ms:  497  → pending: 2, done: 0   (kártyák MEGJELENNEK útvonallal)
+ms: 1746  → pending: 0, done: 2   (kész adatok átveszik)
+```
+
+### 3. Felület: töltő állapot (Geri kérése)
+
+A kártya azonnal látszik térképpel és hosszal; a hiányzó mezők helyén
+„Területszámítás" / „Pontszámítás" / „Cellakalkuláció" felirat pulzál, a
+jelvényben forgó gyűrű. Semleges színű kártya (a karaktere még nem dőlt el),
+`prefers-reduced-motion` alatt animáció nélkül.
+
+⚠️ **A „NEM BECSLÉS" szabály sértetlen**: a köztes állapotban nincs közelítő
+szám, amit később felülírnánk — a mező üres, csak jelezzük, hogy számolunk.
+
+### 4. Célhossz 50 → 300 km (Geri kérése), és a mérés hozzá
+
+| célhossz | tényleges | tervezés | geometria/jelölt | eredmény |
 |---|---|---|---|---|
-| gyalog 2 km | 0,11s | 0,18s | 0,12s | 0,41s |
-| gyalog 4 km | 0,04s | 0,25s | 0,31s | 0,60s |
-| gyalog 6 km | 0,07s | 1,42s | 1,42s | 2,90s |
-| gyalog 8 km | 0,08s | 3,87s | 3,87s | 7,82s |
-| gyalog 10 km | 0,09s | 2,85s | 3,06s | 6,00s |
-| gyalog 12 km | 0,10s | 1,23s | 1,57s | 2,91s |
-| bringa 4 km | 0,13s | 1,03s | 1,12s | 2,27s |
-| bringa 8 km | 0,06s | 3,15s | 3,30s | 6,51s |
-| bringa 12 km | 0,07s | 5,08s | 5,30s | 10,45s |
-| bringa 16 km | 0,09s | 9,52s | 9,68s | 19,29s |
+| 50 km | 64,7 km | 0,42 s | 1,05 s | 3 hurok, 16 611 cella |
+| 100 km | 130,9 km | 0,31 s | 2,09 s | 2 hurok, 34 567 cella |
+| 200 km | 289,6 km | 1,14 s | **15,93 s** | 7 hurok, 80 386 cella |
+| 300 km | 435,3 km | 0,90 s | **18,89 s** | 2 hurok, 9 120 cella |
 
-Tanulságok:
-- A route-terv (GraphHopper) mindig elhanyagolható (~0,1s) — **nem a
-  GraphHopper a szűk keresztmetszet**, a HANDOFF #19-es diagnózisa helyes
-  volt.
-- A gyalog 8/10 km sorrend fordított a 6/12-höz képest — **nem mérési
-  hiba**: az idő a **bezárt cellák számával** arányos, nem a km-rel
-  (ugyanolyan hosszú kör más helyen más méretű területet zárhat be).
-- A tábla **csak 1 irányt, 2 jelöltet** mér. Az éles kérés 8 irányban, két
-  menetben, akár **19 jelölttel** fut — a teljes idő ennek kb.
-  **8-9-szerese** ugyanerre a távra (ez magyarázza a #18-as 80s-os mérést
-  16 km bringára, `twisty` karakterrel).
-- **Küszöb**, ha a cél "pár másodperc" a TELJES kérésre: jelöltenként kb.
-  0,2-0,3s büdzsé fér bele. Ez alapján gyalog/futásra kb. **4-5 km** az,
-  ami még szinkron elfér — **bringára gyakorlatilag semmi**, már a 4 km-es
-  kör is ~1,1s/jelölt, ami 8 iránnyal 8-10s fölé megy.
-- Az olcsó előszűrés (19→5-6 jelölt, cella nélküli jelekből) ÖNMAGÁBAN
-  **nem elég** bringára, ahogy a #18-as HANDOFF is sejtette.
+Az előzetes félelem (a `MAX_LOOP_BBOX_CELLS` ≈150 km² miatt minden nagy kör
+elutasításra kerül) **nem igazolódott**: a GraphHopper nem tömör nagy kört
+tervez, hanem kanyargósat, ami több kisebb hurkot zár be.
 
-### A döntés (Geri, 2026-08-29)
+Ezért kapott a jelöltszám célhossz-arányos plafont
+(`shapedCandidateLimit`): ≤30 km → 6, ≤100 km → 4, felette → 2. Enélkül egy
+300 km-es kérés egymagában ~2 perc lenne.
 
-**A kártyák jelenjenek meg AMILYEN GYORSAN LEHET, az útvonaltervvel** (a
-gyors fázis: route-tervezés, ~0,1-0,7s). Amelyik mező még nem kész
-(terület, cella, GP, stb.), ott **helyőrző szöveg + animáció** menjen:
-„terület számítás", „cella kalkulálás" (vagy hasonló, mezőnként külön
-felirat), amíg a lassú fázis be nem fejeződik és a kártya frissül a
-végleges számmal.
+### 5. Léptethető ÉS gépelhető mezők (Geri kérése)
 
-Ez **nem sérti** az AGENTS.md „NEM BECSLÉS" szabályát (2. döntés) — nincs
-laza becslés, a mező egyszerűen üres/töltő állapotban van, amíg a valódi
-motor nem ad számot. A #19-ben felvetett kérdés („mit mutasson a kártya a
-köztes állapotban") ezzel eldőlt: **semmit, csak töltő jelzést**.
+- A tempó/sebesség mezőbe és a célhossz mezőbe **kézzel is lehet írni**
+  (eddig csak −/+ volt). Közös `Stepper` komponens.
+- Célhossz lépték: **10 alatt 1, 10 fölött 5, 50 fölött 10**. A határon lefelé
+  a kisebb lépték érvényes (50 → 45, nem 40; 10 → 9, nem 5). Mérve:
+  `5→6→7→8→9→10→15→…→50→60→70→80`, visszafelé szimmetrikusan.
 
-### Ami a #20-ban MÉG NYITOTT (a tervezés első lépései)
+⚠️ **Két hibát a mérés fogott meg, nem a szemem:**
+1. A töltő mező színe/mérete némán a kész értékét vette fel — az új CSS-szabály
+   a `.mission__stat-value` ELÉ került, és azonos specificitásnál a későbbi
+   nyer. (Ezért áll most kommentben, hogy a sorrend kötelező.)
+2. A beviteli mező csak a beírt szöveg szélességét foglalta, tehát a doboz nagy
+   részére koppintva nem lehetett beleírni. Javítva: a mező `label`, ami a
+   saját területén belül bárhol az inputra adja a fókuszt.
 
-- **API-szerződés**: mit adjon vissza AZONNAL a `POST
-  /api/missions/generate`? Valószínűleg: a küldetés-lista route-tervvel
-  (polyline, distanceKm, bearing, kind) + egy azonosító (jobId vagy
-  missionId), terület/cella/GP mezők nélkül vagy `null`-lal/`pending`
-  jelzéssel.
-- **Frissítési mechanizmus**: polling (`GET
-  /api/missions/{jobId}/status` vagy hasonló), SSE, vagy valami
-  egyszerűbb. Polling a legkisebb kockázatú első lépésnek tűnik (a repo
-  már használ TanStack Query-t a kliensen), de Geri döntése.
-- **Hol fut a lassú fázis?** Ugyanabban a Cloud Run kérésben
-  (`res.write`/streaming?), külön háttérfolyamatban (Cloud Tasks?), vagy
-  egyszerűen a kliens indít egy második kérést, ami szinkron vár, amíg a
-  szerver az első válasz visszaküldése UTÁN elvégzi a számítást és
-  Firestore-ba írja az eredményt? Ez a legfontosabb architektúra-döntés,
-  Opus-szintű mérlegelést igényel (Cloud Run kérés-időkorlát, memória,
-  hidegindítás hatása).
-- **Melyik jelölteken fusson a lassú fázis?** A gyors fázis a jelenlegi 8
-  irány × 2 menet route-jait adja vissza — a lassú fázisnak nem kell
-  MIND a 19-et feldolgoznia, ha a gyors fázis már kiszűrte, melyik
-  kerül ténylegesen kártyára (`selectMissionRoutes` már most
-  karakterenkénti legjobbat választ INNEN). Érdemes a szűrést (kanyar/
-  hossz-eltérés alapú, cella nélküli) a gyors fázisba tenni, és a lassú
-  fázis csak a ténylegesen megjelenő 3-4 kártyára fusson — ez már
-  önmagában a 19-ből 3-4-re vágja a drága munkát, a teljes
-  átszervezés mellett.
-- A „Sík/Mászás" választó (lásd #18-as HANDOFF) — külön menet marad, a
-  teljesítmény-architektúra után.
+Ezen kívül: **mozgásforma-váltáskor a tempómező kiürül**, mert a mértékegysége
+más (perc/km ↔ km/h) — a felület egy ideig „5:15 km/h"-t írt ki. (Korábban ez
+rejtve maradt: a mező csak olvasható volt, és a `Number('5:15')` NaN-ja miatt
+némán a 22-es alapértéket mutatta.)
 
-## ÉLESBEN FUT / TELEPÍTETLEN
-
-Változatlan a #18 óta:
-- Élesben (`grundo-api`, Cloud Run) a Mapbox-ág fut, a token-hiba javítva.
-- A GraphHopper csak localhoston fut. `cloudbuild.yaml`
-  `_GRAPHHOPPER_URL` substitution előkészítve, üresen.
-- Kód a `main`-en, de amíg a `GRAPHHOPPER_URL` élesben üres, semmi új nem
-  aktiválódik. Push/deploy bármikor biztonságos, csak nem történik tőle
-  semmi látható.
-
-## FÁJL-ÖSSZEFOGLALÓ (#19 menet)
+## FÁJL-ÖSSZEFOGLALÓ
 
 | Fájl | +/− | Mit tartalmaz |
 |---|---|---|
-| `HANDOFF.md` | felülírva | Ez a fájl — mérési eredmények, felületi döntés, #20 terve. |
-| `tmp/measure-mission-perf.ts` | új, NEM verziókövetett | A fenti mérést végző szkript, élő GraphHopper ellen. Újrafuttatható: `npx tsx ../tmp/measure-mission-perf.ts` a `server/` mappából. |
+| `server/src/routes/missions.ts` | +445/−87 | A válogatás a geometria elé; `phase: 'plan'` ág; új `/evaluate` végpont; közös `evaluateShapedCandidates`; `shapedCandidateLimit`; `MAX_TARGET_KM` 300; `no_fit`/`no_loops` sorrend javítva. |
+| `src/screens/MissionsScreen.tsx` | +280/−21 | Kétfázisú hívás; `PendingResults`/`PendingMissionCard`/`PendingStat`; közös gépelhető `Stepper`; `distanceStepKm`; célhossz-stepper; `changeType` (tempó ürítése). |
+| `src/screens/missions.css` | +132 | Töltő kártya, forgó gyűrű, pulzáló felirat, `prefers-reduced-motion`, szerkeszthető stepper-mező. |
+| `src/lib/api.ts` | +67 | `PlannedRoute`, `MissionPlanResult` típusok; `missionsPlan` és `missionsEvaluate` hívások. |
+| `server/src/lib/missionEvaluate.ts` | +32/−4 | `ShapedCandidate.geometry`; `shapeCandidateCells` visszaadja a geometriát; `evaluateCandidate` `processActivityGeometry`-t hív (nem építi újra). |
 
-**Kódváltozás nem történt ebben a menetben** — csak mérés és tervezési
-döntés. **Teendők sorrendje**: push (a `HANDOFF.md` miatt) → nincs
-adatbázis-lépés → nincs telepítés szükséges.
+**Teendők sorrendje**: push → **nincs adatbázis-lépés** → **mindkettő**
+(frontend és backend).
 
-## HELYI KÖRNYEZET — LEHET, HOGY MÉG FUT
+## NYITOTT ÜGYEK
 
-Ugyanaz, mint a #18-ban: Firestore/Auth emulátor, `server/`
-(`GRAPHHOPPER_URL=http://localhost:8989`-cel indítva), GraphHopper
-(Magyarország importálva, `graph-cache/` kész). A #19-ben mindhárom élt a
-mérés alatt. Ha nem futnak, indítás:
+1. ⚠️ **Nagy körnél a GYORS fázis is lassú**: 300 km-es kérésnél 17 s, mert a
+   route-tervezés 8 irányban, két menetben 16 GraphHopper-hívás. A
+   szétválasztás előnye ilyenkor elvész. Lehetséges irány: nagy célhossznál
+   kevesebb irány (`MISSION_BEARINGS`). Nem kezdtem el — Geri döntése.
+2. ⚠️ **Nagy bringakör + meglévő ownership = nincs küldetés.** A
+   `processActivityGeometry` compact ága hibát DOB, ha `ownership.size > 0`
+   („Compact hurok ownership-feldolgozása csak a blokkos backend útvonalon
+   engedett"), az `evaluateCandidate` pedig elnyeli és `null`-t ad. Emulátoron
+   reprodukálva 16 km-es bringakörrel. **Ez NEM az én változtatásom**:
+   ellenőriztem, a régi `full` út ugyanezt adja ugyanazokkal a paraméterekkel.
+   Éles hiba lehet, külön menetet érdemel.
+3. A „Sík / Mászás" választó (a #18-as kérés) — még nincs kidolgozva.
+4. GraphHopper élesítés (konténer, `_GRAPHHOPPER_URL`) — továbbra is nyitott,
+   élesben még a Mapbox-ág fut.
+
+## ÉLESBEN FUT / TELEPÍTETLEN
+
+- Élesben (`grundo-api`) **a Mapbox-ág fut**; a `GRAPHHOPPER_URL` üres.
+- ⚠️ A most elkészült gyorsítás **a Mapbox-ágon is érvényes** — a szűk
+  keresztmetszet a geometria volt, nem a tervező. Tehát a telepítés akkor is
+  érdemi gyorsulást hoz, ha a GraphHopper még nincs élesítve.
+
+## ELLENŐRZÉSEK
+
+- `npx tsc --noEmit` mindkét oldalon tiszta.
+- Teljes `npx vitest run`: **556 sikeres, 122 kihagyva** — ugyanaz, mint a #18
+  végén, nincs regresszió.
+- Emulátoros készlet: 120 sikeres, **2 bukó** az
+  `activitiesCompact.emulator.test.ts`-ben. ⚠️ **NEM regresszió**: `git
+  stash`-sel ellenőriztem, a tiszta HEAD-en ugyanaz a 2 teszt bukik ugyanazon
+  az emulátoron (időtúllépés). Az ok a #18 óta futó, kézi tesztadattal teli
+  emulátor — friss `emulators:exec` indítással érdemes újramérni.
+- Élő böngészős ellenőrzés emulátoron: kétfázisú betöltés (0,5 s / 1,75 s),
+  világos és sötét téma, stepper-léptékek, kézi beírás, a töltő felirat
+  elfér (77 px a 125 px-es dobozban), és a kártya **nem ugrik** (töltő 56 px =
+  kész 56 px).
+- Production build **nem futott** (nem volt csomagméretet érintő változás).
+
+## HELYI KÖRNYEZET
+
+Fut (a #18 óta): Firestore/Auth emulátor, `server/`
+(`GRAPHHOPPER_URL=http://localhost:8989`), GraphHopper, és a #19-ben indított
+Vite. Indítás, ha nem futnak:
 
 ```bash
 export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"
@@ -141,35 +209,35 @@ cd server && GRAPHHOPPER_URL=http://localhost:8989 npm run dev:emulator
 npm run dev:emulator
 ```
 
-Belépés: `geri@grundo.local` / `grundo-emulator`. Böngészőből geolokáció
-nélkül teszteléshez:
+Belépés: `geri@grundo.local` / `grundo-emulator`. Geolokáció a böngészőben:
 ```js
 navigator.geolocation.getCurrentPosition = (s) => s({ coords: { latitude: 47.4979, longitude: 19.0537, accuracy: 10 } });
 ```
 
-`tmp/verify-planMissionLoop.ts` (a #18-ból) és `tmp/measure-mission-perf.ts`
-(a #19-ből) mindkettő kód nélkül futtatható ellenőrzéshez, egyik sem
-verziókövetett.
+⚠️ A #19-ben a tesztek futtatása **törölte az emulátor felhasználóit** — a
+profilt újra létre kellett hozni a felületen. A kvóta nullázása méréshez (a
+`firestore.rules` megkerülésével, ezért csak emulátoron működik):
+```bash
+curl -s -X PATCH "http://localhost:8081/v1/projects/demo-grundo/databases/grundo-db/documents/users/demo-geri?updateMask.fieldPaths=missionQuota" -H "Authorization: Bearer owner" -H "Content-Type: application/json" -d '{"fields":{"missionQuota":{"mapValue":{"fields":{"week":{"integerValue":"0"},"used":{"integerValue":"0"}}}}}}'
+```
 
-## ELLENŐRZÉSEK
-
-Nem futott ebben a menetben teszt/build (nem történt kódváltozás). A #18
-végén: `npx tsc --noEmit` tiszta, `npx vitest run` 556 sikeres/122
-kihagyva.
+Mérőszkriptek a `tmp/`-ben (nem verziókövetett), a `server/` mappából
+futtatva `npx tsx ../tmp/<fájl>`:
+`measure-mission-perf.ts`, `measure-geometry-reuse.ts`, `measure-phase-split.ts`
+(ez mutatta meg, hol az idő), `measure-endpoint.ts`, `measure-huge-loops.ts`.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
-**#20 — a route-tervezés/terület-számítás tényleges szétválasztása:
-Opus, emelt mélység.** A célfelület-viselkedés már eldőlt (lásd fent), de
-az API-szerződés, a frissítési mechanizmus és a lassú fázis futtatási
-helye (Cloud Run kérésen belül vs. külön) architektúra-döntés — pontosan
-az AGENTS.md 0. pontjában megnevezett eset.
+- **A 2. nyitott ügy (compact + ownership) hibakeresése: Opus, emelt mélység**
+  — mért anomália a játékmotor magjában.
+- A „Sík/Mászás" választó vagy a GraphHopper élesítése: **Sonnet**, normál
+  mélység (meglévő minta kiterjesztése).
 
 ## FORRÁSOK SORRENDJE
 
 1. `AGENTS.md` — különösen a Munkamódszer szakasz
-2. `HANDOFF.md` (ez a fájl) — a mérés és a felületi döntés itt van
-3. `server/src/routes/missions.ts` — a szétválasztandó folyam pontosan itt van (`withLoops` ciklus + az azt megelőző `planned` lista)
-4. `server/src/lib/missionEvaluate.ts` — `shapeCandidateCells`, `evaluateCandidate` (a lassú fél)
-5. `tmp/measure-mission-perf.ts` — a mérőszkript, újrafuttatható más távokra/irányokra
+2. `HANDOFF.md` (ez a fájl)
+3. `server/src/routes/missions.ts` — a kétfázisú lánc és a plafonok
+4. `src/screens/MissionsScreen.tsx` — a kétfázisú hívás és a töltő kártya
+5. `src/game/loopDetection.ts` — a valódi szűk keresztmetszet (`append`)
 6. `docs/02-funkcionalis-spec.md` → Küldetés-ajánló

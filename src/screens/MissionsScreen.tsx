@@ -13,7 +13,7 @@ import { MISSION_KIND_META, missionAreaStat } from '@/lib/missionMeta';
 import { isRouteSaved, saveRoute } from '@/lib/savedRoutes';
 import { formatArea, formatDistance, formatNumber } from '@/lib/format';
 import { compatibleDistanceTarget } from '@/lib/missionTarget';
-import { api, ApiError, apiConfigured, type Mission, type MissionPriority, type MissionResult, type RouteCharacter } from '@/lib/api';
+import { api, ApiError, apiConfigured, type Mission, type MissionPlanResult, type MissionPriority, type MissionResult, type PlannedRoute, type RouteCharacter } from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
 import type { ActivityType } from '@/types';
 import './missions.css';
@@ -38,6 +38,18 @@ const TYPE_OPTIONS: { value: ActivityType; label: string }[] = [
 ];
 
 const LAST_TYPE_KEY = 'grundo.lastActivityType';
+
+/**
+ * A célhossz határai kilométerben.
+ *
+ * ⚠️ EGYEZNIE KELL a szerver `MAX_TARGET_KM` értékével
+ * (`server/src/routes/missions.ts`). Ha a kettő elcsúszik, a felület vagy
+ * olyat enged át, amit a szerver elutasít, vagy olyat tilt, ami menne.
+ * 2026-08-29-től 300 km (korábban 50) — a szerver konstansánál áll, hogy
+ * ennek mi az ára.
+ */
+const MIN_TARGET_KM = 0.5;
+const MAX_TARGET_KM = 300;
 
 type TimeUnit = 'minute' | 'hour';
 type TargetMode = 'time' | 'distance';
@@ -130,6 +142,13 @@ export function MissionsScreen() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [result, setResult] = useState<MissionResult | null>(restored.result);
+  /**
+   * A GYORS fázis eredménye — útvonalak, terület nélkül.
+   *
+   * Amíg ez áll, a kártyák már láthatók (térkép + hossz), a terület/GP/mező
+   * mezők pedig töltő jelzést mutatnak. A `result` megérkezésekor nullázódik.
+   */
+  const [plan, setPlan] = useState<MissionPlanResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   /** Igaz, amíg a képernyőn a visszatöltött, nem a most kért eredmény áll. */
@@ -146,6 +165,22 @@ export function MissionsScreen() {
       /* privát böngészés — a választás nem marad meg, de működik */
     }
   }, [type]);
+
+  /**
+   * Mozgásforma-váltáskor a tempómező KIÜRÜL.
+   *
+   * ⚠️ Mert a mértékegysége is más: futásnál/sétánál perc/km („6:00"),
+   * bringánál km/h („25"). Váltás után a régi szöveg értelmetlen az új
+   * egységgel — a felület egy ideig „5:15 km/h"-t írt ki. (Korábban ez rejtve
+   * maradt: a mező csak olvasható volt, és a `Number('5:15')` NaN-ja miatt
+   * némán a 22-es alapértéket mutatta.) A mező opcionális, tehát az üres
+   * állapot helyes alapértelmezés: ilyenkor a szerver a saját mért tempóddal
+   * számol.
+   */
+  function changeType(next: ActivityType) {
+    setType(next);
+    setPaceValue('');
+  }
 
   /**
    * A helyzet a küldetéshez KELL — enélkül nincs mihez képest kört keresni.
@@ -193,8 +228,8 @@ export function MissionsScreen() {
       );
       return;
     }
-    if (targetMode === 'distance' && (!Number.isFinite(distanceKm) || distanceKm! < 0.5 || distanceKm! > 50)) {
-      setError('A célhossz 0,5 és 50 km között lehet.');
+    if (targetMode === 'distance' && (!Number.isFinite(distanceKm) || distanceKm! < MIN_TARGET_KM || distanceKm! > MAX_TARGET_KM)) {
+      setError(`A célhossz ${formatNumber(MIN_TARGET_KM)} és ${MAX_TARGET_KM} km között lehet.`);
       return;
     }
     const paceSecPerKm = resolvePace(type, paceValue);
@@ -212,7 +247,19 @@ export function MissionsScreen() {
         return;
       }
 
-      const generated = await api.generateMissions({
+      /*
+        KÉT FÁZIS — a kártya nem várja meg a területszámítást.
+
+        Mérve (2026-08-29): az útvonaltervezés és a válogatás 0,5–2,2 s, míg a
+        teljes lánc egy nagy bringakörnél 12,7 s. Ezért előbb az útvonalakat
+        kérjük el, kirajzoljuk a kártyákat, és a terület/GP/karakter mezők
+        utólag töltődnek ki.
+
+        ⚠️ A „NEM BECSLÉS" SZABÁLY ÉRVÉNYES: a köztes állapotban NEM írunk ki
+        közelítő számot, amit később felülírnánk — a mező töltő jelzést mutat,
+        amíg a valódi motor ki nem számolja.
+      */
+      const plan = await api.missionsPlan({
         ...where,
         ...(targetMode === 'time'
           ? { minutes: wanted! }
@@ -227,11 +274,40 @@ export function MissionsScreen() {
         // Sétánál a kapcsoló nincs a felületen — nincs értelme kanyarbüntetésnek.
         ...(type === 'walk' ? {} : { routeCharacter }),
       });
-      setResult(generated);
+
+      setResult(null);
       setFromToday(false);
+
+      if (plan.routes.length === 0) {
+        // Nincs mit kiértékelni: a `plan` már megmondta az okot.
+        setResult({ ...plan, missions: [] });
+        return;
+      }
+
+      // A kártyák INNENTŐL láthatók, terület nélkül.
+      setPlan(plan);
+      setLoading(false);
+
+      const evaluated = await api.missionsEvaluate({
+        type,
+        priority,
+        routes: plan.routes.map((route) => ({
+          polyline: route.polyline,
+          bearing: route.bearing,
+        })),
+      });
+
+      const full: MissionResult = {
+        targetKm: plan.targetKm,
+        paceSecPerKm: plan.paceSecPerKm,
+        ...(plan.quota === undefined ? {} : { quota: plan.quota }),
+        missions: evaluated.missions,
+        ...(evaluated.reason === undefined ? {} : { reason: evaluated.reason }),
+      };
+      setResult(full);
       // Az eredmény átkerül a Home „mai küldetés" kártyájára, és ide is
       // visszatölthető marad, ha a felhasználó közben elnavigál.
-      rememberDailyMission(generated);
+      rememberDailyMission(full);
     } catch (problem: unknown) {
       setResult(null);
       setFromToday(false);
@@ -239,6 +315,7 @@ export function MissionsScreen() {
         problem instanceof ApiError ? problem.message : 'A küldetés-generálás most nem működik.',
       );
     } finally {
+      setPlan(null);
       setLoading(false);
     }
   }
@@ -328,20 +405,32 @@ export function MissionsScreen() {
           ) : null}
           </>
           ) : (
-            <label className="mission__field">
+            <div className="mission__field">
               <span>Célhossz</span>
-              <span className="mission__input-with-unit">
-                <input type="number" min="0.5" max="50" step="0.5" value={distanceValue} onChange={(event) => setDistanceValue(event.target.value)} />
-                <strong>km</strong>
-              </span>
-            </label>
+              <Stepper
+                value={distanceValue}
+                onChange={setDistanceValue}
+                unit="km"
+                ariaLabel="Célhossz"
+                placeholder="5"
+                onStep={(direction) => {
+                  const current = Number(distanceValue.replace(',', '.')) || 5;
+                  const step = distanceStepKm(current, direction);
+                  // A léptékre kerekítünk, hogy a kézzel beírt 7,3 után is
+                  // kerek értékek jöjjenek (7,3 → 8 → 9), ne 8,3 → 9,3.
+                  const next = Math.round((current + direction * step) / step) * step;
+                  const clamped = Math.max(MIN_TARGET_KM, Math.min(MAX_TARGET_KM, next));
+                  setDistanceValue(String(clamped));
+                }}
+              />
+            </div>
           )}
 
           <div className="mission__type">
             <SegmentedControl
               options={TYPE_OPTIONS}
               value={type}
-              onChange={setType}
+              onChange={changeType}
               label="Mozgásforma"
               block
             />
@@ -349,10 +438,13 @@ export function MissionsScreen() {
 
 
           {advancedOpen ? <div className="mission__advanced">
-          <label className="mission__field">
+          {/* `div`, nem `label`: a stepper maga tartalmaz egy label-t a mező
+              köré, és a beágyazott label érvénytelen HTML lenne. A mezőt az
+              inputon lévő `aria-label` azonosítja. */}
+          <div className="mission__field">
             <span>{type === 'ride' ? 'Tervezett átlagsebesség (opcionális)' : 'Tervezett átlagtempó (opcionális)'}</span>
             <PaceStepper type={type} value={paceValue} onChange={setPaceValue} />
-          </label>
+          </div>
 
           <div className="mission__select-grid">
             <label className="mission__field">
@@ -426,6 +518,12 @@ export function MissionsScreen() {
           <p className="mission__restored">A ma generált küldetéseid.</p>
         ) : null}
 
+        {/*
+          A KÖZTES ÁLLAPOT: útvonal már van, terület még nincs. A `plan` csak
+          addig áll, amíg a kiértékelés fut — utána a `result` veszi át.
+        */}
+        {plan && !result ? <PendingResults plan={plan} /> : null}
+
         {result ? (
           <Results
             result={result}
@@ -451,6 +549,60 @@ export function MissionsScreen() {
   );
 }
 
+/**
+ * Léptethető ÉS gépelhető mező.
+ *
+ * ⚠️ A BEÍRT SZÖVEG NYERSEN MEGY TOVÁBB, gépelés közben nem alakítjuk át.
+ * Enélkül a részlegesen begépelt érték használhatatlan lenne: a „6:15"
+ * útközben egyszer „6:", a „25" egyszer „2" — ha ilyenkor normalizálnánk, a
+ * kurzor elugrana, vagy a mező visszaírná a régi értéket a felhasználó
+ * gépelése alá. A −/+ gomb viszont mindig érvényes, normalizált értéket ír.
+ * Az érvényesség ellenőrzése a beküldésnél történik (`resolvePace`,
+ * `MIN_TARGET_KM`/`MAX_TARGET_KM`), ahol érthető magyar hibaüzenet jár hozzá.
+ */
+function Stepper({
+  value,
+  onChange,
+  unit,
+  ariaLabel,
+  placeholder,
+  inputMode = 'decimal',
+  onStep,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  unit: string;
+  ariaLabel: string;
+  placeholder?: string;
+  inputMode?: 'decimal' | 'text';
+  onStep: (direction: 1 | -1) => void;
+}) {
+  return (
+    <div className="mission__stepper" role="group" aria-label={ariaLabel}>
+      <button type="button" aria-label="Csökkentés" onClick={() => onStep(-1)}>−</button>
+      {/*
+        ⚠️ `label`, NEM `span`. A beviteli mező csak a beírt szöveg
+        szélességét foglalja (hogy a szám és az egység egymás mellett,
+        középen üljön), tehát a doboz nagy részére koppintva a kattintás a
+        kereten landolna — a felhasználó szerint „nem lehet beleírni". A
+        label a saját területén belül bárhol az inputra adja a fókuszt.
+      */}
+      <label className="mission__stepper-field">
+        <input
+          type="text"
+          inputMode={inputMode}
+          value={value}
+          placeholder={placeholder ?? ''}
+          aria-label={ariaLabel}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <strong className="mission__stepper-unit">{unit}</strong>
+      </label>
+      <button type="button" aria-label="Növelés" onClick={() => onStep(1)}>+</button>
+    </div>
+  );
+}
+
 function PaceStepper({ type, value, onChange }: { type: ActivityType; value: string; onChange: (value: string) => void }) {
   const ride = type === 'ride';
   const current = ride
@@ -463,12 +615,37 @@ function PaceStepper({ type, value, onChange }: { type: ActivityType; value: str
     const clamped = Math.max(min, Math.min(max, next));
     onChange(ride ? String(clamped) : `${Math.floor(clamped / 60)}:${String(clamped % 60).padStart(2, '0')}`);
   };
-  const label = ride ? `${current} km/h` : `${Math.floor(current / 60)}:${String(current % 60).padStart(2, '0')} perc/km`;
-  return <div className="mission__stepper" role="group" aria-label="Tervezett átlag">
-    <button type="button" aria-label="Csökkentés" onClick={() => set(current - step)}>−</button>
-    <output className="mission__stepper-value">{label}</output>
-    <button type="button" aria-label="Növelés" onClick={() => set(current + step)}>+</button>
-  </div>;
+
+  return (
+    <Stepper
+      value={value}
+      onChange={onChange}
+      unit={ride ? 'km/h' : 'perc/km'}
+      ariaLabel={ride ? 'Tervezett átlagsebesség' : 'Tervezett átlagtempó'}
+      // A mező OPCIONÁLIS: üresen hagyva a szerver a saját mért tempóddal
+      // számol. A helyőrző ezért a tipikus értéket mutatja, nem parancsot.
+      placeholder={ride ? '22' : '6:00'}
+      inputMode={ride ? 'decimal' : 'text'}
+      onStep={(direction) => set(current + direction * step)}
+    />
+  );
+}
+
+/**
+ * A célhossz léptéke — annál durvább, minél hosszabb a kör.
+ *
+ * Geri kérése (2026-08-29): 10 km alatt 1, 10 fölött 5, 50 fölött 10. Egy
+ * 120 km-es kört különben 240 koppintásból lehetne csak összerakni.
+ *
+ * ⚠️ A HATÁRON LEFELÉ A KISEBB LÉPTÉK ÉRVÉNYES. Enélkül a 10 km-ről lefelé
+ * lépés 5-re esne (10 − 5), a felhasználó viszont 9-et vár; ugyanígy 50-ről
+ * 40-re ugrana 45 helyett.
+ */
+function distanceStepKm(km: number, direction: 1 | -1): number {
+  const reference = direction === -1 ? km - 0.001 : km;
+  if (reference < 10) return 1;
+  if (reference < 50) return 5;
+  return 10;
 }
 
 function resolvePace(type: ActivityType, raw: string): number | null {
@@ -532,6 +709,88 @@ function emptyMessage(reason: string | undefined): string {
     default:
       return 'Most nincs ajánlható küldetés.';
   }
+}
+
+/**
+ * A köztes állapot: az útvonalak megvannak, a tétjük még számolás alatt.
+ *
+ * ⚠️ NEM MUTAT BECSÜLT SZÁMOT. A „NEM BECSLÉS" szabály (AGENTS.md 2. döntés)
+ * szerint a küldetés mindig a valódi motor eredményét írja ki — itt tehát a
+ * mező nem közelít, hanem megmondja, hogy még dolgozunk rajta.
+ *
+ * A kártyák száma itt még nem végleges: a kiértékelés dönti el, melyik
+ * útvonalból lesz ténylegesen küldetés (van-e bezárt terület, nem fedi-e egy
+ * másikat). Ezért nincs se „Indítás", se „Mentés" gomb — az útvonal még nem
+ * ajánlat, csak jelölt.
+ */
+function PendingResults({ plan }: { plan: MissionPlanResult }) {
+  return (
+    <>
+      <p className="mission__target">
+        Célhossz: <strong>{formatDistance(plan.targetKm * 1000)}</strong> — a saját tempódból
+        számolva.
+      </p>
+      {plan.routes.map((route) => (
+        <PendingMissionCard key={route.polyline} route={route} />
+      ))}
+    </>
+  );
+}
+
+function PendingMissionCard({ route }: { route: PlannedRoute }) {
+  const { theme } = useThemeContext();
+  const [mapFailed, setMapFailed] = useState(false);
+  const mapUrl = mapFailed ? null : routeImageUrl(route.polyline, { theme });
+
+  return (
+    <section className="card mission__card mission__card--pending" aria-busy="true">
+      <header className="mission__head">
+        <span className="mission__badge mission__badge--pending">
+          <span className="mission__spinner" aria-hidden="true" />
+          Számítás
+        </span>
+        <span className="mission__distance">{formatDistance(route.distanceKm * 1000)}</span>
+      </header>
+
+      <p className="mission__headline mission__headline--pending">
+        Megvan az útvonal — most számoljuk ki, mennyi területet ér.
+      </p>
+
+      {mapUrl ? (
+        <img
+          className="mission__map"
+          src={mapUrl}
+          alt=""
+          loading="lazy"
+          onError={() => setMapFailed(true)}
+        />
+      ) : null}
+
+      <dl className="mission__stats">
+        <PendingStat label="Terület" text="Területszámítás" />
+        <PendingStat label="Becsült GP" text="Pontszámítás" />
+        <PendingStat label="Mező" text="Cellakalkuláció" />
+      </dl>
+    </section>
+  );
+}
+
+/**
+ * Egy még ki nem számolt statisztika.
+ *
+ * A felirat mozog (`mission__pending-text`), nem a doboz — így a három mező
+ * együtt nem villog, és a kártya magassága sem ugrik meg, amikor a valódi
+ * érték a helyére kerül.
+ */
+function PendingStat({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="mission__stat">
+      <dt className="mission__stat-label">{label}</dt>
+      <dd className="mission__stat-value mission__stat-value--pending">
+        <span className="mission__pending-text">{text}</span>
+      </dd>
+    </div>
+  );
 }
 
 function MissionCard({ mission, onStart }: { mission: Mission; onStart: () => void }) {
