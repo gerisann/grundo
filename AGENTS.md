@@ -342,8 +342,24 @@ a fájlra hivatkozik, te pedig egyetlen `Read`-del betöltöd.
   - egy mondat: „a részletek a `HANDOFF.md`-ben”.
 - **A telepítő parancsokat ne írd ki**: elég a szó — **frontend**, **backend**,
   **szabalyok**, **indexek**. ⚠️ Az „indexek" KÜLÖN van, a „szabalyok" nem
-  tartalmazza. Cloud Shell-parancsot viszont adj, ha nem rutinszerű.
+  tartalmazza.
 - **Git-parancsot ne adj a felhasználónak.**
+- ⚠️ **A TELEPÍTÉS 2026-08-29-TŐL A FEJLESZTŐI GÉPRŐL MEGY, nem Cloud
+  Shellből** (Geri döntése — elfogyott a heti kvótája). A `scripts/deploy.sh`
+  Git Bashből futtatható, minden eszköz telepítve és bejelentkezve. A backend
+  build ettől még a felhőben fut. **Ha telepítést kérnek tőlem, meg tudom
+  csinálni** — de éles, kifelé irányuló művelet, tehát KÉRDEZZEM MEG előtte.
+  - ⚠️ **BUILD ELŐTT ELLENŐRIZD A KÖRNYEZETI VÁLTOZÓKAT.** Az első gépes
+    build Firebase-konfig NÉLKÜL ment élesbe, mert az értékek addig csak a
+    Cloud Shell gitignore-olt `.env.local` fájljában éltek — az oldal
+    bejelentkezés nélkül, hibaüzenettel fogadta a felhasználókat. A nyilvános
+    konfiguráció azóta a repóban van (`.env.production`), de a szokás
+    maradjon: telepítés előtt `grep`-pel nézd meg a `dist/assets/`-ben, hogy a
+    kulcsértékek tényleg beépültek-e. Egy build-kimenet átfutása nem
+    bizonyíték — a Vite üres változóra is hibátlanul lefordít.
+  - ⚠️ **A gyökér `npx tsc --noEmit` NEM ellenőrzi a `server/` mappát.** Azt
+    külön kell: `cd server && npx tsc --noEmit`. Ez már fogott meg valódi
+    típushibát, amit a gyökér-ellenőrzés zölden átengedett.
 - **A commit az enyém** (2026-08-19-től), a **push és a telepítés az övé**. A
   `HANDOFF.md` frissítése ugyanabba a commitba kerül, mint a menet többi
   változása. A commit-üzenet első sora tömör Summary (max ~50 karakter), utána

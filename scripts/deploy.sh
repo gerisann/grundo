@@ -1,15 +1,30 @@
 #!/usr/bin/env bash
 #
-# GRUNDO — telepítés Cloud Shellből, egy paranccsal.
+# GRUNDO — telepítés egy paranccsal.
 #
-# HASZNÁLAT (Cloud Shell, bárhonnan):
+# HASZNÁLAT (2026-08-29-től A FEJLESZTŐI GÉPRŐL, Git Bashből, a repo bárhol):
 #
-#   ~/grundo/scripts/deploy.sh              # backend, majd frontend
-#   ~/grundo/scripts/deploy.sh backend
-#   ~/grundo/scripts/deploy.sh frontend
-#   ~/grundo/scripts/deploy.sh graphhopper  # az útvonalmotor — lásd lent
-#   ~/grundo/scripts/deploy.sh szabalyok    # Firestore + Storage szabályok
-#   ~/grundo/scripts/deploy.sh indexek      # Firestore indexek
+#   ./scripts/deploy.sh              # backend, majd frontend
+#   ./scripts/deploy.sh backend
+#   ./scripts/deploy.sh frontend
+#   ./scripts/deploy.sh graphhopper  # az útvonalmotor — lásd lent
+#   ./scripts/deploy.sh szabalyok    # Firestore + Storage szabályok
+#   ./scripts/deploy.sh indexek      # Firestore indexek
+#
+# ⚠️ A CLOUD SHELL MÁR NEM KELL (Geri döntése, 2026-08-29 — a heti kvóta
+# elfogyott). A gépen minden megvan hozzá: `gcloud`, `firebase`, `node`, `npm`,
+# és mind a kettő be van jelentkezve (`gcloud auth list`, `firebase login:list`).
+# A backend build ettől függetlenül TOVÁBBRA IS a felhőben fut — a `gcloud
+# builds submit` csak feltölti a forrást.
+#
+# ⚠️ AMI EMIATT MEGVÁLTOZOTT, ÉS AMIBE BELE IS FUTOTTUNK: a kliens
+# konfigurációja korábban a Cloud Shell másolatának GITIGNORE-OLT `.env.local`
+# fájljából jött. Az első fejlesztői gépes build ezért Firebase-konfig NÉLKÜL
+# ment ki, és az éles oldal „A Firebase nincs beállítva" hibával fogadta a
+# felhasználókat. A nyilvános konfiguráció azóta a repóban van
+# (`.env.production`), tehát a build nem függ attól, ki melyik gépen áll.
+# TITOK továbbra sem kerülhet oda — a Mapbox token a gitignore-olt
+# `.env.local`-ban marad.
 #
 # MIÉRT VAN EZ A SZKRIPT?
 #
@@ -59,10 +74,31 @@ fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 info "Projekt beállítása: $PROJECT"
 gcloud config set project "$PROJECT" >/dev/null
 
+# ⚠️ NEM COMMITOLT MÓDOSÍTÁSSAL NEM TELEPÍTÜNK.
+#
+# Cloud Shellben ez nem fordulhatott elő: ott a másolat csak telepítésre
+# szolgált, és mindig a `git pull` friss állapotát telepítette. A FEJLESZTŐI
+# GÉPEN viszont ugyanaz a mappa a munkapéldány — egy félkész, épp szerkesztett
+# fájl így némán élesbe kerülne. Ezért itt megállunk.
+if [ -n "$(git status --porcelain)" ]; then
+  git status --short
+  fail "A munkamásolat nem tiszta. Commitold vagy stasheld a fenti módosításokat a telepítés előtt."
+fi
+
 info "Friss kód lehúzása"
 before_pull="$(git rev-parse HEAD)"
 git pull --ff-only
 printf '   HEAD: %s\n' "$(git log --oneline -1)"
+
+# Pusholatlan commit nem akadály — helyi buildnél a HELYI kód települ, és ez
+# néha szándékos. De tudni kell róla: ami élesben fut, annak a GitHubon is ott
+# a helye, különben egy géphiba viszi magával az egyetlen példányt.
+if git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+  unpushed="$(git log --oneline '@{u}'..HEAD | wc -l | tr -d ' ')"
+  if [ "$unpushed" != "0" ]; then
+    printf '\n\033[33m⚠ %s pusholatlan commit — ezek is élesbe kerülnek. Telepítés után: git push\033[0m\n' "$unpushed"
+  fi
+fi
 
 # ⚠️ HA MAGA EZ A SZKRIPT FRISSÜLT, ÚJRA KELL INDÍTANI MAGUNKAT.
 #
