@@ -32,9 +32,12 @@ describe('publikus aktivitás-útvonal', () => {
   it('régi, félbemaradt vagy más privacy-verziójú útvonalat újraépít', () => {
     const privacy = normalizePrivacy({ routeRevision: 3 });
     expect(publicRouteNeedsRebuild({ routeVersion: 1 }, privacy)).toBe(true);
-    expect(publicRouteNeedsRebuild({ routeVersion: 2, routePending: true }, privacy)).toBe(true);
-    expect(publicRouteNeedsRebuild({ routeVersion: 2, routePrivacyRevision: 2 }, privacy)).toBe(true);
-    expect(publicRouteNeedsRebuild({ routeVersion: 2, routePrivacyRevision: 3 }, privacy)).toBe(false);
+    // A 2-es verzió a privátzóna-hiba javítása ELŐTTI vágással készült — a
+    // 3-asra emelés pont azért van, hogy ezek újraépüljenek (2026-08-29).
+    expect(publicRouteNeedsRebuild({ routeVersion: 2, routePrivacyRevision: 3 }, privacy)).toBe(true);
+    expect(publicRouteNeedsRebuild({ routeVersion: 3, routePending: true }, privacy)).toBe(true);
+    expect(publicRouteNeedsRebuild({ routeVersion: 3, routePrivacyRevision: 2 }, privacy)).toBe(true);
+    expect(publicRouteNeedsRebuild({ routeVersion: 3, routePrivacyRevision: 3 }, privacy)).toBe(false);
   });
 
   it('törölt aktivitást nem épít újra', () => {

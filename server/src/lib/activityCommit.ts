@@ -151,6 +151,21 @@ export interface ActivityPlan extends ActivityInput {
   layer: Layer;
   distanceM: number;
   candidateCells: CellId[];
+  /**
+   * A COMPACT hurkok belseje, tömören — kizárólag a MEGJELENÍTÉSHEZ.
+   *
+   * A `candidateCells` compact huroknál szándékosan csak a falat és a pontos
+   * határsávot tartalmazza (lásd `compactWorks`), a belső a parentekben él. A
+   * kliens viszont a `candidateCells`-ből rajzolja ki az elfoglalt területet,
+   * ezért nagy huroknál a hurok KÖZEPE üresen maradt — éles hiba, 2026-08-29:
+   * egy háromhurkos aktivitásnál a 15 745 foglalt cellából 9 163 (58 %) nem
+   * jutott el a klienshez, és a „nyolcas" alsó fele kitöltetlen volt.
+   *
+   * Ezek H3-compactolt (vegyes, ≤ res10) indexek: ugyanazon a mérésen a
+   * hiányzó 9 163 res12 cellát MINDÖSSZE 85 index, ~1 kB írja le. A kliens
+   * `cellToChildren(cell, 12)`-vel bontja ki.
+   */
+  candidateCellParents: CellId[];
   orphanScope: Set<CellId>;
   blockIds: string[];
   now: Date;
@@ -239,6 +254,9 @@ export function planActivity(input: ActivityInput): ActivityPlan {
   // Nem csak a nyomvonalat olvassuk: a hurok teljes belseje is ownership-
   // függő. Ez a halmaz kizárólag geometria, ezért tranzakción kívül maradhat.
   const candidateCells = [...probe.claimedCells];
+  // Lásd `ActivityPlan.candidateCellParents`: a compact hurok belseje csak
+  // ezen az úton jut el a klienshez, a rajzoláshoz.
+  const candidateCellParents = probe.compactClaim ? [...probe.compactClaim.parents.keys()] : [];
   // Egy potenciális egycellás maradvány teljes szomszédságának ismeretéhez
   // két H3-gyűrű kell a geometriai claim körül. Ugyanezek a blokkok kerülnek
   // a tranzakcióba, ezért konkurens mentésnél a Firestore friss állapottal
@@ -281,6 +299,7 @@ export function planActivity(input: ActivityInput): ActivityPlan {
     loops: probe.loops,
     distanceM: serverDistanceM,
     candidateCells,
+    candidateCellParents,
     orphanScope,
     blockIds,
     compactWorks,
@@ -433,6 +452,9 @@ export async function commitActivity(
     gp: result.gp,
     cellCount: result.cellPath.length,
     activityCells: plan.candidateCells,
+    // A compact hurok belseje tomoren — enelkul a nagy hurkok kozepe
+    // uresen marad a kliens terkepen (lasd ActivityPlan.candidateCellParents).
+    activityCellParents: plan.candidateCellParents,
     pointCount: points.length,
     /*
       A KÁRTYA RIVÁLIS-SÁVJÁHOZ. A `claimCounts` mondja meg, mennyi jött

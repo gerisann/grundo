@@ -256,6 +256,11 @@ export interface FeedActivity {
   commentCount: number;
   likedByMe: boolean;
   activityCells: string[];
+  /**
+   * A nagy (compact) hurkok belseje, H3-compactolt indexekkel. A kliens
+   * bontja ki res12-re — lasd expandActivityCells().
+   */
+  activityCellParents?: string[];
   author: ActivityAuthor;
   /** Hány mezővel nőtt a grund ebben a körben (szabad földről + elvéve). */
   cellsGained: number;
@@ -346,6 +351,11 @@ export interface ActivityDetail {
   commentCount: number;
   likedByMe: boolean;
   activityCells: string[];
+  /**
+   * A nagy (compact) hurkok belseje, H3-compactolt indexekkel. A kliens
+   * bontja ki res12-re — lasd expandActivityCells().
+   */
+  activityCellParents?: string[];
   bounds: { north: number; south: number; east: number; west: number } | null;
   author: ActivityAuthor;
   /** Csak a saját aktivitásnál. Pontszám és diagnosztika soha nem jön le. */

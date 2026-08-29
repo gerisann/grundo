@@ -529,6 +529,12 @@ interface FeedRow {
   likeCount: number;
   commentCount: number;
   activityCells: string[];
+  /**
+   * A nagy (compact) hurkok belseje, H3-compactolt — a kliens bontja ki
+   * res12-re. Lásd `ActivityPlan.candidateCellParents`: enélkül a nagy hurkok
+   * közepe üresen maradt a térképen.
+   */
+  activityCellParents: string[];
   /** Hány cellát szerzett az aktivitás: szabad földről + máshonnan elvéve. */
   cellsGained: number;
   /** Ebből mennyi jött MÁS JÁTÉKOSTÓL — a kártya rivális-sávjának korall fele. */
@@ -591,6 +597,23 @@ function claimCountsOf(data: Record<string, unknown>): { gained: number; stolen:
   return { gained: Math.max(gained, stolen), stolen };
 }
 
+/**
+ * Cellalista a dokumentumból, plafonnal.
+ *
+ * ⚠️ A PLAFON A VÁLASZMÉRETET VÉDI, de nem lehet olyan szűk, hogy a területet
+ * csonkolja. Az `activityCells` korábban 5 000-nél volt elvágva — egy éles,
+ * háromhurkos aktivitásnál a tárolt 6 582 celláját is megnyirbálta
+ * (2026-08-29). A 20 000 azért elég, mert a hurok belseje 40 000 cella fölött
+ * úgyis a compact ágra kerül, és onnan a `activityCellParents` hozza.
+ */
+function parseCellList(raw: unknown, max: number): string[] {
+  return Array.isArray(raw) ? raw.map(String).slice(0, max) : [];
+}
+
+const MAX_ACTIVITY_CELLS = 20_000;
+/** Egy parent ~49 res12 cellát képvisel, tehát ez bőven lefed egy nagy kört. */
+const MAX_ACTIVITY_CELL_PARENTS = 4_000;
+
 function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
   const bounds = data.bounds as
     | { north: number; south: number; east: number; west: number }
@@ -617,7 +640,8 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     photos: parseStoredPhotos(data.photos),
     likeCount: Number(data.likeCount ?? 0),
     commentCount: Number(data.commentCount ?? 0),
-    activityCells: Array.isArray(data.activityCells) ? data.activityCells.map(String).slice(0, 5000) : [],
+    activityCells: parseCellList(data.activityCells, MAX_ACTIVITY_CELLS),
+    activityCellParents: parseCellList(data.activityCellParents, MAX_ACTIVITY_CELL_PARENTS),
     center: bounds
       ? { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 }
       : null,
@@ -820,7 +844,8 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
         photos: parseStoredPhotos(data.photos),
         likeCount: Number(data.likeCount ?? 0),
         commentCount: Number(data.commentCount ?? 0),
-        activityCells: Array.isArray(data.activityCells) ? data.activityCells.map(String).slice(0, 5000) : [],
+        activityCells: parseCellList(data.activityCells, MAX_ACTIVITY_CELLS),
+        activityCellParents: parseCellList(data.activityCellParents, MAX_ACTIVITY_CELL_PARENTS),
         likedByMe: await hasLiked(snapshot.id, req.uid!),
         startedAt: toMillis(data.startedAt),
         endedAt: toMillis(data.endedAt),

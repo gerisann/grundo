@@ -105,6 +105,37 @@ describe('privát zóna', () => {
     }
   });
 
+  it('a menet KÖZBEN visszatérő útvonalból csak a védőkört vágja ki', () => {
+    /*
+      ÉLES HIBA, 2026-08-29: egy 17 km-es, háromhurkos aktivitás TELJESEN
+      eltűnt 200 méteres beállítás mellett, mert az eleji vágás az utolsó
+      rajt-közeli pontig tartott — a nyomvonal pedig menet közben visszatért
+      a rajthoz. Mérve: 44-90 % veszett el a helyes ~5-14 % helyett.
+    */
+    const twoLoops = buildTrace(
+      [
+        ORIGIN,
+        offset(ORIGIN, 0, 2500),
+        offset(ORIGIN, 900, 2500),
+        offset(ORIGIN, 900, 100),
+        ORIGIN, // ⬅ visszatér a rajthoz, félúton
+        offset(ORIGIN, 1500, -750),
+        offset(ORIGIN, 1500, 200),
+        ORIGIN,
+      ],
+      { stepM: 25 },
+    );
+    const { points } = trimPrivateEnds(twoLoops, DEFAULT_PRIVACY);
+
+    // A védőkörből semmi nem szivároghat ki — ez a védelem lényege.
+    for (const point of points) {
+      expect(distanceM(ORIGIN, point)).toBeGreaterThan(200);
+    }
+    // De az útvonal érdemi része megmarad: a kör közepe nem eshet áldozatul
+    // annak, hogy a nyomvonal egyszer visszaérintette a rajtot.
+    expect(points.length).toBeGreaterThan(twoLoops.length * 0.85);
+  });
+
   it('ha az egész aktivitás a körön belül volt, nincs mit mutatni', () => {
     const tiny = buildTrace([ORIGIN, offset(ORIGIN, 80, 0), ORIGIN], { stepM: 5 });
     expect(trimPrivateEnds(tiny).points).toEqual([]);

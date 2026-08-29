@@ -116,16 +116,27 @@
   background: var(--bg-elevated);
 }
 
-/* 40/60 arány a Befejezés javára — Geri kérése (2026-08-27): a Befejezés
-   (különösen a húzásos gesztus) több helyet érdemel, mint az „Új kör". */
+/* 50/50 arány — Geri kérése (2026-08-29): a két oldalsó gomb egyforma
+   széles, így a középső Play gomb pontosan a dokk közepén ül. (Előtte
+   40/60 volt a Befejezés javára, 2026-08-27-től.) A `flex: 1` magától a
+   `.dock__side` szabályból jön; itt már csak a színek különböznek. */
 .dock__side--left {
   color: var(--success);
-  flex: 4;
 }
 
 .dock__side--right {
   color: var(--danger);
-  flex: 6;
+}
+
+/*
+  HÚZÁSOS BEFEJEZÉSNÉL kisebb a felirat (Geri kérése, 2026-08-29).
+  A „Befejezés" saját szabályt kap lentebb (`.swipe-finish__label`), ami
+  eleve csak ebben a módban létezik; az „Új kör" viszont mindkét módban ott
+  van, ezért kell hozzá a `:has()` feltétel — a húzásos gombot keressük a
+  testvérei között.
+*/
+.dock__center:has(.swipe-finish) .dock__side--left {
+  font-size: 13px;
 }
 
 .dock__side:active {
@@ -544,12 +555,15 @@
   inset: 0;
   display: grid;
   place-items: center;
-  /* Kicsit jobbra tolva — Geri kérése (2026-08-27): a fogantyú a bal
-     szélen ül, a teljes sávra középre igazított felirat ezért vizuálisan
-     balra tolódottnak hatott a maradék, LÁTHATÓ helyhez képest. */
-  padding-left: 22px;
+  /* Jobbra tolva — Geri kérése (2026-08-27): a fogantyú a bal szélen ül, a
+     teljes sávra középre igazított felirat ezért vizuálisan balra
+     tolódottnak hatott a maradék, LÁTHATÓ helyhez képest. 2026-08-29-től
+     22 helyett 40 px, mert a gomb az 50/50-es osztásban keskenyebb lett, és
+     a fogantyú arányosan többet takart belőle. */
+  padding-left: 40px;
   color: var(--danger);
-  font-size: 15px;
+  /* 15 helyett 13 px — Geri kérése (2026-08-29), a keskenyebb gombhoz. */
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.01em;
   pointer-events: none;

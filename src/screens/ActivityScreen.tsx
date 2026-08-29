@@ -14,6 +14,7 @@ import { computeSplits, elevationProfile } from '@/game/splits';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { latLngToCell } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
+import { expandActivityCells } from '@/lib/activityCells';
 import { processActivity } from '@/game';
 import { api } from '@/lib/api';
 import {
@@ -92,10 +93,27 @@ export function ActivityScreen() {
   );
   const elevation = useMemo(() => elevationProfile(points), [points]);
   const hasRoute = points.length >= 2;
+  /**
+   * A szerver által küldött, elfoglalt cellák — a nagy hurkok belsejével
+   * együtt (lásd `expandActivityCells`). Enélkül a compact hurkok közepe
+   * üresen maradt a térképen.
+   */
+  const claimedCells = useMemo(
+    () => expandActivityCells(activity?.activityCells, activity?.activityCellParents),
+    [activity?.activityCells, activity?.activityCellParents],
+  );
+
   const pathCells = useMemo(() => {
     if (!activity) return [];
     try {
-      return [...processActivity({
+      /*
+        VISSZAESÉSI ÁG a 2026-08-29 ELŐTT mentett aktivitásokhoz, amelyeknél a
+        szerver még nem küld `activityCellParents`-et. A `claimedCells` compact
+        (nagy) huroknál itt is csak a falat adja, ezért a hurok belsejét a
+        `compactClaim` parentjeiből kell kibontani — különben a régi nagy körök
+        közepe üresen maradna a javítás után is.
+      */
+      const result = processActivity({
         points,
         type: activity.type,
         distanceKm: activity.distanceM / 1000,
@@ -103,7 +121,11 @@ export function ActivityScreen() {
         ownership: new Map(),
         streakDays: 0,
         gpEarnedToday: 0,
-      }).claimedCells];
+      });
+      return expandActivityCells(
+        [...result.claimedCells],
+        result.compactClaim ? [...result.compactClaim.parents.keys()] : [],
+      );
     } catch {
       return [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))];
     }
@@ -161,7 +183,7 @@ export function ActivityScreen() {
               fill
               hexesVisible={hexesVisible}
               onToggleHexes={() => setHexesVisible((visible) => !visible)}
-              layers={hexesVisible ? [{ role: 'interior', cells: activity.activityCells?.length ? activity.activityCells : pathCells }] : []}
+              layers={hexesVisible ? [{ role: 'interior', cells: claimedCells.length ? claimedCells : pathCells }] : []}
             />
           </Suspense>
         ) : (

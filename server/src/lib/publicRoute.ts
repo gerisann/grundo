@@ -8,8 +8,16 @@ import {
 import type { TracePoint } from '../../../src/types';
 import { COLLECTIONS, db } from './firebase';
 
-/** A 2-es verzió javítja a zárt útvonalak privátzóna-vágását. */
-export const PUBLIC_ROUTE_VERSION = 2;
+/**
+ * A 2-es verzió javítja a zárt útvonalak privátzóna-vágását.
+ *
+ * A 3-as (2026-08-29) azt a hibát javítja, amikor a menet KÖZBEN a rajt
+ * védőkörébe visszatérő útvonal fele-egésze eltűnt (lásd `privacy.ts`
+ * `trimPrivateEnds`). A verzió emelése FONTOS: a `publicRouteNeedsRebuild`
+ * ebből tudja, hogy a MÁR MENTETT aktivitások publikus útvonalát újra kell
+ * építeni — enélkül a régi, tévesen elrejtett útvonalak úgy maradnának.
+ */
+export const PUBLIC_ROUTE_VERSION = 3;
 
 /** Ennyi pontnál többnek telefonképernyőn nincs látható haszna. */
 const MAX_ROUTE_POINTS = 600;

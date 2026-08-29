@@ -19,6 +19,7 @@ import type { FeedActivity } from '@/lib/api';
 import './activityCard.css';
 import { decodePolyline } from '@/game/polyline';
 import { processActivity } from '@/game';
+import { expandActivityCells } from '@/lib/activityCells';
 import { mapboxConfigured } from '@/lib/mapbox';
 
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
@@ -75,10 +76,16 @@ export function ActivityCard({
    */
   const previewCells = useMemo(() => {
     if (!hexesVisible) return [];
-    if (item.activityCells?.length) return item.activityCells;
+    // A nagy hurkok belseje tömören érkezik — kibontás nélkül a hurok közepe
+    // üresen maradna (lásd `expandActivityCells`).
+    if (item.activityCells?.length) {
+      return expandActivityCells(item.activityCells, item.activityCellParents);
+    }
     try {
+      // Régi (2026-08-29 előtti) aktivitás: a mező hiányzik, magunk számoljuk.
+      // A compact hurok belseje itt is csak a parentekből jön ki.
       const points = decodePolyline(item.route).map((point) => ({ ...point, t: 0 }));
-      return [...processActivity({
+      const result = processActivity({
         points,
         type: item.type,
         distanceKm: item.distanceM / 1000,
@@ -86,11 +93,15 @@ export function ActivityCard({
         ownership: new Map(),
         streakDays: 0,
         gpEarnedToday: 0,
-      }).claimedCells];
+      });
+      return expandActivityCells(
+        [...result.claimedCells],
+        result.compactClaim ? [...result.compactClaim.parents.keys()] : [],
+      );
     } catch {
       return [];
     }
-  }, [hexesVisible, item.activityCells, item.author.uid, item.distanceM, item.route, item.type]);
+  }, [hexesVisible, item.activityCells, item.activityCellParents, item.author.uid, item.distanceM, item.route, item.type]);
   const previewTrack = useMemo(
     () => (hexesVisible ? decodePolyline(item.route).map((point) => ({ ...point, t: 0 })) : []),
     [hexesVisible, item.route],

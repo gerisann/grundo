@@ -10,10 +10,11 @@
 > aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
 > "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), a
 > küldetés-ajánló kevés találata (MÉRVE: a blokk-plafon volt az ok), az
-> 1-5 találatszám beállítás, admin oldalak szélessége, dock
-> háttere/border-je. `npx tsc --noEmit` tiszta, teljes `npx vitest run`:
-> 563/686 sikeres (123 kihagyva, nincs regresszió — egy ÚJ teszt emulátor
-> hiányában kihagyva, lásd lent).
+> 1-5 találatszám beállítás, az ADATVÉDELMI útvonal-levágás (az egész
+> útvonal eltűnt), a HEXAGON-kitöltés nagy hurkoknál, admin oldalak
+> szélessége, dock háttere/border-je és 50/50 arány. `npx tsc --noEmit`
+> tiszta, teljes `npx vitest run`: 568/691 sikeres (123 kihagyva, nincs
+> regresszió — egy ÚJ teszt emulátor hiányában kihagyva, lásd lent).
 
 ## #20 MENETBEN JAVÍTVA
 
@@ -174,6 +175,73 @@ létezik — a beállítás nem tud elővarázsolni nem létező kört. Ehhez az
 mondania, ha a kért karakterre nem sikerült ajánlatot találni. Egyik sincs
 kész — **ez a küldetés-ajánló következő érdemi köre.**
 
+### Aktivitás-adatvédelem: az EGÉSZ útvonal eltűnt — MEGOLDVA, MÉRVE
+
+Geri bejelentése: egy 17 km-es, háromhurkos aktivitás teljes útvonala rejtve
+volt 200 méteres beállítás mellett; kikapcsolva láthatóvá vált.
+
+**OK** (`src/game/privacy.ts` → `trimPrivateEnds`): a VÉGI vágás összefüggő
+szakaszt vett, az ELEJI viszont a teljes nyomvonalat végignézve az UTOLSÓ
+rajt-közeli pontig vágott. Egy útvonal, amely menet KÖZBEN visszatér a rajt
+közelébe (több hurok, oda-vissza szakasz), így a visszatérésig elveszett.
+Mérve, szintetikus nyomvonalakon:
+
+| alak | elveszett |
+|---|---|
+| egyszerű kör, közbenső visszatérés nélkül | 14 % (ez a helyes) |
+| hurok + 3,5 km-es második kör | 44 % |
+| hurok + 1,5 km-es második kör | 66 % |
+| hurok + 600 m-es második kör | 84 % |
+| hurok + 350 m-es második kör | 90 % |
+
+**Javítás**: az eleje is összefüggő szakaszként vágódik, ÉS a megmaradó
+nyomvonalból a védőkörbe eső pontok mindenhol kimaradnak (a vonal egyenes
+húrral vág át a körön). Így a védelem szándéka megmarad — a védőkörből nem
+szivárog ki pont —, de nem visz magával fél útvonalat. Mérés a javítás után:
+5-10 % veszteség. A meglévő adatvédelmi tesztek (köztük a „visszatérő
+szakaszt is levágja") változatlanul zöldek.
+
+⚠️ `PUBLIC_ROUTE_VERSION` **2 → 3**: enélkül a MÁR MENTETT aktivitások
+tévesen elrejtett útvonala úgy maradt volna. A `publicRouteNeedsRebuild`
+ebből tudja, hogy újra kell építeni — lekéréskor magától megtörténik.
+
+### Hexagon-kitöltés: a „nyolcas" alsó fele üres — MEGOLDVA, ÉLES ADATON MÉRVE
+
+Geri bejelentése ugyanarra az aktivitásra. **Éles Firestore-olvasással
+mérve** (`77cbb397…`, olvasó szolgáltatásfiók):
+
+- 3 hurok: #0 = 30 cella, #1 = 4 134 cella, **#2 = 15 745 cella → COMPACT**
+- a tárolt `activityCells`: **6 582**, a valódi foglalás **15 745**
+- **hiány: 9 163 cella (58 %)** — pontosan a compact hurok belseje, ezért
+  volt a nagyobbik hurok kitöltetlen, a kisebbik pedig kitöltve
+- ráadásul az API `slice(0, 5000)` a tárolt 6 582-t is megnyirbálta
+
+Ok: a `candidateCells` compact huroknál SZÁNDÉKOSAN csak a falat és a
+határsávot tartalmazza (a belsőt a parentek képviselik) — de a kliens ebből
+rajzol. Mérve: a hiányzó 9 163 cellát **85 index, ~1 kB** írja le tömören.
+
+**Javítás**: új `activityCellParents` mező (H3-compactolt, ≤ res10) a mentés
+mindkét útján, az API továbbadja, a kliens `expandActivityCells()`-szel
+bontja ki res12-re (`src/lib/activityCells.ts`, saját tesztekkel). Az
+`activityCells` plafonja 5 000 → 20 000, a parenteké 4 000.
+
+⚠️ **A RÉGI aktivitásokban nincs `activityCellParents`.** A kliens
+visszaesési ága ezért maga számolja ki a compact parenteket a nyomvonalból
+(`ActivityScreen`, `ActivityCard`) — a NÉZŐ viszont csak a levágott
+nyomvonalat kapja, tehát a régi, idegen aktivitásoknál a kitöltés
+közelítő maradhat. Végleges megoldás egy migrációs szkript lenne, ami
+`activityCellParents`-et ír a meglévő dokumentumokba — **nincs megírva.**
+
+### Dock: 50/50 arány és a húzásos felirat — KÉSZ
+
+Geri kérése (2026-08-29): a két oldalsó gomb újra egyforma széles (a 40/60
+helyett), így a Play gomb pontosan középen ül. Húzásos befejezésnél
+(`finishGesture === 'swipe'`) az „Új kör" és a „Befejezés" felirata 15 → 13
+px, a „Befejezés" bal padding-ja 22 → 40 px. Az „Új kör" a
+`.dock__center:has(.swipe-finish)` szelektorral van módhoz kötve — a
+„Befejezés" felirata (`.swipe-finish__label`) eleve csak ebben a módban
+létezik.
+
 ## NYITOTT TÉMA — küldetés-ajánló, ami MÉG hátravan
 
 1. **A kért „Elsődleges cél"-ra nincs visszajelzés, ha nem teljesíthető** —
@@ -187,6 +255,9 @@ kész — **ez a küldetés-ajánló következő érdemi köre.**
 4. **100 km fölött a jelöltszám 2** (`shapedCandidateLimit`) — ez korlátozza
    a találatszám-beállítást. Emeléshez előbb újramérni a geometria idejét az
    élesített GraphHopperrel.
+5. **Migrációs szkript az `activityCellParents`-hez** — a régi aktivitások
+   hexagon-kitöltése enélkül közelítő marad idegen nézőnél (lásd fent).
+   Nincs megírva; a `planActivity` a nyomvonalból ki tudja számolni.
 
 ## ÉLESBEN FUT — ELLENŐRIZVE
 

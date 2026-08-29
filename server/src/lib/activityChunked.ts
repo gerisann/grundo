@@ -259,6 +259,9 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
       // elfoglalt területét. Korábban csak a GPS-nyom cellái jutottak el a
       // klienshez, ezért a hurok belseje üresen maradt.
       activityCells: plan.candidateCells,
+      // A compact hurok belseje tomoren — enelkul a nagy hurkok kozepe
+      // uresen marad a kliens terkepen (lasd ActivityPlan.candidateCellParents).
+      activityCellParents: plan.candidateCellParents,
       pointCount: points.length,
       bounds: publicBounds(publicPoints),
       route: publicRoute,
