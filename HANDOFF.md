@@ -4,8 +4,8 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · **frontend + backend telepítés kell** (a küldetés-ajánló
-> mindkét oldala változott).
+> Ág: **`main`** · **telepítve és élesben ellenőrizve** (frontend + backend).
+> ⚠️ A telepítés kiütötte a Mapbox tokent — javítva, a részletek lent.
 
 ## ⚠️ ELSŐ OLVASNIVALÓ
 
@@ -144,7 +144,7 @@ némán a 22-es alapértéket mutatta.)
 | `src/lib/api.ts` | +67 | `PlannedRoute`, `MissionPlanResult` típusok; `missionsPlan` és `missionsEvaluate` hívások. |
 | `server/src/lib/missionEvaluate.ts` | +32/−4 | `ShapedCandidate.geometry`; `shapeCandidateCells` visszaadja a geometriát; `evaluateCandidate` `processActivityGeometry`-t hív (nem építi újra). |
 
-**Teendők sorrendje**: push → **nincs adatbázis-lépés** → **mindkettő**
+**Teendők sorrendje**: push → **nincs adatbázis-lépés** → **kész, telepítve**
 (frontend és backend).
 
 ## NYITOTT ÜGYEK
@@ -164,12 +164,47 @@ némán a 22-es alapértéket mutatta.)
 4. GraphHopper élesítés (konténer, `_GRAPHHOPPER_URL`) — továbbra is nyitott,
    élesben még a Mapbox-ág fut.
 
-## ÉLESBEN FUT / TELEPÍTETLEN
+## ÉLESBEN FUT — TELEPÍTVE ÉS ELLENŐRIZVE
 
-- Élesben (`grundo-api`) **a Mapbox-ág fut**; a `GRAPHHOPPER_URL` üres.
-- ⚠️ A most elkészült gyorsítás **a Mapbox-ágon is érvényes** — a szűk
-  keresztmetszet a geometria volt, nem a tervező. Tehát a telepítés akkor is
-  érdemi gyorsulást hoz, ha a GraphHopper még nincs élesítve.
+A #19 anyaga **élesben fut** (frontend + backend telepítve 2026-08-29).
+Éles méréssel igazolva a `grundo.web.app/kuldetesek` oldalon:
+
+| | |
+|---|---|
+| gyors fázis (`phase: 'plan'`) | 680 ms |
+| lassú fázis (`/evaluate`) | 1 833 ms |
+| **teljes** | **2,5 s** |
+| felületen: töltő kártya megjelenik | **1,0 s** |
+| felületen: kész kártya | 2,0 s |
+
+- A `GRAPHHOPPER_URL` élesben **továbbra is üres**, tehát a Mapbox-ág fut. A
+  gyorsítás ezen az ágon is érvényes — a szűk keresztmetszet a geometria volt,
+  nem a tervező.
+
+### ⚠️ A TELEPÍTÉS KIÜTÖTTE A MAPBOX TOKENT — ÚJ CSAPDA
+
+A backend telepítése után a küldetés-generálás **`no_routes`-t adott**: a
+`cloudbuild.yaml`-ban `_MAPBOX_TOKEN: ''` az alapértelmezés, és a
+`--set-env-vars` a szolgáltatás TELJES környezetét felülírja. Az élesbe így
+egy rossz (403 Forbidden) token került.
+
+Amit tudni kell:
+- A tünet félrevezető: nem 503 („az útvonaltervező nincs beállítva"), hanem
+  **200 + `no_routes`** — mert a `directionsConfigured()` csak azt nézi, hogy
+  a token NEM ÜRES, azt nem, hogy érvényes-e.
+- A hiba a #17-ben már előfordult, a #18-ban javítva lett, és a #19-es
+  telepítés **visszahozta**. Ez tehát nem egyszeri baleset: minden
+  `gcloud builds submit` megismétli, ha nincs átadva a substitution.
+- Javítás újratelepítés nélkül (ez futott le, `grundo-api-00098-g8h`):
+  `gcloud run services update grundo-api --region europe-west1 --update-env-vars MAPBOX_TOKEN=pk.…`
+  ⚠️ `--update-env-vars`, NEM `--set-env-vars` — az utóbbi elvinné az SMTP-t
+  és az `ALLOWED_ORIGINS`-t is.
+- Élesben most a **kliens** token fut szerveroldalon (az egyetlen, ami 200-at
+  ad). Működik, de a `cloudbuild.yaml` kommentje jogosan kér külön,
+  korlátozás nélküli szerver tokent: ha a kliens tokenre valaha URL-korlátozás
+  kerül (a böngészős térképek miatt ésszerű), a küldetés-generálás azonnal
+  elhasal. **Nyitott ügy** — érdemes a tokent Secret Managerbe tenni, vagy a
+  `_MAPBOX_TOKEN` alapértékét kivenni a felülírásból.
 
 ## ELLENŐRZÉSEK
 
