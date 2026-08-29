@@ -12,11 +12,15 @@
 #
 # MIÉRT VAN EZ A SZKRIPT?
 #
-# 1. A Mapbox-tokent eddig kézzel kellett a backend build parancsához írni.
-#    Ez ugyanaz az érték, mint a frontend `VITE_MAPBOX_TOKEN`-je (lásd
-#    `server/src/lib/directions.ts` fejléce), ami már ott van a Cloud Shell
-#    `.env.local`-jában — a szkript onnan olvassa ki. Nem titok, de begépelni
-#    fölösleges, elgépelni pedig könnyű.
+# 1. ⚠️ A Mapbox-token 2026-08-29 ÓTA A SECRET MANAGERBŐL JÖN, nem innen.
+#    Korábban a szkript a `.env.local`-ból olvasta ki és substitutionként
+#    adta át. Ez két okból bukott meg:
+#      - a `.env.local` gitignore-olt, tehát a Cloud Shell másolatában MÁS
+#        token állhatott, mint a fejlesztői gépen — és pontosan ez történt:
+#        élesbe egy régi, URL-korlátozott (403-as) token került;
+#      - aki nem ezt a szkriptet használta, hanem sima `gcloud builds
+#        submit`-et, annak a `--set-env-vars` némán kiütötte a tokent.
+#    A titok cseréje: lásd `docs/06-architektura-es-admin.md`.
 #
 # 2. A Cloud Shell session el szokta veszteni a projektbeállítást, és a build
 #    ilyenkor el sem indul („The required property [project] is not currently
@@ -53,39 +57,20 @@ info "Friss kód lehúzása"
 git pull --ff-only
 printf '   HEAD: %s\n' "$(git log --oneline -1)"
 
-# A Mapbox-token: környezeti változó, ha van; különben a `.env*` fájlokból.
-# A `--set-env-vars` a Cloud Run TELJES környezetét felülírja, ezért ha ez
-# üresen menne át, a szerver Directions-hívásai némán elhalnának.
-mapbox_token() {
-  if [ -n "${MAPBOX_TOKEN:-}" ]; then
-    printf '%s' "$MAPBOX_TOKEN"
-    return 0
-  fi
-  local file value
-  for file in .env.local .env.production.local .env.production .env; do
-    [ -f "$file" ] || continue
-    value="$(sed -n 's/^VITE_MAPBOX_TOKEN=//p' "$file" | head -n 1 | tr -d '\r' | tr -d '"')"
-    if [ -n "$value" ]; then
-      printf '%s' "$value"
-      return 0
-    fi
-  done
-  return 1
-}
-
 deploy_backend() {
-  local token
-  if ! token="$(mapbox_token)"; then
-    fail "Nincs Mapbox-token. Tedd a .env.local-ba VITE_MAPBOX_TOKEN=… néven, vagy exportáld MAPBOX_TOKEN-ként."
+  # A `--set-secrets` LÉTEZŐ titkot vár: ha hiányzik, a `gcloud run deploy`
+  # a build legvégén hasal el, több perc után, nehezen olvasható hibával.
+  # Előbb megnézzük, és érthető magyar üzenetet adunk helyette.
+  if ! gcloud secrets describe MAPBOX_TOKEN >/dev/null 2>&1; then
+    fail "Nincs MAPBOX_TOKEN titok a Secret Managerben. Létrehozás:
+    printf %s 'pk.xxx' | gcloud secrets create MAPBOX_TOKEN --data-file=-
+    gcloud secrets add-iam-policy-binding MAPBOX_TOKEN --member=\"serviceAccount:65689674957-compute@developer.gserviceaccount.com\" --role=\"roles/secretmanager.secretAccessor\"
+  Részletek: docs/06-architektura-es-admin.md"
   fi
+
   info "Backend build és telepítés (Cloud Run)"
-  # Csak a forrást írjuk ki, a tokent SOHA.
-  if [ -n "${MAPBOX_TOKEN:-}" ]; then
-    printf '   Mapbox-token forrása: környezeti változó\n'
-  else
-    printf '   Mapbox-token forrása: .env fájl\n'
-  fi
-  gcloud builds submit --config cloudbuild.yaml --substitutions="_MAPBOX_TOKEN=$token"
+  printf '   Mapbox-token forrása: Secret Manager (MAPBOX_TOKEN:latest)\n'
+  gcloud builds submit --config cloudbuild.yaml
 }
 
 deploy_frontend() {
