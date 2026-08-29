@@ -8,9 +8,10 @@
 > Ág: **`main`**, MÉG NEM pusholva (Geri dolga). **GraphHopper élesítve és
 > bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
 > aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
-> "nincs küldetés" hibája, admin oldalak szélessége, dock háttere/border-je.
-> `npx tsc --noEmit` tiszta, teljes `npx vitest run`: 559/681 sikeres (122
-> kihagyva, nincs regresszió).
+> "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), admin
+> oldalak szélessége, dock háttere/border-je. `npx tsc --noEmit` tiszta,
+> teljes `npx vitest run`: 559/682 sikeres (123 kihagyva, nincs
+> regresszió — egy ÚJ teszt emulátor hiányában kihagyva, lásd lent).
 
 ## #20 MENETBEN JAVÍTVA
 
@@ -53,22 +54,48 @@ válaszméret-hatást (nagy nagyításnál sok cella, kicsi nagyításnál nagy
 terület) **még nem mértük élesben** — érdemes ránézni, ha a `/api/tiles`
 válaszidő vagy méret gyanúsan megnő.
 
-### Nagy bringakör + meglévő birtok = nincs küldetés — MEGOLDVA (élő preview)
+### Nagy bringakör + meglévő birtok = nincs küldetés — MEGOLDVA (KÉT HELYEN)
 
-A gyanú beigazolódott: `src/screens/TrackingScreen.tsx` `preview` (kb. 190.
-sortól) a `processActivityGeometry`-t VALÓDI `nearby` ownershippel hívta.
-A motor (`src/game/index.ts`) SZÁNDÉKOSAN dob, ha a hurok compact belsejű
-(nagy hurok) ÉS `ownership.size > 0` — ez majdnem MINDIG igaz, mihelyt a
-játékosnak van bármi birtoka a közelben. A `catch` ág ezt "GPS-ugrásnak"
-félreértelmezve némán nullázta a preview-t (0 claim, 0 GP) — a tényleges
-terület a feltöltés után a szerver blokkos útján (`server/src/routes/
-activities.ts` `requiresChunkedClaim`) helyesen bekerült, csak a ÉLŐ
-KIJELZÉS hiányzott. Javítás: nagy/compact huroknál a preview üres
-ownershippel hívja a motort (mint a LAB), ami pontos GP-becslést ad, csak a
-lopott/visszafoglalt cella MEGKÜLÖNBÖZTETÉSE vész el élő nézetben (a
-térképen csak a hurok fal/határsávja jelenik meg claimként, a compact
-belső parent-cellák vizuális kirajzolása még nincs bekötve — ha Geri ezt is
-akarja látni, `result.compactClaim` kellene a `HexMap`-nek).
+A gyanú beigazolódott, és KÉT különálló helyen ugyanaz a gyökérok
+jelentkezett — a motor (`src/game/index.ts` `processActivityGeometry`)
+SZÁNDÉKOSAN dob, ha a hurok compact belsejű (nagy hurok, `hasCompactLoop`)
+ÉS `ownership.size > 0` — ez majdnem MINDIG igaz, mihelyt a játékosnak van
+bármi birtoka a közelben, hiszen a valódi elszámolás csak a szerver
+blokkos útján (`server/src/routes/activities.ts` `requiresChunkedClaim`)
+történhet.
+
+1. **Élő preview rögzítés közben** — `src/screens/TrackingScreen.tsx`
+   `preview` (kb. 190. sortól) VALÓDI `nearby` ownershippel hívta a motort;
+   a `catch` ág ezt "GPS-ugrásnak" félreértelmezve némán nullázta a
+   preview-t (0 claim, 0 GP), miközben a feltöltés után a terület
+   ténylegesen bekerült.
+2. **A KÜLDETÉS-AJÁNLÓ maga** — ez a SÚLYOSABB, mert Geri screenshotjain
+   ez látszott: 50 km és 150 km célhossznál a jelöltek geometriája/távja
+   kiszámolt (a "SZÁMÍTÁS" kártyák helyes km-t mutattak), de a VÉGSŐ lista
+   üres lett, "Most nincs ajánlható küldetés" — mert `server/src/lib/
+   missionEvaluate.ts` `evaluateCandidate` a jelöltet VALÓDI (Firestore-ból
+   olvasott) ownershippel adta át a motornak, ami minden nagy hurkos
+   jelöltre dobott; a `catch` ág `null`-t adott vissza MINDEGYIKRE, a
+   `pickMissions` pedig üres listát ad, ha nincs egyetlen használható
+   jelölt sem.
+
+Mindkét helyen ugyanaz a javítás: ha a geometria compact belsejű
+(`hasCompactInterior`), üres `Map()` ownershippel hívjuk a motort — ez az
+"üres világ" (LAB-szerű) becslést adja, pontos GP-vel és cellaszámmal,
+csak a lopott/visszafoglalt cella MEGKÜLÖNBÖZTETÉSE (és ezáltal a `raid`/
+`fortify` küldetés-karakter) vész el nagy huroknál. Élő preview-nál ez a
+térképen csak a hurok fal/határsávjának kirajzolását jelenti (a compact
+belső parent-cellák vizuális megjelenítése nincs bekötve — lásd NYITOTT
+ÜGYEK).
+
+⚠️ **Új emulátoros regressziós teszt íródott** (`server/src/lib/
+missionEvaluate.emulator.test.ts` → "nagy (compact belsejű) hurok MEGLÉVŐ
+birtok mellett is ad küldetést"), DE a #20 menetben a Firestore emulátor
+8081-es portja már foglalt volt (másik munkamenet futtatta) — a tesztet
+NEM sikerült lefuttatni éles emulátor ellen, csak `tsc` igazolja, hogy
+fordul. **Első dolog #21-ben**: `firebase.cmd emulators:exec --only
+firestore --project demo-grundo "npx vitest run server/src/lib/
+missionEvaluate.emulator.test.ts"` (a Java PATH-csapdára lásd AGENTS.md).
 
 ### Admin oldalak szélesség-maximalizálása — MEGOLDVA
 
@@ -174,9 +201,10 @@ középtől minden értéknél).
 ## ELLENŐRZÉSEK
 
 - `npx tsc --noEmit` mindkét oldalon tiszta.
-- Teljes `npx vitest run`: 559 sikeres, 122 kihagyva — nincs regresszió (3 új
-  teszttel bővült: `recorder.test.ts` GPS-horgony leírás, `presentation.
-  test.ts` beltéri zaj eset).
+- Teljes `npx vitest run`: 559 sikeres, 123 kihagyva — nincs regresszió (4 új
+  teszttel bővült: `recorder.test.ts` GPS-horgony leírás [2], `presentation.
+  test.ts` beltéri zaj eset [1], `missionEvaluate.emulator.test.ts` nagy
+  compact hurok + meglévő birtok [1, emulátor nélkül kihagyva — lásd fent]).
 - GraphHopper Dockerfile: NEM lett helyben lebuildelve (nincs helyi Docker),
   csak a `gcloud builds submit` igazolta — az sikerrel lefutott élesben.
 - Éles kéréssel igazolva: küldetés-generálás, kanyargós/egyenes eltérés,
@@ -194,5 +222,7 @@ középtől minden értéknél).
 4. `src/tracking/recorder.ts` — `applySample`, `anchoredTotal`,
    `currentSpeedMps`
 5. `src/game/splits.ts` — `computeSplits`, `elevationProfile`
-6. `graphhopper/README.md` → Élesítés — ha a GraphHopper-t kell újratelepíteni
-7. `server/src/lib/directions.ts` → `graphhopperIdToken`
+6. `server/src/lib/missionEvaluate.ts` — `evaluateCandidate` (a küldetés-
+   ajánló "nincs küldetés" hibájának VALÓDI helye)
+7. `graphhopper/README.md` → Élesítés — ha a GraphHopper-t kell újratelepíteni
+8. `server/src/lib/directions.ts` → `graphhopperIdToken`

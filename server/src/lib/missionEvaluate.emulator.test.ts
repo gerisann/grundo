@@ -15,7 +15,7 @@
  * Emulátor nélkül a fájl MAGÁTÓL KIMARAD, tehát a sima `npm test` nem törik el.
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { loopAt, simpleLoop } from '../../../src/game/fixtures';
+import { buildTrace, loopAt, ORIGIN, simpleLoop, squareWaypoints } from '../../../src/game/fixtures';
 import { encodePolyline } from '../../../src/game/polyline';
 import { pickMissions } from '../../../src/game/missions';
 import type { CellId, TracePoint } from '../../../src/types';
@@ -177,6 +177,44 @@ describe.skipIf(!EMULATOR)('Küldetés-kiértékelés — valódi Firestore elle
       known,
     );
     expect(second!.newBlocks).toBe(0);
+  });
+
+  it('nagy (compact belsejű) hurok MEGLÉVŐ birtok mellett is ad küldetést', async () => {
+    // HANDOFF #20: nagy bringakör + meglévő birtok korábban "Most nincs
+    // ajánlható küldetés"-t adott, mert a `processActivityGeometry` a
+    // compact ágon SZÁNDÉKOSAN dob valódi (nem üres) ownershipre — ezt az
+    // `evaluateCandidate` `catch`-e csendben `null`-lá alakította minden
+    // jelöltnél.
+    const points = buildTrace(squareWaypoints(ORIGIN, 5_000), {
+      stepM: 250,
+      intervalS: 1,
+      accuracy: 1,
+    });
+    const candidate = shape(points, 0, 20);
+    expect(candidate.cells.size).toBeGreaterThan(0);
+
+    // Alice-nak MÁR VAN egy kis birtoka a hurok cellái közül néhányon —
+    // ez önmagában elég volt ahhoz, hogy a régi kód a teljes jelöltet
+    // eldobja, nem csak azt a néhány cellát.
+    const someCells = [...candidate.cells].slice(0, 50);
+    await seedGrid(someCells, 'alice', 1);
+
+    const ownership = await loadOwnership('foot', candidate.cells);
+    expect(ownership.size).toBeGreaterThan(0);
+
+    const evaluated = evaluate.evaluateCandidate(
+      candidate,
+      { uid: 'alice', layer: 'foot', type: 'ride', ownership, streakDays: 0, gpEarnedToday: 0 },
+      new Set(),
+    );
+
+    expect(evaluated).not.toBeNull();
+    expect(evaluated!.claim).not.toBeNull();
+    expect(evaluated!.gainedM2).toBeGreaterThan(0);
+    expect(evaluated!.estimatedGp).toBeGreaterThan(0);
+
+    const missions = pickMissions([evaluated!]);
+    expect(missions.length).toBeGreaterThan(0);
   });
 
   it('a blokk-plafon a RÖVIDEBB jelölteket tartja meg', () => {

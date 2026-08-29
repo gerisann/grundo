@@ -19,8 +19,8 @@
 import { GAMEPLAY, type GameplayConfig } from '../../../src/config/gameplay';
 import {
   buildActivityGeometry,
+  hasCompactInterior,
   loopCells,
-  processActivity,
   processActivityGeometry,
   type ActivityGeometry,
 } from '../../../src/game';
@@ -120,25 +120,39 @@ export function evaluateCandidate(
   ownedBlocks: ReadonlySet<string>,
 ): MissionCandidate | null {
   try {
+    /*
+      Ha a hívó már felépítette a geometriát (a `shapeCandidateCells`-ben
+      úgyis kellett), azt használjuk — különben a drága hurokdetektálás
+      kétszer futna le ugyanarra a nyomvonalra.
+    */
+    const geometry = shaped.geometry ?? buildActivityGeometry(shaped.points);
+
+    /**
+     * Nagy (compact belsejű) huroknál a motor SZÁNDÉKOSAN dob, ha valódi
+     * ownershipet kap (`src/game/index.ts` `processActivityGeometry` őre) —
+     * az ilyen hurkot csak a szerver blokkos útja könyvelheti el ténylegesen
+     * (`routes/activities.ts` `requiresChunkedClaim`). Küldetés-AJÁNLÁSKOR
+     * viszont ez csak előnézet, nincs írás — enélkül MINDEN nagy hurkos
+     * jelölt itt elhasalt (kivétel → `null`), és 50-150 km-es kéréseknél
+     * "Most nincs ajánlható küldetés" jött ki, holott a geometria és a
+     * távolság rendben volt (ugyanaz a gyökérok, mint a `TrackingScreen`
+     * élő preview-jának korábbi hibája, HANDOFF #20). Üres ownershippel
+     * hívva a compact ág "üres világ" becslést ad: a GP és a cellaszám
+     * pontos, csak a lopott/visszafoglalt cella MEGKÜLÖNBÖZTETÉSE vész el —
+     * egy ekkora kör ajánlatnál ez elfogadható közelítés.
+     */
+    const ownership = geometry.loops.some(hasCompactInterior) ? new Map() : context.ownership;
     const input = {
       points: shaped.points,
       type: context.type,
       distanceKm: shaped.distanceKm,
       actorId: context.uid,
-      ownership: context.ownership,
+      ownership,
       streakDays: context.streakDays,
       gpEarnedToday: context.gpEarnedToday,
       cfg: context.cfg,
     };
-    /*
-      A `processActivity` ugyanez, plusz egy `buildActivityGeometry` hívás. Ha a
-      hívó már felépítette a geometriát (a `shapeCandidateCells`-ben úgyis kellett),
-      azt használjuk — különben a drága hurokdetektálás kétszer futna le
-      ugyanarra a nyomvonalra. Ha nincs geometria, a régi út marad érvényes.
-    */
-    const result = shaped.geometry
-      ? processActivityGeometry(input, shaped.geometry)
-      : processActivity(input);
+    const result = processActivityGeometry(input, geometry);
     if (!result.claim) return null;
 
     const touched = new Set<string>();
