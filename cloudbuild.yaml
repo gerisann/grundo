@@ -24,27 +24,21 @@ substitutions:
   _SMTP_PORT: '465'
   _SMTP_USER: no-reply@grundo.ultimateteam.hu
 
-  # A Mapbox token a küldetés-ajánló úthálózatához (Directions API).
+  # ⚠️ A MAPBOX_TOKEN MÁR NEM ITT VAN — Secret Managerből érkezik.
   #
-  # ⚠️ EZ EGY KÜLÖN, SZERVEROLDALI TOKEN — nem ugyanaz, mint a frontendé.
+  # Miért került át (2026-08-29, harmadik alkalom után): substitutionként az
+  # alapértéke üres volt, a `--set-env-vars` pedig a TELJES környezetet
+  # felülírja. Így minden olyan telepítés, ami elfelejtette átadni a
+  # `--substitutions=_MAPBOX_TOKEN=…` kapcsolót, NÉMÁN kiütötte a tokent.
+  # Háromszor fordult elő (#17, #19, #20), és mindannyiszor éles hibát
+  # okozott.
   #
-  # Miért kell kettő? Mert a kliens tokenjét URL-korlátozással védjük
-  # (csak grundo.web.app-ról használható), az viszont a böngésző Referer
-  # fejlécére épül — egy Cloud Run hívásnak NINCS Referer-je. Ugyanaz a
-  # token tehát nem tud egyszerre URL-korlátozott ÉS szerverről hívható
-  # lenni: a korlátozás azonnal megbuktatná a küldetés-generálást.
+  # A tünet ráadásul félrevezető: nem a szép 503 („az útvonaltervező nincs
+  # beállítva") jön, hanem 200 + `no_routes` — mert a `directionsConfigured()`
+  # csak azt nézi, hogy a token nem üres, azt nem, hogy érvényes-e.
   #
-  # A szerver tokenje ezért korlátozás nélküli, és pontosan ezért NEM
-  # KERÜLHET BE ide, se a kliens-bundle-be. Telepítéskor add át:
-  #
-  #   gcloud builds submit --config cloudbuild.yaml --substitutions=_MAPBOX_TOKEN=pk.xxx
-  #
-  # ÜRESEN a szerver elindul, csak a küldetés-generálás ad érthető 503-at
-  # ("az útvonaltervező nincs beállítva"). Semmi más nem sérül.
-  #
-  # A tokenen NE legyen egyetlen "secret scope" sem: attól a Mapbox sk.-val
-  # kezdődő tokent ad, ami VALÓDI titok, és Secret Managerbe való.
-  _MAPBOX_TOKEN: ''
+  # Secret Managerben a deploy nem tud hozzányúlni, és a token cserélhető a
+  # kód érintése nélkül. Lásd lent a `--set-secrets` sort.
 
   # A saját GraphHopper-szolgáltatás belső címe (döntés: 2026-08-29, lásd
   # graphhopper/README.md). ÜRESEN a szerver a Mapbox-ágra esik vissza —
@@ -120,7 +114,7 @@ steps:
       # A levelezés a SAJÁT domain szerverén megy (nincs harmadik fél).
       # A 25-ös port a Google Cloudon kifelé tiltva van, ezért 465 (vagy 587).
       - >-
-        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##MAIL_PROVIDER=smtp##MAIL_FROM=GRUNDO <no-reply@grundo.ultimateteam.hu>##SMTP_HOST=${_SMTP_HOST}##SMTP_PORT=${_SMTP_PORT}##SMTP_USER=${_SMTP_USER}##MAPBOX_TOKEN=${_MAPBOX_TOKEN}##GRAPHHOPPER_URL=${_GRAPHHOPPER_URL}##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173,capacitor://localhost,https://localhost
+        --set-env-vars=^##^FIRESTORE_DATABASE_ID=grundo-db##FIREBASE_WEB_API_KEY=AIzaSyCKa86mPUV1AXDRnSc_duZoOYlnFxGcT6w##MAIL_PROVIDER=smtp##MAIL_FROM=GRUNDO <no-reply@grundo.ultimateteam.hu>##SMTP_HOST=${_SMTP_HOST}##SMTP_PORT=${_SMTP_PORT}##SMTP_USER=${_SMTP_USER}##GRAPHHOPPER_URL=${_GRAPHHOPPER_URL}##ALLOWED_ORIGINS=https://grundo.web.app,https://grundo.ai.studio,http://localhost:5173,capacitor://localhost,https://localhost
       # Az SMTP-jelszó az EGYETLEN valódi titok a szolgáltatásban, ezért nem
       # env-változóként, hanem Secret Managerből érkezik: a repóba így soha nem
       # kerül bele, és cserélni is lehet a kód érintése nélkül.
@@ -146,7 +140,13 @@ steps:
       # Az OPENWEATHER_API_KEY ezzel kikerült innen; magát a titkot a Secret
       # Managerben külön kell törölni, ha végleg nem kell.
       #
-      # FIGYELEM: MINDKÉT titoknak LÉTEZNIE kell a telepítés előtt, különben
+      # A MAPBOX_TOKEN 2026-08-29 óta szintén itt van, nem env-változóként.
+      # Nem azért, mert titok (a `pk.` token nem az), hanem mert a
+      # `--set-env-vars` háromszor is némán kiütötte. Cseréje: új verzió a
+      # Secret Managerbe, majd egy sima újratelepítés — a kódhoz nem kell
+      # nyúlni.
+      #
+      # FIGYELEM: MINDHÁROM titoknak LÉTEZNIE kell a telepítés előtt, különben
       # a `gcloud run deploy` elhasal. A létrehozás parancsai a
       # docs/06-architektura-es-admin.md alatt vannak, a jobok fejezetében.
       #
@@ -154,7 +154,7 @@ steps:
       # Egy sorvégi backslash és egy idézőjeles minta egyszer már szétvágta a
       # YAML-t (2026-08-19): a build „unexpected end of stream" hibával állt le,
       # és a megjegyzés miatt hasalt el, nem a konfiguráció miatt.
-      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest,JOBS_TOKEN=JOBS_TOKEN:latest
+      - --set-secrets=SMTP_PASSWORD=SMTP_PASSWORD:latest,JOBS_TOKEN=JOBS_TOKEN:latest,MAPBOX_TOKEN=MAPBOX_TOKEN:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY

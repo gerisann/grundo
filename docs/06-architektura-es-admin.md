@@ -142,6 +142,42 @@ gcloud secrets add-iam-policy-binding JOBS_TOKEN --member="serviceAccount:656896
 
 3. Backend telepítése (ekkor kerül a titok a szolgáltatásra).
 
+### A Mapbox token — szintén Secret Managerben (2026-08-29 óta)
+
+⚠️ **Nem azért, mert titok** (a `pk.` kezdetű token nem az; a kliens-bundle-ben
+is van egy), **hanem mert a telepítés háromszor is némán kiütötte.** A
+`cloudbuild.yaml` `--set-env-vars` kapcsolója a szolgáltatás TELJES környezetét
+felülírja, a `_MAPBOX_TOKEN` substitution alapértéke pedig üres volt — így
+minden olyan telepítés, ami elfelejtette átadni a kapcsolót, elrontotta az
+útvonaltervezést (#17, #19, #20).
+
+A tünet félrevezető: nem 503 („az útvonaltervező nincs beállítva"), hanem
+**200 + `no_routes`** — a `directionsConfigured()` csak azt nézi, hogy a token
+nem üres, azt nem, hogy érvényes-e.
+
+Létrehozás (a `pk.…` helyére a szerveroldali Mapbox token kerül):
+
+```
+printf %s 'pk.xxx' | gcloud secrets create MAPBOX_TOKEN --data-file=-
+```
+
+Olvasási jog a Cloud Run szolgáltatásfióknak:
+
+```
+gcloud secrets add-iam-policy-binding MAPBOX_TOKEN --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
+```
+
+Későbbi tokencsere — a kódhoz nem kell nyúlni, csak új verzió és egy
+újratelepítés:
+
+```
+printf %s 'pk.uj-token' | gcloud secrets versions add MAPBOX_TOKEN --data-file=-
+```
+
+⚠️ **A token legyen korlátozás nélküli.** A kliens tokenjét URL-korlátozás
+védi (Referer-alapú), de egy Cloud Run hívásnak nincs Referer-je — a
+korlátozott token 403-at ad, és pontosan ez okozta a fenti hibákat.
+
 4. Az ütemező bejegyzése. A titkot nem kell kimásolni — a parancs maga olvassa ki:
 
 ```
