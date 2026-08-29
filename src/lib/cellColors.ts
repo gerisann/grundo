@@ -76,6 +76,19 @@ export function cellColorHex(value: unknown): string {
   return isCellColor(value) ? CELL_COLORS[value].hex : CELL_COLORS[DEFAULT_CELL_COLOR].hex;
 }
 
+/**
+ * A hex CSAK akkor, ha a felhasználó ténylegesen választott — különben `null`.
+ *
+ * ⚠️ NEM ugyanaz, mint a `cellColorHex()`. Ott a hiányzó érték az
+ * alapértelmezett palettaszínt adja, ami a térképen helyes (valamit rajzolni
+ * kell), de ott hazugság lenne, ahol a „nem választott" eset MÁS
+ * megjelenítést kap — például a rivális-sávnál, amely ilyenkor a saját, régi
+ * lila-magenta párosát tartja meg (Geri kérése, 2026-08-29).
+ */
+export function cellColorHexOrNull(value: unknown): string | null {
+  return isCellColor(value) ? CELL_COLORS[value].hex : null;
+}
+
 /** A választható színek egy adott előfizetési szinten. */
 export function availableCellColors(isPro: boolean): CellColor[] {
   return isPro ? [...FREE_CELL_COLOR_KEYS, ...PRO_CELL_COLOR_KEYS] : [...FREE_CELL_COLOR_KEYS];

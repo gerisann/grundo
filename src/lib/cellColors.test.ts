@@ -8,6 +8,7 @@ import {
   PRO_CELL_COLOR_KEYS,
   availableCellColors,
   cellColorHex,
+  cellColorHexOrNull,
   isCellColor,
   isProCellColor,
 } from './cellColors';
@@ -75,6 +76,32 @@ describe('cellColorHex', () => {
     expect(cellColorHex('nincs-ilyen')).toBe(alap);
     expect(cellColorHex(42)).toBe(alap);
     expect(cellColorHex('#FF0000')).toBe(alap);
+  });
+});
+
+describe('cellColorHexOrNull', () => {
+  it('feloldja az ismert kulcsot, ugyanúgy, mint a cellColorHex', () => {
+    expect(cellColorHexOrNull('teal')).toBe(FREE_CELL_COLORS.teal.hex);
+    expect(cellColorHexOrNull('gold')).toBe(PRO_CELL_COLORS.gold.hex);
+  });
+
+  it('NEM esik vissza az alapértelmezettre — a "nem választott" eset null', () => {
+    /*
+      Ez a különbség a lényeg: a rivális-sáv ebből tudja, hogy az adott fél
+      nem állított magának színt, és marad a régi lila/korall. A
+      cellColorHex() itt a bézst adná, amit nem lehetne megkülönböztetni
+      attól, aki tényleg a bézst választotta.
+    */
+    expect(cellColorHexOrNull(undefined)).toBeNull();
+    expect(cellColorHexOrNull(null)).toBeNull();
+    expect(cellColorHexOrNull('')).toBeNull();
+    expect(cellColorHexOrNull('nincs-ilyen')).toBeNull();
+    expect(cellColorHexOrNull(42)).toBeNull();
+    expect(cellColorHexOrNull('#FF0000')).toBeNull();
+  });
+
+  it('az alapértelmezett kulcsot viszont feloldja, ha valaki AZT választotta', () => {
+    expect(cellColorHexOrNull(DEFAULT_CELL_COLOR)).toBe(CELL_COLORS[DEFAULT_CELL_COLOR].hex);
   });
 });
 

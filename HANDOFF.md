@@ -244,6 +244,41 @@ cd ~/grundo/server && npm run migrate:cell-parents -- --apply --allow-production
 visszaesési ága addig is számol parenteket a nyomvonalból, de a NÉZŐ csak a
 levágott nyomvonalat kapja, ezért migráció nélkül a kitöltés közelítő.)
 
+### Rivális-sáv a felhasználó SAJÁT cellaszínével — KÉSZ
+
+Geri kérése (2026-08-29): az aktivitás-kártyák alján futó sáv ne a rögzített
+lila-magenta párost használja, hanem a `/beallitasok/megjelenes` oldalon
+választott cellaszínt.
+
+**Értelmezés (Geri választotta):** mindenki a SAJÁT színén jelenik meg,
+ugyanaz az elv, mint a térképen — a bal (nyert) sáv az aktivitás szerzőjéé, a
+jobb a riválisé. Amelyik fél nem választott színt, annak az oldala marad a
+megszokott lila/korall; **oldalanként külön dől el.**
+
+- Szerver: az `Author` objektum kap egy `cellColor` mezőt (`null`, ha nincs
+  választva). **Extra Firestore-olvasás nélkül** — ugyanabból a user
+  dokumentumból jön, amit a név/kép miatt már beolvasunk.
+- ⚠️ `cellColorHexOrNull()` az új segéd (`src/lib/cellColors.ts`), NEM a
+  meglévő `cellColorHex()`: utóbbi a hiányzó értékre az alapértelmezett
+  palettaszínt adja, amivel nem lehetne megkülönböztetni a "nem választott"
+  esetet attól, aki történetesen a bézst választotta.
+- A színátmenet megmarad: a CSS `color-mix()`-szel képez sötétebb és
+  világosabb végpontot EGY hexből, így nem kell palettánként három árnyalatot
+  karbantartani. Az arányok (76 % sötét / 64 % világos) az EREDETI lila
+  gradiensből számolva — az első próbám (62 %) egy eleve sötét színt szinte
+  feketévé tett, ezt böngészős színpróbán láttam meg.
+- **AZONOS SZÍN mindkét oldalon**: ilyenkor a sáv egyetlen összefolyó folt
+  lenne, ezért a bal oldal a szín VILÁGOSABB, a jobb a SÖTÉTEBB tartományában
+  marad (`rival-row--twin`). Geri külön kérte, böngészőben ellenőrizve.
+- Bekötve az aktivitás-kártyán. A `RivalsCard`/`RivalsSheet` (profil, TOP 3)
+  ugyanezt a komponenst használja, de oda a szerver ma nem küld cellaszínt —
+  ott tehát a megszokott megjelenés marad, amíg valaki be nem köti.
+
+⚠️ **TANULSÁG, ami eddig hiányzott a dokumentációból**: a repo gyökerében
+futtatott `npx tsc --noEmit` **NEM ellenőrzi a `server/` mappát**. A szerver
+külön: `cd server && npx tsc --noEmit`. Ez a körben három valódi típushibát
+fogott meg, amit a gyökér-ellenőrzés zölden átengedett.
+
 ### Dock: 50/50 arány és a húzásos felirat — KÉSZ
 
 Geri kérése (2026-08-29): a két oldalsó gomb újra egyforma széles (a 40/60

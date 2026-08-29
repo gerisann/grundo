@@ -227,6 +227,13 @@ export interface ActivityAuthor {
   uid: string;
   username: string;
   photoURL: string | null;
+  /**
+   * A választott cellaszín KULCSA, vagy `null`, ha nem állított magának.
+   *
+   * ⚠️ A `null` NEM ugyanaz, mint az alapértelmezett szín: a rivális-sáv
+   * ilyenkor a régi lila-magenta párost tartja meg (lásd `rivalBarColors`).
+   */
+  cellColor?: string | null;
 }
 
 export type FeedScope = 'mine' | 'world' | 'local' | 'following' | 'user';
@@ -873,6 +880,12 @@ export interface Connection {
   uid: string;
   username: string;
   photoURL: string | null;
+  /**
+   * A választott cellaszín KULCSA, vagy `null`/hiányzó, ha nem állított
+   * magának. A rivális-sáv ebből színezi a hozzá tartozó oldalt — lásd
+   * `ActivityAuthor.cellColor`.
+   */
+  cellColor?: string | null;
 }
 
 /**

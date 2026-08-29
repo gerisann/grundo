@@ -71,11 +71,29 @@ interface Author {
   uid: string;
   username: string;
   photoURL: string | null;
+  /**
+   * A választott cellaszín KULCSA (lásd `src/lib/cellColors.ts`), ha a
+   * felhasználó állított magának. A rivális-sáv ebből színezi a két felet —
+   * mindenki a saját színén, ugyanúgy, mint a térképen (Geri kérése,
+   * 2026-08-29).
+   *
+   * ⚠️ HIÁNYZÓ MEZŐ ≠ ALAPÉRTELMEZETT SZÍN. Ha a felhasználó nem választott,
+   * `null` megy ki, és a felület a MOSTANI lila-magenta párost tartja meg. A
+   * `cellColorHex()` ilyenkor a paletta alapszínét adná, ami itt hazugság
+   * lenne: nem tudnánk megkülönböztetni a „nem választott" esetet attól, aki
+   * történetesen a bézst választotta.
+   */
+  cellColor: string | null;
 }
 
 /** Törölt vagy hiányzó felhasználó — a sor ettől még megjeleníthető. */
 function unknownAuthor(uid: string): Author {
-  return { uid, username: 'ismeretlen', photoURL: null };
+  return { uid, username: 'ismeretlen', photoURL: null, cellColor: null };
+}
+
+/** A user dokumentumból kiolvasott cellaszín-kulcs, ha van. */
+function cellColorOf(data: { cellColor?: unknown } | undefined): string | null {
+  return typeof data?.cellColor === 'string' && data.cellColor ? data.cellColor : null;
 }
 
 
@@ -677,11 +695,12 @@ async function withAuthors(rows: FeedRow[], viewerUid: string) {
     const refs = ids.map((id) => db.collection(COLLECTIONS.users).doc(id));
     for (const snapshot of await db.getAll(...refs)) {
       if (!snapshot.exists) continue;
-      const data = snapshot.data() as { username?: string; photoURL?: string | null };
+      const data = snapshot.data() as { username?: string; photoURL?: string | null; cellColor?: unknown };
       authors.set(snapshot.id, {
         uid: snapshot.id,
         username: data.username ?? 'ismeretlen',
         photoURL: data.photoURL ?? null,
+        cellColor: cellColorOf(data),
       });
     }
   }
@@ -1201,11 +1220,14 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
     if (authorIds.length > 0) {
       const refs = authorIds.map((id) => db.collection(COLLECTIONS.users).doc(id));
       for (const doc of await db.getAll(...refs)) {
-        const user = doc.data() as { username?: string; photoURL?: string | null } | undefined;
+        const user = doc.data() as
+          | { username?: string; photoURL?: string | null; cellColor?: unknown }
+          | undefined;
         authors.set(doc.id, {
           uid: doc.id,
           username: user?.username ?? 'ismeretlen',
           photoURL: user?.photoURL ?? null,
+          cellColor: cellColorOf(user),
         });
       }
     }
@@ -1426,8 +1448,15 @@ async function repairActivityRoute(
 async function loadAuthor(uid: string): Promise<Author> {
   if (!uid) return unknownAuthor(uid);
   const snapshot = await db.collection(COLLECTIONS.users).doc(uid).get();
-  const data = snapshot.data() as { username?: string; photoURL?: string | null } | undefined;
-  return { uid, username: data?.username ?? 'ismeretlen', photoURL: data?.photoURL ?? null };
+  const data = snapshot.data() as
+    | { username?: string; photoURL?: string | null; cellColor?: unknown }
+    | undefined;
+  return {
+    uid,
+    username: data?.username ?? 'ismeretlen',
+    photoURL: data?.photoURL ?? null,
+    cellColor: cellColorOf(data),
+  };
 }
 
 function parsePoints(raw: unknown): TracePoint[] {

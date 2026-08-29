@@ -29,6 +29,13 @@ export function ActivityRivalBar({ item }: { item: FeedActivity }) {
       compact
       rival={rival}
       others={rival.others}
+      /*
+        A bal („nyert") sáv a KÖR SZERZŐJÉÉ, a jobb a riválisé — mindkettő a
+        saját, választott cellaszínén, ugyanúgy, mint a térképen (Geri kérése,
+        2026-08-29). Aki nem választott, annak az oldala marad a megszokott
+        lila/korall.
+      */
+      selfCellColor={item.author.cellColor}
       onOpen={() => navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`)}
       extra={
         <span className="rival-row__taken">

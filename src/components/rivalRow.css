@@ -104,6 +104,68 @@
   clip-path: inset(0 0 0 100%);
 }
 
+/*
+  A FELHASZNÁLÓ SAJÁT CELLASZÍNE (Geri kérése, 2026-08-29).
+
+  Mindkét fél a saját, a `/beallitasok/megjelenes` oldalon választott színén
+  jelenik meg — ugyanaz az elv, mint a térképen. A színt a `RivalRow` adja
+  `--rival-bar-gain` / `--rival-bar-loss` változóban, és CSAK akkor teszi rá
+  a `--tinted` osztályt, ha az adott fél ténylegesen választott: aki nem, annak
+  az oldala marad a fenti lila/korall. A két oldal ezért külön dől el.
+
+  A színátmenet megmarad: a paletta EGY hexéből a `color-mix()` képez sötétebb
+  és világosabb végpontot, ugyanabban a 0/62/100 %-os ritmusban, mint az
+  alapértelmezett sávok. Így a szín cserélhető anélkül, hogy palettánként
+  három-három árnyalatot kellene karbantartani.
+*/
+.rival-row__bar--gain.rival-row__bar--tinted::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--rival-bar-gain) 76%, #000) 0%,
+    var(--rival-bar-gain) 62%,
+    color-mix(in srgb, var(--rival-bar-gain) 64%, #fff) 100%
+  );
+}
+
+/* A vesztés-oldal a saját színének TÜKÖRKÉPE: világosból sötétbe tart, mert
+   ez a sáv jobbról balra tölt (lásd a `clip-path: inset(0 0 0 100%)`-ot). */
+.rival-row__bar--loss.rival-row__bar--tinted::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--rival-bar-loss) 64%, #fff) 0%,
+    var(--rival-bar-loss) 46%,
+    color-mix(in srgb, var(--rival-bar-loss) 76%, #000) 100%
+  );
+}
+
+/*
+  KÉT AZONOS SZÍN (Geri kérése, 2026-08-29).
+
+  Ha mindkét fél ugyanazt a cellaszínt választotta, a fenti két gradiens
+  egyetlen összefolyó folttá állna össze — és pont az veszne el, amiért a sáv
+  van: hogy hol a határ a nyert és a vesztett rész között. Ilyenkor a BAL
+  oldal végig a szín VILÁGOSABB, a jobb a SÖTÉTEBB tartományában marad, tehát
+  a villámnál a legnagyobb a kontraszt. A `--twin` osztályt a `RivalRow` teszi
+  rá, ha a két hex megegyezik.
+*/
+.rival-row--twin .rival-row__bar--gain.rival-row__bar--tinted::before {
+  background: linear-gradient(
+    90deg,
+    var(--rival-bar-gain) 0%,
+    color-mix(in srgb, var(--rival-bar-gain) 62%, #fff) 62%,
+    color-mix(in srgb, var(--rival-bar-gain) 42%, #fff) 100%
+  );
+}
+
+.rival-row--twin .rival-row__bar--loss.rival-row__bar--tinted::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--rival-bar-loss) 66%, #000) 0%,
+    color-mix(in srgb, var(--rival-bar-loss) 50%, #000) 46%,
+    color-mix(in srgb, var(--rival-bar-loss) 34%, #000) 100%
+  );
+}
+
 .rival-row__bolt {
   position: absolute;
   top: 0;

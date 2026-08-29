@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Avatar } from '@/components/ActivityCard';
 import { RivalScore } from '@/components/RivalScore';
 import { useInView } from '@/hooks/useInView';
+import { cellColorHexOrNull } from '@/lib/cellColors';
 import type { ActivityAuthor, Rival } from '@/lib/api';
 import './rivalRow.css';
 
@@ -60,6 +61,7 @@ export function RivalRow({
   compact = false,
   extra,
   others = [],
+  selfCellColor,
 }: {
   rival: Rival;
   onOpen: () => void;
@@ -69,6 +71,15 @@ export function RivalRow({
   extra?: ReactNode;
   /** További arcok a fő kép sarkában — a kör többi károsultja. */
   others?: readonly ActivityAuthor[];
+  /**
+   * A BAL oldal (a „nyert" sáv) gazdájának választott cellaszín-kulcsa.
+   *
+   * Mindenki a SAJÁT színén jelenik meg, ugyanúgy, mint a térképen (Geri
+   * kérése, 2026-08-29): a bal sáv ezé a felhasználóé, a jobb a riválisé
+   * (`rival.cellColor`). Amelyik fél nem választott színt, annak az oldala a
+   * megszokott lila/korall marad — oldalanként külön dől el.
+   */
+  selfCellColor?: string | null;
 }) {
   const { ref, inView } = useInView<HTMLButtonElement>({
     whole: true,
@@ -83,19 +94,51 @@ export function RivalRow({
   const total = Math.max(1, rival.gainedCells + rival.lostCells);
   const gained = Math.round((rival.gainedCells / total) * 100);
 
+  /*
+    A két fél SAJÁT színe. `null`, ha az illető nem választott — ilyenkor az
+    ADOTT OLDAL marad a régi lila/korall (a másik oldal ettől függetlenül
+    kaphat színt). A gradienst a CSS képezi ebből az egy hexből, hogy a sáv
+    átmenetes maradjon.
+  */
+  const gainColor = cellColorHexOrNull(selfCellColor);
+  const lossColor = cellColorHexOrNull(rival.cellColor);
+
+  /*
+    UGYANAZ A SZÍN MINDKÉT OLDALON — ilyenkor a sáv egyetlen összefolyó
+    foltnak látszana, és pont az veszne el belőle, amiért van: hogy hol a
+    határ a nyert és a vesztett rész között. Geri kérése (2026-08-29): a bal
+    oldal ilyenkor világosabb, a jobb sötétebb árnyalatot kap. A szétválasztás
+    a CSS-ben történik (`rival-row--twin`), hogy egyetlen hexből képződjön.
+  */
+  const twin = gainColor !== null && gainColor === lossColor;
+
   return (
     <button
       ref={ref}
       type="button"
       className={`conn__row rival-row${compact ? ' rival-row--compact' : ''}${
         inView ? ' rival-row--live' : ''
-      }`}
-      style={{ '--rival-gained': `${gained}%` } as CSSProperties}
+      }${twin ? ' rival-row--twin' : ''}`}
+      style={
+        {
+          '--rival-gained': `${gained}%`,
+          ...(gainColor ? { '--rival-bar-gain': gainColor } : {}),
+          ...(lossColor ? { '--rival-bar-loss': lossColor } : {}),
+        } as CSSProperties
+      }
       onClick={onOpen}
     >
       <span className="rival-row__bars" aria-hidden="true">
-        <span className="rival-row__bar rival-row__bar--gain" />
-        <span className="rival-row__bar rival-row__bar--loss" />
+        <span
+          className={`rival-row__bar rival-row__bar--gain${
+            gainColor ? ' rival-row__bar--tinted' : ''
+          }`}
+        />
+        <span
+          className={`rival-row__bar rival-row__bar--loss${
+            lossColor ? ' rival-row__bar--tinted' : ''
+          }`}
+        />
       </span>
 
       {/*
