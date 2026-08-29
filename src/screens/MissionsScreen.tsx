@@ -594,6 +594,17 @@ function Stepper({
           value={value}
           placeholder={placeholder ?? ''}
           aria-label={ariaLabel}
+          /*
+            ⚠️ A `size` A TARTALOMHOZ IGAZÍTJA A MEZŐT, és ez itt nem
+            szépészeti kérdés. Egy `<input>` alapértelmezett szélessége ~20
+            karakter, függetlenül attól, mi van benne — mérve 170 px. Emiatt
+            a szám a széles mező szélére került, az egység pedig messze
+            utána, holott a kettő együtt tartozik és középen a helyük.
+            Így az input pontosan olyan széles, mint a benne álló szöveg, és
+            a `justify-content: center` a számot az egységével EGYÜTT
+            középre teszi.
+          */
+          size={Math.max(2, (value || placeholder || '').length)}
           onChange={(event) => onChange(event.target.value)}
         />
         <strong className="mission__stepper-unit">{unit}</strong>

@@ -76,7 +76,9 @@
   padding: 0;
   border: none;
   background: none;
-  text-align: right;
+  /* Középre, nem jobbra: a szám és az egysége EGYÜTT egy blokk, és az ül a
+     mező közepén. Jobbra igazítva a kettő szétcsúszott a doboz széléhez. */
+  text-align: center;
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
