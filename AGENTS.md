@@ -96,11 +96,14 @@ src/
   store/      zustand store-ok
   types/      közös típusok
   styles/     tokens.css + globális stílus
+  tracking/   a GPS-rögzítő — a natív pluginokkal együtt dolgozik
 server/
   server.ts   Cloud Run belépési pont
   src/routes/ HTTP-végpontok (activities, tiles, missions)
   src/trust/  Trust Score számítás
   src/jobs/   ütemezett feladatok (napi forduló, ranglista…)
+android/      Capacitor Android + NATÍV JAVA (lásd lent)
+ios/          Capacitor iOS + NATÍV SWIFT (lásd lent)
 scripts/      egyszeri és üzemeltetési szkriptek
 graphhopper/  a küldetés-ajánló saját útvonalmotorja (konfiguráció, egyedi modellek)
 public/       statikus fájlok, ikonok, manifest
@@ -108,6 +111,45 @@ tmp/          átmeneti fájlok — soha ne kerüljön verziókövetésbe
 _archive/     leváltott kód, amit még nem törlünk
 vendor/       harmadik féltől származó, módosított kód
 ```
+
+## A natív appok — EGY REPÓBAN, nem külön
+
+⚠️ **Ez NEM csak webes projekt.** A GRUNDO Capacitor-app: ugyanabban a
+repóban él a web, a szerver ÉS mindkét platform natív kódja. Ha valaha
+felmerül, hogy az Android vagy az iOS külön repóba kerüljön: **nem**. A
+`src/game/` motor közös a klienssel, a szerverrel és mindkét platformmal
+(4. szabály) — külön repóban vagy duplikálódna, vagy submodule kellene, és
+mindkettő pont azt a garanciát törné meg, hogy az előnézet és a végleges
+eredmény bitre azonos.
+
+```
+android/app/src/main/java/app/grundo/android/
+  BackgroundLocationPlugin.java      Capacitor plugin, engedélykérés
+  TrackingLocationService.java       foreground service, élő notification
+  TrackingLocationStore.java         állapot SharedPreferences-ben
+  TrackingNotificationFormatter.java táv/idő/sebesség formázás
+  MainActivity.java
+ios/App/
+  App/BackgroundLocationPlugin.swift      a fenti Android plugin párja
+  App/GrundoLiveActivityController.swift  Live Activity vezérlés
+  GrundoLiveActivity/                     widget extension (zárolt képernyő)
+  Shared/GrundoTrackingAttributes.swift   a widget és az app közös típusa
+```
+
+Amit tudni kell, mielőtt natív kódhoz nyúlsz:
+
+- **A háttér-GPS a projekt legkockázatosabb része.** A natív plugin és a
+  `src/tracking/` közösen működik: háttérben a natív oldal viszi a távot és
+  az időt, előtérben a TypeScript recorder szinkronizál vissza.
+- **A natív felület nem tesztelhető emulátor nélkül, sőt gyakran készülék
+  nélkül sem.** Ha natív kódot írsz, a kör végén mondd ki, mi az, amit NEM
+  tudtál ellenőrizni — ne állítsd késznek.
+- Android 12+ alatt teljesen egyedi notification nem készíthető: a rendszer a
+  saját app-fejlécét és kibontó vezérlőjét kötelezően hozzáadja. Az iOS Live
+  Activity adatai és hierarchiája átvihető, a pixelpontos külső nem.
+- A natív oldal változásához `npx cap sync` kell, és a build a Codemagicben
+  fut (`docs/07-ios-testflight-codemagic.md`,
+  `docs/08-android-codemagic.md`).
 
 ## Hol tartunk
 
@@ -146,6 +188,25 @@ aktuális állapotot (részletek: [6. Átadási protokoll](#6-átadási-protokol
 kódra/kommentre (azok angolul maradnak, lásd Technikai konvenciók). Ha egy
 eszközkimenet vagy hibaüzenet angol, azt idézheted, de a saját szöveged körülötte
 magyar legyen.
+
+⚠️ **MINDEN ÜGYNÖK EBBŐL AZ EGY MAPPÁBÓL DOLGOZZON:**
+
+```
+C:\Users\Geri\Documents\GitHub\grundo
+```
+
+Ez az egyetlen munkapéldány, függetlenül attól, melyik ügynök vagy (Claude,
+Codex, bármi más). Ne hozz létre és ne használj másik klónt.
+
+*Konkrét eset (2026-08-29):* egy ideig két klón létezett — a fenti és egy
+`Documents\ChatGPT\GRUNDO`. Ugyanarra a GitHub-repóra mutattak, de külön
+fejlődtek, és a végén kézzel kellett feloldani egy `HANDOFF.md`
+merge-konfliktust. Ráadásul a GitHub Desktop mindkettőt `grundo` néven
+mutatta, mert a mappanévből veszi a címkét — így ránézésre nem lehetett
+megmondani, melyikben dolgozik az ember. A második klónt Geri törölte.
+
+Ha a munkamenet mégis más útvonalon indul, **állj meg és szólj** — ne kezdj
+el írni egy másik példányba.
 
 ## 0. Minden kör elején: modelljavaslat
 
@@ -219,15 +280,21 @@ első.
 
 - A **webapp a gyors fejlesztői és funkcionális tesztcsatorna**. A kis,
   iteratív frontend-változások itt ellenőrzendők először.
-- A **TestFlight mérföldkő-csatorna**: ne készüljön minden apró commitból IPA.
-  Érdemi, felhasználói funkciócsomag után, valamint minden iOS-specifikus
-  változásnál (auth, GPS, engedély, térkép, safe area, háttér) kötelező a
+- A **TestFlight (iOS) és a Codemagic Android Release mérföldkő-csatorna**: ne
+  készüljön minden apró commitból IPA vagy APK. Érdemi, felhasználói
+  funkciócsomag után, valamint minden **platform-specifikus** változásnál
+  (auth, GPS, engedély, értesítés, térkép, safe area, háttér) kötelező a
   készülékes ellenőrzés.
-- Egy iOS build mindig a `main` egy konkrét commitjából készül. A felület
-  Beállítások → Alkalmazás részén a `vX · csatorna/build · rövid commit` jel
-  alapján ellenőrizhető, hogy a weben és TestFlighton pontosan mi fut.
-- A backend külön települ, ezért a változásait a már telepített webes és iOS
-  kliensekkel visszafelé kompatibilisen kell kiadni.
+- ⚠️ **Ami a két platformon KÜLÖN ellenőrizendő**, mert a megvalósítás is
+  külön: háttér-GPS, értesítés/zárolt képernyős élő mérés (iOS Live Activity
+  ↔ Android foreground notification), engedélykérés (iOS: helyhasználat;
+  Android 13+: `POST_NOTIFICATIONS` is), és a gyártói akkumulátorkezelés
+  (Samsung/Xiaomi/Huawei) hatása hosszú rögzítésre.
+- Egy iOS és egy Android build is a `main` egy konkrét commitjából készül. A
+  felület Beállítások → Alkalmazás részén a `vX · csatorna/build · rövid
+  commit` jel alapján ellenőrizhető, hogy hol pontosan mi fut.
+- A backend külön települ, ezért a változásait a már telepített webes, iOS és
+  Android kliensekkel visszafelé kompatibilisen kell kiadni.
 
 ## 4. Eszközhasználati csapdák
 
