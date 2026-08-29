@@ -49,10 +49,12 @@ cd "$REPO_ROOT"
 info() { printf '\n\033[36m▸ %s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
-case "$MODE" in
-  all|backend|frontend|graphhopper|szabalyok|indexek) ;;
-  *) fail "Ismeretlen mód: $MODE. Használható: all, backend, frontend, graphhopper, szabalyok, indexek" ;;
-esac
+# ⚠️ A MÓD ÉRVÉNYESSÉGÉT SZÁNDÉKOSAN NEM ITT ELLENŐRIZZÜK, hanem a legvégén,
+# a dispatch `case`-ében (lásd lent). Ha itt, a `git pull` ELŐTT hasalna el,
+# egy elavult helyi másolat sosem jutna el odáig, hogy frissítse magát — egy
+# ÚJ mód (mint a `graphhopper`) nevét a régi szkript nem is ismerhetné.
+# Konkrét eset (2026-08-29): pontosan ez történt, „Ismeretlen mód" jött,
+# minden `info` sor NÉLKÜL — ami elárulta, hogy a hiba a pull előtt van.
 
 info "Projekt beállítása: $PROJECT"
 gcloud config set project "$PROJECT" >/dev/null
@@ -120,6 +122,7 @@ case "$MODE" in
   graphhopper) deploy_graphhopper ;;
   szabalyok)   info "Firestore + Storage szabályok"; firebase deploy --only firestore:rules,storage ;;
   indexek)     info "Firestore indexek"; firebase deploy --only firestore:indexes ;;
+  *) fail "Ismeretlen mód: $MODE. Használható: all, backend, frontend, graphhopper, szabalyok, indexek" ;;
 esac
 
 printf '\n\033[32m✓ Kész: %s\033[0m\n' "$MODE"
