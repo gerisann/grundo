@@ -147,6 +147,8 @@
 .dock__play {
   display: grid;
   place-items: center;
+  /* A lüktető fénygyűrű abszolút pozicionált gyerek — lásd `--idle`. */
+  position: relative;
   width: 62px;
   height: 62px;
   margin-top: calc(-1 * var(--dock-fab-overhang));
@@ -163,17 +165,49 @@
  * Indítás előtt lüktet — ez a képernyő egyetlen hívása cselekvésre.
  * A lüktetés fénykör, nem méretváltozás: a mozgó gomb célpontja is mozogna,
  * és nehezebb lenne eltalálni.
+ *
+ * ⚠️ MIÉRT PSZEUDOELEM ÉS NEM `box-shadow`?
+ *
+ * A `box-shadow` NEM kompozitálható tulajdonság: az animálása minden
+ * képkockán ÚJRAFESTÉST kér a fő szálon. A dokk viszont MINDEN képernyőn
+ * ott van, és a gomb tétlen állapotban alapértelmezés szerint lüktet —
+ * vagyis a régi változat másodpercenként hatvan újrafestést okozott a
+ * Kezdőlapon is, örökké, miközben az app nem csinál semmit. iOS-en ettől a
+ * WebContent-folyamat és a kijelző-futószalag sosem tudott tétlen ütemre
+ * lassulni (GRUNDO #21 energiaelemzés, A1).
+ *
+ * A `transform` és az `opacity` ezzel szemben a kompozitoron fut, festés
+ * nélkül — ugyanaz a technika, amit a térképi pozíciópötty is használ
+ * (`mapview.css` → `mapview-ping`).
+ *
+ * ⚠️ ÉS MIÉRT NEM `infinite`?
+ *
+ * Mert a cselekvésre hívás az első néhány másodpercben hat; utána már csak
+ * fogyasztás. Hat kör (~14 s) után a gyűrű megáll, és a készülék tétlenné
+ * válhat. Az animáció újraindul, valahányszor az `--idle` osztály újra
+ * felkerül (rögzítés vége, választó bezárása).
  */
-.dock__play--idle {
-  animation: dock-pulse 2.4s ease-in-out infinite;
+.dock__play--idle::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  /* A gyűrű díszítés — soha ne fogja el a koppintást a gomb elől. */
+  pointer-events: none;
+  animation: dock-pulse 2.4s ease-out 6;
 }
 
 @keyframes dock-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  from {
+    transform: scale(1);
+    opacity: 0.75;
   }
-  50% {
-    box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) 0%, transparent);
+  to {
+    /* 1,42× a 62 px-es gombon ≈ 13 px gyűrű — a régi 12 px-es
+       `box-shadow`-terpesztés látványával egyezik. */
+    transform: scale(1.42);
+    opacity: 0;
   }
 }
 
@@ -200,8 +234,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dock__play--idle {
-    animation: none;
+  /* Nem `animation: none` — az a gyűrűt ÁLLÓ, tömör keretként hagyná a
+     gombon. Itt nem kell semmilyen jelzés, a gomb magától is domináns. */
+  .dock__play--idle::after {
+    display: none;
   }
 }
 
@@ -245,15 +281,29 @@
      volt (Geri screenshotja, 2026-08-27). */
   color: #fff;
   box-shadow: 0 0 28px color-mix(in srgb, var(--danger) 45%, transparent);
-  animation: dock-pulse-armed 2.4s ease-in-out infinite;
+}
+
+/* Ugyanaz a kompozitált gyűrű, mint az `--idle`-nél, csak pirosban — az
+   indoklás ott áll. Ez az állapot rövid életű (a választó nyitva van, vagy
+   fut a 3-2-1), ezért itt megmarad a folyamatos lüktetés. */
+.dock__play--armed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid color-mix(in srgb, var(--danger) 55%, transparent);
+  pointer-events: none;
+  animation: dock-pulse-armed 2.4s ease-out infinite;
 }
 
 @keyframes dock-pulse-armed {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent);
+  from {
+    transform: scale(1);
+    opacity: 0.75;
   }
-  50% {
-    box-shadow: 0 0 0 14px color-mix(in srgb, var(--danger) 0%, transparent);
+  to {
+    transform: scale(1.45);
+    opacity: 0;
   }
 }
 
@@ -271,7 +321,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dock__play--armed,
+  .dock__play--armed::after {
+    display: none;
+  }
+
   .dock__play--armed svg {
     animation: none;
   }

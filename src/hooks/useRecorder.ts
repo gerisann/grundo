@@ -315,7 +315,27 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     }
   }, [apply, positionSource]);
 
+  /**
+   * A KÉPERNYŐZÁR-TILTÁS CSAK A BÖNGÉSZŐNEK KELL.
+   *
+   * A `wakeLock.ts` maga mondja meg, miért létezik: a WEBES rögzítésnek
+   * feltétele, mert elalvó képernyőnél a lap nem látható, és a
+   * `watchPosition` elhallgat.
+   *
+   * A natív appban ez az indok nem áll fenn. Ott a `BackgroundLocationPlugin`
+   * mér (iOS: Core Location a `UIBackgroundModes: location` alatt; Android:
+   * location típusú foreground service), a WebView alvása közben érkező
+   * pontok pedig tartós sorba kerülnek, és a következő ébredéskor a `drain`
+   * átveszi őket. A kijelző ébren tartása tehát semmit nem véd meg —
+   * cserébe egy órás futás alatt végig világít a képernyő a zsebben, ami egy
+   * telefonon nagyságrendekkel többet fogyaszt, mint maga a GPS.
+   *
+   * (GRUNDO #21 energiaelemzés, B1. ⚠️ Hogy a WKWebView egyáltalán MEGADJA-e
+   * a zárat, azt nem mértük — de a natív ágon így sem kérjük, tehát a kérdés
+   * tárgytalanná vált.)
+   */
   const acquireWakeLock = useCallback(async () => {
+    if (isNativeApp()) return;
     if (!wakeLockSupported()) return;
     wakeRef.current = await requestWakeLock();
     setWakeLockActive(wakeRef.current.active);

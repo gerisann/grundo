@@ -18,7 +18,7 @@ import { decodePolyline } from '@/game/polyline';
 import { hasCompactInterior, IncrementalActivityGeometry, processActivityGeometry } from '@/game';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
-import { isNativeIos } from '@/lib/platform';
+import { isNativeApp, isNativeIos } from '@/lib/platform';
 import {
   currentSpeedMps,
   lapDistances,
@@ -477,6 +477,24 @@ export function TrackingScreen() {
     [showHexes, nearbyFree, nearbyOthers, nearbyMine, preview.own, preview.stolen, trailCells],
   );
 
+  /**
+   * A tulajdonosszínek is MEMOIZÁLVA — és pontosan ugyanazért, amiért a
+   * rétegek (lásd a fenti magyarázatot).
+   *
+   * ⚠️ EZ A MEMO A FENTIT VÉDI MEG. A `MapView` a rétegeket az
+   * `[layers, ownerColors]` függőségpárra szinkronizálja: ha az `ownerColors`
+   * minden rendernél új objektumliterál, a `mapHexLayers` memója HIÁBA fog —
+   * a `syncAreaData`/`syncCellData`/`syncBlobData` akkor is lefut, és
+   * cellánként egy `cellToBoundary` hívással újraépíti a teljes GeoJSON-t.
+   * A másodperces stopper-render (`setNow`) így önmagában újracsempézte a
+   * több ezer hatszöget. Mérve nem lett, de a kód szerint minden renderen
+   * lefutott (GRUNDO #21 energiaelemzés, B3).
+   */
+  const mapOwnerColors = useMemo(
+    () => ({ ...nearbyBlobs?.ownerColors, ...nearby?.ownerColors }),
+    [nearbyBlobs?.ownerColors, nearby?.ownerColors],
+  );
+
   const lastPoint = displayPoints.length > 0 ? displayPoints[displayPoints.length - 1]! : null;
 
 
@@ -574,8 +592,10 @@ export function TrackingScreen() {
                 onViewport={setNearbyView}
                 /* A hexagon-kapcsoló a rácsot rejti, a birtokviszonyt nem. */
                 blobs={showHexes ? nearbyBlobs?.blobs : undefined}
-                /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon. */
-                ownerColors={{ ...nearbyBlobs?.ownerColors, ...nearby?.ownerColors }}
+                /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon.
+                   ⚠️ MEMOIZÁLVA (`mapOwnerColors`), nem inline objektum — az utóbbi
+                   minden rendernél kiütötte a `mapHexLayers` memóját. */
+                ownerColors={mapOwnerColors}
                 fill
               />
             </Suspense>
@@ -650,14 +670,30 @@ export function TrackingScreen() {
             >
               ✕
             </button>
-            Tartsd bekapcsolva a képernyőt. Böngészőben a rögzítés megáll, ha a telefon
-            lezáródik vagy másik appra váltasz.
-            {isNativeIos()
-              ? ' A lezárt képernyős méréshez a rendszer helyengedélyénél az „Mindig” opciót is engedélyezd.'
-              : ''}
-            {recorder.wakeLockActive
-              ? ' A képernyőt ébren tartjuk.'
-              : ' A képernyő ébren tartása nem sikerült — állítsd hosszabbra a képernyő-időkorlátot.'}
+            {/*
+              A NATÍV ÉS A WEBES ESET KÉT KÜLÖN ÜZENET.
+
+              Natív appban a mérést a `BackgroundLocationPlugin` végzi, a
+              képernyő elalvása nem szakítja meg — a hiányzó darab kizárólag
+              az engedély. A régi szöveg („tartsd bekapcsolva a képernyőt")
+              ott félrevezetett, és a képernyőzár-tiltás óta (GRUNDO #21, B1)
+              a natív ágon amúgy sincs mit jelenteni róla.
+            */}
+            {isNativeApp() ? (
+              <>
+                A lezárt képernyős méréshez add meg a helyhasználati engedélyt
+                {isNativeIos() ? ' „Mindig”' : ' „Mindig engedélyezve”'} szinten. Enélkül a
+                mérés csak addig pontos, amíg az app előtérben van.
+              </>
+            ) : (
+              <>
+                Tartsd bekapcsolva a képernyőt. Böngészőben a rögzítés megáll, ha a telefon
+                lezáródik vagy másik appra váltasz.
+                {recorder.wakeLockActive
+                  ? ' A képernyőt ébren tartjuk.'
+                  : ' A képernyő ébren tartása nem sikerült — állítsd hosszabbra a képernyő-időkorlátot.'}
+              </>
+            )}
           </div>
         ) : null}
 

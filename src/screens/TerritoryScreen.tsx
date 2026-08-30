@@ -22,6 +22,8 @@ import { RIVAL_MAX_COLOR, ROLE_COLOR } from '@/lib/hexColors';
 import type { Layer } from '@/types';
 import './territory.css';
 
+import type { MapViewProps } from '@/components/MapView';
+
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 /**
@@ -257,6 +259,36 @@ export function TerritoryScreen() {
   const showingFree = groups.free.length > 0;
 
   /**
+   * A TÉRKÉP PROPJAI MEMOIZÁLVA — nem apróság, hanem a Grund képernyő
+   * legdrágább ismétlődő munkája.
+   *
+   * A `MapView` az `[layers, ownerColors]`, illetve a `[blobs, ownerColors]`
+   * függőségpárokra szinkronizál. Amíg ez a kettő a JSX-ben született
+   * literál volt, MINDEN render — minden pásztázás, minden koppintás, minden
+   * betöltés — újraépítette a teljes hexagon-GeoJSON-t, cellánként egy
+   * `cellToBoundary` hívással, majd `setData`-val újracsempéztette a
+   * Mapboxszal. A `groups` memója emiatt semmit sem ért.
+   *
+   * (GRUNDO #21 energiaelemzés, B3 — ugyanez a hiba a rögzítés képernyőn is.)
+   */
+  const mapLayers = useMemo<NonNullable<MapViewProps['layers']>>(
+    () =>
+      cellsVisible
+        ? [
+            { role: 'free', cells: groups.free },
+            { role: 'rival', cells: groups.others },
+            { role: 'interior', cells: groups.mine },
+          ]
+        : [],
+    [cellsVisible, groups.free, groups.others, groups.mine],
+  );
+
+  const mapOwnerColors = useMemo(
+    () => ({ ...blobs?.ownerColors, ...tiles?.ownerColors }),
+    [blobs?.ownerColors, tiles?.ownerColors],
+  );
+
+  /**
    * A tulajdonos kártyája — a MEGKOPPINTOTT MEZŐHÖZ horgonyozva.
    *
    * A térkép popupjába megy, nem a felületi rétegbe: így pontosan ott jelenik
@@ -314,15 +346,8 @@ export function TerritoryScreen() {
         {mapboxConfigured ? (
           <Suspense fallback={null}>
             <MapView
-              layers={
-                cellsVisible
-                  ? [
-                      { role: 'free', cells: groups.free },
-                      { role: 'rival', cells: groups.others },
-                      { role: 'interior', cells: groups.mine },
-                    ]
-                  : []
-              }
+              /* ⚠️ MEMOIZÁLVA — lásd `mapLayers`/`mapOwnerColors` fent. */
+              layers={mapLayers}
               /*
                 A területfoltok MINDEN nagyításon látszanak — a hexagonok
                 csak közelről jönnek rájuk. A hexagon-kapcsoló a rácsot
@@ -330,7 +355,7 @@ export function TerritoryScreen() {
               */
               blobs={cellsVisible ? blobs?.blobs : undefined}
               /* Mindenki a saját választott színében látszik a térképen. */
-              ownerColors={{ ...blobs?.ownerColors, ...tiles?.ownerColors }}
+              ownerColors={mapOwnerColors}
               position={position}
               follow={false}
               /* Nyitott ranglistánál a pozíció-gomb a lista elé lógna. */

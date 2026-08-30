@@ -87,7 +87,8 @@
   flex: none;
   padding-left: var(--sp-5);
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  backdrop-filter: blur(14px);
+  /* Elmosás NINCS: 92%-ban tömör felület mögött láthatatlan, közben a
+     teljes szélességben elmosná az élő térképet (GRUNDO #21, A2). */
   border-radius: 0 0 var(--r-lg) var(--r-lg);
   box-shadow: var(--shadow-card);
 }
@@ -107,13 +108,19 @@
   padding: var(--sp-3);
 }
 
-/* A kártyák áttetszők, hogy a térkép átlátsszon mögöttük. */
-.terr__stats,
-.terr__legend-grid,
-.terr__board,
-.terr .card {
-  backdrop-filter: blur(12px);
-}
+/*
+  ⚠️ ITT KORÁBBAN `backdrop-filter: blur(12px)` VOLT — TÖRÖLVE.
+
+  A komment azt ígérte, hogy „a kártyák áttetszők, hogy a térkép átlátsszon
+  mögöttük", de a felsorolt elemek háttere ezt nem engedi: a `.terr__board`
+  és a `.terr .card` TELJESEN tömör (`--bg-elevated`, illetve a globális
+  `.card` → `--surface-1`), a `.terr__stats` 92%-ban az. Tömör felület
+  mögött az elmosás semmit nem mutat — viszont az élő Mapbox-vászon fölött
+  minden képkockán újraszámolt GPU-munkát jelent (GRUNDO #21, A2).
+
+  Ahol az áttetszőség VALÓDI (`.terr__legend-box`, 50%), ott az elmosás
+  szándékosan megmaradt.
+*/
 
 .terr__stats {
   display: grid;
@@ -161,7 +168,7 @@
   padding: var(--sp-3);
   border-radius: var(--r-md);
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  backdrop-filter: blur(12px);
+  /* Elmosás NINCS — 92%-ban tömör mögött láthatatlan (GRUNDO #21, A2). */
 }
 
 /* ── Jelmagyarázat ───────────────────────────────────────────────── */

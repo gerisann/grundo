@@ -97,7 +97,9 @@
   font-size: 14px;
   line-height: 1.45;
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  backdrop-filter: blur(12px);
+  /* Elmosás NINCS: a felület 94%-ban tömör, mögötte a szűrő gyakorlatilag
+     semmit nem mutat — cserébe minden képkockán újraszámolt GPU-munka az
+     élő térkép fölött (GRUNDO #21 energiaelemzés, A2). */
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-card);
@@ -125,7 +127,6 @@
 */
 .track__note--too-short {
   background: #fdc700;
-  backdrop-filter: none;
   border-color: #fdc700;
   color: #222222;
 }
@@ -646,7 +647,9 @@
   align-items: baseline;
   padding: var(--sp-3);
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  backdrop-filter: blur(12px);
+  /* Elmosás NINCS: a felület 94%-ban tömör, mögötte a szűrő gyakorlatilag
+     semmit nem mutat — cserébe minden képkockán újraszámolt GPU-munka az
+     élő térkép fölött (GRUNDO #21 energiaelemzés, A2). */
 }
 
 .track__lap-index {
@@ -794,7 +797,9 @@
 .track__lap-toggle {
   padding: var(--sp-3);
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  backdrop-filter: blur(12px);
+  /* Elmosás NINCS: a felület 94%-ban tömör, mögötte a szűrő gyakorlatilag
+     semmit nem mutat — cserébe minden képkockán újraszámolt GPU-munka az
+     élő térkép fölött (GRUNDO #21 energiaelemzés, A2). */
   font-size: 13px;
   font-weight: 600;
   color: var(--accent);
@@ -819,7 +824,9 @@
   justify-content: flex-end;
   padding: 6px;
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  backdrop-filter: blur(12px);
+  /* Elmosás NINCS: a felület 94%-ban tömör, mögötte a szűrő gyakorlatilag
+     semmit nem mutat — cserébe minden képkockán újraszámolt GPU-munka az
+     élő térkép fölött (GRUNDO #21 energiaelemzés, A2). */
 }
 
 /* Hangsúlyosabb, mint a régi csupasz ✕: saját köre van, tehát látszik, hogy

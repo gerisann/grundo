@@ -20,6 +20,15 @@ const releaseVersion = process.env.VITE_APP_VERSION ?? packageInfo.version;
 const revision = process.env.VITE_GIT_SHA ?? gitRevision();
 const releaseChannel = process.env.VITE_BUILD_CHANNEL ?? 'web';
 
+/**
+ * Natív build-e ez?
+ *
+ * A `codemagic.yaml` mindkét natív munkafolyamatban beállítja a csatornát
+ * („iOS build 12", „Android build 9"); a webes telepítés és a helyi
+ * fejlesztés az alapértelmezett `web` értéken marad.
+ */
+const nativeBuild = releaseChannel !== 'web';
+
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -38,7 +47,20 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    /**
+     * SOURCE MAP: A WEBEN IGEN, A NATÍV APPBAN NEM.
+     *
+     * A `cap sync` a teljes `dist/`-et bemásolja az `ios/App/App/public`
+     * (illetve az `android/app/src/main/assets/public`) mappába — a
+     * source mapekkel együtt. Mérve a 2026-08-23-i másolaton: 3,1 MB kód
+     * mellett 9,2 MB `.map`, azaz a 13 MB-os webes mappa több mint kétharmada
+     * olyan fájl, amit a WKWebView soha nem tölt be. Csak a letöltendő és a
+     * telepített méretet növeli (GRUNDO #21 energiaelemzés, D1).
+     *
+     * A webes telepítésen marad, mert ott a hibakeresés valódi haszon, és a
+     * böngésző csak a devtools megnyitásakor kéri le.
+     */
+    sourcemap: !nativeBuild,
     rollupOptions: {
       output: {
         // Keep the entry chunk small — the map and the charts are the two heavy
