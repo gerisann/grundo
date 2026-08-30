@@ -5,7 +5,9 @@
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` (EGYETLEN klón — a második
 > `Documents\ChatGPT\GRUNDO` törölve) · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**, MÉG NEM pusholva (Geri dolga). **GraphHopper élesítve és
+> Ág: **`main`**. ⚠️ **A #20 MENET ANYAGA ÉLESBEN FUT** — backend és frontend
+> egyaránt telepítve, az oldal ellenőrizve működik. Az utolsó commit
+> (`eab00bb`) pusholása még hátravan. **GraphHopper élesítve és
 > bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
 > aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
 > "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), a
@@ -289,6 +291,49 @@ px, a „Befejezés" bal padding-ja 22 → 40 px. Az „Új kör" a
 „Befejezés" felirata (`.swipe-finish__label`) eleve csak ebben a módban
 létezik.
 
+## ⚠️ A TELEPÍTÉS MÓDJA MEGVÁLTOZOTT — ÉS EGY ÉLES LEÁLLÁS
+
+**2026-08-29-től a telepítés a FEJLESZTŐI GÉPRŐL megy, nem Cloud Shellből.**
+Geri heti Cloud Shell-kvótája elfogyott, és ő maga választotta a helyi utat.
+Mérve: a gépén minden telepítve ÉS bejelentkezve van (`gcloud` →
+`gergely.marthon@gmail.com`, projekt `grundo`; `firebase`; `node`; `npm`),
+Git Bashből is elérhetők. A backend build ettől még a felhőben fut.
+
+```bash
+./scripts/deploy.sh frontend     # vagy backend / all / szabalyok / indexek
+```
+
+**Az ügynök meg tudja csinálni** — a #20-ban meg is tette Geri kérésére.
+Amit NEM: `firebase login` és `gcloud auth application-default login`, mert
+azok böngészős, interaktív lépések.
+
+### ⚠️ AMIBE BELEFUTOTTUNK: az éles oldal LEÁLLT
+
+Az első fejlesztői gépes build után az oldal „A Firebase nincs beállítva"
+hibával fogadta a felhasználókat, bejelentkezés nélkül.
+
+**OK**: a `VITE_FIREBASE_*` értékek addig KIZÁRÓLAG a Cloud Shell másolatának
+GITIGNORE-OLT `.env.local` fájljában éltek. A gépi build ezért üres
+Firebase-konfigot égetett a bundle-be. A Vite ettől még hibátlanul lefordít —
+a build-kimenetből semmi nem árulta el.
+
+**JAVÍTVA**: a nyilvános konfiguráció bekerült a repóba (`.env.production`).
+Ezek NEM titkok: minden kliens bundle-be beépülnek, a böngészőből bárki
+kiolvassa, a hozzáférést a `firestore.rules`/`storage.rules` védi. A Mapbox
+token viszont VALÓDI titok — az marad a gitignore-olt `.env.local`-ban.
+
+**A `deploy.sh` két új védelmet kapott**, mert a fejlesztői gépen ugyanaz a
+mappa a munkapéldány (Cloud Shellben nem az volt):
+- nem commitolt módosítással **meg sem indul** (kipróbálva: megáll, listáz),
+- pusholatlan commitnál figyelmeztet, de folytatja.
+
+**A TANULSÁG, ami túlmutat ezen**: telepítés előtt a BUILD KIMENETÉT kell
+ellenőrizni, nem a build sikerét:
+
+```bash
+grep -rqF "<várt érték>" dist/assets/ && echo MEGVAN || echo HIÁNYZIK
+```
+
 ## NYITOTT TÉMA — küldetés-ajánló, ami MÉG hátravan
 
 1. **A kért „Elsődleges cél"-ra nincs visszajelzés, ha nem teljesíthető** —
@@ -302,10 +347,10 @@ létezik.
 4. **100 km fölött a jelöltszám 2** (`shapedCandidateLimit`) — ez korlátozza
    a találatszám-beállítást. Emeléshez előbb újramérni a geometria idejét az
    élesített GraphHopperrel.
-5. **Az `activityCellParents` migrációt LE KELL FUTTATNI** — a szkript kész
-   és éles dry-runon igazolt, de az írás még nem történt meg (lásd fent a
-   parancsot). Amíg nem fut le, a régi nagy hurkok kitöltése idegen nézőnél
-   közelítő marad.
+5. ~~Az `activityCellParents` migrációt le kell futtatni~~ — **LEFUTOTT**
+   (Geri futtatta, 2026-08-29). Ellenőrizve dry-runnal: `changed: 0`,
+   `cellsAdded: 0`, tehát nincs több javítandó aktivitás. (Az első mérés
+   ugyanitt még `changed: 1, cellsAdded: 9163` volt.)
 
 ## ÉLESBEN FUT — ELLENŐRIZVE
 
@@ -389,9 +434,15 @@ középtől minden értéknél).
   csak a `gcloud builds submit` igazolta — az sikerrel lefutott élesben.
 - Éles kéréssel igazolva: küldetés-generálás, kanyargós/egyenes eltérés,
   Cloud Run napló (`POST /route` → 200).
-- A #20 menet fenti javításai (GPS-horgony, tiles-bbox, compact-preview,
-  admin szélesség, dock) valós telefonon/böngészőben MÉG NINCSENEK
-  kipróbálva — csak tsc + vitest igazolja őket.
+- ⚠️ **A #20 anyaga ÉLESBEN FUT.** Backend: Cloud Build SUCCESS (2 p 35 mp).
+  Frontend: telepítve, és az oldal böngészőben ellenőrizve — betölt,
+  bejelentkezve működik, a feed jön, konzolhiba nincs.
+- A telepített build tartalmát telepítés ELŐTT `grep`-pel igazoltam a
+  `dist/assets/`-ben (Firebase-kulcsok, `grundo-db`, API URL, Mapbox token,
+  VAPID kulcs) — az első, hibás telepítés után ez lett a szokás.
+- ⚠️ Amit ÉLESBEN, VALÓS HASZNÁLATTAL még senki nem próbált ki: a GPS-horgony
+  (ehhez valódi mozgás kell), a rivális-sáv színezése (ehhez két, cellaszínt
+  választó felhasználó), és a Dock húzásos feliratai telefonon.
 
 ## FORRÁSOK SORRENDJE
 
