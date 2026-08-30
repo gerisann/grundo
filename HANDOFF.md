@@ -5,10 +5,9 @@
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` (EGYETLEN klón — a második
 > `Documents\ChatGPT\GRUNDO` törölve) · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. ⚠️ **A #20 MENET ANYAGA ÉLESBEN FUT** — backend és frontend
-> egyaránt telepítve, az oldal ellenőrizve működik. Az utolsó commit
-> (`eab00bb`) pusholása még hátravan. **GraphHopper élesítve és
-> bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
+> Ág: **`main`**, **minden pusholva** (`97b97cd`). ⚠️ **A #20 MENET ANYAGA
+> ÉLESBEN FUT** — backend és frontend egyaránt telepítve, az oldal
+> ellenőrizve működik. **GraphHopper élesítve és bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
 > aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
 > "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), a
 > küldetés-ajánló kevés találata (MÉRVE: a blokk-plafon volt az ok), az
@@ -334,6 +333,51 @@ ellenőrizni, nem a build sikerét:
 grep -rqF "<várt érték>" dist/assets/ && echo MEGVAN || echo HIÁNYZIK
 ```
 
+## ANDROID: AUTOMATIKUS FELTÖLTÉS A PLAY BELSŐ TESZTRE — KÉSZ, DE MÉG NEM FUTOTT
+
+Geri kérdése: az iOS build magától felmegy TestFlightbe, az AAB-t viszont
+kézzel kellett feltölteni. Innentől ez is automatikus.
+
+`codemagic.yaml` → az `android-release` workflow `publishing:` szekciót kapott
+(`google_play`, `track: internal`, `submit_as_draft: false`). A belső teszt sáv
+a TestFlight megfelelője: nincs felülvizsgálat.
+
+**Amit a Google oldalán be kellett állítani (MEGTÖRTÉNT):**
+- `androidpublisher.googleapis.com` engedélyezve a `grundo` Cloud projektben
+  (addig NEM volt — mérve),
+- `play-publisher@grundo.iam.gserviceaccount.com` létrehozva,
+- a fiók meghívva a Play Console-ban (Geri),
+- a JSON kulcs a Codemagicben `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` néven,
+  SECURE változóként, a `grundo_android` csoportban (Geri).
+
+⚠️ **A Play Console „API-hozzáférés" menüpontja NEM található meg** a
+Beállítások alatt — a Google átszervezte. Nem is kell: a service accountot a
+**Felhasználók és engedélyek** oldalon lehet meghívni az e-mail címével.
+
+**A jogosultság ÉLŐ API-HÍVÁSSAL igazolva** (2026-08-29): `edits.insert` →
+a négy sáv (production, beta, alpha, internal) látszik → `edits.delete`.
+Semmi nem lett publikálva. Tehát a következő build nem fog jogosultsági
+hibán elhasalni.
+
+⚠️ **A BUILD MÉG NEM FUTOTT LE.** Nincs `triggering` szekció, tehát a push nem
+indít buildet — a Codemagic felületén kell: *Start new build → GRUNDO Android
+Release → main*. A build előtti ellenőrzések helyben lefutottak (az 5 Android
+konfig-grep és a teljes tesztkészlet, 571 sikeres). A `versionName` `1.0.0`
+lesz, a `versionCode` a `BUILD_NUMBER`.
+
+## MUNKAMÓDSZER — HÁROM VÁLTOZÁS A #20-BAN
+
+Mindhármat Geri kezdeményezte; a részletek az `AGENTS.md` „Munkamódszer"
+szakaszában vannak, itt csak a lényeg:
+
+1. **A telepítés a fejlesztői gépről megy**, nem Cloud Shellből (elfogyott a
+   heti kvóta) — lásd a fenti szakaszt a `.env` csapdájával együtt.
+2. **A PUSH az ügynöké** — egyetlen feltétellel: minden push után SZÓLNI kell,
+   hogy megvolt. Geri a GitHub Desktopban követi a repót.
+3. **A TELEPÍTÉS is az ügynöké, ha Geri szól** — az ő utasítása maga a
+   jóváhagyás, nincs visszakérdezés. Ha az ügynök JAVASOLJA, akkor kérdez.
+   Menet közben viszont meg kell állni és szólni, ha bármi eltér a várttól.
+
 ## NYITOTT TÉMA — küldetés-ajánló, ami MÉG hátravan
 
 1. **A kért „Elsődleges cél"-ra nincs visszajelzés, ha nem teljesíthető** —
@@ -415,7 +459,11 @@ középtől minden értéknél).
 1. 300 km-es kérésnél a gyors fázis is ~17 s (16 GraphHopper-hívás egyszerre)
    — GraphHopper élesítése után érdemes újramérni, lehet, hogy javult. Még
    nem mérve.
-2. Android: Codemagic build + készülékes teszt még nem történt meg.
+2. **Android: a Codemagic build MÉG NEM FUTOTT LE** az új Play-publishinggel
+   (lásd fent). Ez a #21 első kézenfekvő lépése: Geri elindítja, és a build
+   log „Publishing" szakaszából derül ki, hogy a feltöltés átment-e. Ha
+   elhasal, az AAB akkor is elkészül artifactként, tehát a kézi feltöltés
+   mindig marad tartaléknak. Készülékes teszt szintén nem történt meg.
 3. **A nagy/compact hurok élő preview-ja csak a fal/határsávot rajzolja ki**
    (lásd fent, „Nagy bringakör…" — MEGOLDVA rész). A GP-szám pontos, de a
    compact belső parent-cellák vizuális kirajzolása nincs bekötve. Ha Geri
@@ -446,7 +494,9 @@ középtől minden értéknél).
 
 ## FORRÁSOK SORRENDJE
 
-1. `AGENTS.md` — Munkamódszer szakasz, és az ÚJ „natív appok" rész
+1. `AGENTS.md` — Munkamódszer szakasz. ⚠️ A #20-ban HÁROM ponton változott:
+   a telepítés a fejlesztői gépről megy, a push az ügynöké (szólási
+   kötelezettséggel), és a telepítés is az övé, ha Geri szól.
 2. `HANDOFF.md` (ez a fájl)
 3. `src/config/gameplay.ts` → `GPS_STATIONARY_RADIUS_M` — a GPS-drift javítás
    közös konstansa
