@@ -347,8 +347,16 @@ a fájlra hivatkozik, te pedig egyetlen `Read`-del betöltöd.
 - ⚠️ **A TELEPÍTÉS 2026-08-29-TŐL A FEJLESZTŐI GÉPRŐL MEGY, nem Cloud
   Shellből** (Geri döntése — elfogyott a heti kvótája). A `scripts/deploy.sh`
   Git Bashből futtatható, minden eszköz telepítve és bejelentkezve. A backend
-  build ettől még a felhőben fut. **Ha telepítést kérnek tőlem, meg tudom
-  csinálni** — de éles, kifelé irányuló művelet, tehát KÉRDEZZEM MEG előtte.
+  build ettől még a felhőben fut.
+  - ⚠️ **A TELEPÍTÉST ÉN FUTTATOM, HA GERI SZÓL.** Az ő utasítása („telepítsd
+    a frontendet", „mehet mindkettő") MAGA a jóváhagyás — ilyenkor ne kérdezzek
+    vissza, csak csináljam meg, és jelentsem az eredményt. Ha viszont ÉN
+    javaslom a telepítést (ő nem kérte), akkor kérdezzem meg előtte: az élesbe
+    küldés nem visszafordítható úgy, mint egy push.
+  - ⚠️ **ÁLLJAK MEG ÉS SZÓLJAK**, ha telepítés közben bármi eltér a várttól:
+    piszkos munkamásolat, hiányzó környezeti változó, sikertelen build, nem
+    várt `git` állapot. A félbehagyott telepítés helyrehozható, a rossz
+    tartalommal kiadott nem — 2026-08-29-en pontosan ez döntötte le az oldalt.
   - ⚠️ **BUILD ELŐTT ELLENŐRIZD A KÖRNYEZETI VÁLTOZÓKAT.** Az első gépes
     build Firebase-konfig NÉLKÜL ment élesbe, mert az értékek addig csak a
     Cloud Shell gitignore-olt `.env.local` fájljában éltek — az oldal
@@ -364,8 +372,7 @@ a fájlra hivatkozik, te pedig egyetlen `Read`-del betöltöd.
   Geri kifejezetten így kérte. ⚠️ **EGYETLEN FELTÉTELLEL: minden push után
   SZÓLNI KELL, hogy megvolt.** Ne csendben történjen: Geri a GitHub
   Desktopban követi a repót, és tudnia kell, mikor mozdult alatta. A
-  telepítés is átvehető (lásd fent), de az éles, kifelé irányuló művelet,
-  tehát ahhoz KÉRDEZZEM MEG a jóváhagyást. A
+  telepítés ugyanígy az enyém, ha szól (lásd fent). A
   `HANDOFF.md` frissítése ugyanabba a commitba kerül, mint a menet többi
   változása. A commit-üzenet első sora tömör Summary (max ~50 karakter), utána
   üres sor és felsorolásos Description. Magyarul.
