@@ -164,3 +164,31 @@ workflows:
       - android/app/build/outputs/apk/release/app-release.apk
       - android/app/build/outputs/bundle/release/app-release.aab
       - android/app/build/reports/**
+
+    # A feltöltés innentől ugyanaz a lépés, mint iOS-en a TestFlight: az AAB a
+    # build végén MAGÁTÓL felmegy a Play BELSŐ TESZT sávjára, ahol nincs
+    # felülvizsgálat, tehát a tesztelők percek alatt frissíthetnek. Eddig ezt
+    # kézzel kellett feltölteni a Play Console-ban (Geri kérése, 2026-08-29).
+    #
+    # ⚠️ A `versionCode` a `BUILD_NUMBER`-ből jön (`android/app/build.gradle`
+    # 4. sor), ezért buildenként nő. Enélkül a Play a MÁSODIK feltöltést már
+    # elutasítaná: „Version code N has already been used".
+    #
+    # ⚠️ A `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` a `grundo_android` csoportban
+    # él, SECURE változóként — a `play-publisher@grundo.iam.gserviceaccount.com`
+    # szolgáltatásfiók JSON kulcsa. A kulcs önmagában NEM elég: a fiókot a Play
+    # Console-ban külön meg kellett hívni („Felhasználók és engedélyek"), és a
+    # `androidpublisher.googleapis.com` API-t engedélyezni a `grundo` Cloud
+    # projektben. Mindkettő megtörtént.
+    #
+    # A jogosultság ELLENŐRIZVE (2026-08-29): egy `edits.insert` +
+    # `edits.delete` próba mind a négy sávot látta (production, beta, alpha,
+    # internal), anélkül hogy bármit publikált volna.
+    #
+    # A `submit_as_draft: false` miatt a kiadás azonnal él a sávon; `true`
+    # esetén vázlat maradna, és kézzel kellene kiadni a Play Console-ban.
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: false
