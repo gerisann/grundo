@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react';
-import { useRecorder, type RecorderApi, type RecorderOptions } from './useRecorder';
+import { useRecorder, type RecorderApi, type RecorderOptions, type UploadState } from './useRecorder';
 import { useAuth } from './AuthProvider';
 import { useTrackingCloudSync, type SyncedTrackingState } from '@/tracking/cloudSync';
 import type { PositionSource } from '@/tracking/types';
@@ -24,6 +24,34 @@ const RecorderContext = createContext<RecorderContextApi | null>(null);
 export function useRecorderContext(): RecorderContextApi {
   const value = useContext(RecorderContext);
   if (!value) throw new Error('useRecorderContext csak a RecorderProvider alatt hívható');
+  return value;
+}
+
+/**
+ * KÜLÖN, KÖNNYŰ CONTEXT — csak a feltöltés státuszához.
+ *
+ * ⚠️ GRUNDO #21 energiaelemzés, B5: az `App.tsx` `Router()`-je (a TELJES
+ * útválasztó, minden képernyő szülője) korábban a teljes
+ * `useRecorderContext()`-et kérte le, pedig kizárólag az `upload.status`-t
+ * használja (`savePanelOpen`). Mivel a `RecorderContextApi` a `state`-et
+ * (a GPS-pontok tömbjét) is tartalmazza, ami MINDEN mintánál új objektum,
+ * a `Router()` — vele együtt a teljes app-fa React-egyeztetése — minden
+ * egyes GPS-mintánál újra lefutott, akkor is, ha a képernyőn épp valami
+ * egészen más volt látható.
+ *
+ * A `Provider`-nek átadott érték itt egyetlen PRIMITÍV string — React a
+ * Context-fogyasztókat `Object.is` szerint hasonlítja össze, tehát amíg a
+ * feltöltés státusza ténylegesen nem változik (`'idle'` marad mozgás
+ * közben), ez a context NEM vált ki újrarenderelést, `useMemo` sem kell
+ * hozzá. A `Dock`/`TrackingScreen` továbbra is a teljes
+ * `useRecorderContext()`-et használja, változatlanul — nekik valóban kell
+ * az élő állapot.
+ */
+const RecorderUploadStatusContext = createContext<UploadState['status'] | null>(null);
+
+export function useRecorderUploadStatus(): UploadState['status'] {
+  const value = useContext(RecorderUploadStatusContext);
+  if (value === null) throw new Error('useRecorderUploadStatus csak a RecorderProvider alatt hívható');
   return value;
 }
 
@@ -52,8 +80,10 @@ export function RecorderProvider({
   // uid-t, ezért sem listenert, sem Firestore-írást nem hoz létre.
   const remoteState = useTrackingCloudSync(cloudSync ? user?.uid : undefined, recorder.state);
   return (
-    <RecorderContext.Provider value={{ ...recorder, remoteState }}>
-      {children}
-    </RecorderContext.Provider>
+    <RecorderUploadStatusContext.Provider value={recorder.upload.status}>
+      <RecorderContext.Provider value={{ ...recorder, remoteState }}>
+        {children}
+      </RecorderContext.Provider>
+    </RecorderUploadStatusContext.Provider>
   );
 }

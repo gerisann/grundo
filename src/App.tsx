@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { ThemeProvider } from './hooks/ThemeProvider';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
-import { RecorderProvider, useRecorderContext } from './hooks/RecorderProvider';
+import { RecorderProvider, useRecorderUploadStatus } from './hooks/RecorderProvider';
 import { RivalProvider } from './hooks/RivalProvider';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
@@ -100,7 +100,6 @@ function NativePushActions() {
 function Router() {
   const { status } = useAuth();
   const { status: profileStatus } = useProfile();
-  const recorder = useRecorderContext();
   /**
    * A Dock CSAK a mentőlap alatt tűnik el.
    *
@@ -115,8 +114,15 @@ function Router() {
    *
    * A mentés után az „Új rögzítés" gomb visszaviszi tétlen állapotba, és
    * ezzel a Dock is visszajön.
+   *
+   * ⚠️ KÜLÖN, KÖNNYŰ CONTEXT (`useRecorderUploadStatus`), NEM
+   * `useRecorderContext()` — lásd a `RecorderProvider.tsx` magyarázatát
+   * (GRUNDO #21, B5). Ez a komponens a Router GYÖKERE: a teljes
+   * `useRecorderContext()` a GPS-pontok tömbjét is hordozza, ami minden
+   * mintánál új objektum, tehát a teljes app-fát újrarenderelte volna
+   * minden egyes mintánál.
    */
-  const savePanelOpen = recorder.upload.status === 'done';
+  const savePanelOpen = useRecorderUploadStatus() === 'done';
   const { pathname } = useLocation();
 
   if (status === 'loading') return <Splash />;
