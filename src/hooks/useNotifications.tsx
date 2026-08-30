@@ -13,7 +13,14 @@
  * ez olcsóbb, mint két feliratkozást összefésülni.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   collection,
   deleteDoc,
@@ -55,7 +62,19 @@ export interface NotificationsState {
   removeAll: () => Promise<void>;
 }
 
-export function useNotifications(): NotificationsState {
+/**
+ * ⚠️ GRUNDO #21 energiaelemzés, A5: a `useNotifications()` korábban ITT
+ * nyitott saját `onSnapshot`-ot MINDEN hívási helyen — a Kezdőlap
+ * (harang-számláló) és a `NotificationPanel` (lista) egyszerre, nyitott
+ * panellel EGYIDEJŰLEG KÉT azonos lekérdezést futtatott: két adatfolyam,
+ * két dekódolás, két React-frissítés minden változásra.
+ *
+ * Ez a belső hook a tényleges implementáció (változatlan logika), a
+ * `NotificationsProvider` EGYSZER hívja meg, a nyilvános `useNotifications()`
+ * pedig innentől a megosztott context-ből olvas — lásd lent, ugyanaz a
+ * minta, mint a `RivalProvider`.
+ */
+function useNotificationsState(): NotificationsState {
   const { user } = useAuth();
   const [items, setItems] = useState<StoredNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,4 +188,17 @@ export function useNotifications(): NotificationsState {
     remove,
     removeAll,
   };
+}
+
+const NotificationsContext = createContext<NotificationsState | null>(null);
+
+export function NotificationsProvider({ children }: { children: ReactNode }) {
+  const value = useNotificationsState();
+  return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
+}
+
+export function useNotifications(): NotificationsState {
+  const value = useContext(NotificationsContext);
+  if (!value) throw new Error('useNotifications csak a NotificationsProvider alatt hívható');
+  return value;
 }

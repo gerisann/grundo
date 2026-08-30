@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
 import { RecorderProvider, useRecorderUploadStatus } from './hooks/RecorderProvider';
 import { RivalProvider } from './hooks/RivalProvider';
+import { NotificationsProvider } from './hooks/useNotifications';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
@@ -67,9 +68,14 @@ export function App() {
                 címke minden képernyőn megjelenhet, tehát egyetlen közös
                 betöltésnek kell fölöttük állnia. */}
             <RivalProvider>
-              <RecorderProvider>
-                <Router />
-              </RecorderProvider>
+              {/* ⚠️ GRUNDO #21, A5: EGYETLEN `onSnapshot` a Kezdőlap harangja
+                  ÉS a NotificationPanel között — korábban mindkettő saját
+                  feliratkozást nyitott, nyitott panellel egyszerre kettőt. */}
+              <NotificationsProvider>
+                <RecorderProvider>
+                  <Router />
+                </RecorderProvider>
+              </NotificationsProvider>
             </RivalProvider>
           </BrowserRouter>
         </ThemeProvider>
