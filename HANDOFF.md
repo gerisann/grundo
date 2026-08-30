@@ -1,509 +1,191 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-29** · a **#20** menet vége, átadás **#21**-re
+> Frissítve: **2026-08-30** · a **#21** menet közepe, ugyanebben a
+> beszélgetésben folytatódik a **3. hullám**
 >
-> Repo: `C:\Users\Geri\Documents\GitHub\grundo` (EGYETLEN klón — a második
-> `Documents\ChatGPT\GRUNDO` törölve) · GitHub: `gerisann/grundo`
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**, **minden pusholva** (`97b97cd`). ⚠️ **A #20 MENET ANYAGA
-> ÉLESBEN FUT** — backend és frontend egyaránt telepítve, az oldal
-> ellenőrizve működik. **GraphHopper élesítve és bizonyítottan működik.** A #20 menetben javítva: GPS-drift hamis
-> aktivitás, a cellák látható betöltődése, a nagy bringakör+meglévő birtok
-> "nincs küldetés" hibája (ÉLŐ PREVIEW ÉS A KÜLDETÉS-AJÁNLÓ IS), a
-> küldetés-ajánló kevés találata (MÉRVE: a blokk-plafon volt az ok), az
-> 1-5 találatszám beállítás, az ADATVÉDELMI útvonal-levágás (az egész
-> útvonal eltűnt), a HEXAGON-kitöltés nagy hurkoknál, admin oldalak
-> szélessége, dock háttere/border-je és 50/50 arány. `npx tsc --noEmit`
-> tiszta, teljes `npx vitest run`: 568/691 sikeres (123 kihagyva, nincs
-> regresszió — egy ÚJ teszt emulátor hiányában kihagyva, lásd lent).
-
-## #20 MENETBEN JAVÍTVA
-
-### GPS-drift hamis aktivitás — MEGOLDVA
-
-A #19 diagnózisa (telefont zárolt képernyővel egy órán át hagyva, meg sem
-mozdulva, az app 2,99 km futást és 703 m emelkedést rögzített) alapján:
-
-- **Horgony (anchor) alapú távolságszámítás.** Új tunable:
-  `GAMEPLAY.GPS_STATIONARY_RADIUS_M = 12` (`src/config/gameplay.ts`). Amíg
-  egy minta ezen a körön belül marad egy rögzített horgonyhoz képest, a táv
-  nem nő és a horgony nem mozdul — csak TARTÓS elmozdulásnál "ébred fel".
-  Ez a régi pontpáronkénti `MIN_MOVE_M` szűrő hibáját oldja: egy 5-15 m-es
-  beltéri ugrás önmagában mindig "elfogadható" volt, és sok ilyen összeadva
-  adta a hamis kilométereket.
-  - `src/tracking/recorder.ts`: `applySample` (O(1) append eset) és az új
-    `anchoredTotal()` (újraszámolási eset + `currentSpeedMps`) — utóbbi
-    javítja az induláskori hamis 10-20 km/h-t is.
-  - `src/tracking/filter.ts`: `FILTER.STATIONARY_RADIUS_M` a közös
-    konstansra mutat.
-  - `src/game/splits.ts`: `computeSplits` és `elevationProfile` UGYANEZT a
-    horgonyt használja — ez oldja az `ELEVATION_NOISE_M` hamis emelkedését
-    is, horizontális elmozdulás nélkül nincs szintszámítás.
-  - Új tesztek: `src/tracking/recorder.test.ts` ("GPS-horgony" leírás, 2
-    teszt: egy órányi beltéri zajra 0 a táv, valódi 200 m-es séta viszont
-    pontosan mérve) és `src/game/presentation.test.ts` (beltéri zaj sem
-    táv-, sem szintsort nem ad).
-  - **NEM lett bevezetve**: `altitudeAccuracy` a típuslánchoz — a horgony
-    már horizontális szinten kiszűri az indoor esetet, ez elegendőnek tűnt
-    a mért esetre. Ha később kiderül, hogy VALÓDI (kültéri, mozgó) aktivitás
-    ad hamis emelkedést, ez még mindig nyitott továbblépés.
-
-### Grund-térkép: cellák látható betöltődése — MEGOLDVA
-
-`src/screens/TerritoryScreen.tsx`: új `padView()` a `loadTiles()`-ban, a
-`tiles`-hívás határát 2,5×-ösére tolja ki minden irányban
-(`TILE_PREFETCH_PAD = 0.75`, azaz +75% mindkét oldalon), MIELŐTT elmegy a
-szerverre — a `blobs`-hívás változatlan (előszámolt egység, nem kell). A
-válaszméret-hatást (nagy nagyításnál sok cella, kicsi nagyításnál nagy
-terület) **még nem mértük élesben** — érdemes ránézni, ha a `/api/tiles`
-válaszidő vagy méret gyanúsan megnő.
-
-### Nagy bringakör + meglévő birtok = nincs küldetés — MEGOLDVA (KÉT HELYEN)
-
-A gyanú beigazolódott, és KÉT különálló helyen ugyanaz a gyökérok
-jelentkezett — a motor (`src/game/index.ts` `processActivityGeometry`)
-SZÁNDÉKOSAN dob, ha a hurok compact belsejű (nagy hurok, `hasCompactLoop`)
-ÉS `ownership.size > 0` — ez majdnem MINDIG igaz, mihelyt a játékosnak van
-bármi birtoka a közelben, hiszen a valódi elszámolás csak a szerver
-blokkos útján (`server/src/routes/activities.ts` `requiresChunkedClaim`)
-történhet.
-
-1. **Élő preview rögzítés közben** — `src/screens/TrackingScreen.tsx`
-   `preview` (kb. 190. sortól) VALÓDI `nearby` ownershippel hívta a motort;
-   a `catch` ág ezt "GPS-ugrásnak" félreértelmezve némán nullázta a
-   preview-t (0 claim, 0 GP), miközben a feltöltés után a terület
-   ténylegesen bekerült.
-2. **A KÜLDETÉS-AJÁNLÓ maga** — ez a SÚLYOSABB, mert Geri screenshotjain
-   ez látszott: 50 km és 150 km célhossznál a jelöltek geometriája/távja
-   kiszámolt (a "SZÁMÍTÁS" kártyák helyes km-t mutattak), de a VÉGSŐ lista
-   üres lett, "Most nincs ajánlható küldetés" — mert `server/src/lib/
-   missionEvaluate.ts` `evaluateCandidate` a jelöltet VALÓDI (Firestore-ból
-   olvasott) ownershippel adta át a motornak, ami minden nagy hurkos
-   jelöltre dobott; a `catch` ág `null`-t adott vissza MINDEGYIKRE, a
-   `pickMissions` pedig üres listát ad, ha nincs egyetlen használható
-   jelölt sem.
-
-Mindkét helyen ugyanaz a javítás: ha a geometria compact belsejű
-(`hasCompactInterior`), üres `Map()` ownershippel hívjuk a motort — ez az
-"üres világ" (LAB-szerű) becslést adja, pontos GP-vel és cellaszámmal,
-csak a lopott/visszafoglalt cella MEGKÜLÖNBÖZTETÉSE (és ezáltal a `raid`/
-`fortify` küldetés-karakter) vész el nagy huroknál. Élő preview-nál ez a
-térképen csak a hurok fal/határsávjának kirajzolását jelenti (a compact
-belső parent-cellák vizuális megjelenítése nincs bekötve — lásd NYITOTT
-ÜGYEK).
-
-⚠️ **Új emulátoros regressziós teszt íródott** (`server/src/lib/
-missionEvaluate.emulator.test.ts` → "nagy (compact belsejű) hurok MEGLÉVŐ
-birtok mellett is ad küldetést"), DE a #20 menetben a Firestore emulátor
-8081-es portja már foglalt volt (másik munkamenet futtatta) — a tesztet
-NEM sikerült lefuttatni éles emulátor ellen, csak `tsc` igazolja, hogy
-fordul. **Első dolog #21-ben**: `firebase.cmd emulators:exec --only
-firestore --project demo-grundo "npx vitest run server/src/lib/
-missionEvaluate.emulator.test.ts"` (a Java PATH-csapdára lásd AGENTS.md).
-
-### Admin oldalak szélesség-maximalizálása — MEGOLDVA
-
-`src/admin/admin.css` `.admin__body`: a `max-width: 900px; margin: 0 auto;`
-törölve. A `/admin/lab` már korábban is felülírta ezt (`simulation-
-lab.css` `:has(.lab-shell)`), az a szabály most redundáns, de nem árt.
-
-### `.dock` háttér/border — MEGOLDVA
-
-`src/components/Dock.css:19-21`: `background: none; border: none;` (a
-`border-radius`, `box-shadow`, `backdrop-filter` és a `.dock--blend`/
-`.dock--paused` állapotváltozatok érintetlenek, mert Geri kifejezetten csak
-a háttért és a bordert kérte).
-
-### Küldetés-ajánló: kevés/egyetlen ajánlat — MEGOLDVA, MÉRVE
-
-Geri #20-as bejelentése: „100 km fölött először bead két opciót, de mire
-befejezi a számítást, már csak 1 marad", és „csak 1 rajtaütés + 1 hódítás".
-
-**MÉRVE, nem tippelve** (`src/game/` próbaszkript, azóta törölve):
-
-- A HASONLÓSÁG-SZŰRÉS ÁRTATLAN: két nagy budapesti kör átfedése **0,0027**,
-  meg sem közelíti a 0,6-os küszöböt. A korábbi gyanú téves volt.
-- **A VALÓDI OK a blokk-plafon**: egyetlen 113 km-es kör **431 res9 blokkot**
-  érint — már önmagában a `MAX_OWNERSHIP_BLOCKS = 400` FÖLÖTT —, két ilyen
-  kör együtt 844-et. A `limitByBlocks` ezért mindig eldobta a második
-  jelöltet. Referencia-számok: 63 km → 230 blokk, 31 km → 118, 12,5 km → 42.
-- A plafon célja a Firestore-olvasás korlátozása. De a compact (nagy)
-  jelöltekhez a mai javítás óta EGYETLEN blokkot sem olvasunk (üres
-  ownershippel értékeljük őket) — vagyis pont azok buktak el egy keretet,
-  amit nem is használtak.
-
-**Javítás** (`server/src/lib/missionEvaluate.ts`): a `ShapedCandidate` kap egy
-`compact` mezőt (a `shapeCandidateCells` tölti), a `limitByBlocks` a compact
-jelölteket kihagyja a plafonból, az `evaluateShapedCandidates` pedig a
-`loadOwnership` cellahalmazából is — kevesebb olvasás, több ajánlat.
-**Igazolva ugyanazzal a méréssel: ugyanaz a két nagy kör most 2 ajánlatot ad
-(hódítás + felfedezés) az eddigi 1 helyett.**
-
-⚠️ **Ami MEGMARAD korlátnak**: 100 km fölött a `shapedCandidateLimit`
-(`routes/missions.ts`) teljesítményi okból csak **2 jelöltre** futtatja a
-drága geometriát (200 km → 15,9 s/jelölt), tehát ott a gyakorlati plafon 2
-ajánlat, akármennyit kér a felhasználó. 30 km alatt 6, 100 km-ig 4. Ezt nem
-emeltem — előbb mérni kellene, elfér-e a válaszidőben.
-
-### Találatszám 1–5 — KÉSZ
-
-Geri régi kérése bekötve: a részletes kereső „Hány ajánlatot kérsz?"
-steppere (`GAMEPLAY.MISSION_RESULT_DEFAULT/_MIN/_MAX` = 3/1/5), a `limit`
-végigmegy az API-n (`generateMissions`, `missionsPlan`, `missionsEvaluate`)
-a `pickMissions`-ig.
-
-A szám FELSŐ KORLÁT, ahogy Geri kérte: a `pickMissions` első menete a
-szigorú (karakterenként egy ajánlat), és ha az kevesebbet ad, egy második
-menet ugyanazt a KARAKTERT is kiosztja másodszor, valamint 0,75-ig lazít az
-átfedés-küszöbön. ⚠️ **0,75-nél megáll, mérésből**: a „tíz közös cella,
-egyikben eggyel több" teszteset Jaccard-értéke 0,909, tehát egy magasabb
-lépcső ugyanazt a kört adta volna vissza kétszer, más címkével — pont az a
-csapda, ami ellen az eredeti küszöb véd.
-
-### Elsődleges cél — RÉSZBEN javítva, korlátjával együtt
-
-`prioritizeMissions` eddig CSAK sorrendezett a kész listán. Mostantól a
-`pickMissions` is megkapja a `priority`-t, és a kért karakter választ először
-a jelöltek közül — így ha egy kör rajtaütésre ÉS erősítésre is alkalmas, a
-kért karakter viszi el, nem az, amelyik a saját mezőnyében kiugróbb.
-
-⚠️ **Amit ez NEM old meg, és Geri esete valószínűleg ez**: ha EGYETLEN
-jelölt sem megy át a saját területén, az „erősítés" pontszáma
-(`kindScore` → `counts.reclaimed`) mindenhol nulla, tehát ilyen ajánlat nem
-létezik — a beállítás nem tud elővarázsolni nem létező kört. Ehhez az
-útvonal-GENERÁLÁSNAK kellene a saját terület felé irányítania (a
-`missionBearings` ma vakon oszt nyolc irányt), és a felületnek meg kellene
-mondania, ha a kért karakterre nem sikerült ajánlatot találni. Egyik sincs
-kész — **ez a küldetés-ajánló következő érdemi köre.**
-
-### Aktivitás-adatvédelem: az EGÉSZ útvonal eltűnt — MEGOLDVA, MÉRVE
-
-Geri bejelentése: egy 17 km-es, háromhurkos aktivitás teljes útvonala rejtve
-volt 200 méteres beállítás mellett; kikapcsolva láthatóvá vált.
-
-**OK** (`src/game/privacy.ts` → `trimPrivateEnds`): a VÉGI vágás összefüggő
-szakaszt vett, az ELEJI viszont a teljes nyomvonalat végignézve az UTOLSÓ
-rajt-közeli pontig vágott. Egy útvonal, amely menet KÖZBEN visszatér a rajt
-közelébe (több hurok, oda-vissza szakasz), így a visszatérésig elveszett.
-Mérve, szintetikus nyomvonalakon:
-
-| alak | elveszett |
-|---|---|
-| egyszerű kör, közbenső visszatérés nélkül | 14 % (ez a helyes) |
-| hurok + 3,5 km-es második kör | 44 % |
-| hurok + 1,5 km-es második kör | 66 % |
-| hurok + 600 m-es második kör | 84 % |
-| hurok + 350 m-es második kör | 90 % |
-
-**Javítás**: az eleje is összefüggő szakaszként vágódik, ÉS a megmaradó
-nyomvonalból a védőkörbe eső pontok mindenhol kimaradnak (a vonal egyenes
-húrral vág át a körön). Így a védelem szándéka megmarad — a védőkörből nem
-szivárog ki pont —, de nem visz magával fél útvonalat. Mérés a javítás után:
-5-10 % veszteség. A meglévő adatvédelmi tesztek (köztük a „visszatérő
-szakaszt is levágja") változatlanul zöldek.
-
-⚠️ `PUBLIC_ROUTE_VERSION` **2 → 3**: enélkül a MÁR MENTETT aktivitások
-tévesen elrejtett útvonala úgy maradt volna. A `publicRouteNeedsRebuild`
-ebből tudja, hogy újra kell építeni — lekéréskor magától megtörténik.
-
-### Hexagon-kitöltés: a „nyolcas" alsó fele üres — MEGOLDVA, ÉLES ADATON MÉRVE
-
-Geri bejelentése ugyanarra az aktivitásra. **Éles Firestore-olvasással
-mérve** (`77cbb397…`, olvasó szolgáltatásfiók):
-
-- 3 hurok: #0 = 30 cella, #1 = 4 134 cella, **#2 = 15 745 cella → COMPACT**
-- a tárolt `activityCells`: **6 582**, a valódi foglalás **15 745**
-- **hiány: 9 163 cella (58 %)** — pontosan a compact hurok belseje, ezért
-  volt a nagyobbik hurok kitöltetlen, a kisebbik pedig kitöltve
-- ráadásul az API `slice(0, 5000)` a tárolt 6 582-t is megnyirbálta
-
-Ok: a `candidateCells` compact huroknál SZÁNDÉKOSAN csak a falat és a
-határsávot tartalmazza (a belsőt a parentek képviselik) — de a kliens ebből
-rajzol. Mérve: a hiányzó 9 163 cellát **85 index, ~1 kB** írja le tömören.
-
-**Javítás**: új `activityCellParents` mező (H3-compactolt, ≤ res10) a mentés
-mindkét útján, az API továbbadja, a kliens `expandActivityCells()`-szel
-bontja ki res12-re (`src/lib/activityCells.ts`, saját tesztekkel). Az
-`activityCells` plafonja 5 000 → 20 000, a parenteké 4 000.
-
-A RÉGI aktivitásokhoz **migrációs szkript készült**:
-`server/src/scripts/migrateActivityCellParents.ts`. Csak MEGJELENÍTÉSI
-mezőt ír (`activityCells`, `activityCellParents`), foglalást/GP-t nem
-számol újra, és idempotens. Olcsó előszűrője a `claimCounts`-ot hasonlítja
-a tárolt cellaszámhoz, tehát csak az érintetteken futtat geometriát.
-
-⚠️ **ÉLES DRY-RUN LEFUTOTT** (2026-08-29, olvasó fiókkal): 40 aktivitásból
-2 jelölt, **1 valóban javítandó** — pont a bejelentett `77cbb397…`:
-`tarolt=6582 -> cellak=6582 + parentek=85`, **9 163 pótolt cella**. Az írás
-Gerié, Cloud Shellben:
-
-```bash
-cd ~/grundo/server && npm run migrate:cell-parents -- --apply --allow-production
-```
-
-(`--limit N` kapcsolóval előbb néhány darabon is kipróbálható. A kliens
-visszaesési ága addig is számol parenteket a nyomvonalból, de a NÉZŐ csak a
-levágott nyomvonalat kapja, ezért migráció nélkül a kitöltés közelítő.)
-
-### Rivális-sáv a felhasználó SAJÁT cellaszínével — KÉSZ
-
-Geri kérése (2026-08-29): az aktivitás-kártyák alján futó sáv ne a rögzített
-lila-magenta párost használja, hanem a `/beallitasok/megjelenes` oldalon
-választott cellaszínt.
-
-**Értelmezés (Geri választotta):** mindenki a SAJÁT színén jelenik meg,
-ugyanaz az elv, mint a térképen — a bal (nyert) sáv az aktivitás szerzőjéé, a
-jobb a riválisé. Amelyik fél nem választott színt, annak az oldala marad a
-megszokott lila/korall; **oldalanként külön dől el.**
-
-- Szerver: az `Author` objektum kap egy `cellColor` mezőt (`null`, ha nincs
-  választva). **Extra Firestore-olvasás nélkül** — ugyanabból a user
-  dokumentumból jön, amit a név/kép miatt már beolvasunk.
-- ⚠️ `cellColorHexOrNull()` az új segéd (`src/lib/cellColors.ts`), NEM a
-  meglévő `cellColorHex()`: utóbbi a hiányzó értékre az alapértelmezett
-  palettaszínt adja, amivel nem lehetne megkülönböztetni a "nem választott"
-  esetet attól, aki történetesen a bézst választotta.
-- A színátmenet megmarad: a CSS `color-mix()`-szel képez sötétebb és
-  világosabb végpontot EGY hexből, így nem kell palettánként három árnyalatot
-  karbantartani. Az arányok (76 % sötét / 64 % világos) az EREDETI lila
-  gradiensből számolva — az első próbám (62 %) egy eleve sötét színt szinte
-  feketévé tett, ezt böngészős színpróbán láttam meg.
-- **AZONOS SZÍN mindkét oldalon**: ilyenkor a sáv egyetlen összefolyó folt
-  lenne, ezért a bal oldal a szín VILÁGOSABB, a jobb a SÖTÉTEBB tartományában
-  marad (`rival-row--twin`). Geri külön kérte, böngészőben ellenőrizve.
-- Bekötve az aktivitás-kártyán. A `RivalsCard`/`RivalsSheet` (profil, TOP 3)
-  ugyanezt a komponenst használja, de oda a szerver ma nem küld cellaszínt —
-  ott tehát a megszokott megjelenés marad, amíg valaki be nem köti.
-
-⚠️ **TANULSÁG, ami eddig hiányzott a dokumentációból**: a repo gyökerében
-futtatott `npx tsc --noEmit` **NEM ellenőrzi a `server/` mappát**. A szerver
-külön: `cd server && npx tsc --noEmit`. Ez a körben három valódi típushibát
-fogott meg, amit a gyökér-ellenőrzés zölden átengedett.
-
-### Dock: 50/50 arány és a húzásos felirat — KÉSZ
-
-Geri kérése (2026-08-29): a két oldalsó gomb újra egyforma széles (a 40/60
-helyett), így a Play gomb pontosan középen ül. Húzásos befejezésnél
-(`finishGesture === 'swipe'`) az „Új kör" és a „Befejezés" felirata 15 → 13
-px, a „Befejezés" bal padding-ja 22 → 40 px. Az „Új kör" a
-`.dock__center:has(.swipe-finish)` szelektorral van módhoz kötve — a
-„Befejezés" felirata (`.swipe-finish__label`) eleve csak ebben a módban
-létezik.
-
-## ⚠️ A TELEPÍTÉS MÓDJA MEGVÁLTOZOTT — ÉS EGY ÉLES LEÁLLÁS
-
-**2026-08-29-től a telepítés a FEJLESZTŐI GÉPRŐL megy, nem Cloud Shellből.**
-Geri heti Cloud Shell-kvótája elfogyott, és ő maga választotta a helyi utat.
-Mérve: a gépén minden telepítve ÉS bejelentkezve van (`gcloud` →
-`gergely.marthon@gmail.com`, projekt `grundo`; `firebase`; `node`; `npm`),
-Git Bashből is elérhetők. A backend build ettől még a felhőben fut.
-
-```bash
-./scripts/deploy.sh frontend     # vagy backend / all / szabalyok / indexek
-```
-
-**Az ügynök meg tudja csinálni** — a #20-ban meg is tette Geri kérésére.
-Amit NEM: `firebase login` és `gcloud auth application-default login`, mert
-azok böngészős, interaktív lépések.
-
-### ⚠️ AMIBE BELEFUTOTTUNK: az éles oldal LEÁLLT
-
-Az első fejlesztői gépes build után az oldal „A Firebase nincs beállítva"
-hibával fogadta a felhasználókat, bejelentkezés nélkül.
-
-**OK**: a `VITE_FIREBASE_*` értékek addig KIZÁRÓLAG a Cloud Shell másolatának
-GITIGNORE-OLT `.env.local` fájljában éltek. A gépi build ezért üres
-Firebase-konfigot égetett a bundle-be. A Vite ettől még hibátlanul lefordít —
-a build-kimenetből semmi nem árulta el.
-
-**JAVÍTVA**: a nyilvános konfiguráció bekerült a repóba (`.env.production`).
-Ezek NEM titkok: minden kliens bundle-be beépülnek, a böngészőből bárki
-kiolvassa, a hozzáférést a `firestore.rules`/`storage.rules` védi. A Mapbox
-token viszont VALÓDI titok — az marad a gitignore-olt `.env.local`-ban.
-
-**A `deploy.sh` két új védelmet kapott**, mert a fejlesztői gépen ugyanaz a
-mappa a munkapéldány (Cloud Shellben nem az volt):
-- nem commitolt módosítással **meg sem indul** (kipróbálva: megáll, listáz),
-- pusholatlan commitnál figyelmeztet, de folytatja.
-
-**A TANULSÁG, ami túlmutat ezen**: telepítés előtt a BUILD KIMENETÉT kell
-ellenőrizni, nem a build sikerét:
-
-```bash
-grep -rqF "<várt érték>" dist/assets/ && echo MEGVAN || echo HIÁNYZIK
-```
-
-## ANDROID: AUTOMATIKUS FELTÖLTÉS A PLAY BELSŐ TESZTRE — KÉSZ, DE MÉG NEM FUTOTT
-
-Geri kérdése: az iOS build magától felmegy TestFlightbe, az AAB-t viszont
-kézzel kellett feltölteni. Innentől ez is automatikus.
-
-`codemagic.yaml` → az `android-release` workflow `publishing:` szekciót kapott
-(`google_play`, `track: internal`, `submit_as_draft: false`). A belső teszt sáv
-a TestFlight megfelelője: nincs felülvizsgálat.
-
-**Amit a Google oldalán be kellett állítani (MEGTÖRTÉNT):**
-- `androidpublisher.googleapis.com` engedélyezve a `grundo` Cloud projektben
-  (addig NEM volt — mérve),
-- `play-publisher@grundo.iam.gserviceaccount.com` létrehozva,
-- a fiók meghívva a Play Console-ban (Geri),
-- a JSON kulcs a Codemagicben `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` néven,
-  SECURE változóként, a `grundo_android` csoportban (Geri).
-
-⚠️ **A Play Console „API-hozzáférés" menüpontja NEM található meg** a
-Beállítások alatt — a Google átszervezte. Nem is kell: a service accountot a
-**Felhasználók és engedélyek** oldalon lehet meghívni az e-mail címével.
-
-**A jogosultság ÉLŐ API-HÍVÁSSAL igazolva** (2026-08-29): `edits.insert` →
-a négy sáv (production, beta, alpha, internal) látszik → `edits.delete`.
-Semmi nem lett publikálva. Tehát a következő build nem fog jogosultsági
-hibán elhasalni.
-
-⚠️ **A BUILD MÉG NEM FUTOTT LE.** Nincs `triggering` szekció, tehát a push nem
-indít buildet — a Codemagic felületén kell: *Start new build → GRUNDO Android
-Release → main*. A build előtti ellenőrzések helyben lefutottak (az 5 Android
-konfig-grep és a teljes tesztkészlet, 571 sikeres). A `versionName` `1.0.0`
-lesz, a `versionCode` a `BUILD_NUMBER`.
-
-## MUNKAMÓDSZER — HÁROM VÁLTOZÁS A #20-BAN
-
-Mindhármat Geri kezdeményezte; a részletek az `AGENTS.md` „Munkamódszer"
-szakaszában vannak, itt csak a lényeg:
-
-1. **A telepítés a fejlesztői gépről megy**, nem Cloud Shellből (elfogyott a
-   heti kvóta) — lásd a fenti szakaszt a `.env` csapdájával együtt.
-2. **A PUSH az ügynöké** — egyetlen feltétellel: minden push után SZÓLNI kell,
-   hogy megvolt. Geri a GitHub Desktopban követi a repót.
-3. **A TELEPÍTÉS is az ügynöké, ha Geri szól** — az ő utasítása maga a
-   jóváhagyás, nincs visszakérdezés. Ha az ügynök JAVASOLJA, akkor kérdez.
-   Menet közben viszont meg kell állni és szólni, ha bármi eltér a várttól.
-
-## NYITOTT TÉMA — küldetés-ajánló, ami MÉG hátravan
-
-1. **A kért „Elsődleges cél"-ra nincs visszajelzés, ha nem teljesíthető** —
-   lásd fent. Az irányított generálás + felületi üzenet együtt egy önálló kör.
-2. **GPS-ingadozás → más eredmény ugyanarra a kérésre.** Mérve: 10-20 m
-   eltolt kiindulópont 1 vs. 3 kártyát ad. Javaslat (még nem kezdve): a
-   kiindulópont rácsra kerekítése a küldetés-generáláshoz.
-3. **Sík / emelkedős választó.** GraphHopperrel megoldható, de domborzati
-   adat (SRTM) és TELJES újraimportálás kell hozzá — külön, hosszabb kör.
-   **Ez a felületen ma NINCS ott, és nem is volt** — Geri #20-ban kereste.
-4. **100 km fölött a jelöltszám 2** (`shapedCandidateLimit`) — ez korlátozza
-   a találatszám-beállítást. Emeléshez előbb újramérni a geometria idejét az
-   élesített GraphHopperrel.
-5. ~~Az `activityCellParents` migrációt le kell futtatni~~ — **LEFUTOTT**
-   (Geri futtatta, 2026-08-29). Ellenőrizve dry-runnal: `changed: 0`,
-   `cellsAdded: 0`, tehát nincs több javítandó aktivitás. (Az első mérés
-   ugyanitt még `changed: 1, cellsAdded: 9163` volt.)
-
-## ÉLESBEN FUT — ELLENŐRIZVE
-
-### GraphHopper (ÚJ ebben a menetben, működik)
-
-Külön Cloud Run szolgáltatás (`grundo-graphhopper`), a gráf BUILD KÖZBEN
-épül fel (`graphhopper/Dockerfile` → `import`), `--no-allow-unauthenticated`.
-A `grundo-api` Google-aláírt ID-tokennel hívja a metaadat-szervertől
-(`server/src/lib/directions.ts` → `graphhopperIdToken`, saját kulcs/Secret
-Manager nélkül).
-
-**Élőben igazolva**: `POST /route` → `200 OK` a `grundo-graphhopper`
-naplójában, pontosan a küldetés-generálás időpontjában. Kanyargós/egyenes
-karakter eltérő útvonal-hosszakat ad (7,3/6,9/6,9 vs 7,2/8,2/7,5 km).
-
-⚠️ **Telepítés csak ritkán, külön paranccsal**:
-```bash
-~/grundo/scripts/deploy.sh graphhopper
-```
-NEM része az `all` módnak — a gráf csak OSM-frissítésnél vagy a
-`graphhopper/` mappa változásakor épül újra (percekig tart).
-
-**Egyszeri beüzemelés (MÁR MEGTÖRTÉNT, dokumentálva ha meg kell ismételni):**
-1. `gcloud run services add-iam-policy-binding grundo-graphhopper --region=europe-west1 --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" --role="roles/run.invoker"`
-2. Backend újratelepítése `--substitutions=_GRAPHHOPPER_URL=https://…`
-
-⚠️ **Csapda, amibe belefutottunk és javítva**: a `deploy.sh` mód-ellenőrzése
-a `git pull` ELŐTT volt, ezért egy elavult helyi másolat sosem jutott el
-odáig, hogy frissítse magát — új módot (mint a `graphhopper`) a régi
-szkript nem ismert, és azonnal elhalt, `info` sorok nélkül. JAVÍTVA
-(`de98101`): az ellenőrzés a dispatch `case` végén van, a pull UTÁN.
-**Ha ismét „Ismeretlen mód" jön minden `▸` sor nélkül**: `cd ~/grundo &&
-git pull` kézzel, utána a szkript már önmagától is frissül.
-
-Mért hidegindítás: ~8-15 s hosszú szünet után (nullára skálázva), utána
-percekig meleg. Összemérhető a backend saját hidegindításával (~12 s).
-
-### Küldetés-ajánló (a #19-ből, változatlanul él)
-
-Gyors fázis + lassú fázis szétválasztva, ~0,7-0,8 s meleg állapotban. Lásd
-a #19/#20-as HANDOFF-tartalmat a git történetben, ha a részletek kellenek
-(`git show b149cdf:HANDOFF.md` stb.) — ez a fájl a hellyel spórolva csak a
-MOST aktuális állapotot tartja.
-
-### Mapbox token — megoldva, Secret Managerből jön
-
-`MAPBOX_TOKEN` a Secret Managerből (`--set-secrets`), a telepítés nem tudja
-kiütni. Csere: `gcloud secrets versions add MAPBOX_TOKEN --data-file=-` +
-újratelepítés, kódváltozás nélkül. Élesben a KLIENS token fut szerveroldalon
-(közös, nem korlátozott) — külön szerver token még nyitott, kis prioritású
-ügy.
-
-## KISEBB, KÉSZ JAVÍTÁS EBBEN A MENETBEN
-
-**Stepper mezők** (`src/screens/MissionsScreen.tsx`, `missions.css`):
-kézzel gépelhetők (eddig csak −/+), és az érték a doboz KÖZEPÉN áll, nem a
-szélén (`size` attribútum a tartalomhoz igazítva, mérve: 0 px eltérés a
-középtől minden értéknél).
-
-## NYITOTT ÜGYEK
-
-1. 300 km-es kérésnél a gyors fázis is ~17 s (16 GraphHopper-hívás egyszerre)
-   — GraphHopper élesítése után érdemes újramérni, lehet, hogy javult. Még
-   nem mérve.
-2. **Android: a Codemagic build MÉG NEM FUTOTT LE** az új Play-publishinggel
-   (lásd fent). Ez a #21 első kézenfekvő lépése: Geri elindítja, és a build
-   log „Publishing" szakaszából derül ki, hogy a feltöltés átment-e. Ha
-   elhasal, az AAB akkor is elkészül artifactként, tehát a kézi feltöltés
-   mindig marad tartaléknak. Készülékes teszt szintén nem történt meg.
-3. **A nagy/compact hurok élő preview-ja csak a fal/határsávot rajzolja ki**
-   (lásd fent, „Nagy bringakör…" — MEGOLDVA rész). A GP-szám pontos, de a
-   compact belső parent-cellák vizuális kirajzolása nincs bekötve. Ha Geri
-   ezt is látni akarja élőben: `result.compactClaim` kellene átadni a
-   `HexMap`-nek/`MapView`-nak, réteges (parent-szintű) rendereléssel. Nincs
-   megbecsülve, mekkora munka.
-
-## ELLENŐRZÉSEK
-
-- `npx tsc --noEmit` mindkét oldalon tiszta.
-- Teljes `npx vitest run`: 559 sikeres, 123 kihagyva — nincs regresszió (4 új
-  teszttel bővült: `recorder.test.ts` GPS-horgony leírás [2], `presentation.
-  test.ts` beltéri zaj eset [1], `missionEvaluate.emulator.test.ts` nagy
-  compact hurok + meglévő birtok [1, emulátor nélkül kihagyva — lásd fent]).
-- GraphHopper Dockerfile: NEM lett helyben lebuildelve (nincs helyi Docker),
-  csak a `gcloud builds submit` igazolta — az sikerrel lefutott élesben.
-- Éles kéréssel igazolva: küldetés-generálás, kanyargós/egyenes eltérés,
-  Cloud Run napló (`POST /route` → 200).
-- ⚠️ **A #20 anyaga ÉLESBEN FUT.** Backend: Cloud Build SUCCESS (2 p 35 mp).
-  Frontend: telepítve, és az oldal böngészőben ellenőrizve — betölt,
-  bejelentkezve működik, a feed jön, konzolhiba nincs.
-- A telepített build tartalmát telepítés ELŐTT `grep`-pel igazoltam a
-  `dist/assets/`-ben (Firebase-kulcsok, `grundo-db`, API URL, Mapbox token,
-  VAPID kulcs) — az első, hibás telepítés után ez lett a szokás.
-- ⚠️ Amit ÉLESBEN, VALÓS HASZNÁLATTAL még senki nem próbált ki: a GPS-horgony
-  (ehhez valódi mozgás kell), a rivális-sáv színezése (ehhez két, cellaszínt
-  választó felhasználó), és a Dock húzásos feliratai telefonon.
-
-## FORRÁSOK SORRENDJE
-
-1. `AGENTS.md` — Munkamódszer szakasz. ⚠️ A #20-ban HÁROM ponton változott:
-   a telepítés a fejlesztői gépről megy, a push az ügynöké (szólási
-   kötelezettséggel), és a telepítés is az övé, ha Geri szól.
-2. `HANDOFF.md` (ez a fájl)
-3. `src/config/gameplay.ts` → `GPS_STATIONARY_RADIUS_M` — a GPS-drift javítás
-   közös konstansa
-4. `src/tracking/recorder.ts` — `applySample`, `anchoredTotal`,
-   `currentSpeedMps`
-5. `src/game/splits.ts` — `computeSplits`, `elevationProfile`
-6. `server/src/lib/missionEvaluate.ts` — `evaluateCandidate` (a küldetés-
-   ajánló "nincs küldetés" hibájának VALÓDI helye)
-7. `graphhopper/README.md` → Élesítés — ha a GraphHopper-t kell újratelepíteni
-8. `server/src/lib/directions.ts` → `graphhopperIdToken`
+> Ág: **`main`**, **minden pusholva** (`fe004c0`). ⚠️ **A #21 EDDIGI ANYAGA
+> ÉLESBEN NINCS** — az energiafixek Codemagic-buildekben vannak (Android
+> lefutott és telepítve Play belső tesztre, iOS lefutott, de a natív Swift
+> rész eszközön nincs ellenőrizve), a `deploy.sh` (web/backend) nem futott
+> ezen a #21 menetben, mert egyik commit sem érintette a `server/`-t vagy a
+> webes buildet érdemben. `npx tsc --noEmit` tiszta mindkét oldalon, teljes
+> `npx vitest run`: 577/700 (123 kihagyva), nincs regresszió.
+
+## A #21 MENET EDDIGI TÉMÁJA: iOS energia-/hőelemzés + mérés
+
+Geri panasza: a GRUNDO iOS release buildje tétlenül is melegíti a telefont, és
+sokat fogyaszt rögzítés közben. A menet két részből állt: (1) statikus
+kódelemzés → 17 lelet + terv (Artifact-ban átadva, lásd a beszélgetés elejét,
+nincs fájlban), (2) az 1–2. hullám tényleges javítása, (3) egy Android
+WebView-debug mellékszál, (4) VALÓS mérés Chrome DevTools Performance
+trace-ekkel — ez utóbbi az, ami miatt ez a menet szokatlanul erős: nem csak
+kódolvasásból, hanem élő adatból tudjuk, hogy a fixek működnek.
+
+### 1. hullám (`b167a51`) — CSS-animációk, wakelock, memoizálás, csomagméret
+
+- **A1**: a Dock Play-gombjának lüktetése `box-shadow`-ról (minden
+  képkockán újrafestés) kompozitálható `transform`/`opacity`-re állt
+  (`Dock.css` `::after` pszeudoelem), és véges (6 kör) az `--idle`
+  állapotnál — a `--armed` (rövid életű, választás/visszaszámlálás alatt)
+  marad végtelen.
+- **A2**: `backdrop-filter` törölve minden helyen, ahol a háttér 92–100%-ban
+  tömör volt (Dock, Grund kártyák/fejléc, Rögzítés jegyzetei) — láthatatlan
+  hatás, valós GPU-költség.
+- **B1**: `acquireWakeLock` natív appban (`isNativeApp()`) azonnal visszatér
+  — a képernyőzár-tiltás kizárólag a webes rögzítés feltétele, natívan a
+  `BackgroundLocationPlugin` méri zárolt képernyőnél is.
+- **B3**: `MapView` `ownerColors`/`layers` propjai `useMemo`-ba kerültek
+  mindkét térképes képernyőn (Rögzítés, Grund) — korábban inline objektum
+  volt, ami minden rendernél (a másodperces stopper is!) kiütötte a
+  hexagon-réteg memóját.
+- **D1**: `sourcemap: false` natív buildhez (`vite.config.ts`,
+  `VITE_BUILD_CHANNEL !== 'web'`). Mérve: az iOS-be másolt webes mappa
+  13 MB → 3,6 MB.
+- **C4**: a sehol nem használt `@capacitor/geolocation` függőség törölve.
+
+### 2. hullám (`687fc1d`) — inkrementális cellalánc, natív sor, Live Activity
+
+- **B2**: `IncrementalCellPath` (`src/game/cells.ts`) — a `traceToCellPath`
+  korábban a TELJES nyomvonalra futott minden GPS-mintánál (négyzetesen nőtt
+  a munka). Az új osztály csak az új pontokat dolgozza fel. 6 új teszt.
+- **B4**: a térkép JSX külön `MapPane` `React.memo`-komponensbe emelve
+  (`TrackingScreen.tsx`) — a másodperces stopper (`now`) többé nem futtatja
+  újra a `MapView`-t.
+- **B7**: a nyomvonal-rajzolás (`syncTrackData`) élő rögzítésnél legfeljebb
+  3 mp-enként frissül (`MapView` új `live` prop), azonnali flush indításkor/
+  reseten/befejezéskor.
+- **C1**: a natív pontsor (`BackgroundLocationPlugin.swift`) memóriában
+  gyűlik, csak háttérben, 10 mp-enként íródik `UserDefaults`-ba.
+- **C2**: a Live Activity natív (GPS-alapú) frissítése kizárólag háttérben
+  fut — előtérben a JS oldali `syncActivity` az egyetlen forrás; a háttéres
+  ág is 10 mp-re ritkítva (`GrundoLiveActivityController.swift`).
+- **C3**: `distanceFilter` mozgásformánként eltérő (séta 8 m, futás 5 m,
+  bringa 12 m).
+
+⚠️ **A Swift-kód (C1/C2/C3) NINCS ezen a gépen lefordítva** (nincs Xcode/Mac)
+— csak Codemagic-buildel ellenőrizve, ESZKÖZÖN MÉG NEM. Ha iOS-es mérés
+jönne egy következő körben, ez a nyitott kockázat.
+
+### WebView remote debugging (`41d9e4b` → javítva `fe004c0`)
+
+Geri teljesítménytesztet akart futtatni Chrome DevTools-szal egy Play
+Console-os RELEASE buildön (Samsung S20 FE, USB, `chrome://inspect`). Az
+első próbálkozás (`WebView.setWebContentsDebuggingEnabled(true)` a
+`MainActivity.java`-ban) **hatástalan volt** — hosszas élő eszközös
+diagnosztika után kiderült: a Capacitor `Bridge` MINDIG saját maga hívja meg
+ugyanezt, `BuildConfig.DEBUG`-ra alapozva (tehát release buildben `false`),
+és ez a hívás a MI `super.onCreate()`-ünkön belülről fut — mindig később,
+mint bármi, amit előtte írnánk. A helyes megoldás **konfigurációs kapcsoló**,
+nem kód: `capacitor.config.ts` → `android.webContentsDebuggingEnabled: true`.
+Ez KÖZVETLENÜL azt az alapértéket írja felül, amit a `CapConfig` ad a
+`Bridge`-nek.
+
+⚠️ **EZ IDEIGLENES, TÖRLENDŐ A MÉRÉS UTÁN** — a `capacitor.config.ts`
+tetején jelölve. Van egy `ios.webContentsDebuggingEnabled` megfelelője is,
+ha valaha Safari Web Inspectorral kellene iOS-t mérni (nem bekapcsolva).
+
+⚠️ **Ha valaha újra kell csinálni**: NE Java/Swift kódból — mindig a
+Capacitor konfigból. A `Bridge`/`WKWebView` mindig felülírja, amit előtte
+beállítanál.
+
+## MÉRVE, NEM TIPPELVE — három Chrome DevTools Performance trace
+
+Geri három `.json.gz` trace-t vett fel a fenti Samsung telefonon (USB,
+`chrome://inspect`), amiket Node-szkripttel (nem a UI-n át) elemeztem —
+Trace Event Format, CPU-mintavétel dekódolva forrástérképpel
+(`source-map-js`, lásd lent a pontos módszertant).
+
+| Trace | Forgatókönyv | Tétlen % |
+|---|---|---|
+| #1 (20,65 mp) | Grund képernyő, semmi nem történik | **96,0%** |
+| #2 (66 mp) | Rögzítés + szünet/folytatás + nézetváltás + réteg ki/be | 60,3% |
+| #3 (61 mp) | **Aktív rögzítés, telefon mozdulatlanul, semmi interakció** | **95,5%** |
+
+**A legfontosabb eredmény (#3-ból)**: a `RunTask` (fő szál összes munkája)
+15 másodperces negyedekre bontva: **1314,6 → 476,9 → 462,8 → 446,0 ms** — az
+első negyed az indítási költség, utána LAPOS, sőt enyhén csökkenő. Ha a
+B2 előtti `traceToCellPath`-hiba (minden mintánál a teljes nyomvonalra fut)
+még bent lenne, ez a görbe EMELKEDNE minden negyedben. Ez konkrét,
+folyamatos rögzítés alatti bizonyíték arra, hogy az inkrementális
+cellalánc-javítás tartja magát.
+
+**#2-ből egy konkrét, számszerű A4-bizonyíték**: a trace-ben KÉT külön
+Mapbox worker-készlet jött létre (két `DedicatedWorker thread`-pár) — a
+térkép ténylegesen újraépült valamikor (feltehetően a teljes
+statisztika-nézetbe váltás és vissza). A leazonosított legdrágább tételek
+(`mapbox-gl.js` saját `_render()`-je 8,83 mp/66 mp = 13,4%, React saját
+Scheduler csomagja 4,3 mp/66 mp = 6,5%) mind a Geri-féle KATTINTGATÁS ára
+(kameramozgás, réteg-ki/be), nem háttérben futó hiba — de a Scheduler-teher
+közvetlen indok a B5-re (lásd lent).
+
+⚠️ **Módszertan, ha meg kell ismételni**: a trace `.json.gz` a DevTools
+Performance panel letöltés-ikonjával exportálható. Elemzés Node-ból
+(`gunzip` + `JSON.parse`, nagy trace-nél `--max-old-space-size=8192`):
+- `thread_name`/`process_name` eventekből azonosítsd a `CrRendererMain`
+  tid-jét.
+- CPU-mintavétel: `Profile` event (`id`) + `ProfileChunk` eventek
+  UGYANAZZAL az `id`-vel (⚠️ NEM a `tid` köti össze őket — a `ProfileChunk`
+  egy külön `v8:ProfEvntProc` szálon van). `cpuProfile.nodes` +
+  `timeDeltas` + `samples` rekonstruálja a mintákat; `(idle)`/`(program)`/
+  `(garbage collector)` a hívási fa gyökér-közeli kategóriái.
+- Konkrét függvény azonosításához: `FunctionCall`/`v8.callFunction` events
+  `args.data.{url,lineNumber,columnNumber}` + a megfelelő `dist/assets/*.js.map`
+  + `source-map-js` (`node_modules/source-map-js`, már a repóban van).
+  ⚠️ A saját `index-*.js` hash-e build-csatornánként eltér
+  (`VITE_BUILD_CHANNEL` string), de UGYANABBÓL a commitból újraépítve a
+  sorok/oszlopok egyeznek — a `mapbox-*.js`/`h3-*.js`/`firebase-*.js` hash-e
+  változatlan commit mellett bitre egyezik.
+- `chrome://inspect`-et a böngésző-automatizálás (Claude in Chrome
+  extension) biztonsági okból nem tudja megnyitni — Gerinek kell kézzel
+  ellenőriznie/exportálnia.
+
+## KÖVETKEZŐ MENET — 3. hullám (ugyanebben a beszélgetésben folytatódik)
+
+A tervezett négy tétel, nagyság szerint sorrendben:
+
+1. **B5 — a rögzítő állapotának szétbontása.** A `RecorderProvider` az
+   `App.tsx` gyökerén ül, minden GPS-minta a TELJES app-fát újrarenderelteti.
+   A mai #2-es trace React Scheduler-terhelése (6,5%) közvetve ezt igazolja.
+   Javaslat a korábbi tervből: a gyakran változó mezőket (pontok, táv)
+   zustand-csatornába tenni, a Dock csak a státuszt olvassa.
+2. **A4 — egyetlen Mapbox-példány útvonalváltás közben.** A #2-es trace
+   MÉRVE mutatta: két worker-készlet = a térkép ténylegesen újraépült.
+   Legnagyobb munkájú tétel — előbb érdemes megbecsülni, mennyi haszna
+   lenne, mert egy útvonalváltást túlélő térkép-példány komoly
+   átszervezés.
+3. **A5 — értesítés-figyelő szolgáltatóba.** `useNotifications()` két külön
+   `onSnapshot`-ot nyit (Kezdőlap harang + panel), amíg a panel nyitva van.
+4. **D2 — útvonalszintű kódszétvágás.** A 22 játékos képernyő mind statikus
+   import a belépő csomagban.
+
+⚠️ **Kockázat-megjegyzés a saját korábbi tervemből**: mindhárom (B5, A4, A5)
+nagyobb szerkezeti kockázatú, mint az 1–2. hullám bármelyik tétele — B5 és
+A4 különösen, mert React-render-határokat/komponens-élettartamot
+mozgatnak. Élő böngészős/eszközös ellenőrzés NÉLKÜL nem szabad elkezdeni —
+most VAN hozzá eszköz (a `chrome://inspect` a Samsung telefonon működik),
+tehát ki KELL használni: minden B5/A4 lépés után új Performance trace kell,
+nem csak `tsc`/`vitest`.
+
+## NYITOTT KISEBB ÜGYEK
+
+- Az iOS Swift-kód (C1/C2/C3) eszközön ellenőrizetlen — Mac/Xcode hiányzik
+  erről a gépről. Ha Geri hozzáfér Machez, `ios.webContentsDebuggingEnabled`
+  ugyanígy bekapcsolható a Safari Web Inspectorhoz.
+- A `capacitor.config.ts` `android.webContentsDebuggingEnabled: true` és a
+  hozzá tartozó komment MÉRÉS UTÁN törlendő — ne maradjon bent egy tényleges
+  nyilvános kiadásban.
+- `emulator-5562 offline` folyamatosan megjelenik Geri gépén `adb devices`
+  kimenetében — ismeretlen eredetű, valószínűleg egy másik telepített
+  eszköz/emulátor próbál csatlakozni, nem zavarja a valódi tesztelést, de
+  tisztázatlan.
+
+## 0. MODELLJAVASLAT a folytatáshoz
+
+**Sonnet, magas gondolkodási mélységgel** a B5/A4 tervezéséhez és
+implementálásához — ez elsősorban React-architektúra-átalakítás, ismert
+minta (zustand-csatorna, megosztott térkép-példány), nem algoritmikus döntés
+vagy adatmodell-kérdés, ami Opust indokolná. Ha viszont a mérés valami
+váratlant mutat (pl. a memoizáció után is nő a render-idő), érdemes lehet
+Opusra váltani a hibakereséshez.
