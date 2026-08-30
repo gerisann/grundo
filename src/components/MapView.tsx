@@ -46,6 +46,17 @@ export interface MapViewProps {
   onViewport?: (view: { south: number; west: number; north: number; east: number; zoom: number }) => void;
   onCellPress?: (info: { cell: CellId; owner: string }) => void;
   cellPopup?: ReactNode;
+  /**
+   * Aktívan növekvő nyomvonal-e a `track`?
+   *
+   * `true`-nál a nyomvonal-rajzolás (nem a pozíciópötty!) legfeljebb
+   * `TRACK_SYNC_MIN_INTERVAL_MS`-enként frissül — lásd a `syncTrackData`
+   * hívási helyén lévő magyarázatot. Alapból `false`: a befejezett
+   * aktivitásokat mutató képernyők (Feed, Aktivitás, Grund) egyszer kapják
+   * meg a nyomvonalat, ott a throttle semmit nem gyorsítana, csak
+   * feleslegesen bonyolítaná a viselkedést.
+   */
+  live?: boolean;
 }
 
 const TRACK_SOURCE = 'grundo-track';
@@ -86,6 +97,17 @@ const TILTED_ZOOM = 17.6;
  * lemaradás. 350 ms elég sima, és 650 ms tartalékot hagy.
  */
 const FOLLOW_DURATION_MS = 350;
+
+/**
+ * Élő rögzítésnél ennyi ideig várunk KÉT nyomvonal-`setData` hívás között.
+ *
+ * Futótempón (~3 m/s) ez ~6 méteres, bringatempón (~8 m/s) ~16 méteres
+ * lemaradást jelent a vonal VÉGÉN — a követő nagyításon (16-os zoom, kb.
+ * 100-200 m látható szélesség) ez nem észrevehető, cserébe a `setData`
+ * hívások száma a töredékére csökken (GRUNDO #21 energiaelemzés, B7). A
+ * POZÍCIÓ ettől függetlenül minden mintánál frissül.
+ */
+const TRACK_SYNC_MIN_INTERVAL_MS = 3_000;
 
 /**
  * A menetirány simítása.
@@ -140,6 +162,7 @@ export function MapView({
   onViewport,
   onCellPress,
   cellPopup,
+  live = false,
 }: MapViewProps) {
   const { theme } = useThemeContext();
   const container = useRef<HTMLDivElement | null>(null);
@@ -170,6 +193,8 @@ export function MapView({
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilted, setTilted] = useState(() => readTiltPreference());
   const bearingRef = useRef<number | null>(null);
+  const lastTrackSyncAt = useRef(0);
+  const lastTrackSyncLength = useRef(0);
 
   useEffect(() => {
     if (!mapboxConfigured || container.current === null || map.current !== null) return;
@@ -285,9 +310,38 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncTrackData(instance, track);
+
+    const length = track?.length ?? 0;
+    /**
+     * ⚠️ A NYOMVONAL-RAJZOLÁS THROTTOLVA, HA `live` — A POZÍCIÓPÖTTY NEM.
+     *
+     * A `setData` a teljes koordinátatömböt újraküldi a Mapboxnak, ami a
+     * belső tesszellálást és a GPU-feltöltést is újrafuttatja — élő
+     * rögzítésnél korábban ez MINDEN GPS-mintánál lefutott, a nyomvonal
+     * hosszával arányosan növekvő költséggel (GRUNDO #21 energiaelemzés,
+     * B7). A pozíció (`position` prop, `mapview__dot`) külön hatókörben,
+     * throttle nélkül frissül továbbra is — a felhasználó AZT nézi menet
+     * közben, a mögötte húzódó vonal néhány másodperces lemaradása a
+     * követő nagyításon (16-os zoom) nem észrevehető.
+     *
+     * MINDIG AZONNAL SZINKRONIZÁL: üres/rövid nyomvonalnál (indítás), ha a
+     * hossz CSÖKKENT (visszaállás/reset), és — ez a legfontosabb — amikor
+     * `live` HAMISRA VÁLT. Utóbbi a befejezés pillanata: enélkül az utolsó,
+     * throttle-ban ragadt néhány másodpercnyi szakasz véglegesen hiányozna
+     * a térképről, mert utána már nem érkezik új GPS-minta, ami a
+     * feleslegessé vált időzítést újra kioldaná.
+     */
+    const isReset = length < lastTrackSyncLength.current;
+    const mustSyncNow = !live || length <= 2 || isReset;
+    const dueByTime = Date.now() - lastTrackSyncAt.current >= TRACK_SYNC_MIN_INTERVAL_MS;
+
+    if (mustSyncNow || dueByTime) {
+      lastTrackSyncAt.current = Date.now();
+      lastTrackSyncLength.current = length;
+      syncTrackData(instance, track);
+    }
     fitTrackOnce(instance, track, fitTrack, fitted);
-  }, [track, fitTrack]);
+  }, [track, fitTrack, live]);
 
   useEffect(() => {
     const instance = map.current;

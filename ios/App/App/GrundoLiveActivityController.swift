@@ -16,6 +16,16 @@ final class GrundoLiveActivityController {
     private var snapshot: GrundoActivitySnapshot?
     private var lastLocation: CLLocation?
     private var lastSpeed = 0.0
+    private var lastRecordedUpdateAt = Date.distantPast
+    /**
+     Ennyi mp-enként frissítjük TÉNYLEGESEN a widgetet a `record()` (GPS-
+     alapú, lezárt képernyős) ágon — a `snapshot`/`distanceM` ettől
+     függetlenül minden mintánál pontosan frissül, csak a push ritkább.
+     A hívó (`BackgroundLocationPlugin`) mostantól ezt az ágat kizárólag
+     háttérben futtatja, tehát ez a szám a LOCKSCREEN widget frissülési
+     ütemét szabja, nem a mért adat pontosságát (GRUNDO #21, C2).
+     */
+    private let recordUpdateIntervalS: TimeInterval = 10
 
     func start(activityType: String, snapshot: GrundoActivitySnapshot) {
         self.snapshot = snapshot
@@ -77,6 +87,10 @@ final class GrundoLiveActivityController {
             )
             lastSpeed = location.speed >= 0 ? location.speed : meters / seconds
             snapshot = current
+
+            let now = Date()
+            guard now.timeIntervalSince(lastRecordedUpdateAt) >= recordUpdateIntervalS else { return }
+            lastRecordedUpdateAt = now
             update(contentState(for: current))
         }
     }

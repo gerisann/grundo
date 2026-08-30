@@ -1,5 +1,6 @@
 import Capacitor
 import CoreLocation
+import UIKit
 
 /**
  * A GRUNDO saját helyforrása.
@@ -29,18 +30,68 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     private var liveActivityEnabled = true
     private var liveActivityController: AnyObject?
 
+    /**
+     A TARTÓS SORHOZ MÉG NEM ÍRT PONTOK — lásd `enqueue`/`persistPendingLocations`.
+
+     ⚠️ GRUNDO #21 energiaelemzés, C1: korábban minden EGYES pont a teljes
+     `UserDefaults`-sor kiolvasásával, bővítésével és teljes visszaírásával
+     járt — 500 elemű sornál ez 500 szótár (de)szerializálását jelentette
+     MINDEN mintára, ELŐTÉRBEN is, ahol a JS a pontot amúgy is azonnal
+     megkapja a `notifyListeners` hívásból. Az in-memory puffer O(1)
+     hozzáfűzést ad; a lemezre írás csak háttérben, ritkítva történik (lásd
+     lent) — a `UserDefaults` egyetlen szerepe a FOLYAMAT-KILÖVÉS elleni
+     védelem, nem a normál átadás.
+     */
+    private var pendingLocations: [[String: Any]] = []
+    private var isBackgrounded = false
+    private var lastPersistedAt = Date.distantPast
+    /** Háttérben ennyi mp-enként (nem mintánként) írunk lemezre. */
+    private let backgroundPersistIntervalS: TimeInterval = 10
+    private var backgroundObserver: NSObjectProtocol?
+    private var foregroundObserver: NSObjectProtocol?
+
     public override func load() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        // Alapérték — a `start()` mozgásforma szerint felülírja (lásd ott).
         locationManager.distanceFilter = 5
         locationManager.activityType = .fitness
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.showsBackgroundLocationIndicator = true
+
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isBackgrounded = true
+            // Azonnali biztosítéki írás a háttérbe lépés pillanatában — utána
+            // a rendes ritkított ütem veszi át (`enqueue`).
+            self?.persistPendingLocations()
+        }
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isBackgrounded = false
+        }
+    }
+
+    deinit {
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
+        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
     }
 
     @objc func start(_ call: CAPPluginCall) {
         requestedActivityType = normalizedActivityType(call.getString("activityType"))
+        // ⚠️ GRUNDO #21 energiaelemzés, C3: a szűrő mozgásformánként eltérő.
+        // Bringánál a régi, egységes 5 méteres szűrő 30 km/h-nál kb.
+        // 0,6 másodpercenként adott pontot — háromszor annyit, mint sétánál —,
+        // pedig a területfoglaláshoz (18,8 m átlójú hatszögek) ez a felbontás
+        // nem kell. Mindhárom érték jóval a hatszögátló alatt marad.
+        locationManager.distanceFilter = distanceFilter(for: requestedActivityType)
         requestedActivityState = activitySnapshot(call.getObject("activityState"))
         liveActivityEnabled = call.getBool("liveActivityEnabled") ?? true
         switch locationManager.authorizationStatus {
@@ -82,7 +133,12 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     @objc func drain(_ call: CAPPluginCall) {
-        let locations = queuedLocations()
+        // A lemezre írt ÉS a még csak memóriában lévő pontok együtt adják a
+        // teljes sort — utóbbi azért létezik, mert előtérben (és a ritkítás
+        // ablakában háttérben is) nem minden pont jut el azonnal a lemezig.
+        var locations = queuedLocations()
+        locations.append(contentsOf: pendingLocations)
+        pendingLocations.removeAll()
         UserDefaults.standard.removeObject(forKey: queueKey)
         call.resolve(["locations": locations])
     }
@@ -151,16 +207,40 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     private func enqueue(_ payload: [String: Any]) {
-        var queued = queuedLocations()
-        queued.append(payload)
-        if queued.count > maximumQueuedLocations {
-            queued.removeFirst(queued.count - maximumQueuedLocations)
+        pendingLocations.append(payload)
+        if pendingLocations.count > maximumQueuedLocations {
+            pendingLocations.removeFirst(pendingLocations.count - maximumQueuedLocations)
         }
-        UserDefaults.standard.set(queued, forKey: queueKey)
+        // ELŐTÉRBEN nem írunk lemezre: a pont már elment a JS-nek a
+        // `notifyListeners` hívással, a `UserDefaults` csak a folyamat-kilövés
+        // elleni biztosíték, ami csak háttérben releváns.
+        guard isBackgrounded else { return }
+        guard Date().timeIntervalSince(lastPersistedAt) >= backgroundPersistIntervalS else { return }
+        persistPendingLocations()
+    }
+
+    private func persistPendingLocations() {
+        guard !pendingLocations.isEmpty else { return }
+        var stored = queuedLocations()
+        stored.append(contentsOf: pendingLocations)
+        if stored.count > maximumQueuedLocations {
+            stored.removeFirst(stored.count - maximumQueuedLocations)
+        }
+        UserDefaults.standard.set(stored, forKey: queueKey)
+        pendingLocations.removeAll()
+        lastPersistedAt = Date()
     }
 
     private func normalizedActivityType(_ value: String?) -> String {
         value == "walk" || value == "ride" ? value! : "run"
+    }
+
+    private func distanceFilter(for activityType: String) -> CLLocationDistance {
+        switch activityType {
+        case "walk": return 8
+        case "ride": return 12
+        default: return 5 // run
+        }
     }
 
     private func activitySnapshot(_ value: JSObject?) -> GrundoActivitySnapshot? {
@@ -225,6 +305,15 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     private func recordLiveActivityLocation(_ location: CLLocation) {
+        // ⚠️ GRUNDO #21 energiaelemzés, C2: ELŐTÉRBEN a JS oldali
+        // `syncActivity` (lásd `syncLiveActivity`) az EGYETLEN forrás — az
+        // a hiteles, horgony-szűrt távolságot küldi (`useRecorder.ts`
+        // `apply`). Ez a natív ág korábban MINDEN mintánál futott, függetlenül
+        // attól, hogy a JS is frissített-e — két, eltérő algoritmusú
+        // távolságszámítás versenyzett ugyanazért a widgetért. Ez az ág
+        // KIZÁRÓLAG akkor fut, amikor a WebView ténylegesen alszik (lezárt
+        // képernyő) — ott viszont ez az EGYETLEN forrás, hiszen a JS nem fut.
+        guard isBackgrounded else { return }
         guard #available(iOS 16.1, *),
               let controller = liveActivityController as? GrundoLiveActivityController else { return }
         controller.record(location)

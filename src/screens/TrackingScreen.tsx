@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cellToChildren, latLngToCell } from 'h3-js';
 import { Button, SegmentedControl } from '@/components/ui';
@@ -13,7 +13,7 @@ import { useClaimProgress } from '@/hooks/useClaimProgress';
 import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
-import { layerOf, traceToCellPath } from '@/game/cells';
+import { IncrementalCellPath, layerOf } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
 import { hasCompactInterior, IncrementalActivityGeometry, processActivityGeometry } from '@/game';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
@@ -98,6 +98,13 @@ export function TrackingScreen() {
   );
   const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
   const [showHexes, setShowHexes] = useState(true);
+  /**
+   * MEMOIZÁLVA — a `MapPane` (lent) `React.memo`-jának ez a feltétele.
+   * Egy inline `() => setShowHexes(...)` minden rendernél új függvény lenne,
+   * ami a memo shallow-összehasonlítását kiütné, és a másodperces
+   * stopper-render (`now`) újra magával rántaná a térképet (GRUNDO #21, B4).
+   */
+  const toggleHexes = useCallback(() => setShowHexes((visible) => !visible), []);
 
   /**
    * A statisztika-panel HÁROM nézete — Geri kérése (2026-08-27):
@@ -142,7 +149,35 @@ export function TrackingScreen() {
    * Így ugyanabban a cellában továbbra sincs fölösleges flood fill, de a
    * térképi fal legfeljebb egyetlen cellával maradhat le.
    */
-  const cellPath = useMemo(() => traceToCellPath(displayPoints).path, [displayPoints]);
+
+  /**
+   * Melyik rögzítéshez tartozik a gyorsítótár (mindkettő lent).
+   *
+   * Az `update()` magától újraépít, ha az új nyomvonal nem a régi folytatása —
+   * DE ha valaki ugyanarról a pontról indít új futást, az első cellák
+   * véletlenül egyezhetnek, és akkor az előző futás hurkai bennragadnának.
+   * Ezért a rögzítés azonosságát külön nézzük.
+   */
+  const geometrySessionKey = `${remoteState?.activityId ?? ''}:${displayPoints[0]?.t ?? ''}`;
+
+  /**
+   * A CELLALÁNC gyorsítótára — ugyanúgy inkrementális, mint a lenti
+   * hurokgeometria, csak eggyel korábbi lépésre: a `traceToCellPath` korábban
+   * MINDEN mintánál a teljes eddigi nyomvonalra futott (`latLngToCell` +
+   * `gridDistance` minden ponton), pedig az algoritmus csak az utolsó
+   * cellát nézi. Egy kétórás aktivitás végén ez percenként több ezer
+   * H3-hívást jelentett egyetlen új mintáért (GRUNDO #21 energiaelemzés,
+   * B2). Az `IncrementalCellPath` csak az ÚJ pontokat dolgozza fel.
+   */
+  const cellPathCache = useRef(new IncrementalCellPath());
+  const cellPathSession = useRef('');
+  const cellPath = useMemo(() => {
+    if (cellPathSession.current !== geometrySessionKey) {
+      cellPathCache.current.reset();
+      cellPathSession.current = geometrySessionKey;
+    }
+    return cellPathCache.current.update(displayPoints).path;
+  }, [displayPoints, geometrySessionKey]);
   const cellRevision = `${cellPath.length}:${cellPath.at(-1) ?? ''}`;
 
   const [nearby, setNearby] = useState<TilesResult | null>(null);
@@ -169,16 +204,6 @@ export function TrackingScreen() {
    */
   const geometryCache = useRef(new IncrementalActivityGeometry());
   const geometrySession = useRef('');
-
-  /**
-   * Melyik rögzítéshez tartozik a gyorsítótár.
-   *
-   * Az `update()` magától újraépít, ha az új nyomvonal nem a régi folytatása —
-   * DE ha valaki ugyanarról a pontról indít új futást, az első cellák
-   * véletlenül egyezhetnek, és akkor az előző futás hurkai bennragadnának.
-   * Ezért a rögzítés azonosságát külön nézzük.
-   */
-  const geometrySessionKey = `${remoteState?.activityId ?? ''}:${displayPoints[0]?.t ?? ''}`;
 
   /**
    * Élő előnézet: mi lenne, ha MOST fejezném be?
@@ -577,37 +602,19 @@ export function TrackingScreen() {
         le is áll, amíg a felhasználó a teljes statisztika-nézetben van.
       */}
       {statsView !== 'full' ? (
-        <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
-          {mapboxConfigured ? (
-            <Suspense fallback={null}>
-              <MapView
-                layers={mapHexLayers}
-                track={displayPoints}
-                ghostTrack={ghostTrack}
-                position={mapPosition}
-                allowTilt
-                hexesVisible={showHexes}
-                onToggleHexes={() => setShowHexes((visible) => !visible)}
-                follow={running || remoteState?.status === 'recording'}
-                onViewport={setNearbyView}
-                /* A hexagon-kapcsoló a rácsot rejti, a birtokviszonyt nem. */
-                blobs={showHexes ? nearbyBlobs?.blobs : undefined}
-                /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon.
-                   ⚠️ MEMOIZÁLVA (`mapOwnerColors`), nem inline objektum — az utóbbi
-                   minden rendernél kiütötte a `mapHexLayers` memóját. */
-                ownerColors={mapOwnerColors}
-                fill
-              />
-            </Suspense>
-          ) : displayPoints.length > 1 ? (
-            <HexMap layers={[{ role: 'trail', cells }]} track={displayPoints} height={420} />
-          ) : (
-            <p className="track__note">
-              A nyomvonalad itt jelenik meg, amint elindulsz. Utcatérkép csak beállított
-              Mapbox-tokennel látszik.
-            </p>
-          )}
-        </div>
+        <MapPane
+          layers={mapHexLayers}
+          track={displayPoints}
+          ghostTrack={ghostTrack}
+          position={mapPosition}
+          hexesVisible={showHexes}
+          onToggleHexes={toggleHexes}
+          follow={running || remoteState?.status === 'recording'}
+          onViewport={setNearbyView}
+          blobs={showHexes ? nearbyBlobs?.blobs : undefined}
+          ownerColors={mapOwnerColors}
+          plainCells={cells}
+        />
       ) : null}
 
       {/*
@@ -1051,6 +1058,85 @@ function LapList({ state, paused }: { state: RecorderState; paused: boolean }) {
     </div>
   );
 }
+
+/**
+ * A térképpanel — KÜLÖN, `React.memo`-zott komponensben.
+ *
+ * A `TrackingScreen` a stopper miatt másodpercenként újrarenderelődik
+ * (`now`, lásd fent). Amíg a térkép JSX-e közvetlenül ott állt, ez a
+ * `MapView`-t is másodpercenként újrafuttatta — a rögzítés alatti props
+ * (`layers`, `ghostTrack`, `ownerColors`) mind memoizáltak, tehát a
+ * TARTALOM nem változott, de maga a render-fa bejárása és a Suspense-határ
+ * ellenőrzése minden alkalommal megtörtént. Egy külön, memoizált komponens
+ * React reconciler számára láthatóvá teszi, hogy a props nem változtak —
+ * ilyenkor a `MapView` függvénye EGYSZER SEM fut le feleslegesen
+ * (GRUNDO #21 energiaelemzés, B4).
+ *
+ * ⚠️ EZÉRT KELLETT A HÍVÓ OLDALON `toggleHexes` mint `useCallback`: egy
+ * inline nyíl-függvény minden rendernél új referencia lenne, és önmagában
+ * megtörné a `memo` shallow-összehasonlítását.
+ */
+const MapPane = memo(function MapPane({
+  layers,
+  track,
+  ghostTrack,
+  position,
+  hexesVisible,
+  onToggleHexes,
+  follow,
+  onViewport,
+  blobs,
+  ownerColors,
+  plainCells,
+}: {
+  layers: NonNullable<MapViewProps['layers']>;
+  track: MapViewProps['track'];
+  ghostTrack: MapViewProps['ghostTrack'];
+  position: MapViewProps['position'];
+  hexesVisible: boolean;
+  onToggleHexes: () => void;
+  follow: boolean;
+  onViewport: NonNullable<MapViewProps['onViewport']>;
+  blobs: MapViewProps['blobs'];
+  ownerColors: MapViewProps['ownerColors'];
+  /** A Mapbox nélküli visszaesési ág (`HexMap`) cellái. */
+  plainCells: string[];
+}) {
+  return (
+    <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
+      {mapboxConfigured ? (
+        <Suspense fallback={null}>
+          <MapView
+            layers={layers}
+            track={track}
+            ghostTrack={ghostTrack}
+            position={position}
+            allowTilt
+            hexesVisible={hexesVisible}
+            onToggleHexes={onToggleHexes}
+            follow={follow}
+            /* `follow` == „aktívan rögzítünk" == a nyomvonal még nő — ugyanaz
+               a feltétel, ami miatt a `MapView` throttolja a vonalrajzolást. */
+            live={follow}
+            onViewport={onViewport}
+            /* A hexagon-kapcsoló a rácsot rejti, a birtokviszonyt nem. */
+            blobs={blobs}
+            /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon. */
+            ownerColors={ownerColors}
+            fill
+          />
+        </Suspense>
+      ) : track && track.length > 1 ? (
+        <HexMap layers={[{ role: 'trail', cells: plainCells }]} track={track} height={420} />
+      ) : (
+        <p className="track__note">
+          A nyomvonalad itt jelenik meg, amint elindulsz. Utcatérkép csak beállított
+          Mapbox-tokennel látszik.
+        </p>
+      )}
+    </div>
+  );
+});
 
 /**
  * Az élő adatok panelje — koppintásra kinyílik.
