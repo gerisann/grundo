@@ -360,7 +360,12 @@ a fájlra hivatkozik, te pedig egyetlen `Read`-del betöltöd.
   - ⚠️ **A gyökér `npx tsc --noEmit` NEM ellenőrzi a `server/` mappát.** Azt
     külön kell: `cd server && npx tsc --noEmit`. Ez már fogott meg valódi
     típushibát, amit a gyökér-ellenőrzés zölden átengedett.
-- **A commit az enyém** (2026-08-19-től), a **push és a telepítés az övé**. A
+- **A commit az enyém** (2026-08-19-től) és **2026-08-29-től a PUSH is** —
+  Geri kifejezetten így kérte. ⚠️ **EGYETLEN FELTÉTELLEL: minden push után
+  SZÓLNI KELL, hogy megvolt.** Ne csendben történjen: Geri a GitHub
+  Desktopban követi a repót, és tudnia kell, mikor mozdult alatta. A
+  telepítés is átvehető (lásd fent), de az éles, kifelé irányuló művelet,
+  tehát ahhoz KÉRDEZZEM MEG a jóváhagyást. A
   `HANDOFF.md` frissítése ugyanabba a commitba kerül, mint a menet többi
   változása. A commit-üzenet első sora tömör Summary (max ~50 karakter), utána
   üres sor és felsorolásos Description. Magyarul.
