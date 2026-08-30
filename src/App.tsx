@@ -9,28 +9,47 @@ import { NotificationsProvider } from './hooks/useNotifications';
 import { Dock } from './components/Dock';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
-import { TerritoryScreen } from './screens/TerritoryScreen';
-import { TrackingScreen } from './screens/TrackingScreen';
-import { CommunityScreen } from './screens/CommunityScreen';
-import { ProfileScreen } from './screens/ProfileScreen';
-import { PublicProfileScreen } from './screens/PublicProfileScreen';
-import { ActivityScreen } from './screens/ActivityScreen';
-import { SearchScreen } from './screens/SearchScreen';
-import { MissionsScreen } from './screens/MissionsScreen';
-import { ProfileRivalsScreen, ProfileStatsScreen, ProfileClansScreen, ProfileBadgesScreen } from './screens/ProfileSectionScreens';
-import { SettingsScreen } from './screens/settings/SettingsScreen';
-import { AppearanceScreen } from './screens/settings/AppearanceScreen';
-import { FinishGestureScreen } from './screens/settings/FinishGestureScreen';
-import { PrivacyScreen } from './screens/settings/PrivacyScreen';
-import { RulesScreen } from './screens/settings/RulesScreen';
-import { NotificationsScreen } from './screens/settings/NotificationsScreen';
-import { BlockedUsersScreen } from './screens/settings/BlockedUsersScreen';
-import { WelcomeScreen } from './screens/auth/WelcomeScreen';
-import { LoginScreen } from './screens/auth/LoginScreen';
-import { RegisterScreen } from './screens/auth/RegisterScreen';
-import { ForgotPasswordScreen } from './screens/auth/ForgotPasswordScreen';
-import { CompleteProfileScreen } from './screens/auth/CompleteProfileScreen';
 import { addNativePushActionListener } from './lib/push';
+
+/**
+ * MINDEN KÉPERNYŐ LUSTÁN TÖLTŐDIK, A HOME KIVÉTELÉVEL.
+ *
+ * ⚠️ GRUNDO #21 energiaelemzés, D2: korábban mind a 22 játékos képernyő
+ * statikus import volt — a `Kezdőlap → Beállítások → Adatvédelem` útvonal
+ * ugyanazt a JS-darabot töltötte be, mint a `Kezdőlap → Rögzítés`, pedig a
+ * kettőnek semmi köze egymáshoz. A Home marad statikus, mert ez a
+ * belépés utáni ALAPÉRTELMEZETT nézet — natív appban a JS-fájl helyben
+ * van, tehát ez nem hálózati kérdés, hanem FORDÍTÁSI/VÉGREHAJTÁSI idő
+ * minden hidegindításnál, amit nem érdemes a ritkábban látogatott
+ * képernyőkért fizetni.
+ *
+ * Az admin terület már korábban is lusta volt (`docs/06` döntése) — az
+ * indoklás ugyanaz, csak most minden JÁTÉKOS képernyőre is kiterjed.
+ */
+const TerritoryScreen = lazy(() => import('./screens/TerritoryScreen').then((m) => ({ default: m.TerritoryScreen })));
+const TrackingScreen = lazy(() => import('./screens/TrackingScreen').then((m) => ({ default: m.TrackingScreen })));
+const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((m) => ({ default: m.CommunityScreen })));
+const ProfileScreen = lazy(() => import('./screens/ProfileScreen').then((m) => ({ default: m.ProfileScreen })));
+const PublicProfileScreen = lazy(() => import('./screens/PublicProfileScreen').then((m) => ({ default: m.PublicProfileScreen })));
+const ActivityScreen = lazy(() => import('./screens/ActivityScreen').then((m) => ({ default: m.ActivityScreen })));
+const SearchScreen = lazy(() => import('./screens/SearchScreen').then((m) => ({ default: m.SearchScreen })));
+const MissionsScreen = lazy(() => import('./screens/MissionsScreen').then((m) => ({ default: m.MissionsScreen })));
+const ProfileRivalsScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileRivalsScreen })));
+const ProfileStatsScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileStatsScreen })));
+const ProfileClansScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileClansScreen })));
+const ProfileBadgesScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileBadgesScreen })));
+const SettingsScreen = lazy(() => import('./screens/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })));
+const AppearanceScreen = lazy(() => import('./screens/settings/AppearanceScreen').then((m) => ({ default: m.AppearanceScreen })));
+const FinishGestureScreen = lazy(() => import('./screens/settings/FinishGestureScreen').then((m) => ({ default: m.FinishGestureScreen })));
+const PrivacyScreen = lazy(() => import('./screens/settings/PrivacyScreen').then((m) => ({ default: m.PrivacyScreen })));
+const RulesScreen = lazy(() => import('./screens/settings/RulesScreen').then((m) => ({ default: m.RulesScreen })));
+const NotificationsScreen = lazy(() => import('./screens/settings/NotificationsScreen').then((m) => ({ default: m.NotificationsScreen })));
+const BlockedUsersScreen = lazy(() => import('./screens/settings/BlockedUsersScreen').then((m) => ({ default: m.BlockedUsersScreen })));
+const WelcomeScreen = lazy(() => import('./screens/auth/WelcomeScreen').then((m) => ({ default: m.WelcomeScreen })));
+const LoginScreen = lazy(() => import('./screens/auth/LoginScreen').then((m) => ({ default: m.LoginScreen })));
+const RegisterScreen = lazy(() => import('./screens/auth/RegisterScreen').then((m) => ({ default: m.RegisterScreen })));
+const ForgotPasswordScreen = lazy(() => import('./screens/auth/ForgotPasswordScreen').then((m) => ({ default: m.ForgotPasswordScreen })));
+const CompleteProfileScreen = lazy(() => import('./screens/auth/CompleteProfileScreen').then((m) => ({ default: m.CompleteProfileScreen })));
 
 /**
  * Az admin terület LUSTÁN töltődik.
@@ -152,10 +171,12 @@ function Router() {
 
   if (!signedIn) {
     return (
-      <Routes>
-        {authRoutes}
-        <Route path="*" element={<Navigate to="/udvozles" replace />} />
-      </Routes>
+      <Suspense fallback={<Splash />}>
+        <Routes>
+          {authRoutes}
+          <Route path="*" element={<Navigate to="/udvozles" replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -176,50 +197,45 @@ function Router() {
   return (
     <>
       <div className="app-shell">
-        <Routes>
-          {/* Fejlesztői átengedés esetén a belépési képernyők is elérhetők
-              maradnak, különben nem lehetne rajtuk dolgozni. */}
-          {devBypass ? authRoutes : null}
-          <Route path="/" element={<HomeScreen />} />
-          <Route path="/grund" element={<TerritoryScreen />} />
-          {/* A régi cím megmarad átirányításként: könyvjelzők és megosztott
-              hivatkozások ne törjenek el egy átnevezés miatt. */}
-          <Route path="/terulet" element={<Navigate to="/grund" replace />} />
-          <Route path="/rogzites" element={<TrackingScreen />} />
-          <Route path="/kozosseg" element={<CommunityScreen />} />
-          <Route path="/profil" element={<ProfileScreen />} />
-          <Route path="/profil/rivalisok" element={<ProfileRivalsScreen />} />
-          <Route path="/profil/statisztikak" element={<ProfileStatsScreen />} />
-          <Route path="/profil/klanok" element={<ProfileClansScreen />} />
-          <Route path="/profil/badgek" element={<ProfileBadgesScreen />} />
-          <Route path="/profil/badges" element={<Navigate to="/profil/badgek" replace />} />
-          {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}
-          <Route path="/felhasznalo/:username" element={<PublicProfileScreen />} />
-          <Route path="/kereses" element={<SearchScreen />} />
-          <Route path="/kuldetesek" element={<MissionsScreen />} />
-          <Route path="/aktivitas/:id" element={<ActivityScreen />} />
-          <Route path="/beallitasok" element={<SettingsScreen />} />
-          <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
-          <Route path="/beallitasok/mukodes" element={<FinishGestureScreen />} />
-          <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
-          <Route path="/beallitasok/szabalyok" element={<RulesScreen />} />
-          <Route path="/beallitasok/ertesitesek" element={<NotificationsScreen />} />
-          <Route path="/beallitasok/tiltottak" element={<BlockedUsersScreen />} />
-          <Route
-            path="/admin/*"
-            element={
-              <Suspense fallback={<Splash />}>
-                <AdminArea />
-              </Suspense>
-            }
-          />
-          {/* A régi fejlesztői címek megmaradnak átirányításként: a
-              könyvjelzők és a dokumentációban szereplő hivatkozások ne
-              törjenek el a beköltöztetés miatt. */}
-          <Route path="/dev/replay" element={<Navigate to="/admin/visszajatszas" replace />} />
-          <Route path="/dev/activities" element={<Navigate to="/admin/aktivitasok" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<Splash />}>
+          <Routes>
+            {/* Fejlesztői átengedés esetén a belépési képernyők is elérhetők
+                maradnak, különben nem lehetne rajtuk dolgozni. */}
+            {devBypass ? authRoutes : null}
+            <Route path="/" element={<HomeScreen />} />
+            <Route path="/grund" element={<TerritoryScreen />} />
+            {/* A régi cím megmarad átirányításként: könyvjelzők és megosztott
+                hivatkozások ne törjenek el egy átnevezés miatt. */}
+            <Route path="/terulet" element={<Navigate to="/grund" replace />} />
+            <Route path="/rogzites" element={<TrackingScreen />} />
+            <Route path="/kozosseg" element={<CommunityScreen />} />
+            <Route path="/profil" element={<ProfileScreen />} />
+            <Route path="/profil/rivalisok" element={<ProfileRivalsScreen />} />
+            <Route path="/profil/statisztikak" element={<ProfileStatsScreen />} />
+            <Route path="/profil/klanok" element={<ProfileClansScreen />} />
+            <Route path="/profil/badgek" element={<ProfileBadgesScreen />} />
+            <Route path="/profil/badges" element={<Navigate to="/profil/badgek" replace />} />
+            {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}
+            <Route path="/felhasznalo/:username" element={<PublicProfileScreen />} />
+            <Route path="/kereses" element={<SearchScreen />} />
+            <Route path="/kuldetesek" element={<MissionsScreen />} />
+            <Route path="/aktivitas/:id" element={<ActivityScreen />} />
+            <Route path="/beallitasok" element={<SettingsScreen />} />
+            <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
+            <Route path="/beallitasok/mukodes" element={<FinishGestureScreen />} />
+            <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
+            <Route path="/beallitasok/szabalyok" element={<RulesScreen />} />
+            <Route path="/beallitasok/ertesitesek" element={<NotificationsScreen />} />
+            <Route path="/beallitasok/tiltottak" element={<BlockedUsersScreen />} />
+            <Route path="/admin/*" element={<AdminArea />} />
+            {/* A régi fejlesztői címek megmaradnak átirányításként: a
+                könyvjelzők és a dokumentációban szereplő hivatkozások ne
+                törjenek el a beköltöztetés miatt. */}
+            <Route path="/dev/replay" element={<Navigate to="/admin/visszajatszas" replace />} />
+            <Route path="/dev/activities" element={<Navigate to="/admin/aktivitasok" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </div>
       {/* Az aktivitás adatlapja saját, teljes képernyős navigációt kap. A
           rögzítő ettől továbbra is app-szinten él; csak a Dock nem takarja el
