@@ -63,7 +63,6 @@ public final class TrackingLocationService extends Service {
     private static final String CHANNEL_ID = "grundo_tracking_live_v2";
     private static final int NOTIFICATION_ID = 7301;
     private static final long LOCATION_INTERVAL_MS = 1_000L;
-    private static final float MIN_DISTANCE_M = 5f;
     private static final float MAX_NOTIFICATION_ACCURACY_M = 50f;
     private static final double MAX_NOTIFICATION_SPEED_MPS = 40d;
     private static final long MAX_NOTIFICATION_IDLE_MS = 30_000L;
@@ -82,6 +81,7 @@ public final class TrackingLocationService extends Service {
     @Nullable private Long pausedAtMs;
     private boolean paused;
     private double speedMps;
+    private float minDistanceM = TrackingLocationPolicy.minDistanceMeters("run");
     @Nullable private Location lastNotificationLocation;
 
     private final LocationCallback locationCallback = new LocationCallback() {
@@ -203,11 +203,14 @@ public final class TrackingLocationService extends Service {
         pausedAtMs = prefs.contains(PREF_PAUSED_AT) ? prefs.getLong(PREF_PAUSED_AT, 0L) : null;
         paused = "paused".equals(prefs.getString(PREF_STATUS, "recording"));
         speedMps = paused ? 0d : readDouble(prefs, PREF_SPEED_BITS, 0d);
+        float previousMinDistanceM = minDistanceM;
+        minDistanceM = TrackingLocationPolicy.minDistanceMeters(prefs.getString(PREF_ACTIVITY_TYPE, "run"));
         updateForegroundNotification();
         if (paused) {
             lastNotificationLocation = null;
             stopLocationUpdates();
         } else {
+            if (requestingLocations && previousMinDistanceM != minDistanceM) stopLocationUpdates();
             startLocationUpdates();
         }
     }
@@ -331,7 +334,7 @@ public final class TrackingLocationService extends Service {
         if (requestingLocations) return;
         LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_INTERVAL_MS)
             .setMinUpdateIntervalMillis(LOCATION_INTERVAL_MS)
-            .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
+            .setMinUpdateDistanceMeters(minDistanceM)
             .setWaitForAccurateLocation(false)
             .build();
         try {
@@ -360,7 +363,7 @@ public final class TrackingLocationService extends Service {
         double meters = location.distanceTo(previous);
         double calculatedSpeed = meters / (deltaMs / 1_000d);
         if (calculatedSpeed > MAX_NOTIFICATION_SPEED_MPS) return;
-        if (meters < MIN_DISTANCE_M && deltaMs < MAX_NOTIFICATION_IDLE_MS) return;
+        if (meters < minDistanceM && deltaMs < MAX_NOTIFICATION_IDLE_MS) return;
 
         distanceM += meters;
         speedMps = location.hasSpeed() && location.getSpeed() >= 0f

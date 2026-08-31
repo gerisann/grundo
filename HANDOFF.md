@@ -1,107 +1,101 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-31** · a **#23** menet vége, átadás **#24**-re
+> Frissítve: **2026-08-31** · a **#24** menet vége, átadás **#25**-re
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A háttér-GPS javítás commitja: **`6da0288`**.
+> Ág: **`main`**. Az Android háttér-GPS javítása ezen menet commitjában van.
 
 ## ÁLLAPOT
 
-Egy valódi iOS terepteszt 1:32:44 alatt csak 1,91 km-t és egy hosszú egyenes
-szakaszt mutatott, miközben a tesztelő legalább 25 km-t bringázott, lezárt
-képernyővel és `Always` helyengedéllyel. A hiba két, egymást erősítő oka
-igazolva és a kódban javítva.
+Az iOS háttér-GPS hibája után az Android natív útvonal is teljes auditot
+kapott. Az Android architektúrája alapvetően helyes: a rögzítés
+`location` típusú foreground service-ben fut, `START_STICKY`, a szolgáltatás
+nem áll le az Activity bezárásakor, és a pontokat a felfüggesztett WebView
+helyett tartós SQLite-sor fogadja. A rögzítést látható Activityből indítjuk,
+ezért a jelenlegi Android-szabályok mellett nem kell
+`ACCESS_BACKGROUND_LOCATION` engedély.
 
-### Igazolt okok
+### Igazolt Android-kockázatok és javításuk
 
-1. **Ébredéskori verseny:** egy friss Capacitor `location` esemény megelőzhette
-   a tartós natív sor `drain` válaszát. A `NativePositionSource` ekkor a friss
-   időbélyeget megjegyezte, majd az összes korábbi köztes pontot eldobta.
-   Célzott tesztben a régi kód `[300]` értéket adott a helyes
-   `[100, 200, 300]` helyett. Ez közvetlenül magyarázza a képen látható
-   kezdő–végpont egyenest és az alulmért távot.
-2. **Túl kicsi iOS sor:** az iOS natív sor csak 500 pontot tartott meg. A
-   bringás 12 m-es Core Location szűrő mellett 25 km-hez legalább kb. 2085
-   pont kell; 500 pont elméleti felső lefedése kb. 6 km, 1 Hz-nél csak 8:20
-   perc. Androidon már korábban is 25 000 pontos SQLite-sor volt.
+1. **Közös ébredéskori verseny:** az Androidot is érintette az a
+   `NativePositionSource` hiba, amelyben egy friss élő pont megelőzhette a
+   natív sor `drain` válaszát, majd az összes régebbi köztes pont kiesett.
+   Ezt a `6da0288` commit már sorosítással, puffereléssel, rendezéssel és
+   deduplikálással javította; Android build eddig még nem készült belőle.
+2. **Minden aktivitásra 5 m-es szűrő:** a bringázás is a futáshoz használt
+   sűrű GPS-profilt kapta. Most futás/séta/bringázás rendre **5/8/12 méter**,
+   az iOS-szel azonosan. Ez bringán csökkenti a fölösleges ébresztést,
+   adatbázisírást és akkumulátorterhelést anélkül, hogy az útvonal érdemben
+   ritkulna.
+3. **Pontonkénti teljes sorvizsgálat:** az SQLite-sor minden egyes beszúrás után
+   `OFFSET 25000` lekérdezéssel ellenőrizte a limitet, akkor is, amikor a sor
+   még messze volt tőle. Azonos séma és 10 000 beszúrás mellett ez mérve
+   **0,774 s**, számlálós megoldással **0,029 s** volt (26,8×); 25 000 pontnál
+   **4,540 s vs. 0,083 s** (54,9×). Most folyamatonként egyszer számolunk,
+   utána zárolt, tranzakciós számláló tartja pontosan a **25 000** soros
+   maximumot, és csak valódi túlcsorduláskor töröl.
+4. **Release-biztonság:** az ideiglenes
+   `android.webContentsDebuggingEnabled: true` kapcsoló kikerült. A release
+   WebView ismét a Capacitor biztonságos alapértékét használja.
 
-A verseny és az 500-as limit már a `85802da` (2026-08-23) háttér-GPS
-bevezetésében benne volt. A `b167a51` energiaoptimalizálás (2026-08-30) a
-natív képernyőzár-tiltás kikapcsolásával a háttérutat tette normál működéssé,
-így a korábban rövid tesztekkel rejtve maradt hiba sokkal könnyebben előjött.
-A `687fc1d` Swift soroptimalizálása megtartotta az 500-as limitet, és a
-handoff szerint készüléken még nem volt ellenőrizve.
+### Platformkorlát
 
-### Javítás
-
-- A közös TypeScript natív forrás a start/visibility/stop drainjeit
-  sorosítja, a közben érkező élő pontokat puffereli, az egész köteget
-  időrendbe rendezi, és időbélyeg szerint deduplikálja.
-- A stop bevárja a már futó draint, ezért befejezéskor sem válhat le túl korán
-  a recorder.
-- Az iOS sor 25 000 pontra nőtt, Androiddal azonos kapacitással.
-- iOS-en a háttérpontok 10 másodperces bináris plist kötegekben, az
-  Application Support mappában élnek; nem a teljes `UserDefaults` tömb íródik
-  újra. A fájlok ki vannak zárva az iCloud backupból.
-- A régi v1 UserDefaults-sor frissítés után egyszer még beolvasódik, így
-  upgrade közben sem vész el aktív pont.
-- Előtéri pont nem kerül a natív sorba, mert azt a JS és az IndexedDB már
-  megkapja; a natív sor kizárólag a felfüggesztett WebView szakaszáé.
+Az Android 15 hatórás foreground-service korlátja nem a `location` típusra,
+hanem a `dataSync` és `mediaProcessing` típusokra vonatkozik. Az app saját
+logikája ezért nem tesz időkorlátot a rögzítésre: többórás használat is
+támogatott. A gyártói akkumulátorkezelés, a felhasználói kényszerleállítás,
+a helymeghatározás kikapcsolása és az engedély visszavonása továbbra is
+külső megszakítás lehet; ezt valódi készüléken kell ellenőrizni.
 
 ### Ellenőrzések
 
-- célzott regressziós teszt: a régi kódon **bukott** (`[300]`), javítás után
-  **3/3 zöld**;
+- Android release unit teszt: **5/5 zöld**;
 - teljes normál teszt: **580 sikeres, 129 emulátoros kihagyva**;
-- kliens `typecheck`: zöld;
-- szerver `typecheck`: zöld;
-- frontend production build: zöld, 309 modul;
+- kliens typecheck + production build: zöld, 309 modul;
+- szerver typecheck: zöld;
+- `npx cap sync android`: sikeres;
+- Android `lintRelease`: **0 hiba**, 32 meglévő figyelmeztetés, az érintett
+  GPS-fájlokra nincs új jelzés;
+- helyi `assembleRelease` + `bundleRelease`: sikeres;
 - `git diff --check`: tiszta.
-- Codemagic `GRUNDO iOS TestFlight #27`: sikeres, pontos forrás
-  `6da02885f2f339c050d87108ccf99e4e9ffc8518`, az IPA és a dSYM artifactok
-  elkészültek;
-- App Store distribution utófeldolgozás: sikeresen befejeződött.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
 - Az előző adatvédelmi kiadás változatlanul éles: backend/frontend kód
   `605736f`, Cloud Run `grundo-api-00110-94c`, szabályok és fotómigráció kész.
-- A háttér-GPS javítás a **TestFlight #27** buildben van. A Codemagic
-  sikeresen átadta az App Store Connectnek; az Apple feldolgozása után jelenik
-  meg a tesztelőknek. Webes vagy backend telepítés nem szükséges.
-- A közös TypeScript versenyjavítás az Androidot is védi; Android buildet a
-  következő natív mérföldkőnél kell kiadni. Az iOS 500 pontos kapacitáshiba
-  Androidon nem állt fenn.
-- Helyi Windowson a `cap sync ios` symlink létrehozása EPERM-et adott, de a
-  Codemagic macOS-környezetében a Capacitor sync, a Swift/Xcode fordítás, az
-  aláírás és az IPA-készítés is sikeres volt.
+- Az iOS háttér-GPS javítás a **TestFlight #27** buildben van, forrása
+  `6da0288`; a hosszú készülékes regresszió még hátravan.
+- Az Android-javítás lokálisan kész és ellenőrzött. A Codemagic
+  **GRUNDO Android Release** buildje a commit/push után indul; siker esetén az
+  AAB automatikusan a Google Play belső tesztelési sávjára kerül.
+- Backend, frontend, Firestore-szabály vagy index telepítése ehhez nem kell.
 
 ## KÖVETKEZŐ MENET
 
-1. Az Apple feldolgozása után a **TestFlight #27** buildet kell telepíteni;
-   az app Beállítások → Alkalmazás részében ellenőrizni kell a `6da0288`
-   rövid commitot.
-2. Valódi készüléken először 3 perc / 100 m lezárt képernyős smoke teszt,
-   utána legalább 90 perc / 20 km bringás regressziós teszt. Ellenőrizni kell
-   a folytonos nyomvonalat, a referencia-táv eltérését, a Live Activityt,
-   valamint szünet/befejezés után a teljes mentést.
-3. A hosszú tesztig a javítás nem tekinthető készüléken igazoltnak. Windowsról
-   Core Location és lezárt képernyős iOS életciklus nem reprodukálható.
-4. A GPS-javítás lezárása után folytatható az audit következő biztonsági
-   prioritása: dependency-audit, App Check és szerveroldali rate limit.
+1. A Google Play belső tesztcsatornáról telepített Android buildben a
+   Beállítások → Alkalmazás részen ellenőrizni kell a kiadott rövid commitot.
+2. Androidon először 3 perc / 100 m lezárt képernyős smoke teszt, utána
+   legalább 90 perc / 20 km bringás regresszió kell. Ellenőrizendő a folytonos
+   nyomvonal, a referencia-táv eltérése, a foreground értesítés, a
+   szünet/folytatás és a teljes mentés.
+3. Ugyanezt az iOS TestFlight #27-en is végig kell mérni. A javítás csak a két
+   platform hosszú készülékes próbája után tekinthető lezártnak.
+4. Ezután folytatható az audit következő biztonsági prioritása:
+   dependency-audit, App Check és szerveroldali rate limit.
 
 ## NYITOTT KISEBB ÜGYEK
 
 - A frontend `npm install` továbbra is 10 auditjelzést mutatott (8 közepes,
   1 magas, 1 kritikus); automatikus breaking `--force` javítás nem történt.
 - A production build meglévő Mapbox chunkja 1,865 MB.
-- Kiadás előtt törlendő az ideiglenes
-  `android.webContentsDebuggingEnabled: true` kapcsoló.
-- `emulator-5562 offline` továbbra is látszik Geri gépén.
+- Az Android lint 32 meglévő figyelmeztetést jelez: főként ikon- és nem
+  használt erőforrás-karbantartás; nem blokkolják ezt a kiadást.
+- `emulator-5562 offline` továbbra is látszik Geri gépén, ezért helyi valódi
+  készülékes vagy emulátoros Android életciklusteszt nem futott.
 
 ## 0. MODELLJAVASLAT a folytatáshoz
 
-A készülékes regresszió kiértékeléséhez **GPT-5.6 Sol, erős
-gondolkodási mélység** indokolt; ha mindkét tereppróba zöld, a
-dokumentációs lezáráshoz elég gyorsabb modell normál mélységen.
+A két platform hosszú, mért tereppróbájának kiértékeléséhez **GPT-5.6 Sol,
+erős gondolkodási mélység** indokolt; ha mindkettő zöld, a dokumentációs
+lezáráshoz elég gyorsabb modell normál mélységen.

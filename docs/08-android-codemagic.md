@@ -91,14 +91,16 @@ Az Android implementáció nem a felfüggeszthető WebView hely-API-jára épít
 A felhasználó a látható appból indítja el a `location` típusú
 `TrackingLocationService` foreground service-t. A szolgáltatás:
 
-- Fused Location Providerrel, nagy pontossággal és 5 méteres minimum
-  elmozdulással kér pontokat;
+- Fused Location Providerrel, nagy pontossággal és mozgásforma szerinti
+  minimum elmozdulással kér pontokat: futás 5 m, séta 8 m, bringa 12 m;
 - futás közben folyamatos, nem elnémítható alkalmazáslogikájú foreground
   notificationt tart fenn; engedélyezett élő mérésnél ennek kompakt és
   kibontott nézete mutatja a távot, a natív chronometerrel tovább járó időt,
   az aktuális sebességet, a mozgásformát és a szünet állapotát;
 - szünetnél leállítja a GPS-frissítést, folytatásnál újraindítja;
-- minden pontot a WebView-tól független SQLite-sorba ír, időrendben;
+- minden pontot a WebView-tól független SQLite-sorba ír, időrendben; a sor
+  méretét folyamaton belüli, a drainnel közös zár alatt kezelt számláló
+  követi, ezért nem fut 25 000 soros ellenőrző lekérdezés minden GPS-pontnál;
 - legfeljebb 25 000 natív pontot őriz, majd a legöregebbeket dobja;
 - WebView-ébresztés vagy process-visszaállítás után `drain()`-nel adja át a
   sor tartalmát a közös TypeScript recordernek;
@@ -221,6 +223,10 @@ Az Android Capacitor originje `https://localhost`. Ez bekerült a Cloud Run
   kötelező egyszerű foreground service értesítés marad; a kapcsoló a már futó
   rögzítést szándékosan nem alakítja át.
 - Ismételd meg appváltással, 5 perces szünettel/folytatással és hálózat nélkül.
+- Hosszú regresszióként rögzíts legalább 90 percet és 20 km-t bringával,
+  a kijelzőt az idő nagy részében lezárva tartva. A feloldás utáni
+  nyomvonal nem tartalmazhat hosszú kezdő–végpont egyenest, és a
+  referenciaeszközhöz viszonyított táveltérést rögzíteni kell.
 - Próbáld ki a csak hozzávetőleges helyet és a megtagadást: az aktivitás nem
   maradhat látszólag futó állapotban.
 - Android 13+ alatt külön próbáld a notification permission megtagadását;

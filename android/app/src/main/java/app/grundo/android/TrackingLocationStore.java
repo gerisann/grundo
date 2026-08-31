@@ -3,6 +3,7 @@ package app.grundo.android;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.location.Location;
@@ -14,7 +15,8 @@ import java.util.List;
 final class TrackingLocationStore extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "grundo_tracking.db";
     private static final int DATABASE_VERSION = 1;
-    private static final int MAX_QUEUED_LOCATIONS = 25_000;
+    private static final Object QUEUE_LOCK = new Object();
+    private static long cachedQueuedLocations = -1L;
 
     TrackingLocationStore(Context context) {
         super(context.getApplicationContext(), DATABASE_NAME, null, DATABASE_VERSION);
@@ -33,6 +35,9 @@ final class TrackingLocationStore extends SQLiteOpenHelper {
             "speed REAL)"
         );
         db.execSQL("CREATE INDEX locations_time ON locations(t)");
+        synchronized (QUEUE_LOCK) {
+            cachedQueuedLocations = 0L;
+        }
     }
 
     @Override
@@ -41,57 +46,94 @@ final class TrackingLocationStore extends SQLiteOpenHelper {
     }
 
     void enqueue(Location location) {
-        SQLiteDatabase db = getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put("t", location.getTime());
-        values.put("lat", location.getLatitude());
-        values.put("lng", location.getLongitude());
-        values.put("accuracy", location.hasAccuracy() ? location.getAccuracy() : Float.MAX_VALUE);
-        if (location.hasAltitude()) values.put("elevation", location.getAltitude());
-        if (location.hasSpeed()) values.put("speed", location.getSpeed());
-        db.insertWithOnConflict("locations", null, values, SQLiteDatabase.CONFLICT_IGNORE);
-        db.execSQL(
-            "DELETE FROM locations WHERE id <= (" +
-            "SELECT id FROM locations ORDER BY id DESC LIMIT 1 OFFSET " + MAX_QUEUED_LOCATIONS + ")"
-        );
+        synchronized (QUEUE_LOCK) {
+            SQLiteDatabase db = getWritableDatabase();
+            long nextCount = queuedLocationCount(db);
+            boolean committed = false;
+            db.beginTransaction();
+            try {
+                ContentValues values = new ContentValues();
+                values.put("t", location.getTime());
+                values.put("lat", location.getLatitude());
+                values.put("lng", location.getLongitude());
+                values.put("accuracy", location.hasAccuracy() ? location.getAccuracy() : Float.MAX_VALUE);
+                if (location.hasAltitude()) values.put("elevation", location.getAltitude());
+                if (location.hasSpeed()) values.put("speed", location.getSpeed());
+                long rowId = db.insertWithOnConflict(
+                    "locations",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+                );
+                if (rowId != -1L) {
+                    nextCount += 1L;
+                    int overflow = TrackingLocationPolicy.overflowRows(nextCount);
+                    if (overflow > 0) {
+                        int deleted = db.delete(
+                            "locations",
+                            "id IN (SELECT id FROM locations ORDER BY id ASC LIMIT ?)",
+                            new String[] { Integer.toString(overflow) }
+                        );
+                        nextCount -= deleted;
+                    }
+                }
+                db.setTransactionSuccessful();
+                committed = true;
+            } finally {
+                db.endTransaction();
+                if (committed) cachedQueuedLocations = nextCount;
+            }
+        }
     }
 
     List<JSObject> drain() {
-        SQLiteDatabase db = getWritableDatabase();
-        List<JSObject> locations = new ArrayList<>();
-        db.beginTransaction();
-        try (
-            Cursor cursor = db.query(
-                "locations",
-                new String[] { "lat", "lng", "t", "accuracy", "elevation", "speed" },
-                null,
-                null,
-                null,
-                null,
-                "t ASC"
-            )
-        ) {
-            int latIndex = cursor.getColumnIndexOrThrow("lat");
-            int lngIndex = cursor.getColumnIndexOrThrow("lng");
-            int timeIndex = cursor.getColumnIndexOrThrow("t");
-            int accuracyIndex = cursor.getColumnIndexOrThrow("accuracy");
-            int elevationIndex = cursor.getColumnIndexOrThrow("elevation");
-            int speedIndex = cursor.getColumnIndexOrThrow("speed");
-            while (cursor.moveToNext()) {
-                JSObject location = new JSObject();
-                location.put("lat", cursor.getDouble(latIndex));
-                location.put("lng", cursor.getDouble(lngIndex));
-                location.put("t", cursor.getLong(timeIndex));
-                location.put("accuracy", cursor.getDouble(accuracyIndex));
-                if (!cursor.isNull(elevationIndex)) location.put("elevation", cursor.getDouble(elevationIndex));
-                if (!cursor.isNull(speedIndex)) location.put("speed", cursor.getDouble(speedIndex));
-                locations.add(location);
+        synchronized (QUEUE_LOCK) {
+            SQLiteDatabase db = getWritableDatabase();
+            List<JSObject> locations = new ArrayList<>();
+            boolean committed = false;
+            db.beginTransaction();
+            try (
+                Cursor cursor = db.query(
+                    "locations",
+                    new String[] { "lat", "lng", "t", "accuracy", "elevation", "speed" },
+                    null,
+                    null,
+                    null,
+                    null,
+                    "t ASC"
+                )
+            ) {
+                int latIndex = cursor.getColumnIndexOrThrow("lat");
+                int lngIndex = cursor.getColumnIndexOrThrow("lng");
+                int timeIndex = cursor.getColumnIndexOrThrow("t");
+                int accuracyIndex = cursor.getColumnIndexOrThrow("accuracy");
+                int elevationIndex = cursor.getColumnIndexOrThrow("elevation");
+                int speedIndex = cursor.getColumnIndexOrThrow("speed");
+                while (cursor.moveToNext()) {
+                    JSObject location = new JSObject();
+                    location.put("lat", cursor.getDouble(latIndex));
+                    location.put("lng", cursor.getDouble(lngIndex));
+                    location.put("t", cursor.getLong(timeIndex));
+                    location.put("accuracy", cursor.getDouble(accuracyIndex));
+                    if (!cursor.isNull(elevationIndex)) location.put("elevation", cursor.getDouble(elevationIndex));
+                    if (!cursor.isNull(speedIndex)) location.put("speed", cursor.getDouble(speedIndex));
+                    locations.add(location);
+                }
+                db.delete("locations", null, null);
+                db.setTransactionSuccessful();
+                committed = true;
+            } finally {
+                db.endTransaction();
+                if (committed) cachedQueuedLocations = 0L;
             }
-            db.delete("locations", null, null);
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
+            return locations;
         }
-        return locations;
+    }
+
+    private static long queuedLocationCount(SQLiteDatabase db) {
+        if (cachedQueuedLocations < 0L) {
+            cachedQueuedLocations = DatabaseUtils.queryNumEntries(db, "locations");
+        }
+        return cachedQueuedLocations;
     }
 }
