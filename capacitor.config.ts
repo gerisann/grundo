@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import type {} from '@capacitor-firebase/app-check';
 import type {} from '@capacitor-firebase/authentication';
 import type {} from '@capacitor-firebase/messaging';
 
@@ -40,6 +41,9 @@ const config: CapacitorConfig = {
       spm: {
         packageOptions: {
           '@capacitor-firebase/authentication': {
+            symlink: true,
+          },
+          '@capacitor-firebase/app-check': {
             symlink: true,
           },
           '@capacitor-firebase/messaging': {

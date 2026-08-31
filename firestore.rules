@@ -430,6 +430,7 @@ service cloud.firestore {
     // Üzemeltetési adat: napi használati aggregátum és a job-futások naplója.
     match /metricsDaily/{day}    { allow read: if isAdmin(); allow write: if false; }
     match /rolloverRuns/{runId}  { allow read: if isAdmin(); allow write: if false; }
+    match /rateLimits/{counterId} { allow read, write: if false; }
 
     // ── minden más tiltva ─────────────────────────────────────────────────
 

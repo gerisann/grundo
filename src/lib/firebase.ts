@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, type Firestore } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from 'firebase/storage';
+import { initializeGrundoAppCheck, appCheckHeader } from './appCheck';
 import { isNativeApp } from './platform';
 
 /**
@@ -56,6 +57,7 @@ function buildApp(): FirebaseApp | null {
 }
 
 export const app: FirebaseApp | null = buildApp();
+if (app) initializeGrundoAppCheck(app);
 /**
  * A Firebase alapértelmezett IndexedDB-perzisztenciája egyes iOS WKWebView
  * környezetekben nem oldja fel a kezdeti auth-állapotot. A Capacitor appban
@@ -143,12 +145,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   const user = auth?.currentUser ?? null;
   const token = user ? await user.getIdToken() : null;
+  const attestation = await appCheckHeader();
 
   const response = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...attestation,
       ...init?.headers,
     },
   });

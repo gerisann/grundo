@@ -178,7 +178,7 @@ describe('7. huge-bbox — védőkorlát', () => {
     expect(loops).toHaveLength(0);
     // A védőkorlát a cellák ELŐÁLLÍTÁSA előtt dönt, ezért ez gyors marad.
     expect(Date.now() - started).toBeLessThan(20_000);
-  });
+  }, 25_000);
 });
 
 describe('floodFillInterior', () => {

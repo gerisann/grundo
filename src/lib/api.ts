@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import { appCheckHeader } from './appCheck';
 import type { ActivityType } from '@/types';
 
 /**
@@ -92,6 +93,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: {
         'Content-Type': 'application/json',
+        ...(await appCheckHeader()),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
@@ -153,6 +155,7 @@ async function requestBlob(path: string, signal?: AbortSignal): Promise<Blob> {
       headers: {
         Accept: 'image/*',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(await appCheckHeader()),
       },
     });
   } catch (error) {

@@ -419,12 +419,55 @@ Job-futások és hibák · Cloud Tasks sorok · hibanapló (Sentry/Error Reporti
 
 ## Biztonság és megfelelés
 
-- App Check minden végponton · ID-token ellenőrzés · szerepkörök custom claim-ben.
+- App Check minden kliensvégponton · ID-token ellenőrzés · szerepkörök custom claim-ben.
 - Titkok Secret Managerben, rotációval.
 - Helyadat: érzékeny kategória — GDPR-tájékoztatás, célhoz kötöttség, export és törlés joga.
 - Kiskorúak: 16 év alatt nem regisztrálható (életkori kapu), a szülői hozzájárulás kezelése kívül esik a V1 scope-on.
 - App Store / Play: háttér-helymeghatározás indoklása, HealthKit adatvédelmi nyilatkozat, előfizetés-visszaállítás gomb (kötelező).
 - Térképadat: Mapbox licenc, OSM attribúció megjelenítése (a képeken is látszik).
+
+### App Check és rate limit rollout *(2026-08-31)*
+
+A kliens és a Cloud Run backend támogatja az App Checket, de az élesítés
+szándékosan kétlépcsős: `observe`, majd csak mért, friss kliensek után
+`enforce`. A web reCAPTCHA Enterprise tokent kér; Androidon Play Integrity,
+iOS-en App Attest fut. A natív token egy `CustomProvider` hídon a közös
+Firebase JavaScript SDK-hoz is eljut, ezért a Firestore/Storage enforcementet
+nem szabad addig bekapcsolni, amíg mindhárom platformon nincs igazolt token.
+
+A Cloud Scheduler `/api/jobs` ága kivétel: nem felhasználói kliens, saját
+`X-Job-Token`/admin hitelesítése van. Az App Check nélküli web- és natív
+klienskéréseket `observe` módban a backend csak összesíti a naplóban; `enforce`
+módban 401-et ad.
+
+| Számláló | Keret |
+|---|---:|
+| felhasználónévvel belépés | 10 / 15 perc / azonosító |
+| belépési mód lekérdezése | 20 / 15 perc / azonosító |
+| OTP-küldés | 5 / óra / felhasználó |
+| OTP-ellenőrzés | 10 / 15 perc / felhasználó |
+| aktivitásfeltöltés | 12 / óra / felhasználó |
+| küldetéstervezés / értékelés | 10 / 20 / 10 perc / felhasználó |
+| időjárás | 60 / óra / felhasználó |
+| területcsempe | 300 / 10 perc / felhasználó |
+| egyéb írás | 120 / 10 perc / felhasználó |
+
+A számláló Firestore-tranzakciós, tehát több Cloud Run-példányon is közös. A
+kulcs HMAC; a `RATE_LIMIT_HMAC_KEY` nélkül `enforce` fail-closed 503-at ad,
+`observe` pedig átenged és riaszt. A normál, olcsó olvasások nem kapnak külön
+Firestore-tranzakciót.
+
+**Egyszeri beüzemelés, Cloud Shellben:**
+
+1. `printf %s "$(openssl rand -base64 32)" | gcloud secrets create RATE_LIMIT_HMAC_KEY --data-file=-`
+2. `gcloud secrets add-iam-policy-binding RATE_LIMIT_HMAC_KEY --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"`
+3. `gcloud projects add-iam-policy-binding grundo --member="serviceAccount:65689674957-compute@developer.gserviceaccount.com" --role="roles/firebaseappcheck.tokenVerifier"`
+4. Firebase Console → App Check: webhez score-based reCAPTCHA Enterprise kulcs,
+   Androidhoz Play Integrity + release SHA-256, iOS-hez App Attest.
+5. A webes Key ID a `VITE_RECAPTCHA_SITE_KEY`; utána backend `observe`, majd
+   frontend + Android + iOS kiadás és platformonkénti tokenmérés.
+6. Csak igazolt lefedettség után `_APP_CHECK_MODE=enforce` és
+   `_RATE_LIMIT_MODE=enforce`, majd külön Firestore/Storage enforcement.
 
 ---
 

@@ -1,5 +1,6 @@
 import { initializeApp, applicationDefault, getApps, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
+import { getAppCheck, type AppCheck } from 'firebase-admin/app-check';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage, type Storage } from 'firebase-admin/storage';
 
@@ -20,6 +21,7 @@ function currentApp(): App {
 
 export const adminApp: App = currentApp();
 export const auth: Auth = getAuth(adminApp);
+export const appCheck: AppCheck = getAppCheck(adminApp);
 export const db: Firestore = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
 export const storage: Storage = getStorage(adminApp);
 
@@ -63,6 +65,8 @@ export const COLLECTIONS = {
   modifiers: 'modifiers',
   metricsDaily: 'metricsDaily',
   rolloverRuns: 'rolloverRuns',
+  /** Server-only, transactionally updated abuse-prevention counters. */
+  rateLimits: 'rateLimits',
   /** Előszámolt, összefüggő területfoltok a térkép távoli nézetéhez. */
   territoryBlobs: 'territoryBlobs',
 } as const;

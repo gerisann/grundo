@@ -19,19 +19,20 @@
     "icons:generate": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
-    "@capacitor-firebase/authentication": "^8.4.0",
-    "@capacitor-firebase/messaging": "^8.4.0",
+    "@capacitor-firebase/app-check": "^8.5.0",
+    "@capacitor-firebase/authentication": "^8.5.0",
+    "@capacitor-firebase/messaging": "^8.5.0",
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
     "@capacitor/status-bar": "^8.0.3",
     "@tanstack/react-query": "^5.59.0",
-    "firebase": "^12.6.0",
+    "firebase": "^12.18.0",
     "h3-js": "^4.1.0",
     "mapbox-gl": "^3.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.6",
+    "react-router-dom": "^7.18.3",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -39,10 +40,10 @@
     "@types/mapbox-gl": "^3.4.0",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
     "sharp": "^0.35.4",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10",
-    "vitest": "^2.1.4"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }

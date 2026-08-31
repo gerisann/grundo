@@ -459,20 +459,22 @@ authRouter.post('/otp/send', async (req: AuthedRequest, res: Response, next) => 
     }
 
     const otpRef = db.collection(COLLECTIONS.otpCodes).doc(uid);
-    const existing = await otpRef.get();
-    const current = existing.exists ? (existing.data() as OtpRecord) : null;
     const now = Date.now();
+    const { code } = await db.runTransaction(async (tx) => {
+      const existing = await tx.get(otpRef);
+      const current = existing.exists ? (existing.data() as OtpRecord) : null;
+      const check = canResend(current, now);
+      if (!check.allowed) {
+        throw tooManyRequests(
+          `Várj még ${check.waitSeconds} másodpercet az újraküldésig.`,
+          check.waitSeconds,
+        );
+      }
 
-    const check = canResend(current, now);
-    if (!check.allowed) {
-      throw tooManyRequests(
-        `Várj még ${check.waitSeconds} másodpercet az újraküldésig.`,
-        check.waitSeconds,
-      );
-    }
-
-    const { code, record: next } = createOtp(email, now);
-    await otpRef.set(next);
+      const created = createOtp(email, now);
+      tx.set(otpRef, created.record);
+      return { code: created.code };
+    });
     await mailer.send({ to: email, ...otpEmail(code) });
 
     res.json({
@@ -496,10 +498,14 @@ authRouter.post('/otp/verify', async (req: AuthedRequest, res: Response, next) =
     const uid = req.uid!;
     const input = String((req.body as { code?: unknown }).code ?? '');
     const otpRef = db.collection(COLLECTIONS.otpCodes).doc(uid);
-    const snapshot = await otpRef.get();
-    const current = snapshot.exists ? (snapshot.data() as OtpRecord) : null;
-
-    const result = verifyOtp(input, current, Date.now());
+    const result = await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(otpRef);
+      const current = snapshot.exists ? (snapshot.data() as OtpRecord) : null;
+      const verdict = verifyOtp(input, current, Date.now());
+      if (verdict.verdict === 'ok') tx.delete(otpRef);
+      else if (verdict.record) tx.set(otpRef, verdict.record);
+      return verdict;
+    });
 
     if (result.verdict === 'ok') {
       await Promise.all([
@@ -508,12 +514,9 @@ authRouter.post('/otp/verify', async (req: AuthedRequest, res: Response, next) =
           { emailVerified: true, updatedAt: FieldValue.serverTimestamp() },
           { merge: true },
         ),
-        otpRef.delete(),
       ]);
       return res.json({ verified: true });
     }
-
-    if (result.record) await otpRef.set(result.record);
 
     const messages: Record<string, string> = {
       wrong: `Hibás kód. Még ${result.attemptsLeft ?? 0} próbálkozásod van.`,

@@ -37,11 +37,13 @@ workflows:
       - name: Capacitor iOS szinkron
         script: npx cap sync ios
 
-      - name: Natív push konfiguráció ellenőrzése
+      - name: Natív Firebase konfiguráció ellenőrzése
         script: |
           test -f ios/App/App/GoogleService-Info.plist
           grep -q "CapacitorFirebaseMessaging" ios/App/CapApp-SPM/Package.swift
+          grep -q "CapacitorFirebaseAppCheck" ios/App/CapApp-SPM/Package.swift
           grep -q "aps-environment" ios/App/App/App.entitlements
+          grep -q "com.apple.developer.devicecheck.appattest-environment" ios/App/App/App.entitlements
           xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release -showBuildSettings \
             | grep -q "APS_ENVIRONMENT = production"
           grep -q "NSSupportsLiveActivities" ios/App/App/Info.plist

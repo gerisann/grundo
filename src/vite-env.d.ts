@@ -14,7 +14,7 @@ interface ImportMetaEnv {
   readonly VITE_MAPBOX_STYLE_DARK?: string;
   /** Cloud Run backend. Amíg nincs deployolva, üresen hagyható. */
   readonly VITE_API_BASE_URL?: string;
-  /** App Check — csak az F6 (éles indulás) fázisban kell. Addig ne add meg. */
+  /** Web App Check reCAPTCHA Enterprise Key ID. Nyilvános klienskonfiguráció. */
   readonly VITE_RECAPTCHA_SITE_KEY?: string;
   readonly VITE_USE_EMULATORS?: string;
 }

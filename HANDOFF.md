@@ -1,67 +1,78 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-31** · a **#24** menet vége, átadás **#25**-re
+> Frissítve: **2026-08-31** · a **#25** beszélgetés vége, átadás **#26**-ra
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. Az Android háttér-GPS javításának commitja: **`57f4d5a`**.
+> Ág: **`main`**. A menet induló HEAD-je **`61153e6`**; az új biztonsági
+> csomag ezt a `HANDOFF.md`-t tartalmazó következő commit.
 
 ## ÁLLAPOT
 
-Az iOS háttér-GPS hibája után az Android natív útvonal is teljes auditot
-kapott. Az Android architektúrája alapvetően helyes: a rögzítés
-`location` típusú foreground service-ben fut, `START_STICKY`, a szolgáltatás
-nem áll le az Activity bezárásakor, és a pontokat a felfüggesztett WebView
-helyett tartós SQLite-sor fogadja. A rögzítést látható Activityből indítjuk,
-ezért a jelenlegi Android-szabályok mellett nem kell
-`ACCESS_BACKGROUND_LOCATION` engedély.
+Az audit következő biztonsági csomagja elkészült: függőségfrissítés,
+Firebase App Check, szerveroldali rate limit és az OTP-versenyhelyzetek
+lezárása. A rollout szándékosan **observe-first**; az enforcementet a web,
+Android és iOS valós tokenmérése előtt nem szabad bekapcsolni.
 
-### Igazolt Android-kockázatok és javításuk
+### Függőségek és audit
 
-1. **Közös ébredéskori verseny:** az Androidot is érintette az a
-   `NativePositionSource` hiba, amelyben egy friss élő pont megelőzhette a
-   natív sor `drain` válaszát, majd az összes régebbi köztes pont kiesett.
-   Ezt a `6da0288` commit már sorosítással, puffereléssel, rendezéssel és
-   deduplikálással javította; Android build eddig még nem készült belőle.
-2. **Minden aktivitásra 5 m-es szűrő:** a bringázás is a futáshoz használt
-   sűrű GPS-profilt kapta. Most futás/séta/bringázás rendre **5/8/12 méter**,
-   az iOS-szel azonosan. Ez bringán csökkenti a fölösleges ébresztést,
-   adatbázisírást és akkumulátorterhelést anélkül, hogy az útvonal érdemben
-   ritkulna.
-3. **Pontonkénti teljes sorvizsgálat:** az SQLite-sor minden egyes beszúrás után
-   `OFFSET 25000` lekérdezéssel ellenőrizte a limitet, akkor is, amikor a sor
-   még messze volt tőle. Azonos séma és 10 000 beszúrás mellett ez mérve
-   **0,774 s**, számlálós megoldással **0,029 s** volt (26,8×); 25 000 pontnál
-   **4,540 s vs. 0,083 s** (54,9×). Most folyamatonként egyszer számolunk,
-   utána zárolt, tranzakciós számláló tartja pontosan a **25 000** soros
-   maximumot, és csak valódi túlcsorduláskor töröl.
-4. **Release-biztonság:** az ideiglenes
-   `android.webContentsDebuggingEnabled: true` kapcsoló kikerült. A release
-   WebView ismét a Capacitor biztonságos alapértékét használja.
+- Frontend/runtime: Firebase **12.18.0**, React Router **7.18.3**; build/test:
+  Vite **8.2.2**, Vitest **4.1.11**.
+- Natív Firebase pluginek: Authentication és Messaging **8.5.0**, új App
+  Check **8.5.0**.
+- Backend: Firebase Admin **14.3.0**, Nodemailer **9.1.0**, Vitest **4.1.11**.
+- A root production audit **2 közepesről 0-ra** csökkent. A teljes root audit
+  **3 közepes** fejlesztői jelzést hagyott az `@capacitor/cli → xcode → uuid`
+  ágban; a felajánlott `--force` visszalépés lenne, ezért nem alkalmaztuk.
+- A server audit korábbi kritikus/magas jelzései megszűntek. **6 közepes**
+  production jelzés maradt a legfrissebb `firebase-admin →
+  @google-cloud/storage → uuid` tranzitív ágán; nincs biztonságos npm-fix,
+  a `--force` Firebase Admin 10.3-ra léptetne vissza.
 
-### Platformkorlát
+### App Check
 
-Az Android 15 hatórás foreground-service korlátja nem a `location` típusra,
-hanem a `dataSync` és `mediaProcessing` típusokra vonatkozik. Az app saját
-logikája ezért nem tesz időkorlátot a rögzítésre: többórás használat is
-támogatott. A gyártói akkumulátorkezelés, a felhasználói kényszerleállítás,
-a helymeghatározás kikapcsolása és az engedély visszavonása továbbra is
-külső megszakítás lehet; ezt valódi készüléken kell ellenőrizni.
+- Weben reCAPTCHA Enterprise, Androidon Play Integrity, iOS 14+-on App
+  Attest (iOS 13-on a plugin DeviceCheck fallbackot ad).
+- A natív token `CustomProvider` hídon a Firebase JS SDK-hoz is eljut, így a
+  Cloud Run fejléc és később a közvetlen Firestore/Storage kérés is ugyanazt
+  az attesztációt használhatja.
+- A backend `off | observe | enforce` módban működik. A Cloud Scheduler
+  `/api/jobs` ág továbbra is a saját `X-Job-Token` hitelesítését használja.
+- A Cloud Build alapértéke `observe`; a CORS engedi az
+  `X-Firebase-AppCheck` fejlécet. A Codemagic iOS ellenőrzés a szinkronizált
+  App Check SPM-csomagot és az App Attest entitlementet is megköveteli.
+- Az iOS helyi `cap sync` Windows alatt a szükséges SPM-symlink létrehozásán
+  `EPERM` hibával megállt. A Codemagic macOS-en teljes `cap sync ios`-t futtat,
+  majd explicit ellenőrzi az eredményt; az első új TestFlight build ezt még
+  igazolja.
+
+### Rate limit és OTP
+
+- A limit közös, Firestore-tranzakciós számláló, ezért Cloud Run példányok
+  között sem kerülhető meg. A dokumentumkulcs HMAC, nyers e-mail,
+  felhasználónév vagy UID nem kerül a `rateLimits` kollekcióba.
+- Külön keret van a belépésre, belépési mód lekérdezésére, OTP küldésre és
+  ellenőrzésre, aktivitásfeltöltésre, küldetéstervezésre, időjárásra,
+  területcsempére és az egyéb írásokra. Az olcsó normál GET-ek nem kapnak
+  külön Firestore-tranzakciót.
+- `observe` módban csak mér és ritkított strukturált naplót ír; `enforce`
+  módban 429 + `Retry-After`, tárolóhiba vagy hiányzó HMAC-kulcs esetén 503.
+- Az OTP küldés és ellenőrzés most tranzakciós, ezért párhuzamos kéréssel nem
+  kerülhető meg sem az újraküldési idő, sem a próbálkozásszám.
 
 ### Ellenőrzések
 
-- Android release unit teszt: **5/5 zöld**;
-- teljes normál teszt: **580 sikeres, 129 emulátoros kihagyva**;
-- kliens typecheck + production build: zöld, 309 modul;
-- szerver typecheck: zöld;
-- `npx cap sync android`: sikeres;
-- Android `lintRelease`: **0 hiba**, 32 meglévő figyelmeztetés, az érintett
-  GPS-fájlokra nincs új jelzés;
-- helyi `assembleRelease` + `bundleRelease`: sikeres;
-- `git diff --check`: tiszta;
-- Codemagic `GRUNDO Android Release #14`: sikeres, pontos forrás
-  `57f4d5afa0fb69781b6262d0e1adcc3f17fe8a51`, aláírt APK és AAB elkészült;
-- Google Play belső tesztsáv: **completed**, aktív verziókód **14**.
+- mindkét `npm ci`: sikeres;
+- teljes normál teszt: **592 sikeres, 129 emulátoros kihagyva**;
+- App Check/rate limit célzott teszt: **12/12 zöld**;
+- teljes emulátoros készlet: **129/129 zöld**;
+- kliens typecheck + Vite production build: zöld, **304 modul**;
+- szerver typecheck + production build: zöld;
+- `npx cap sync android`: sikeres, mind a négy plugin felismerve;
+- Android release unit teszt + `lintRelease`: sikeres, új lint-hiba nincs;
+- Cloud Build és Codemagic YAML: parser/lint szerint érvényes;
+- entitlement XML és mindkét package JSON/lock: parser szerint érvényes;
+- `git diff --check`: tiszta.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
@@ -69,40 +80,51 @@ külső megszakítás lehet; ezt valódi készüléken kell ellenőrizni.
   `605736f`, Cloud Run `grundo-api-00110-94c`, szabályok és fotómigráció kész.
 - Az iOS háttér-GPS javítás a **TestFlight #27** buildben van, forrása
   `6da0288`; a hosszú készülékes regresszió még hátravan.
-- Az Android-javítás a **GRUNDO Android Release #14** buildben van, forrása
-  `57f4d5a`. Az aláírt AAB sikeresen felkerült a Google Play belső
-  tesztelési sávjára, ahol a kiadás `completed` állapotú.
-- Backend, frontend, Firestore-szabály vagy index telepítése ehhez nem kell.
+- Az Android háttér-GPS javítás a Google Play belső tesztsáv **#14** buildjében
+  van, forrása `57f4d5a`; a hosszú készülékes regresszió még hátravan.
+- A mostani App Check/rate limit/dependency csomag **nincs telepítve**.
+- Nincs kötelező adatmigráció és nincs új index. A `rateLimits.expiresAt`
+  Firestore TTL később opcionálisan bekapcsolható.
 
 ## KÖVETKEZŐ MENET
 
-1. A Google Play belső tesztcsatornáról telepített Android buildben a
-   Beállítások → Alkalmazás részen ellenőrizni kell a kiadott rövid commitot.
-2. Androidon először 3 perc / 100 m lezárt képernyős smoke teszt, utána
-   legalább 90 perc / 20 km bringás regresszió kell. Ellenőrizendő a folytonos
-   nyomvonal, a referencia-táv eltérése, a foreground értesítés, a
-   szünet/folytatás és a teljes mentés.
-3. Ugyanezt az iOS TestFlight #27-en is végig kell mérni. A javítás csak a két
-   platform hosszú készülékes próbája után tekinthető lezártnak.
-4. Ezután folytatható az audit következő biztonsági prioritása:
-   dependency-audit, App Check és szerveroldali rate limit.
+1. **Cloud Shell:** létre kell hozni a `RATE_LIMIT_HMAC_KEY` titkot, hozzáadni
+   a Cloud Run service account Secret Manager hozzáférését és a
+   `roles/firebaseappcheck.tokenVerifier` szerepet. A pontos, egysoros
+   parancsok a `docs/06-architektura-es-admin.md` App Check rollout részében
+   vannak.
+2. **Firebase/Google Cloud Console:** regisztrálni kell a webes reCAPTCHA
+   Enterprise, Android Play Integrity és iOS App Attest providereket. A webes
+   publikus Key ID-t ezután kell beírni a `VITE_RECAPTCHA_SITE_KEY` értékébe;
+   jelenleg szándékosan üres, mert külső kulcsot nem találunk ki.
+3. Ezután sorrendben: push → **szabályok** → **backend** (`observe`) →
+   **frontend** → Android belső build → iOS TestFlight build. **Indexek** és
+   adatbázis-migráció nem kellenek.
+4. Mindhárom kliensen ellenőrizni kell a Cloud Run/Firebase App Check
+   metrikákat, a 401/429/503 arányt, a normál belépést, OTP-t, aktivitásmentést,
+   csempét és időjárást. A natív `CustomProvider` híd csak valódi készülékes
+   tokennel tekinthető igazoltnak.
+5. Csak igazolt lefedettség után válthat `_APP_CHECK_MODE=enforce` és
+   `_RATE_LIMIT_MODE=enforce` értékre; a Firestore/Storage konzolos
+   enforcement ennél is későbbi, külön lépés.
+6. A korábban előírt 90 perces / 20 km-es iOS és Android háttér-GPS terepteszt
+   továbbra is nyitott, és az új natív buildben egyben App Check smoke teszt is.
 
 ## NYITOTT KISEBB ÜGYEK
 
-- A frontend `npm install` továbbra is 10 auditjelzést mutatott (8 közepes,
-  1 magas, 1 kritikus); automatikus breaking `--force` javítás nem történt.
-- A production build meglévő Mapbox chunkja 1,865 MB.
-- Az Android lint 32 meglévő figyelmeztetést jelez: főként ikon- és nem
-  használt erőforrás-karbantartás; nem blokkolják ezt a kiadást.
-- A Codemagic Google Play ellenőrző parancsa jelzi, hogy a régi
-  `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` környezetinév később megszűnik; egy
-  külön üzemeltetési menetben át kell nevezni
-  `GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS`-re a Codemagic változóval együtt.
-- `emulator-5562 offline` továbbra is látszik Geri gépén, ezért helyi valódi
-  készülékes vagy emulátoros Android életciklusteszt nem futott.
+- A frontend production Mapbox chunk **1,824 MB**, a Firebase chunk **630 kB**;
+  ez meglévő teljesítmény-karbantartási feladat.
+- A hat megmaradt backend auditjelzés tranzitív `firebase-admin` függőség;
+  upstream frissítést kell figyelni, `--force` downgrade nem elfogadható.
+- A Codemagic Google Play ellenőrző parancsában a régi
+  `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` név később megszűnik; külön
+  üzemeltetési menetben kell átnevezni.
+- `emulator-5562 offline` továbbra is látszott Geri gépén; ez a Gradle
+  unit/lint ellenőrzést nem akadályozta, de UI-életciklustesztet nem adott.
 
 ## 0. MODELLJAVASLAT a folytatáshoz
 
-A két platform hosszú, mért tereppróbájának kiértékeléséhez **GPT-5.6 Sol,
-erős gondolkodási mélység** indokolt; ha mindkettő zöld, a dokumentációs
-lezáráshoz elég gyorsabb modell normál mélységen.
+Az App Check éles konzolkonfigurációjához és a háromplatformos observe →
+enforce kiértékeléshez **GPT-5.6 Sol, erős gondolkodási mélység** indokolt,
+mert hibás sorrenddel a régi kliensek vagy a közvetlen Firestore/Storage
+kérések kizárhatók.

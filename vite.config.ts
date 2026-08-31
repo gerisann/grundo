@@ -65,10 +65,14 @@ export default defineConfig({
       output: {
         // Keep the entry chunk small — the map and the charts are the two heavy
         // dependencies and neither is needed on first paint.
-        manualChunks: {
-          mapbox: ['mapbox-gl'],
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-          h3: ['h3-js'],
+        manualChunks(id) {
+          if (id.includes('/node_modules/mapbox-gl/')) return 'mapbox';
+          if (
+            id.includes('/node_modules/firebase/') ||
+            id.includes('/node_modules/@firebase/')
+          ) return 'firebase';
+          if (id.includes('/node_modules/h3-js/')) return 'h3';
+          return undefined;
         },
       },
     },

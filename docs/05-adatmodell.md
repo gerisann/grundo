@@ -497,6 +497,7 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
 | `metricsDaily/{day}` | napi használati aggregátum az admin áttekintőhöz |
 | `adminAudit/{id}` | `adminUid, action, targetType, targetId, before, after, at` |
 | `activityAudits/{activityId}` | szerveroldali foglalás-, szint-, tulajdonos- és hurokdiagnosztika |
+| `rateLimits/{hmac}` | szerveroldali, tranzakciós visszaélés-megelőző számláló; kliens nem olvashatja |
 
 ---
 
@@ -567,6 +568,25 @@ Az admin áttekintő ebből olvas, hogy azonnali választ adjon — a Firebase A
 
 A `users.trust` mező tartja a hosszú távú szintet: `{ level: 'new'|'established'|'trusted'|'watched', cleanActivities: number, upheldReports: number, watchedUntil?: Timestamp }`.
 
+### `rateLimits/{hmac}` — szerveroldali kéréskorlát
+
+```ts
+{
+  policy: string
+  count: number
+  windowStartedAtMs: number
+  updatedAt: Timestamp
+  expiresAt: Timestamp
+}
+```
+
+A dokumentumazonosító HMAC a szabály nevéből és a felhasználó vagy bejelentkezési
+azonosító belső kulcsából. Nyers e-mail, felhasználónév, UID vagy IP-cím nem
+kerül a kollekcióba. A fix ablak számlálása Firestore-tranzakcióban történik,
+ezért több Cloud Run-példány és párhuzamos kérés sem tudja megkerülni. Az
+`expiresAt` mezőre Firestore TTL állítható; ez karbantartás, nem helyességi
+feltétel, mert ugyanaz az alany/szabály mindig ugyanazt a dokumentumot írja.
+
 ### Térkép-megjelenítés
 
 A rács megjelenítése **nem** közvetlen Firestore-olvasásból megy — az egy városnyi nézetnél több száz blokkot jelentene. Helyette a `tile-service` **Mapbox vektorcsempéket** (MVT) generál:
@@ -618,8 +638,8 @@ A csempék Cloud CDN-ben cache-elődnek, és a blokk `version` mezőjének vált
    `users/{uid}` fődokumentumból nyilvános mezőket csak a backend ad ki.
 4. **Tiltás kétirányú:** a tiltott fél semmit nem lát a tiltótól, és fordítva.
 4b. **Privát zóna:** a teljes nyomvonal (`activities/{id}/private/track`) és a nyers idősor **kizárólag a tulajdonosnak** olvasható — a láthatósági beállítástól függetlenül, akkor is, ha az aktivitás publikus. A `mapImagePath` képet a szerver mindig a levágott nyomvonalból generálja. Az export két különböző fájlt ad: a sajátod teljes, a másoké levágott.
-5. **Rate limit** a kommentre, jelentésre, követésre (App Check + szerveroldali számláló).
-6. **App Check** kötelező minden hívásra (Play Integrity / DeviceCheck).
+5. **Rate limit** a költséges és visszaélésre érzékeny végpontokra (App Check + szerveroldali, tranzakciós számláló).
+6. **App Check** kötelező minden klienshívásra (Play Integrity / App Attest / reCAPTCHA Enterprise); a Scheduler `/api/jobs` ága külön szolgáltatáshitelesítést használ.
 7. A `pro`, `level`, `gpTotal`, `territoryM2`, `cellCount`, `trust`, `counters`, `status` mezők **klienstől soha nem írhatók**. A `grid`, `zones`, `gpLedger`, `activityTrust`, `activityAudits` kollekciók **klienstől egyáltalán nem írhatók**, a `activityTrust.score` pedig nem is olvasható.
 
 ---

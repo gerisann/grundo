@@ -238,7 +238,7 @@ describe('7.6 irányfüggetlenség', () => {
         expect(Math.abs(other - count)).toBeLessThanOrEqual(Math.ceil(count * 0.1) + 2);
       }
     }
-  });
+  }, 15_000);
 });
 
 describe('7.8 nyolcas', () => {

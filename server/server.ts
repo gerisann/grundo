@@ -12,6 +12,12 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { auth as adminAuth, db, FIRESTORE_DATABASE_ID } from './src/lib/firebase';
 import { HttpError, unauthorized } from './src/lib/errors';
+import { verifyAppCheck } from './src/lib/appCheck';
+import {
+  authenticatedRateLimit,
+  loginRateLimit,
+  signInMethodRateLimit,
+} from './src/lib/rateLimit';
 
 import {
   authRouter,
@@ -53,7 +59,10 @@ app.use((req, res, next) => {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-Firebase-AppCheck',
+    );
     /**
      * A PUT hiánya egyszer már megfogott (2026-08-19): az admin
      * konfiguráció-mentése `PUT`-tal megy, és a böngésző már az előkérésnél
@@ -73,6 +82,8 @@ app.use((req, res, next) => {
 export interface AuthedRequest extends Request {
   uid?: string;
   role?: string;
+  appCheckAppId?: string;
+  appCheckValid?: boolean;
 }
 
 async function authenticate(req: AuthedRequest, _res: Response, next: NextFunction) {
@@ -105,10 +116,14 @@ const health = (_req: Request, res: Response) =>
 app.get('/api/health', health);
 app.get('/healthz', health);
 
+// The scheduler-only `/api/jobs` branch is exempt inside the middleware. All
+// browser and packaged-app endpoints share the same observe/enforce rollout.
+app.use('/api', verifyAppCheck);
+
 // Egy szintű útvonal: közvetlenül, nem routeren keresztül. (Lásd a
 // `meHandler` fölötti magyarázatot: a `app.use('/api/me', authRouter)`
 // alakban ez a végpont némán nem illeszkedett.)
-app.get('/api/me', authenticate, meHandler);
+app.get('/api/me', authenticate, authenticatedRateLimit, meHandler);
 
 /**
  * NYILVÁNOS végpont — szándékosan `authenticate` NÉLKÜL.
@@ -118,7 +133,7 @@ app.get('/api/me', authenticate, meHandler);
  * ELŐTT kell állnia, különben a hitelesítés elnyelné, és a felhasználó soha
  * nem tudna belépni a felhasználónevével.
  */
-app.post('/api/auth/login', loginHandler);
+app.post('/api/auth/login', loginRateLimit, loginHandler);
 
 /**
  * Szintén NYILVÁNOS: aki még nem tud belépni, annak nincs tokenje.
@@ -127,7 +142,7 @@ app.post('/api/auth/login', loginHandler);
  * kizárólag SIKERTELEN belépés után hívja, tehát nem lesz belőle szabadon
  * pörgethető névellenőrző.
  */
-app.post('/api/auth/method', signInMethodHandler);
+app.post('/api/auth/method', signInMethodRateLimit, signInMethodHandler);
 
 /**
  * NYILVÁNOS: a szabálymagyarázó felület adatforrása. Nincs benne
@@ -136,21 +151,21 @@ app.post('/api/auth/method', signInMethodHandler);
  */
 app.use('/api/rules', rulesRouter);
 
-app.use('/api/auth', authenticate, authRouter);
-app.use('/api/activities', authenticate, activitiesRouter);
-app.use('/api/users', authenticate, usersRouter);
-app.use('/api/rivals', authenticate, rivalsRouter);
+app.use('/api/auth', authenticate, authenticatedRateLimit, authRouter);
+app.use('/api/activities', authenticate, authenticatedRateLimit, activitiesRouter);
+app.use('/api/users', authenticate, authenticatedRateLimit, usersRouter);
+app.use('/api/rivals', authenticate, authenticatedRateLimit, rivalsRouter);
 /**
  * Hitelesítés MÖGÖTT, pedig az időjárás nem személyes adat.
  *
  * A külső hívás pénzbe kerül és kvótás. Nyitva hagyva a végpont ingyenes
  * időjárás-proxy lenne bárkinek, a mi számlánkra.
  */
-app.use('/api/weather', authenticate, weatherRouter);
-app.use('/api/tiles', authenticate, tilesRouter);
-app.use('/api/missions', authenticate, missionsRouter);
-app.use('/api/dev', authenticate, devRouter);
-app.use('/api/admin', authenticate, adminRouter);
+app.use('/api/weather', authenticate, authenticatedRateLimit, weatherRouter);
+app.use('/api/tiles', authenticate, authenticatedRateLimit, tilesRouter);
+app.use('/api/missions', authenticate, authenticatedRateLimit, missionsRouter);
+app.use('/api/dev', authenticate, authenticatedRateLimit, devRouter);
+app.use('/api/admin', authenticate, authenticatedRateLimit, adminRouter);
 
 /**
  * SZÁNDÉKOSAN `authenticate` NÉLKÜL — a router maga engedélyez.
