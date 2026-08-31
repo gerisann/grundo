@@ -1,126 +1,104 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-31** · a **#22** menet vége, átadás **#23**-ra
+> Frissítve: **2026-08-31** · a **#23** menet vége, átadás **#24**-re
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A #22 adatvédelmi és kompatibilitási kódja a `605736f`
-> commitból élesben fut; a handoff lezáró commitja a menet záróüzenetében van.
+> Ág: **`main`**. A háttér-GPS javítás commitja és pontos HEAD-je a #23 záró
+> üzenetében van.
 
 ## ÁLLAPOT
 
-A teljes projekt-audit utáni javítási sorrend első, legsürgősebb egysége
-elkészült: a teljes felhasználói dokumentum és az aktivitásfotók adatvédelmi
-rése bezárva a kódban, szabályokban, tesztekben és dokumentációban.
+Egy valódi iOS terepteszt 1:32:44 alatt csak 1,91 km-t és egy hosszú egyenes
+szakaszt mutatott, miközben a tesztelő legalább 25 km-t bringázott, lezárt
+képernyővel és `Always` helyengedéllyel. A hiba két, egymást erősítő oka
+igazolva és a kódban javítva.
 
-Ellenőrzések:
+### Igazolt okok
 
+1. **Ébredéskori verseny:** egy friss Capacitor `location` esemény megelőzhette
+   a tartós natív sor `drain` válaszát. A `NativePositionSource` ekkor a friss
+   időbélyeget megjegyezte, majd az összes korábbi köztes pontot eldobta.
+   Célzott tesztben a régi kód `[300]` értéket adott a helyes
+   `[100, 200, 300]` helyett. Ez közvetlenül magyarázza a képen látható
+   kezdő–végpont egyenest és az alulmért távot.
+2. **Túl kicsi iOS sor:** az iOS natív sor csak 500 pontot tartott meg. A
+   bringás 12 m-es Core Location szűrő mellett 25 km-hez legalább kb. 2085
+   pont kell; 500 pont elméleti felső lefedése kb. 6 km, 1 Hz-nél csak 8:20
+   perc. Androidon már korábban is 25 000 pontos SQLite-sor volt.
+
+A verseny és az 500-as limit már a `85802da` (2026-08-23) háttér-GPS
+bevezetésében benne volt. A `b167a51` energiaoptimalizálás (2026-08-30) a
+natív képernyőzár-tiltás kikapcsolásával a háttérutat tette normál működéssé,
+így a korábban rövid tesztekkel rejtve maradt hiba sokkal könnyebben előjött.
+A `687fc1d` Swift soroptimalizálása megtartotta az 500-as limitet, és a
+handoff szerint készüléken még nem volt ellenőrizve.
+
+### Javítás
+
+- A közös TypeScript natív forrás a start/visibility/stop drainjeit
+  sorosítja, a közben érkező élő pontokat puffereli, az egész köteget
+  időrendbe rendezi, és időbélyeg szerint deduplikálja.
+- A stop bevárja a már futó draint, ezért befejezéskor sem válhat le túl korán
+  a recorder.
+- Az iOS sor 25 000 pontra nőtt, Androiddal azonos kapacitással.
+- iOS-en a háttérpontok 10 másodperces bináris plist kötegekben, az
+  Application Support mappában élnek; nem a teljes `UserDefaults` tömb íródik
+  újra. A fájlok ki vannak zárva az iCloud backupból.
+- A régi v1 UserDefaults-sor frissítés után egyszer még beolvasódik, így
+  upgrade közben sem vész el aktív pont.
+- Előtéri pont nem kerül a natív sorba, mert azt a JS és az IndexedDB már
+  megkapja; a natív sor kizárólag a felfüggesztett WebView szakaszáé.
+
+### Ellenőrzések
+
+- célzott regressziós teszt: a régi kódon **bukott** (`[300]`), javítás után
+  **3/3 zöld**;
+- teljes normál teszt: **580 sikeres, 129 emulátoros kihagyva**;
 - kliens `typecheck`: zöld;
-- szerver `typecheck` és production build: zöld;
-- teljes normál teszt: **577 sikeres, 129 emulátoros kihagyva**;
-- teljes emulátorkészlet: **129/129 sikeres** (Firestore + Auth + Storage);
+- szerver `typecheck`: zöld;
 - frontend production build: zöld, 309 modul;
-- migráció emulátoros dry-run: zöld;
-- régi kliens aláírt URL-es letöltése: célzott emulátortesztben zöld;
-- éles backend health: **200**, adatbázis: `grundo-db`;
-- éles Hosting: **200**, a kiadott index egyezik a helyi production builddel;
 - `git diff --check`: tiszta.
-
-## MI KÉSZÜLT EL A #22-BEN
-
-### 1. Felhasználói dokumentumok
-
-- A `users/{uid}` fődokumentum közvetlenül csak a tulajdonosnak és adminnak
-  olvasható. Idegen profil továbbra is a mezőket fehérlistázó backend API-ból
-  jön, ezért e-mail, testadat, trust és fiókstátusz nem szivárog ki.
-- Az idegen `following`, `followers`, `badges` és `passport` alkollekciók
-  közvetlen olvasása is megszűnt; a saját és admin-hozzáférés megmaradt.
-- Valódi Firestore-emulátoros teszt bizonyítja a saját/idegen elválasztást.
-
-### 2. Aktivitásfotók
-
-- A Firestore most csak `{ path }` értéket tárol; tartós Firebase letöltési
-  URL nem kerül új aktivitásba.
-- Új, hitelesített backend-végpont szolgálja ki a képet. Ellenőrzi az
-  aktivitás létezését, soft-delete állapotát, `everyone`/`followers`/
-  `only_me` láthatóságát, a követést és a tiltást mindkét irányban.
-- A kért Storage-útvonalnak pontosan egyeznie kell az aktivitáson tárolt
-  hivatkozással. A válasz `private, max-age=300` cache-t és `nosniff` fejlécet
-  kap.
-- A webes és a Capacitorban közös React-kliens Authorization fejléccel tölti
-  a képet blobba. A feed csak a viewport 400 px-es közelében kezd tölteni, és
-  felszabadítja az objektum-URL-t.
-- A Storage közvetlen aktivitásfotó-olvasása csak a tulajdonosnak engedett;
-  generált `maps/` objektum kliensről egyáltalán nem olvasható.
-- A részlet-, kedvelés- és kommentvégpontok közös jogosultsági kaput kaptak.
-  Ezzel a korábbi követői láthatóság-eltérés és az ismert azonosítóval történő
-  like-megkerülés is megszűnt.
-- A már telepített iOS/Android kliens visszafelé kompatibilis marad: az API a
-  régi `photo.url` mezőben 15 percig érvényes, csak egy objektum olvasására
-  jogosító V4 aláírt URL-t ad. Ez nem kerül Firestore-ba, és nem a visszavont,
-  korlátlan Firebase download token. **Új natív build ezért nem szükséges.**
-
-### 3. Migráció és tesztüzem
-
-- Új, alapból dry-run `migrate:activity-media-privacy` script normalizálja a
-  régi fotómezőket és visszavonja az `activities/` Storage-objektumok meglévő
-  `firebaseStorageDownloadTokens` metaadatait.
-- Éles írás csak `--apply --allow-production` együttessel lehetséges.
-- Új backend- és szabálytesztek fedik a publikus, követői, privát, tiltott,
-  tulajdonosi és idegen Storage-eseteket.
-- Az emulátoros parancs most Auth + Firestore + Storage emulátort indít. A
-  mért 5,3–5,5 másodperces compact tesztek miatt a plafon 15 másodperc, a
-  suite-indításé 20 másodperc; így a teljes készlet együtt is stabilan zöld.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-- **Éles frontend és backend:** a `605736f` kódja fut.
-- **Cloud Run:** `grundo-api-00110-94c`, ez a latest ready revízió és a
-  forgalom 100%-át kapja.
-- **Firestore- és Storage-szabályok:** telepítve.
-- **Éles migráció:** 41 aktivitás átnézve, 4 régi fotórekord normalizálva,
-  9 Storage-objektum tartós Firebase download tokenje visszavonva, 0 hiba.
-  Az utóellenőrzés 0 további módosítást és 0 visszavonandó tokent talált.
-- Firestore-index nem változott.
-- iOS- és Android-platformkód nem változott. A régi build kompatibilitását a
-  rövid életű URL biztosítja, ezért most nem kell új natív build.
-- A migrációhoz ideiglenesen megadott bucket-szintű `Storage Object User` és
-  projekt-szintű `Cloud Datastore User` jogosultságot visszavontuk. A
-  `grundo-reader` ismét csak a korábbi `roles/datastore.viewer` szerepkörrel
-  rendelkezik, bucket-szintű szerepköre nincs.
-
-### Kiadási sorrend
-
-A fejlesztői gépről végrehajtott backend → frontend → szabályok → migráció
-dry-run → migráció apply → utóellenőrzés menet teljesen lezárult. Natív build
-nem készült és ehhez a kompatibilis backend-kiadáshoz nem is szükséges.
+- Az előző adatvédelmi kiadás változatlanul éles: backend/frontend kód
+  `605736f`, Cloud Run `grundo-api-00110-94c`, szabályok és fotómigráció kész.
+- A háttér-GPS javítás **még nincs natív buildben**. Webes vagy backend
+  telepítés nem oldja meg: új iOS build kötelező, mert Swift és a natív bundle
+  közös TypeScript-része is változott.
+- A közös TypeScript versenyjavítás az Androidot is védi; Android buildet a
+  következő natív mérföldkőnél kell kiadni. Az iOS 500 pontos kapacitáshiba
+  Androidon nem állt fenn.
+- Helyi Windowson a `cap sync ios` a másolást elvégezte, de a Capacitor plugin
+  symlink létrehozása Windows-jogosultság miatt EPERM-et adott. Tracked fájl
+  nem változott; a Codemagic macOS-lépése futtatja és ellenőrzi teljesen.
 
 ## KÖVETKEZŐ MENET
 
-1. Az audit következő biztonsági prioritása: App Check és szerveroldali
-   visszaélés-/sebességkorlát a nyilvános és költséges végpontokon. Előbb a
-   meglévő auth- és proxyútvonalak mérhető fenyegetési térképét kell elkészíteni.
-2. Utána az audit teljesítménylistája: a production build továbbra is jelzi a
-   **1,865 MB-os Mapbox chunkot**. Ez meglévő, nem a #22 regressziója; csak
-   mérés alapján érdemes további bontást vagy betöltési stratégiát választani.
-3. Kiadás előtt törlendő a korábbi mérésből maradt
-   `android.webContentsDebuggingEnabled: true` kapcsoló.
+1. A pusholt commitból indítandó az **iOS TestFlight Codemagic build**. Ez az
+   első valódi Swift/Xcode fordítás; ha bukik, a buildlog alapján javítani.
+2. Valódi készüléken először 3 perc / 100 m lezárt képernyős smoke teszt,
+   utána legalább 90 perc / 20 km bringás regressziós teszt. Ellenőrizni kell
+   a folytonos nyomvonalat, a referencia-táv eltérését, a Live Activityt,
+   valamint szünet/befejezés után a teljes mentést.
+3. A hosszú tesztig a javítás nem tekinthető készüléken igazoltnak. Windowsról
+   Core Location és lezárt képernyős iOS életciklus nem reprodukálható.
+4. A GPS-javítás lezárása után folytatható az audit következő biztonsági
+   prioritása: dependency-audit, App Check és szerveroldali rate limit.
 
 ## NYITOTT KISEBB ÜGYEK
 
-- `emulator-5562 offline` továbbra is megjelenik Geri gépén az `adb devices`
-  kimenetében; nem zavarta ezt a munkát.
-- Az aktivitásfotó-kiszolgálás képenként egy jogosultsági Firestore-ellenőrzést
-  végez. Ez a biztonságos alap; később valós olvasásszám és késleltetés alapján
-  rövid szerveroldali engedélycache mérlegelhető, de tiltás/privacy változásnál
-  a stale ablakot külön kezelni kell.
-- A frontend telepítés alatti `npm install` 10 auditjelzést írt ki (8 közepes,
-  1 magas, 1 kritikus). Ez nem akadályozta a buildet, de a következő biztonsági
-  menet elején a közvetlen/fejlesztői/tranzitív érintettséget külön fel kell
-  mérni; automatikus, breaking `--force` javítás nem történt.
+- A frontend `npm install` továbbra is 10 auditjelzést mutatott (8 közepes,
+  1 magas, 1 kritikus); automatikus breaking `--force` javítás nem történt.
+- A production build meglévő Mapbox chunkja 1,865 MB.
+- Kiadás előtt törlendő az ideiglenes
+  `android.webContentsDebuggingEnabled: true` kapcsoló.
+- `emulator-5562 offline` továbbra is látszik Geri gépén.
 
 ## 0. MODELLJAVASLAT a folytatáshoz
 
-Az App Check + rate-limit menethez **GPT-5.6 Sol, erős gondolkodási mélység**
-indokolt: auth-, költség- és platformközi döntések vannak benne. A későbbi,
-mechanikus UI-/tesztmunkákhoz elég lesz egy gyorsabb modell normál mélységen.
+A Codemagic Swift-build és a készülékes regresszió kiértékeléséhez
+**GPT-5.6 Sol, erős gondolkodási mélység** indokolt; ha a build és mindkét
+tereppróba zöld, a dokumentációs lezáráshoz elég gyorsabb modell normál
+mélységen.

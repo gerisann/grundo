@@ -194,7 +194,7 @@ A GRUNDO szíve (képek #49, #21).
 - Gombok: szünet · **stop** · kamera.
 - Automatikus szünet (opcionális, sebességküszöb alatt).
 - Hangos/rezgő visszajelzés: kilométerenként, kör bezárásakor, területlopáskor.
-- **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás, Androidon location típusú foreground service gyűjti a pontokat lezárt képernyőnél is. iOS-en a rendszer helyengedélyénél a **„Mindig”** opció kell; ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. A natív sor az ébredő WebView-nak adódik át, ezért a háttérben tett út egyik platformon sem a felfüggesztett JavaScripttől függ.
+- **Háttérben futás**: iOS-en aktív rögzítéskor a natív Core Location szolgáltatás, Androidon location típusú foreground service gyűjti a pontokat lezárt képernyőnél is. iOS-en a rendszer helyengedélyénél a **„Mindig”** opció kell; ha nincs, figyelmeztetés mellett a mérés képernyő-ébren folytatható. Mindkét platform legfeljebb 25 000 pontot őriz a tartós natív sorban. Az ébredő WebView a sort és az ébredéskori élő eseményeket időrendben, duplikáció nélkül veszi át, ezért a háttérben tett út nem a felfüggesztett JavaScripttől függ.
 - A natív WebView memória- vagy rendszeresemény miatti újraindulása **nem
   félbehagyás**: az app kérdés nélkül visszaveszi a helyi recorder-állapotot,
   visszakapcsolódik a tovább futó natív helyszolgáltatás sorához, és ugyanazt a mérést

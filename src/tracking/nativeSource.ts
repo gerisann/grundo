@@ -61,7 +61,16 @@ export class NativePositionSource implements PositionSource {
   private errorListener: PluginListenerHandle | null = null;
   private visibilityListener: (() => void) | null = null;
   private handlers: PositionHandlers | null = null;
-  private lastDeliveredAt = 0;
+  /**
+   * A natív esemény és a tartós sor drainje ébredéskor versenyezhet.
+   * Amíg a drain fut, az élő eseményeket itt tartjuk, majd a teljes köteget
+   * időrendben adjuk át. Enélkül egy friss esemény előreszaladhatott, és a
+   * korábbi háttérpontokat a régi monotónia-őr mind eldobta.
+   */
+  private drainPromise: Promise<void> | null = null;
+  private awaitingForegroundDrain = false;
+  private bufferedLocations: NativeLocation[] = [];
+  private deliveredTimestamps = new Set<number>();
 
   async start(
     handlers: PositionHandlers,
@@ -74,13 +83,22 @@ export class NativePositionSource implements PositionSource {
     await this.detach();
     this.handlers = handlers;
     this.locationListener = await BackgroundLocation.addListener('location', (location) => {
-      this.deliver(location);
+      if (
+        this.drainPromise !== null ||
+        this.awaitingForegroundDrain ||
+        document.visibilityState !== 'visible'
+      ) this.bufferedLocations.push(location);
+      else this.deliver(location);
     });
     this.errorListener = await BackgroundLocation.addListener('error', (error) => {
       handlers.onError(toTrackingError(error));
     });
     this.visibilityListener = () => {
-      if (document.visibilityState === 'visible') void this.drain();
+      if (document.visibilityState !== 'visible') {
+        this.awaitingForegroundDrain = true;
+        return;
+      }
+      void this.drain();
     };
     document.addEventListener('visibilitychange', this.visibilityListener);
 
@@ -107,6 +125,9 @@ export class NativePositionSource implements PositionSource {
     await this.detach();
     this.backgroundPermissionGranted = false;
     await BackgroundLocation.stop().catch(() => undefined);
+    this.awaitingForegroundDrain = false;
+    this.bufferedLocations = [];
+    this.deliveredTimestamps.clear();
   }
 
   async detach(): Promise<void> {
@@ -121,14 +142,36 @@ export class NativePositionSource implements PositionSource {
     this.handlers = null;
   }
 
-  private async drain(): Promise<void> {
-    const queued = await BackgroundLocation.drain().catch(() => null);
-    for (const location of queued?.locations ?? []) this.deliver(location);
+  private drain(): Promise<void> {
+    // A visibility, a start és a stop ugyanarra a folyamatban lévő drainre
+    // vár. Ha a stop csak azonnal visszatérne, leválasztaná a handlert,
+    // mielőtt a már kiolvasott háttérpontok eljutnak a recorderhez.
+    if (this.drainPromise !== null) return this.drainPromise;
+
+    this.drainPromise = (async () => {
+      try {
+        const queued = await BackgroundLocation.drain().catch(() => null);
+        const locations = [
+          ...(queued?.locations ?? []),
+          ...this.bufferedLocations.splice(0),
+        ].sort((a, b) => a.t - b.t);
+        for (const location of locations) this.deliver(location);
+      } finally {
+        // A fenti szinkron feldolgozás alatt nem futhat JS callback, de a
+        // `finally` védi azt az esetet is, ha a plugin-válasz feldolgozása
+        // később aszinkron lépéssel bővülne.
+        const remaining = this.bufferedLocations.splice(0).sort((a, b) => a.t - b.t);
+        for (const location of remaining) this.deliver(location);
+        this.awaitingForegroundDrain = false;
+        this.drainPromise = null;
+      }
+    })();
+    return this.drainPromise;
   }
 
   private deliver(location: NativeLocation): void {
-    if (this.handlers === null || location.t <= this.lastDeliveredAt) return;
-    this.lastDeliveredAt = location.t;
+    if (this.handlers === null || this.deliveredTimestamps.has(location.t)) return;
+    this.deliveredTimestamps.add(location.t);
     this.handlers.onSample(location);
   }
 }

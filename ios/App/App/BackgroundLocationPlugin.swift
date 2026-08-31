@@ -1,5 +1,6 @@
 import Capacitor
 import CoreLocation
+import Foundation
 import UIKit
 
 /**
@@ -22,8 +23,11 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     ]
 
     private let locationManager = CLLocationManager()
-    private let queueKey = "grundo.backgroundLocationQueue.v1"
-    private let maximumQueuedLocations = 500
+    /** A korábbi, 500 pontos UserDefaults-sor frissítés utáni beolvasásához. */
+    private let legacyQueueKey = "grundo.backgroundLocationQueue.v1"
+    /** Androiddal azonos, többórás rögzítésre méretezett felső korlát. */
+    private let maximumQueuedLocations = 25_000
+    private let queueDirectoryName = "grundo.backgroundLocationQueue.v2"
     private var pendingStart = false
     private var requestedActivityType = "run"
     private var requestedActivityState: GrundoActivitySnapshot?
@@ -49,6 +53,25 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     private let backgroundPersistIntervalS: TimeInterval = 10
     private var backgroundObserver: NSObjectProtocol?
     private var foregroundObserver: NSObjectProtocol?
+    private lazy var queueDirectoryURL: URL? = {
+        do {
+            let root = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            var directory = root.appendingPathComponent(queueDirectoryName, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? directory.setResourceValues(values)
+            return directory
+        } catch {
+            NSLog("[GRUNDO] Háttér-GPS sor mappája nem hozható létre: %@", error.localizedDescription)
+            return nil
+        }
+    }()
 
     public override func load() {
         locationManager.delegate = self
@@ -66,20 +89,21 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
             queue: .main
         ) { [weak self] _ in
             self?.isBackgrounded = true
-            // Azonnali biztosítéki írás a háttérbe lépés pillanatában — utána
-            // a rendes ritkított ütem veszi át (`enqueue`).
-            self?.persistPendingLocations()
         }
         foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            // A WebView ébredése előtt az utolsó, még memóriában lévő
+            // háttérpontok is kerüljenek a drain által olvasott sorba.
+            self?.persistPendingLocations()
             self?.isBackgrounded = false
         }
     }
 
     deinit {
+        persistPendingLocations()
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
     }
@@ -133,13 +157,14 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     @objc func drain(_ call: CAPPluginCall) {
-        // A lemezre írt ÉS a még csak memóriában lévő pontok együtt adják a
-        // teljes sort — utóbbi azért létezik, mert előtérben (és a ritkítás
-        // ablakában háttérben is) nem minden pont jut el azonnal a lemezig.
+        // A lemezre írt ÉS a még csak memóriában lévő háttérpontok együtt
+        // adják a teljes sort. Időrendbe rendezzük, mert Core Location
+        // kötegei és az ébredéskori élő callback egymást megelőzhetik.
         var locations = queuedLocations()
         locations.append(contentsOf: pendingLocations)
+        locations.sort { locationTimestamp($0) < locationTimestamp($1) }
         pendingLocations.removeAll()
-        UserDefaults.standard.removeObject(forKey: queueKey)
+        clearPersistedLocations()
         call.resolve(["locations": locations])
     }
 
@@ -203,32 +228,110 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     private func queuedLocations() -> [[String: Any]] {
-        UserDefaults.standard.array(forKey: queueKey) as? [[String: Any]] ?? []
+        // A v1 sor egyszeri kompatibilitási bemenete: egy frissítés közben
+        // már rögzített pont sem veszhet el.
+        var locations = UserDefaults.standard.array(forKey: legacyQueueKey) as? [[String: Any]] ?? []
+        for url in persistedBatchURLs() {
+            do {
+                let data = try Data(contentsOf: url)
+                let value = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+                if let batch = value as? [[String: Any]] {
+                    locations.append(contentsOf: batch)
+                }
+            } catch {
+                NSLog("[GRUNDO] Háttér-GPS köteg nem olvasható (%@): %@", url.lastPathComponent, error.localizedDescription)
+            }
+        }
+        return locations
     }
 
     private func enqueue(_ payload: [String: Any]) {
+        // Előtérben a JS azonnal megkapja a pontot, és saját IndexedDB-
+        // mentése védi. A natív sor kizárólag a felfüggesztett WebView alatti
+        // szakaszé; így nem tároljuk és nem adjuk vissza duplán a teljes
+        // előtéri útvonalat.
+        guard isBackgrounded else { return }
         pendingLocations.append(payload)
         if pendingLocations.count > maximumQueuedLocations {
             pendingLocations.removeFirst(pendingLocations.count - maximumQueuedLocations)
         }
-        // ELŐTÉRBEN nem írunk lemezre: a pont már elment a JS-nek a
-        // `notifyListeners` hívással, a `UserDefaults` csak a folyamat-kilövés
-        // elleni biztosíték, ami csak háttérben releváns.
-        guard isBackgrounded else { return }
         guard Date().timeIntervalSince(lastPersistedAt) >= backgroundPersistIntervalS else { return }
         persistPendingLocations()
     }
 
     private func persistPendingLocations() {
         guard !pendingLocations.isEmpty else { return }
-        var stored = queuedLocations()
-        stored.append(contentsOf: pendingLocations)
-        if stored.count > maximumQueuedLocations {
-            stored.removeFirst(stored.count - maximumQueuedLocations)
+        guard let directory = queueDirectoryURL else { return }
+        let batch = pendingLocations
+        do {
+            let data = try PropertyListSerialization.data(
+                fromPropertyList: batch,
+                format: .binary,
+                options: 0
+            )
+            let millis = Int64(Date().timeIntervalSince1970 * 1000)
+            let name = String(
+                format: "%020lld-%05d-%@.plist",
+                millis,
+                batch.count,
+                UUID().uuidString
+            )
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+            pendingLocations.removeAll()
+            lastPersistedAt = Date()
+            prunePersistedBatches()
+        } catch {
+            // Íráshibánál a memória-puffer érintetlen marad: a következő fix
+            // újrapróbálja, a drain pedig így is át tudja adni.
+            NSLog("[GRUNDO] Háttér-GPS köteg mentése sikertelen: %@", error.localizedDescription)
         }
-        UserDefaults.standard.set(stored, forKey: queueKey)
-        pendingLocations.removeAll()
-        lastPersistedAt = Date()
+    }
+
+    private func persistedBatchURLs() -> [URL] {
+        guard let directory = queueDirectoryURL else { return [] }
+        let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        return (urls ?? [])
+            .filter { $0.pathExtension == "plist" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    private func prunePersistedBatches() {
+        var batches = persistedBatchURLs().map { url in
+            (url: url, count: batchCount(from: url.lastPathComponent))
+        }
+        var total = batches.reduce(0) { $0 + $1.count }
+        while total > maximumQueuedLocations, let oldest = batches.first {
+            do {
+                try FileManager.default.removeItem(at: oldest.url)
+                total -= oldest.count
+                batches.removeFirst()
+            } catch {
+                NSLog("[GRUNDO] Régi háttér-GPS köteg nem törölhető: %@", error.localizedDescription)
+                break
+            }
+        }
+    }
+
+    private func batchCount(from fileName: String) -> Int {
+        let parts = fileName.split(separator: "-", maxSplits: 2)
+        return parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
+    }
+
+    private func clearPersistedLocations() {
+        UserDefaults.standard.removeObject(forKey: legacyQueueKey)
+        for url in persistedBatchURLs() {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private func locationTimestamp(_ location: [String: Any]) -> Int64 {
+        if let number = location["t"] as? NSNumber { return number.int64Value }
+        if let value = location["t"] as? Int { return Int64(value) }
+        return 0
     }
 
     private func normalizedActivityType(_ value: String?) -> String {

@@ -31,7 +31,7 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | Firestore / Storage | A meglévő web SDK marad. A fotófeldolgozás `createImageBitmap` hiányakor WebKit-kompatibilis `<img>` fallbacket használ, miközben a vászonra újrakódolás továbbra is törli az EXIF-et. |
 | Cloud Run API | A backend CORS allowlist része a `capacitor://localhost`; a backend újratelepítése szükséges az iOS API-hívások előtt. |
 | Mapbox GL | A webes WebGL implementáció marad. A Codemagicben olyan nyilvános Mapbox tokent kell használni, amelyet nem kizárólag HTTPS web-originre korlátoztak. |
-| Geolocation | iOS-en a saját Core Location Capacitor bridge kéri a GRUNDO helyengedélyét, így nincs `localhost` böngészős prompt. Aktív mérés alatt `UIBackgroundModes: location`, 5 m-es mintavétel és tartós natív pontsor fut; az ébredő WebView a sorba tett pontokat átveszi. A rendszer helyengedélyénél a „Mindig” opció kell a specifikáció szerinti lezárt képernyős rögzítéshez. Weben marad a `navigator.geolocation`, ott nincs háttérkövetés. |
+| Geolocation | iOS-en a saját Core Location Capacitor bridge kéri a GRUNDO helyengedélyét, így nincs `localhost` böngészős prompt. Aktív mérés alatt `UIBackgroundModes: location` és mozgásforma szerinti mintavétel fut (futás 5 m, séta 8 m, bringa 12 m). A lezárt képernyőn gyűlt pontok 10 másodperces kötegekben, fájlalapú tartós sorba kerülnek, legfeljebb 25 000 pontig; az ébredő WebView ezeket az ébredéskori élő eseménnyel együtt időrendben, duplikáció nélkül veszi át. A rendszer helyengedélyénél a „Mindig” opció kell a specifikáció szerinti lezárt képernyős rögzítéshez. Weben marad a `navigator.geolocation`, ott nincs háttérkövetés. |
 | Érintés/gesztus | A meglévő pointer/touch kezelés WKWebView-kompatibilis; natív gesztusplugin nem szükséges. |
 | SPA routing | A Capacitor `capacitor://localhost` originjén a meglévő BrowserRouter marad; nincs Associated Domains vagy universal link capability. |
 | Külső URL-ek | A jelenlegi kódban nincs külön `window.open`/külső link flow, ezért Browser plugin sem került be. |
@@ -198,9 +198,12 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
 - Valódi készüléken ellenőrizni kell az e-mailes authot, Mapbox WebGL-t,
   előtéri helyengedélyt, útvonalrögzítést, fotóválasztást, safe area-t és a
   világos/sötét státuszsávot.
-- Készüléken indíts rögzítést, majd zárd le a képernyőt legalább 3 percre,
-  haladj közben legalább 100 métert, nyisd fel az appot és ellenőrizd a
-  folyamatos pontsort. A rendszer bármikor leállíthatja a kilőtt appot; az
+- Készüléken indíts rögzítést, majd zárd le a képernyőt először legalább 3
+  percre / 100 méterre, utána regressziós hosszú tesztként legalább 90 percre
+  és 20 km-re. Feloldás után a nyomvonalnak minden köztes szakaszt tartalmaznia
+  kell, nem jelenhet meg a kezdő- és végpontot összekötő hosszú egyenes. A
+  kijelzett és a referenciaeszközön mért táv eltérését külön rögzíteni kell.
+  A rendszer bármikor leállíthatja a kilőtt appot; az
   aktív, háttérben hagyott rögzítés támogatott, nem a force-quit utáni
   automatikus újraindítás.
 - Ugyanezen teszt alatt a Live Activity jelenjen meg a zárolt képernyőn;
