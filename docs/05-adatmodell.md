@@ -85,6 +85,10 @@
   createdAt, updatedAt: Timestamp
 }
 ```
+- A fő `users/{uid}` dokumentum **nem publikus profilrekord**: e-mailt,
+  testadatot, trust- és fiókstátuszt is tartalmaz, ezért közvetlenül csak a
+  tulajdonos és az admin olvashatja. Az idegen profil, keresés, követőlista,
+  jelvény és útlevél kizárólag a mezőket fehérlistázó backend API-n át jön.
 - `users/{uid}/private/settings` — csak a tulajdonos olvashatja (értesítés-kapcsolók, e-mail preferenciák).
 - `users/{uid}/private/tracking` — a felhasználó eszközei között megosztott,
   **utolsó rögzítési pillanatkép**: `{ activityId, deviceId, status, type,
@@ -145,7 +149,7 @@
   equipmentId?: string
   weather?: { tempC: number, icon: string }
 
-  photos: Array<{ path: string, url: string }> // legfeljebb 5
+  photos: Array<{ path: string }> // legfeljebb 5; nincs tartós letöltési token
   // A feed térképképét a kliens a `route` mezőből kéri a Static Images API-tól.
   // Régi, route nélküli aktivitás feed- vagy adatlaplekérésekor a szerver
   // visszatölti ezt a privát nyomból, a privát zóna alkalmazása után.
@@ -166,6 +170,11 @@
 }
 ```
 - `activities/{id}/private/track` → `{ points, bounds }` — **a teljes, levágatlan nyomvonal és befoglaló téglalapja**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni. A publikus `route` és `bounds` kizárólag a privát zónával levágott pontokból készül. Olvasás: **csak a tulajdonos és az admin.**
+- Az aktivitásfotó közvetlen Storage-olvasása csak a tulajdonosnak engedett.
+  Más néző a hitelesített `GET /api/activities/{id}/photos/{fileName}`
+  végponton kapja meg, miután a backend a `grundo-db` adatbázisban ellenőrizte
+  a láthatóságot, a követést és mindkét tiltási irányt. A válasz privát,
+  rövid böngészőcache-t használ; letöltési token nem kerül a Firestore-ba.
 - Saját feed- és profilválasznál a backend kizárólag a hitelesített tulajdonos
   válaszában, mentés nélkül felülírja a publikus route-ot a teljes privát
   nyomvonallal. Így a „saját nézet mindig teljes” szabály minden képernyőn
@@ -416,6 +425,12 @@ hurokgeometria rekonstruálható, a korabeli birtokviszony és gazdaváltás nem
 
 Dry-run: `cd server && npm run migrate:activity-privacy`. Íráshoz `-- --apply`; a `grundo` projekten ezen felül `--allow-production` is kötelező. A futtatás előtt a `GOOGLE_CLOUD_PROJECT` változóval explicit meg kell adni a célt. A script eltávolítja a publikus trust diagnosztikát, admin-only rekordba menti, és a publikus route-ból újraszámolja a bounds értéket.
 
+Az aktivitásfotók tokenmentesítésének dry-runja:
+`cd server && npm run migrate:activity-media-privacy`. Íráshoz ugyanúgy
+`-- --apply`, élesben pedig `--allow-production` is kell. A script a Firestore
+fotóelemeit `{ path }` alakra normalizálja, és visszavonja az `activities/`
+Storage-objektumok meglévő Firebase letöltési tokenjeit.
+
 ### Közösségi gráf
 - `users/{uid}/following/{targetUid}` → `{ createdAt }`
 - `users/{uid}/followers/{sourceUid}` → `{ createdAt }`
@@ -595,6 +610,8 @@ A csempék Cloud CDN-ben cache-elődnek, és a blokk `version` mezőjének vált
    - `'followers'` → csak követő,
    - `'only_me'` → csak a tulajdonos,
    - privát fiók → csak elfogadott követő.
+   A szabály a közösségi tartalomra vonatkozik; a vegyesen érzékeny
+   `users/{uid}` fődokumentumból nyilvános mezőket csak a backend ad ki.
 4. **Tiltás kétirányú:** a tiltott fél semmit nem lát a tiltótól, és fordítva.
 4b. **Privát zóna:** a teljes nyomvonal (`activities/{id}/private/track`) és a nyers idősor **kizárólag a tulajdonosnak** olvasható — a láthatósági beállítástól függetlenül, akkor is, ha az aktivitás publikus. A `mapImagePath` képet a szerver mindig a levágott nyomvonalból generálja. Az export két különböző fájlt ad: a sajátod teljes, a másoké levágott.
 5. **Rate limit** a kommentre, jelentésre, követésre (App Check + szerveroldali számláló).

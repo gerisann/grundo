@@ -4,6 +4,7 @@ import { RivalBadge } from '@/components/RivalBadge';
 import { Button } from '@/components/ui';
 import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
 import { PhotoLightbox } from '@/components/PhotoLightbox';
+import { ActivityPhotoImage } from '@/components/ActivityPhotoImage';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { CommentSheet } from '@/components/CommentSheet';
@@ -322,7 +323,13 @@ export function ActivityScreen() {
                   aria-label={`${index + 1}. kép megnyitása`}
                   onClick={() => setPhotoIndex(index)}
                 >
-                  <img src={photo.url} alt="" loading="lazy" decoding="async" />
+                  <ActivityPhotoImage
+                    activityId={activity.id}
+                    path={photo.path}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </button>
               ))}
             </div>
@@ -465,6 +472,7 @@ export function ActivityScreen() {
 
       {photoIndex !== null ? (
         <PhotoLightbox
+          activityId={activity.id}
           photos={activity.photos}
           index={photoIndex}
           onIndexChange={setPhotoIndex}

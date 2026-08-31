@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { type DocumentReference, type Query } from 'firebase-admin/firestore';
-import { COLLECTIONS, db } from '../lib/firebase';
+import { COLLECTIONS, db, FIREBASE_STORAGE_BUCKET, storage } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { distanceM } from '../../../src/game/geo';
 import { activityTitle } from '../../../src/lib/format';
@@ -562,10 +562,8 @@ interface FeedRow {
 }
 
 export interface ActivityPhoto {
-  /** A Storage-beli útvonal — ez alapján lehet törölni. */
+  /** A Storage-beli útvonal; a képet hitelesített API-végpont szolgálja ki. */
   path: string;
-  /** Letöltési cím tokennel; ez megy az `<img src>`-be. */
-  url: string;
 }
 
 /** Idegen forrásból jövő térkép — a kulcs uid, az érték cellaszám. */
@@ -807,15 +805,56 @@ async function hasLiked(activityId: string, uid: string): Promise<boolean> {
  * Védekező: a mező régi aktivitásoknál hiányzik, és sosem szabad megbízni
  * abban, hogy a szerkezete ép — egy hibás elem miatt ne dőljön el a feed.
  */
-function parseStoredPhotos(raw: unknown): { path: string; url: string }[] {
+function parseStoredPhotos(raw: unknown): ActivityPhoto[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((item): item is { path: string; url: string } => {
-      const photo = item as { path?: unknown; url?: unknown };
-      return typeof photo?.path === 'string' && typeof photo?.url === 'string';
+    .filter((item): item is { path: string } => {
+      const photo = item as { path?: unknown };
+      return typeof photo?.path === 'string';
     })
     .slice(0, MAX_PHOTOS)
-    .map((photo) => ({ path: photo.path, url: photo.url }));
+    .map((photo) => ({ path: photo.path }));
+}
+
+/**
+ * Egy aktivitás és a hozzá tartozó közösségi műveletek közös hozzáférési kapuja.
+ *
+ * A 404 szándékos: privát vagy tiltott aktivitásnál az azonosító létezése sem
+ * publikus. Mindkét tiltási irányt az eredeti `blocks` dokumentumokból nézzük,
+ * így a jogosultság nem függ a kényelmi `blockedBy` tükör naprakészségétől.
+ */
+async function loadReadableActivity(activityId: string, viewerUid: string) {
+  const ref = db.collection(COLLECTIONS.activities).doc(activityId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+  const data = snapshot.data() as Record<string, unknown>;
+  if (data.deletedAt != null) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+  const ownerUid = String(data.userId ?? '');
+  const mine = ownerUid === viewerUid;
+  if (!ownerUid) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+
+  if (!mine) {
+    const viewer = db.collection(COLLECTIONS.users).doc(viewerUid);
+    const owner = db.collection(COLLECTIONS.users).doc(ownerUid);
+    const accessDocs = await db.getAll(
+      viewer.collection('blocks').doc(ownerUid),
+      owner.collection('blocks').doc(viewerUid),
+      viewer.collection('following').doc(ownerUid),
+    );
+    const blockedOwner = accessDocs[0]!;
+    const blockedViewer = accessDocs[1]!;
+    const followsOwner = accessDocs[2]!;
+    const visibility = String(data.visibility ?? 'only_me');
+    const visible =
+      !blockedOwner.exists &&
+      !blockedViewer.exists &&
+      (visibility === 'everyone' || (visibility === 'followers' && followsOwner.exists));
+    if (!visible) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
+  }
+
+  return { ref, snapshot, data, mine, ownerUid };
 }
 
 /**
@@ -827,23 +866,9 @@ function parseStoredPhotos(raw: unknown): { path: string; url: string }[] {
  */
 activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
   try {
-    const snapshot = await db.collection(COLLECTIONS.activities).doc(String(req.params.id)).get();
-    if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-
-    let data = snapshot.data() as Record<string, unknown>;
-    if (data.deletedAt != null) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-    const owner = String(data.userId ?? '');
-    const mine = owner === req.uid;
-
-    /**
-     * A nem látható aktivitás NEM 403, hanem 404.
-     *
-     * A 403 elárulná, hogy az azonosító létezik — egy privát aktivitás
-     * puszta létezése is információ. A „nincs ilyen" nem szivárogtat.
-     */
-    if (!mine && data.visibility !== 'everyone') {
-      throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-    }
+    const readable = await loadReadableActivity(String(req.params.id), req.uid!);
+    const { snapshot, mine, ownerUid: owner } = readable;
+    let { data } = readable;
 
     // A publikus útvonalat a szerver a privát teljes nyomból javítja. Ez
     // minden nézőnél biztonságos: a teljes nyom soha nem kerül a válaszba.
@@ -889,6 +914,58 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
           : {}),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/activities/:id/photos/:fileName — láthatóságvédett aktivitásfotó.
+ *
+ * A kliens nem kap tartós Firebase letöltési tokent. A szerver előbb ugyanazt
+ * a közösségi jogosultságot ellenőrzi, mint az aktivitás adatlapjánál, majd
+ * kizárólag a dokumentumban ténylegesen hivatkozott objektumot adja vissza.
+ */
+activitiesRouter.get('/:id/photos/:fileName', async (req: AuthedRequest, res, next) => {
+  try {
+    const activityId = String(req.params.id);
+    const fileName = String(req.params.fileName);
+    if (!/^[A-Za-z0-9._-]+$/.test(fileName)) {
+      throw notFound('photo_missing', 'Nincs ilyen kép.');
+    }
+
+    const { data, ownerUid } = await loadReadableActivity(activityId, req.uid!);
+    const path = `activities/${ownerUid}/${activityId}/${fileName}`;
+    if (!parseStoredPhotos(data.photos).some((photo) => photo.path === path)) {
+      throw notFound('photo_missing', 'Nincs ilyen kép.');
+    }
+
+    const file = storage.bucket(FIREBASE_STORAGE_BUCKET).file(path);
+    let contentType: string;
+    let contents: Buffer;
+    try {
+      // A metadata-lekérés egyben a létezést is igazolja; külön `exists()`
+      // minden megjelenített képnél egy felesleges Storage-kör lenne.
+      const [metadata] = await file.getMetadata();
+      contentType = metadata.contentType ?? '';
+      if (!contentType.startsWith('image/')) {
+        throw notFound('photo_missing', 'Nincs ilyen kép.');
+      }
+      [contents] = await file.download();
+    } catch (error) {
+      if (Number((error as { code?: unknown }).code) === 404) {
+        throw notFound('photo_missing', 'Nincs ilyen kép.');
+      }
+      throw error;
+    }
+
+    res.set({
+      'Cache-Control': 'private, max-age=300',
+      'Content-Disposition': `inline; filename="${fileName}"`,
+      'Content-Type': contentType,
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.send(contents);
   } catch (error) {
     next(error);
   }
@@ -1067,17 +1144,14 @@ function parsePhotos(raw: unknown, uid: string, activityId: string) {
 
   const prefix = `activities/${uid}/${activityId}/`;
   return raw.map((item) => {
-    const photo = item as { path?: unknown; url?: unknown };
+    const photo = item as { path?: unknown };
     const path = String(photo?.path ?? '');
-    const url = String(photo?.url ?? '');
+    const fileName = path.slice(prefix.length);
 
-    if (!path.startsWith(prefix)) {
+    if (!path.startsWith(prefix) || !/^[A-Za-z0-9._-]+$/.test(fileName)) {
       throw badRequest('invalid_photo_path', 'Ez a kép nem ehhez az aktivitáshoz tartozik.');
     }
-    if (!url.startsWith('https://')) {
-      throw badRequest('invalid_photo_url', 'Hibás képhivatkozás.');
-    }
-    return { path, url };
+    return { path };
   });
 }
 
@@ -1136,6 +1210,7 @@ activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
   try {
     const activityId = String(req.params.id);
     const uid = req.uid!;
+    await loadReadableActivity(activityId, uid);
     const result = await setLike(activityId, uid, true);
     const { ownerId, isNew, title, ...body } = result;
 
@@ -1155,6 +1230,7 @@ activitiesRouter.post('/:id/like', async (req: AuthedRequest, res, next) => {
 
 activitiesRouter.delete('/:id/like', async (req: AuthedRequest, res, next) => {
   try {
+    await loadReadableActivity(String(req.params.id), req.uid!);
     // A `title` csak az értesítéshez kellett — a válaszban nincs keresnivalója.
     const { ownerId, isNew, title, ...body } = await setLike(String(req.params.id), req.uid!, false);
     res.json(body);
@@ -1170,23 +1246,10 @@ activitiesRouter.delete('/:id/like', async (req: AuthedRequest, res, next) => {
 const MAX_COMMENT = 1000;
 const COMMENT_PAGE = 100;
 
-/** Az aktivitás, ha a kérő láthatja — különben 404. */
-async function readableActivity(activityId: string, uid: string) {
-  const ref = db.collection(COLLECTIONS.activities).doc(activityId);
-  const snapshot = await ref.get();
-  if (!snapshot.exists) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-
-  const data = snapshot.data() as { userId?: string; visibility?: string };
-  if (data.userId !== uid && data.visibility !== 'everyone') {
-    throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-  }
-  return ref;
-}
-
 /** GET /api/activities/:id/comments — időrendben, a legrégebbi elöl. */
 activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
   try {
-    const activityRef = await readableActivity(String(req.params.id), req.uid!);
+    const { ref: activityRef } = await loadReadableActivity(String(req.params.id), req.uid!);
 
     /**
      * A beszélgetés a LEGRÉGEBBIVEL kezdődik, nem a legfrissebbel.
@@ -1254,7 +1317,7 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
     }
     const replyToId = String((req.body as { replyToId?: unknown }).replyToId ?? '') || null;
 
-    const activityRef = db.collection(COLLECTIONS.activities).doc(String(req.params.id));
+    const { ref: activityRef } = await loadReadableActivity(String(req.params.id), req.uid!);
     const commentRef = activityRef.collection('comments').doc();
     const now = new Date();
 
@@ -1290,12 +1353,11 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
       const data = activity.data() as {
         userId?: string;
         visibility?: string;
+        deletedAt?: unknown;
         allowComments?: boolean;
         commentCount?: number;
       };
-      if (data.userId !== req.uid && data.visibility !== 'everyone') {
-        throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
-      }
+      if (data.deletedAt != null) throw notFound('activity_missing', 'Nincs ilyen aktivitás.');
       // A szerző kikapcsolhatja a hozzászólásokat; ez nem hiba, hanem döntés.
       if (data.allowComments === false) {
         throw forbidden('Ehhez az aktivitáshoz nem lehet hozzászólni.');

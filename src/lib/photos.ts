@@ -156,7 +156,7 @@ export async function uploadActivityPhotos(
 
     const handle = ref(storage, path);
     await uploadBytes(handle, blob, { contentType: 'image/jpeg' });
-    uploaded.push({ path, url: await getDownloadURL(handle) });
+    uploaded.push({ path });
   }
 
   return uploaded;

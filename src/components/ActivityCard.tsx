@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ActivityRivalBar } from '@/components/ActivityRivalBar';
 import { RivalBadge } from '@/components/RivalBadge';
 import { PhotoLightbox } from '@/components/PhotoLightbox';
+import { ActivityPhotoImage } from '@/components/ActivityPhotoImage';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { CommentButton, LikeButton } from '@/components/SocialActions';
 import { routeImageUrl } from '@/lib/staticMap';
@@ -238,7 +239,13 @@ export function ActivityCard({
                       setPhotoIndex(index);
                     }}
                   >
-                    <img src={photo.url} alt="" loading="lazy" decoding="async" />
+                    <ActivityPhotoImage
+                      activityId={item.id}
+                      path={photo.path}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
                     {index === 1 && morePhotoCount > 0 ? (
                       <span className="acard__split-photo-more">+{morePhotoCount}</span>
                     ) : null}
@@ -295,6 +302,7 @@ export function ActivityCard({
 
       {photoIndex !== null ? (
         <PhotoLightbox
+          activityId={item.id}
           photos={item.photos}
           index={photoIndex}
           onIndexChange={setPhotoIndex}

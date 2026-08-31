@@ -137,6 +137,47 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Hitelesített bináris válasz — az aktivitásfotók nem publikus URL-ek. */
+async function requestBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  if (!apiConfigured) {
+    throw new ApiError(0, 'api_unconfigured', 'A háttérszolgáltatás még nincs beállítva.');
+  }
+
+  const user = auth?.currentUser ?? null;
+  const token = user ? await user.getIdToken() : null;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      signal,
+      headers: {
+        Accept: 'image/*',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new ApiError(0, 'network', 'Nincs kapcsolat a szerverrel. Ellenőrizd az internetet.');
+  }
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | { code?: string; message?: string }
+      | null;
+    throw new ApiError(
+      response.status,
+      body?.code ?? 'unknown',
+      body?.message ?? 'A képet nem sikerült betölteni.',
+    );
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.startsWith('image/')) {
+    throw new ApiError(response.status, 'not_image', 'A szerver nem képet adott vissza.');
+  }
+  return response.blob();
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Típusok — a szerver által visszaadott profil (docs/05)
    ═══════════════════════════════════════════════════════════════════ */
@@ -304,10 +345,9 @@ export interface ActivityRival extends ActivityAuthor {
   others: ActivityAuthor[];
 }
 
-/** Egy feltöltött kép: a Storage-útvonal és a megjelenítéshez való cím. */
+/** Egy feltöltött kép szerver által ellenőrzött Storage-útvonala. */
 export interface ActivityPhoto {
   path: string;
-  url: string;
 }
 
 export interface ActivityComment {
@@ -1095,6 +1135,15 @@ export const api = {
 
   /** Egy aktivitás adatlapja. */
   activity: (id: string) => request<{ activity: ActivityDetail }>(`/api/activities/${id}`),
+
+  /** Láthatóságvédett aktivitásfotó bináris tartalma. */
+  activityPhoto: (id: string, path: string, signal?: AbortSignal) => {
+    const fileName = path.split('/').at(-1) ?? '';
+    return requestBlob(
+      `/api/activities/${encodeURIComponent(id)}/photos/${encodeURIComponent(fileName)}`,
+      signal,
+    );
+  },
 
   /**
    * A TELJES, levágatlan nyomvonal — csak a saját aktivitásodhoz.

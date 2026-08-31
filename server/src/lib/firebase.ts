@@ -1,6 +1,7 @@
 import { initializeApp, applicationDefault, getApps, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getStorage, type Storage } from 'firebase-admin/storage';
 
 /**
  * Dedikált Firestore adatbázis.
@@ -20,6 +21,24 @@ function currentApp(): App {
 export const adminApp: App = currentApp();
 export const auth: Auth = getAuth(adminApp);
 export const db: Firestore = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+export const storage: Storage = getStorage(adminApp);
+
+/**
+ * A Storage-bucket neve explicit konfigurációból jön élesben.
+ *
+ * A projektazonosítóból képzett érték az emulátort és a fejlesztői projekteket
+ * szolgálja; a Cloud Run telepítés a tényleges `grundo.firebasestorage.app`
+ * bucketet adja át. Így nem függünk az Admin SDK implicit alapértelmezésétől.
+ */
+export const FIREBASE_STORAGE_BUCKET =
+  process.env.FIREBASE_STORAGE_BUCKET ??
+  defaultBucket(adminApp.options.projectId ?? process.env.GOOGLE_CLOUD_PROJECT ?? 'grundo');
+
+function defaultBucket(projectId: string): string {
+  // Az új éles projektek `.firebasestorage.app`, az emulátor bevett bucketje
+  // `.appspot.com`. Élesben ezt a cloudbuild.yaml amúgy is explicit felülírja.
+  return projectId === 'grundo' ? 'grundo.firebasestorage.app' : `${projectId}.appspot.com`;
+}
 
 /** Kollekció-nevek egy helyen, hogy ne szóródjanak el elgépelve. */
 export const COLLECTIONS = {

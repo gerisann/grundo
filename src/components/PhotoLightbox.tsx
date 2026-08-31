@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { ActivityPhoto } from '@/lib/api';
+import { ActivityPhotoImage } from '@/components/ActivityPhotoImage';
 import './photoLightbox.css';
 
 /**
@@ -8,11 +9,13 @@ import './photoLightbox.css';
  * lehúzva bezárás) egy helyen legyen karbantartva.
  */
 export function PhotoLightbox({
+  activityId,
   photos,
   index,
   onIndexChange,
   onClose,
 }: {
+  activityId: string;
   photos: readonly ActivityPhoto[];
   index: number;
   onIndexChange: (index: number) => void;
@@ -220,8 +223,10 @@ export function PhotoLightbox({
         }}
         onDoubleClick={() => (scale > 1 ? resetView() : changeZoom(1))}
       >
-        <img
-          src={photo.url}
+        <ActivityPhotoImage
+          activityId={activityId}
+          path={photo.path}
+          loadImmediately
           alt={`Aktivitás képe, ${index + 1}/${photos.length}`}
           draggable={false}
         />

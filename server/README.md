@@ -159,6 +159,10 @@ környezeti változó nem tartalmazza a kliens domainjét.
 lemarad, a szerver csendben a default adatbázisba ír, és ez hetekkel később derül ki.
 A `/healthz` pont ezért adja vissza a nevet.
 
+**Az aktivitásfotók bucketje `grundo.firebasestorage.app`.** A
+`FIREBASE_STORAGE_BUCKET` értéket a backend telepítése explicit beállítja; ez
+kell a láthatóságot ellenőrző, hitelesített fotóvégponthoz.
+
 **A `roles/firebaseauth.admin` nélkül az OTP-hitelesítés elbukik** — a szerver nem
 tudja `emailVerified`-re állítani a felhasználót. A hiba a naplóban látszik, a
 felhasználó pedig csak annyit lát, hogy „Váratlan hiba".

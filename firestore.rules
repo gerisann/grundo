@@ -82,13 +82,11 @@ service cloud.firestore {
     // ── users ─────────────────────────────────────────────────────────────
 
     match /users/{uid} {
-      // Privát fiók profilját csak elfogadott követő és a tulajdonos látja.
-      allow get, list: if signedIn()
-        && !blockedBetween(request.auth.uid, uid)
-        && (isSelf(uid)
-            || isAdmin()
-            || resource.data.privacy.account == 'public'
-            || follows(request.auth.uid, uid));
+      // A fő dokumentum fiók-, egészség- és játékadatot is tartalmaz, a
+      // Firestore-szabályok pedig nem tudnak mezőszinten szűrni. Idegen profil
+      // ezért kizárólag a mezőket fehérlistázó szerver API-n keresztül jön.
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
 
       // A felhasználó SAJÁT MAGÁRÓL is csak a megjelenítési és beállítási
       // mezőket írhatja. A játékállapot (level, gpTotal, territoryM2,
@@ -106,10 +104,15 @@ service cloud.firestore {
         allow read, write: if isSelf(uid);
       }
 
-      // Közösségi gráf: a kapcsolatokat a szerver írja (számlálók miatt),
-      // a kliens csak olvassa.
-      match /following/{targetUid} { allow read: if signedIn(); allow write: if false; }
-      match /followers/{sourceUid} { allow read: if signedIn(); allow write: if false; }
+      // A közösségi gráfot idegen felhasználóról a szerver szűrt API-ja adja.
+      match /following/{targetUid} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if false;
+      }
+      match /followers/{sourceUid} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if false;
+      }
 
       // Tiltás és némítás.
       //
@@ -162,8 +165,14 @@ service cloud.firestore {
       }
       match /mutes/{targetUid}  { allow read, write: if isSelf(uid); }
 
-      match /badges/{badgeId}   { allow read: if signedIn(); allow write: if false; }
-      match /passport/{iso}     { allow read: if signedIn(); allow write: if false; }
+      match /badges/{badgeId} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if false;
+      }
+      match /passport/{iso} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if false;
+      }
     }
 
     // Felhasználónév-foglalás: csak olvasható (az egyediséget a szerver

@@ -8,6 +8,7 @@ import {
   uploadActivityPhotos,
 } from '@/lib/photos';
 import { api, apiConfigured, type ActivityPhoto } from '@/lib/api';
+import { ActivityPhotoImage } from '@/components/ActivityPhotoImage';
 import './saveActivityForm.css';
 
 /**
@@ -197,7 +198,7 @@ export function SaveActivityForm({
           <div className="save__photos">
             {keptPhotos.map((photo, index) => (
               <div key={photo.path} className="save__thumb">
-                <img src={photo.url} alt="" />
+                <ActivityPhotoImage activityId={activityId} path={photo.path} alt="" />
                 <button
                   type="button"
                   className="save__thumb-remove"
