@@ -506,7 +506,8 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       truncated = docs.length >= LOCAL_SCAN_LIMIT;
     }
 
-    res.json({ activities: await withAuthors(rows, req.uid!), truncated });
+    const authored = await withAuthors(rows, req.uid!);
+    res.json({ activities: await withLegacyPhotoUrls(authored), truncated });
   } catch (error) {
     next(error);
   }
@@ -635,12 +636,13 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     | { north: number; south: number; east: number; west: number }
     | undefined;
   const claimCounts = claimCountsOf(data);
+  const userId = String(data.userId ?? '');
   return {
     cellsGained: claimCounts.gained,
     cellsStolen: claimCounts.stolen,
     stolenFrom: parseStolenFrom(data.stolenFrom),
     id,
-    userId: String(data.userId ?? ''),
+    userId,
     type: data.type,
     layer: data.layer,
     startedAt: toMillis(data.startedAt),
@@ -653,7 +655,7 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     route: String(data.route ?? ''),
     routeHidden: data.routeHidden === true,
     title: (data.title as string | undefined) || null,
-    photos: parseStoredPhotos(data.photos),
+    photos: parseStoredPhotos(data.photos, userId, id),
     likeCount: Number(data.likeCount ?? 0),
     commentCount: Number(data.commentCount ?? 0),
     activityCells: parseCellList(data.activityCells, MAX_ACTIVITY_CELLS),
@@ -805,15 +807,68 @@ async function hasLiked(activityId: string, uid: string): Promise<boolean> {
  * Védekező: a mező régi aktivitásoknál hiányzik, és sosem szabad megbízni
  * abban, hogy a szerkezete ép — egy hibás elem miatt ne dőljön el a feed.
  */
-function parseStoredPhotos(raw: unknown): ActivityPhoto[] {
+function parseStoredPhotos(raw: unknown, ownerUid: string, activityId: string): ActivityPhoto[] {
   if (!Array.isArray(raw)) return [];
+  const prefix = `activities/${ownerUid}/${activityId}/`;
   return raw
     .filter((item): item is { path: string } => {
       const photo = item as { path?: unknown };
-      return typeof photo?.path === 'string';
+      if (typeof photo?.path !== 'string' || !photo.path.startsWith(prefix)) return false;
+      return /^[A-Za-z0-9._-]+$/.test(photo.path.slice(prefix.length));
     })
     .slice(0, MAX_PHOTOS)
     .map((photo) => ({ path: photo.path }));
+}
+
+interface LegacyActivityPhoto extends ActivityPhoto {
+  /**
+   * Átmeneti kompatibilitási mező a már telepített natív klienseknek.
+   * Rövid életű V4 Storage URL; Firestore-ba soha nem kerül vissza.
+   */
+  url: string;
+}
+
+const LEGACY_PHOTO_URL_TTL_MS = 15 * 60 * 1000;
+const LEGACY_PHOTO_URL_REFRESH_MS = 2 * 60 * 1000;
+const LEGACY_PHOTO_URL_CACHE_MAX = 1_000;
+const legacyPhotoUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+/**
+ * A régi iOS/Android build `photo.url` mezőt vár, míg az új kliens a
+ * hitelesített fotóvégpontot használja. A rövid életű, csak egyetlen objektum
+ * olvasására jogosító URL tartja életben a régi buildet anélkül, hogy a régi
+ * korlátlan Firebase download tokeneket továbbadnánk.
+ */
+async function legacyPhotoUrl(path: string, now = Date.now()): Promise<string> {
+  const cached = legacyPhotoUrlCache.get(path);
+  if (cached && cached.expiresAt - now > LEGACY_PHOTO_URL_REFRESH_MS) return cached.url;
+
+  const expiresAt = now + LEGACY_PHOTO_URL_TTL_MS;
+  const [url] = await storage.bucket(FIREBASE_STORAGE_BUCKET).file(path).getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: expiresAt,
+  });
+
+  if (legacyPhotoUrlCache.size >= LEGACY_PHOTO_URL_CACHE_MAX) {
+    const oldest = legacyPhotoUrlCache.keys().next().value as string | undefined;
+    if (oldest) legacyPhotoUrlCache.delete(oldest);
+  }
+  legacyPhotoUrlCache.set(path, { url, expiresAt });
+  return url;
+}
+
+async function withLegacyPhotoUrls<T extends { photos: ActivityPhoto[] }>(
+  items: readonly T[],
+): Promise<Array<Omit<T, 'photos'> & { photos: LegacyActivityPhoto[] }>> {
+  return Promise.all(
+    items.map(async ({ photos, ...item }) => ({
+      ...item,
+      photos: await Promise.all(
+        photos.map(async (photo) => ({ ...photo, url: await legacyPhotoUrl(photo.path) })),
+      ),
+    })),
+  );
 }
 
 /**
@@ -877,15 +932,15 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
     const summary = (data.summary ?? {}) as Record<string, unknown>;
     const author = await loadAuthor(owner);
 
-    res.json({
-      activity: {
+    const [activity] = await withLegacyPhotoUrls([
+      {
         id: snapshot.id,
         mine,
         type: data.type,
         layer: data.layer,
         title: (data.title as string | undefined) || null,
         description: (data.description as string | undefined) || null,
-        photos: parseStoredPhotos(data.photos),
+        photos: parseStoredPhotos(data.photos, owner, snapshot.id),
         likeCount: Number(data.likeCount ?? 0),
         commentCount: Number(data.commentCount ?? 0),
         activityCells: parseCellList(data.activityCells, MAX_ACTIVITY_CELLS),
@@ -913,7 +968,8 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
             }
           : {}),
       },
-    });
+    ]);
+    res.json({ activity: activity! });
   } catch (error) {
     next(error);
   }
@@ -936,7 +992,7 @@ activitiesRouter.get('/:id/photos/:fileName', async (req: AuthedRequest, res, ne
 
     const { data, ownerUid } = await loadReadableActivity(activityId, req.uid!);
     const path = `activities/${ownerUid}/${activityId}/${fileName}`;
-    if (!parseStoredPhotos(data.photos).some((photo) => photo.path === path)) {
+    if (!parseStoredPhotos(data.photos, ownerUid, activityId).some((photo) => photo.path === path)) {
       throw notFound('photo_missing', 'Nincs ilyen kép.');
     }
 

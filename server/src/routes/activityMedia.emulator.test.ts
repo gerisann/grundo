@@ -64,6 +64,7 @@ describe.skipIf(!EMULATOR)('GET /api/activities/:id/photos/:fileName', () => {
       db.collection('activities').doc(activityId).set({
         userId: 'alice',
         visibility: 'everyone',
+        startedAt: new Date(),
         photos: [{ path, url: 'https://legacy-token.example/photo.jpg' }],
       }),
       bucket.file(path).save(Buffer.from([1, 2, 3]), { contentType: 'image/jpeg' }),
@@ -78,8 +79,26 @@ describe.skipIf(!EMULATOR)('GET /api/activities/:id/photos/:fileName', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
 
     const detail = await fetch(`${base}/api/activities/${activityId}`);
-    const body = (await detail.json()) as { activity: { photos: Array<Record<string, unknown>> } };
-    expect(body.activity.photos).toEqual([{ path }]);
+    const body = (await detail.json()) as {
+      activity: { photos: Array<{ path: string; url: string }> };
+    };
+    expect(body.activity.photos).toHaveLength(1);
+    expect(body.activity.photos[0]!.path).toBe(path);
+    expect(body.activity.photos[0]!.url).toContain('X-Goog-Expires=900');
+    expect(body.activity.photos[0]!.url).not.toContain('legacy-token');
+
+    // A már telepített natív kliens ezt a mezőt közvetlenül `<img src>`-ként
+    // használja, Authorization fejléc nélkül — ezért a tényleges letöltést is
+    // ellenőrizzük, nem csak azt, hogy URL alakú sztring érkezett.
+    const legacyResponse = await fetch(body.activity.photos[0]!.url);
+    expect(legacyResponse.status).toBe(200);
+    expect(new Uint8Array(await legacyResponse.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+
+    const feed = await fetch(`${base}/api/activities?scope=world&limit=5`);
+    const feedBody = (await feed.json()) as {
+      activities: Array<{ photos: Array<{ path: string; url: string }> }>;
+    };
+    expect(feedBody.activities[0]!.photos[0]).toMatchObject({ path, url: expect.any(String) });
   });
 
   it('a csak saját aktivitás képét idegennek 404-ként rejti el', async () => {

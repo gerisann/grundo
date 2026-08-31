@@ -51,10 +51,13 @@ do {
     const raw = doc.data().photos;
     if (!Array.isArray(raw)) continue;
 
+    const ownerUid = String(doc.data().userId ?? '');
+    const prefix = `activities/${ownerUid}/${doc.id}/`;
     const normalized = raw
       .filter((item): item is { path: string } => {
         const photo = item as { path?: unknown };
-        return typeof photo?.path === 'string';
+        if (typeof photo?.path !== 'string' || !photo.path.startsWith(prefix)) return false;
+        return /^[A-Za-z0-9._-]+$/.test(photo.path.slice(prefix.length));
       })
       .slice(0, 5)
       .map((photo) => ({ path: photo.path }));

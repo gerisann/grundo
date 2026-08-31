@@ -4,8 +4,8 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A #22 biztonsági commitja pusholva; a pontos hash a menet
-> záróüzenetében van. A menet alapja `c5cc06c` (funkcionális előd: `9518aff`).
+> Ág: **`main`**. A #22 adatvédelmi és kompatibilitási commitjai pusholva; a
+> pontos HEAD a menet záróüzenetében van. A menet alapja `c5cc06c`.
 
 ## ÁLLAPOT
 
@@ -21,6 +21,7 @@ Ellenőrzések:
 - teljes emulátorkészlet: **129/129 sikeres** (Firestore + Auth + Storage);
 - frontend production build: zöld, 309 modul;
 - migráció emulátoros dry-run: zöld;
+- régi kliens aláírt URL-es letöltése: célzott emulátortesztben zöld;
 - `git diff --check`: tiszta.
 
 ## MI KÉSZÜLT EL A #22-BEN
@@ -37,7 +38,7 @@ Ellenőrzések:
 ### 2. Aktivitásfotók
 
 - A Firestore most csak `{ path }` értéket tárol; tartós Firebase letöltési
-  URL nem kerül új aktivitásba vagy API-válaszba.
+  URL nem kerül új aktivitásba.
 - Új, hitelesített backend-végpont szolgálja ki a képet. Ellenőrzi az
   aktivitás létezését, soft-delete állapotát, `everyone`/`followers`/
   `only_me` láthatóságát, a követést és a tiltást mindkét irányban.
@@ -52,6 +53,10 @@ Ellenőrzések:
 - A részlet-, kedvelés- és kommentvégpontok közös jogosultsági kaput kaptak.
   Ezzel a korábbi követői láthatóság-eltérés és az ismert azonosítóval történő
   like-megkerülés is megszűnt.
+- A már telepített iOS/Android kliens visszafelé kompatibilis marad: az API a
+  régi `photo.url` mezőben 15 percig érvényes, csak egy objektum olvasására
+  jogosító V4 aláírt URL-t ad. Ez nem kerül Firestore-ba, és nem a visszavont,
+  korlátlan Firebase download token. **Új natív build ezért nem szükséges.**
 
 ### 3. Migráció és tesztüzem
 
@@ -72,17 +77,19 @@ Ellenőrzések:
 - A régi aktivitásfotó-letöltési tokenek ezért **még érvényesek**. A Storage
   rules telepítése önmagában nem vonja vissza őket; ehhez kell a migráció.
 - Firestore-index nem változott.
-- iOS- és Android-platformkód nem változott, de a közös webes bundle igen;
-  ezért új natív build kell. Készülékes ellenőrzés még nem történt.
+- iOS- és Android-platformkód nem változott. A régi build kompatibilitását a
+  rövid életű URL biztosítja, ezért most nem kell új natív build.
+- Az éles migráció dry-runja a fejlesztői gép szándékosan read-only
+  `grundo-reader` ADC-jével 403-at kapott a Storage-listázásra. Telepítés nem
+  indult. A migrációhoz ideiglenes, utána visszavont jogosultság kell.
 
-### Kiadási sorrend — fontos kompatibilitási korlát
+### Kiadási sorrend
 
-A régi telepített web/iOS/Android kliens `photo.url` mezőt vár, az új backend
-viszont biztonsági okból már nem ad ilyet. Ezért **ne telepítsd külön, vakon**
-a backendet vagy a frontendet. A projekt jelenleg tesztcsatornás, így a helyes
-menet: új Android/iOS build előkészítése → összehangolt backend + frontend
-kiadás → szabályok → migráció dry-run → migráció apply → natív készülékes
-ellenőrzés. A migráció csak akkor fusson, amikor az új kliensek elérhetők.
+A régi natív kliensek kompatibilisek maradnak. A helyes menet a fejlesztői
+gépről: backend → frontend → szabályok → migráció dry-run → migráció apply →
+utóellenőrzés. A `grundo-reader` számára a migráció idejére bucket-szintű
+`Storage Object User` és projekt-szintű `Cloud Datastore User` kell; mindkettő
+azonnal visszavonandó a sikeres utóellenőrzés után.
 
 ## KÖVETKEZŐ MENET
 
@@ -94,6 +101,8 @@ ellenőrzés. A migráció csak akkor fusson, amikor az új kliensek elérhetők
    mérés alapján érdemes további bontást vagy betöltési stratégiát választani.
 3. Kiadás előtt törlendő a korábbi mérésből maradt
    `android.webContentsDebuggingEnabled: true` kapcsoló.
+4. A jelen kiadás folytatása előtt Geri jóváhagyása kell a két ideiglenes,
+   migráció után visszavont `grundo-reader` jogosultsághoz.
 
 ## NYITOTT KISEBB ÜGYEK
 

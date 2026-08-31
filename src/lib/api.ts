@@ -348,6 +348,8 @@ export interface ActivityRival extends ActivityAuthor {
 /** Egy feltöltött kép szerver által ellenőrzött Storage-útvonala. */
 export interface ActivityPhoto {
   path: string;
+  /** @deprecated Csak a már telepített, régi natív kliensek kompatibilitásához. */
+  url?: string;
 }
 
 export interface ActivityComment {

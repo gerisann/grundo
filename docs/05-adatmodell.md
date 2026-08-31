@@ -175,6 +175,10 @@
   végponton kapja meg, miután a backend a `grundo-db` adatbázisban ellenőrizte
   a láthatóságot, a követést és mindkét tiltási irányt. A válasz privát,
   rövid böngészőcache-t használ; letöltési token nem kerül a Firestore-ba.
+- A már telepített natív kliensek átmenetileg továbbra is kapnak `photo.url`
+  mezőt az API-válaszban. Ez nem Firebase download token, hanem 15 percig
+  érvényes V4 aláírt URL, amely kizárólag az adott objektum olvasására jogosít.
+  Az új kliens ezt figyelmen kívül hagyja és a hitelesített végpontot használja.
 - Saját feed- és profilválasznál a backend kizárólag a hitelesített tulajdonos
   válaszában, mentés nélkül felülírja a publikus route-ot a teljes privát
   nyomvonallal. Így a „saját nézet mindig teljes” szabály minden képernyőn
