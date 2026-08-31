@@ -4,8 +4,8 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A #22 adatvédelmi és kompatibilitási commitjai pusholva; a
-> pontos HEAD a menet záróüzenetében van. A menet alapja `c5cc06c`.
+> Ág: **`main`**. A #22 adatvédelmi és kompatibilitási kódja a `605736f`
+> commitból élesben fut; a handoff lezáró commitja a menet záróüzenetében van.
 
 ## ÁLLAPOT
 
@@ -22,6 +22,8 @@ Ellenőrzések:
 - frontend production build: zöld, 309 modul;
 - migráció emulátoros dry-run: zöld;
 - régi kliens aláírt URL-es letöltése: célzott emulátortesztben zöld;
+- éles backend health: **200**, adatbázis: `grundo-db`;
+- éles Hosting: **200**, a kiadott index egyezik a helyi production builddel;
 - `git diff --check`: tiszta.
 
 ## MI KÉSZÜLT EL A #22-BEN
@@ -72,24 +74,26 @@ Ellenőrzések:
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-- **Éles frontend:** továbbra is `9518aff` a korábbi #21 menetből.
-- **Backend, szabályok, migráció:** a #22 változásai **nincsenek telepítve**.
-- A régi aktivitásfotó-letöltési tokenek ezért **még érvényesek**. A Storage
-  rules telepítése önmagában nem vonja vissza őket; ehhez kell a migráció.
+- **Éles frontend és backend:** a `605736f` kódja fut.
+- **Cloud Run:** `grundo-api-00110-94c`, ez a latest ready revízió és a
+  forgalom 100%-át kapja.
+- **Firestore- és Storage-szabályok:** telepítve.
+- **Éles migráció:** 41 aktivitás átnézve, 4 régi fotórekord normalizálva,
+  9 Storage-objektum tartós Firebase download tokenje visszavonva, 0 hiba.
+  Az utóellenőrzés 0 további módosítást és 0 visszavonandó tokent talált.
 - Firestore-index nem változott.
 - iOS- és Android-platformkód nem változott. A régi build kompatibilitását a
   rövid életű URL biztosítja, ezért most nem kell új natív build.
-- Az éles migráció dry-runja a fejlesztői gép szándékosan read-only
-  `grundo-reader` ADC-jével 403-at kapott a Storage-listázásra. Telepítés nem
-  indult. A migrációhoz ideiglenes, utána visszavont jogosultság kell.
+- A migrációhoz ideiglenesen megadott bucket-szintű `Storage Object User` és
+  projekt-szintű `Cloud Datastore User` jogosultságot visszavontuk. A
+  `grundo-reader` ismét csak a korábbi `roles/datastore.viewer` szerepkörrel
+  rendelkezik, bucket-szintű szerepköre nincs.
 
 ### Kiadási sorrend
 
-A régi natív kliensek kompatibilisek maradnak. A helyes menet a fejlesztői
-gépről: backend → frontend → szabályok → migráció dry-run → migráció apply →
-utóellenőrzés. A `grundo-reader` számára a migráció idejére bucket-szintű
-`Storage Object User` és projekt-szintű `Cloud Datastore User` kell; mindkettő
-azonnal visszavonandó a sikeres utóellenőrzés után.
+A fejlesztői gépről végrehajtott backend → frontend → szabályok → migráció
+dry-run → migráció apply → utóellenőrzés menet teljesen lezárult. Natív build
+nem készült és ehhez a kompatibilis backend-kiadáshoz nem is szükséges.
 
 ## KÖVETKEZŐ MENET
 
@@ -101,8 +105,6 @@ azonnal visszavonandó a sikeres utóellenőrzés után.
    mérés alapján érdemes további bontást vagy betöltési stratégiát választani.
 3. Kiadás előtt törlendő a korábbi mérésből maradt
    `android.webContentsDebuggingEnabled: true` kapcsoló.
-4. A jelen kiadás folytatása előtt Geri jóváhagyása kell a két ideiglenes,
-   migráció után visszavont `grundo-reader` jogosultsághoz.
 
 ## NYITOTT KISEBB ÜGYEK
 
@@ -112,6 +114,10 @@ azonnal visszavonandó a sikeres utóellenőrzés után.
   végez. Ez a biztonságos alap; később valós olvasásszám és késleltetés alapján
   rövid szerveroldali engedélycache mérlegelhető, de tiltás/privacy változásnál
   a stale ablakot külön kezelni kell.
+- A frontend telepítés alatti `npm install` 10 auditjelzést írt ki (8 közepes,
+  1 magas, 1 kritikus). Ez nem akadályozta a buildet, de a következő biztonsági
+  menet elején a közvetlen/fejlesztői/tranzitív érintettséget külön fel kell
+  mérni; automatikus, breaking `--force` javítás nem történt.
 
 ## 0. MODELLJAVASLAT a folytatáshoz
 
