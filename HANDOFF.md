@@ -4,8 +4,7 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A háttér-GPS javítás commitja és pontos HEAD-je a #23 záró
-> üzenetében van.
+> Ág: **`main`**. A háttér-GPS javítás commitja: **`6da0288`**.
 
 ## ÁLLAPOT
 
@@ -59,25 +58,30 @@ handoff szerint készüléken még nem volt ellenőrizve.
 - szerver `typecheck`: zöld;
 - frontend production build: zöld, 309 modul;
 - `git diff --check`: tiszta.
+- Codemagic `GRUNDO iOS TestFlight #27`: sikeres, pontos forrás
+  `6da02885f2f339c050d87108ccf99e4e9ffc8518`, az IPA és a dSYM artifactok
+  elkészültek;
+- App Store distribution utófeldolgozás: sikeresen befejeződött.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
 - Az előző adatvédelmi kiadás változatlanul éles: backend/frontend kód
   `605736f`, Cloud Run `grundo-api-00110-94c`, szabályok és fotómigráció kész.
-- A háttér-GPS javítás **még nincs natív buildben**. Webes vagy backend
-  telepítés nem oldja meg: új iOS build kötelező, mert Swift és a natív bundle
-  közös TypeScript-része is változott.
+- A háttér-GPS javítás a **TestFlight #27** buildben van. A Codemagic
+  sikeresen átadta az App Store Connectnek; az Apple feldolgozása után jelenik
+  meg a tesztelőknek. Webes vagy backend telepítés nem szükséges.
 - A közös TypeScript versenyjavítás az Androidot is védi; Android buildet a
   következő natív mérföldkőnél kell kiadni. Az iOS 500 pontos kapacitáshiba
   Androidon nem állt fenn.
-- Helyi Windowson a `cap sync ios` a másolást elvégezte, de a Capacitor plugin
-  symlink létrehozása Windows-jogosultság miatt EPERM-et adott. Tracked fájl
-  nem változott; a Codemagic macOS-lépése futtatja és ellenőrzi teljesen.
+- Helyi Windowson a `cap sync ios` symlink létrehozása EPERM-et adott, de a
+  Codemagic macOS-környezetében a Capacitor sync, a Swift/Xcode fordítás, az
+  aláírás és az IPA-készítés is sikeres volt.
 
 ## KÖVETKEZŐ MENET
 
-1. A pusholt commitból indítandó az **iOS TestFlight Codemagic build**. Ez az
-   első valódi Swift/Xcode fordítás; ha bukik, a buildlog alapján javítani.
+1. Az Apple feldolgozása után a **TestFlight #27** buildet kell telepíteni;
+   az app Beállítások → Alkalmazás részében ellenőrizni kell a `6da0288`
+   rövid commitot.
 2. Valódi készüléken először 3 perc / 100 m lezárt képernyős smoke teszt,
    utána legalább 90 perc / 20 km bringás regressziós teszt. Ellenőrizni kell
    a folytonos nyomvonalat, a referencia-táv eltérését, a Live Activityt,
@@ -98,7 +102,6 @@ handoff szerint készüléken még nem volt ellenőrizve.
 
 ## 0. MODELLJAVASLAT a folytatáshoz
 
-A Codemagic Swift-build és a készülékes regresszió kiértékeléséhez
-**GPT-5.6 Sol, erős gondolkodási mélység** indokolt; ha a build és mindkét
-tereppróba zöld, a dokumentációs lezáráshoz elég gyorsabb modell normál
-mélységen.
+A készülékes regresszió kiértékeléséhez **GPT-5.6 Sol, erős
+gondolkodási mélység** indokolt; ha mindkét tereppróba zöld, a
+dokumentációs lezáráshoz elég gyorsabb modell normál mélységen.
