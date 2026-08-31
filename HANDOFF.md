@@ -4,7 +4,7 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. Az Android háttér-GPS javítása ezen menet commitjában van.
+> Ág: **`main`**. Az Android háttér-GPS javításának commitja: **`57f4d5a`**.
 
 ## ÁLLAPOT
 
@@ -58,7 +58,10 @@ külső megszakítás lehet; ezt valódi készüléken kell ellenőrizni.
 - Android `lintRelease`: **0 hiba**, 32 meglévő figyelmeztetés, az érintett
   GPS-fájlokra nincs új jelzés;
 - helyi `assembleRelease` + `bundleRelease`: sikeres;
-- `git diff --check`: tiszta.
+- `git diff --check`: tiszta;
+- Codemagic `GRUNDO Android Release #14`: sikeres, pontos forrás
+  `57f4d5afa0fb69781b6262d0e1adcc3f17fe8a51`, aláírt APK és AAB elkészült;
+- Google Play belső tesztsáv: **completed**, aktív verziókód **14**.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
@@ -66,9 +69,9 @@ külső megszakítás lehet; ezt valódi készüléken kell ellenőrizni.
   `605736f`, Cloud Run `grundo-api-00110-94c`, szabályok és fotómigráció kész.
 - Az iOS háttér-GPS javítás a **TestFlight #27** buildben van, forrása
   `6da0288`; a hosszú készülékes regresszió még hátravan.
-- Az Android-javítás lokálisan kész és ellenőrzött. A Codemagic
-  **GRUNDO Android Release** buildje a commit/push után indul; siker esetén az
-  AAB automatikusan a Google Play belső tesztelési sávjára kerül.
+- Az Android-javítás a **GRUNDO Android Release #14** buildben van, forrása
+  `57f4d5a`. Az aláírt AAB sikeresen felkerült a Google Play belső
+  tesztelési sávjára, ahol a kiadás `completed` állapotú.
 - Backend, frontend, Firestore-szabály vagy index telepítése ehhez nem kell.
 
 ## KÖVETKEZŐ MENET
@@ -91,6 +94,10 @@ külső megszakítás lehet; ezt valódi készüléken kell ellenőrizni.
 - A production build meglévő Mapbox chunkja 1,865 MB.
 - Az Android lint 32 meglévő figyelmeztetést jelez: főként ikon- és nem
   használt erőforrás-karbantartás; nem blokkolják ezt a kiadást.
+- A Codemagic Google Play ellenőrző parancsa jelzi, hogy a régi
+  `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` környezetinév később megszűnik; egy
+  külön üzemeltetési menetben át kell nevezni
+  `GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS`-re a Codemagic változóval együtt.
 - `emulator-5562 offline` továbbra is látszik Geri gépén, ezért helyi valódi
   készülékes vagy emulátoros Android életciklusteszt nem futott.
 
