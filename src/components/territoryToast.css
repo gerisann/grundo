@@ -27,6 +27,18 @@
 
 .tterr__card {
   position: relative;
+  /*
+    ⚠️ A FELSŐ SZÍNCSÍK LEVÁGÁSA. A csík egy pszeudoelem a kártya teljes
+    szélességében, a kártya sarka viszont 22 px-es ívvel indul — a csík
+    négy pixelnyi magasságban ezért kilógott az ívből, és mindkét oldalon
+    „leesett" a dobozról (Geri, 2026-09-01). A saját `border-radius` nem
+    elég rá: a csík íve nem ugyanaz a görbe, mint a kártyáé abban a négy
+    pixelben. Levágni kell a szülő alakjához.
+
+    A `box-shadow` ezt nem érinti (kifelé rajzol), a bezáró gomb pedig a
+    kártyán belül ül, tehát nincs mit kivágni rajta.
+  */
+  overflow: hidden;
   pointer-events: auto;
   width: min(320px, calc(100vw - 2 * var(--sp-5)));
   display: grid;
@@ -52,16 +64,23 @@
   position: absolute;
   inset: 0 0 auto;
   height: 4px;
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-  background: var(--territory-own);
+  /* Lilából magentába — ugyanaz a márkaátmenet, mint a dokk indítógombján
+     (Geri kérése, 2026-09-01). A `border-radius` elmarad: a levágást a
+     kártya `overflow: hidden`-je végzi, pontosan a saját ívén. */
+  background: linear-gradient(90deg, var(--accent), var(--accent-magenta));
 }
 
+/*
+  A MÁSIK KÉT ESET IS ÁTMENETES, de a SAJÁT színcsaládjában marad — a csík
+  dolga továbbra is az, hogy egy pillantásra megmondja, melyik történt,
+  még a cím elolvasása előtt.
+*/
 .tterr__card--stolen::before {
-  background: var(--territory-rival);
+  background: linear-gradient(90deg, var(--territory-rival), var(--accent-magenta));
 }
 
 .tterr__card--reinforced::before {
-  background: var(--success);
+  background: linear-gradient(90deg, var(--success), var(--layer-bike));
 }
 
 .tterr__close {

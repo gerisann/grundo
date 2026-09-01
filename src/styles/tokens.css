@@ -114,6 +114,10 @@
   --accent-soft:   #eee7ff;
   --accent-border: #cdb9ff;
   --accent-on:     #ffffff;   /* olvasható szöveg accent háttéren */
+  /* Az accent MÁSIK VÉGE — színátmenetek zárószíne (dokk indítógomb,
+     területszerzés-üzenet csíkja). Nem önálló hangsúlyszín: mindig az
+     `--accent`-tel párban, átmenetben szerepel. */
+  --accent-magenta: #d61f8f;
 
   --dock-bg:     #ffffff;
   --dock-border: #e6e3ea;
@@ -246,6 +250,9 @@
   --accent-soft:   #211638;
   --accent-border: #5f3ba6;
   --accent-on:     #0d0a14;
+  /* Sötét témán világosabb és telítettebb, hogy a 4 px-es csíkon is
+     magentának látsszon, ne barnás lilának. */
+  --accent-magenta: #ff2ea6;
 
   --dock-bg:     #111018;
   --dock-border: #282330;
