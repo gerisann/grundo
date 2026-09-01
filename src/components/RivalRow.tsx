@@ -4,6 +4,9 @@ import { RivalScore } from '@/components/RivalScore';
 import { useInView } from '@/hooks/useInView';
 import { cellColorHexOrNull } from '@/lib/cellColors';
 import type { ActivityAuthor, Rival } from '@/lib/api';
+// A `.conn__row` (szélesség + flex alap) innen jön — enélkül a gomb a saját
+// tartalmára zsugorodik, mert minden gyereke abszolút pozicionált.
+import './connectionsSheet.css';
 import './rivalRow.css';
 
 /**
