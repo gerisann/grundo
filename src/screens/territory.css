@@ -241,15 +241,29 @@
  * A `gap: 1px` a szülőtől jön (az adja az elválasztó vonalakat), ezért a
  * lista is ugyanígy épül, hogy a sorok közti vonal ne törjön meg.
  */
-.terr__board-list {
+/*
+  A GÖRGETŐ SÁV: a dobogó ÉS a lista együtt — Geri kérése (2026-09-01).
+  Fixen csak a fejléc és a fülsor marad felette.
+
+  Korábban a lista görgetett magában, a dobogó pedig fixen ült felette és a
+  modal magasságának a felét elvitte: a mezőnyből egyszerre négy-öt sor
+  látszott.
+*/
+.terr__board-scroll {
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-height: 0;
   overflow-y: auto;
-  /* A lista széléig érve ne a mögötte lévő térkép kezdjen mozogni. */
+  /* A sáv széléig érve ne a mögötte lévő térkép kezdjen mozogni. */
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+
+.terr__board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .terr__board-title {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui';
 import { Dock } from '@/components/Dock';
@@ -13,7 +13,7 @@ import {
 } from '@/tracking/simulationSource';
 import { TrackingEnvironmentProvider } from '@/tracking/environment';
 import { LabE2eSandbox } from './labE2eSandbox';
-import { activateLabTileBridge } from './labE2eTileBridge';
+import { activateLabTileBridge, releaseLabTileBridge } from './labE2eTileBridge';
 import { labPlaybackRate, loadLabE2eSession, type LabE2eSession } from './labE2eSession';
 
 export function LabE2eTrackingScreen() {
@@ -90,16 +90,30 @@ function LabE2eTrackingRuntime({
     [ownerColors, ownerNames, profileUid, session.playerId, session.sandboxId],
   );
 
+  const loaders = useMemo(() => ({
+    tiles: (layer: 'foot' | 'bike', view: { south: number; west: number; north: number; east: number }) =>
+      sandbox.tiles(layer, view),
+    blobs: (layer: 'foot' | 'bike', view: { south: number; west: number; north: number; east: number }) =>
+      sandbox.blobs(layer, view),
+  }), [sandbox]);
+
   /**
-   * A bridge már a GYEREK renderje előtt aktív, ezért a TrackingScreen első
-   * tile effectje sem tud production worldöt olvasni. A tokenes bridge a
-   * StrictMode próbamountját is helyesen kezeli.
+   * ⚠️ AKTIVÁLÁS RENDER KÖZBEN — szándékosan, és ezért idempotens a híd.
+   *
+   * A gyerek `TrackingScreen` első csempe-lekérésének MÁR a sandboxba kell
+   * futnia, a szülő `useEffect`-je viszont ehhez késő: a React a gyerekek
+   * hatásait futtatja előbb. Ezért az aktiválás a renderben történik.
+   *
+   * A `useEffect` KÉT dolgot csinál: leválasztáskor visszaadja a production
+   * olvasást, ÉS `StrictMode` alatt vissza is kapcsolja a hidat — ott a
+   * React a hatásokat mount → cleanup → mount sorrendben futtatja, tehát a
+   * köztes cleanup a még ÉLŐ képernyő alól venné ki a sandboxot.
    */
-  const [releaseTiles] = useState(() => activateLabTileBridge({
-    tiles: (layer, view) => sandbox.tiles(layer, view),
-    blobs: (layer, view) => sandbox.blobs(layer, view),
-  }));
-  useEffect(() => releaseTiles, [releaseTiles]);
+  activateLabTileBridge(loaders);
+  useEffect(() => {
+    activateLabTileBridge(loaders);
+    return releaseLabTileBridge;
+  }, [loaders]);
 
   const environment = useMemo(() => ({
     mode: 'lab' as const,

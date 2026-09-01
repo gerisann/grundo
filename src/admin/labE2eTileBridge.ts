@@ -21,38 +21,50 @@ export interface LabWorldLoaders {
 
 const originalTiles = api.tiles;
 const originalBlobs = api.territoryBlobs;
-const active = new Map<symbol, LabWorldLoaders>();
 
 /**
- * A production TrackingScreen változtatás nélkül használható LAB-ban.
+ * A production TrackingScreen változtatás nélkül használható LAB-ban: mount
+ * alatt a világ OLVASÁSÁT irányítjuk át a sandboxba. A feltöltést a Recorder
+ * saját sandbox uploaderének injektálása kezeli, tehát ezen a hídon
+ * semmilyen írás nem mehet keresztül.
  *
- * Mount alatt csak az OLVASÁST irányítjuk át. A feltöltést a Recorder saját
- * sandbox uploaderének injektálása kezeli, tehát ezen a bridge-en semmilyen
- * írás nem mehet keresztül.
+ * ── EGY SLOT, NEM VEREM (2026-09-01) ─────────────────────────────────────
  *
- * Tokenes stack kell React StrictMode miatt: fejlesztésben mount/unmount/remount
- * történik, és egy egyszerű „mentsd el / állítsd vissza” páros a második mount
- * alól visszatehetné az első példány függvényét.
+ * ⚠️ EZ EGY MÉRT HIBA JAVÍTÁSA. Korábban tokenes verem volt, és a hívó
+ * `useState(() => activateLabTileBridge(...))`-gel, RENDER KÖZBEN aktiválta
+ * — mert a gyerek `TrackingScreen` első csempe-lekérésének már ide kell
+ * futnia, a szülő `useEffect`-je pedig ehhez késő (a gyerekek hatásai előbb
+ * futnak).
+ *
+ * A React `StrictMode` viszont a `useState` inicializálóját KÉTSZER hívja
+ * meg: két token került a verembe, de a komponens csak az EGYIK feloldó
+ * függvényét tartotta meg. A másik örökre bent ragadt — és mivel a
+ * leválasztáskor csak a megtartottat hívtuk, az `api.tiles` és az
+ * `api.territoryBlobs` a LAB elhagyása UTÁN IS a sandboxra mutatott.
+ *
+ * Mérve (2026-09-01): a LAB-ból a `/grund`-ra navigálva a Grund képernyő a
+ * sandbox világot mutatta, és egyetlen `/api/tiles` kérés sem ment ki a
+ * hálózatra. Fejlesztői módra korlátozódik (élesben nincs kettőzött hívás),
+ * de pont a tesztelés közben téveszt meg — ott, ahol a legdrágább.
+ *
+ * A javítás nem a verem megerősítése, hanem az elhagyása: EGYSZERRE EGY LAB
+ * képernyő él, tehát az aktiválás egyszerűen FELÜLÍRJA az előzőt, a
+ * feloldás pedig mindig az EREDETI függvényeket állítja vissza. Így akárhány
+ * kettőzött aktiválás után is egyetlen feloldás elég, és nem marad árva
+ * bejegyzés.
  */
-export function activateLabTileBridge(loaders: LabWorldLoaders): () => void {
-  const token = Symbol('lab-world-loaders');
-  active.set(token, loaders);
-  installTop();
-
-  return () => {
-    active.delete(token);
-    installTop();
-  };
+export function activateLabTileBridge(loaders: LabWorldLoaders): void {
+  api.tiles = (layer, view) => loaders.tiles(layer, view);
+  api.territoryBlobs = (layer, view) => loaders.blobs(layer, view);
 }
 
-function installTop(): void {
-  const loaders = [...active.values()];
-  const top = loaders.at(-1);
-  if (!top) {
-    api.tiles = originalTiles;
-    api.territoryBlobs = originalBlobs;
-    return;
-  }
-  api.tiles = (layer, view) => top.tiles(layer, view);
-  api.territoryBlobs = (layer, view) => top.blobs(layer, view);
+/** A production olvasás visszaállítása. Többszöri hívása ártalmatlan. */
+export function releaseLabTileBridge(): void {
+  api.tiles = originalTiles;
+  api.territoryBlobs = originalBlobs;
+}
+
+/** Kizárólag tesztekhez: átirányítva van-e éppen a világ olvasása. */
+export function labTileBridgeActive(): boolean {
+  return api.tiles !== originalTiles || api.territoryBlobs !== originalBlobs;
 }

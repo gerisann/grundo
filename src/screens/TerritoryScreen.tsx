@@ -656,30 +656,37 @@ function Leaderboard({
     <div className="terr__board">
       {head}
       {tabs}
-      {podium.length > 0 ? <Podium entries={podium} meUid={meUid} /> : null}
       {/*
-        A SZÁMOZOTT LISTA KÜLÖN GÖRGET, a fejléc, a fülsor és a dobogó marad.
-        Így a felhasználó akkor is végig tudja nézni a mezőnyt, ha a dobogó
-        elvitte a képernyő felét — és mindig látja, melyik nézetben van.
+        A DOBOGÓ EGYÜTT GÖRÖG A LISTÁVAL, csak a fejléc és a fülsor marad
+        fixen — Geri kérése (2026-09-01).
+
+        Korábban a dobogó is fix volt, és a képernyő felét elvitte: a
+        listából egyszerre négy-öt sor látszott, a görgetés pedig egy szűk
+        ablakban zajlott. Így a felhasználó lefelé görgetve visszakapja a
+        teljes magasságot a mezőnynek, a fülsor viszont végig ott van —
+        mindig látszik, melyik időszakot nézi.
       */}
-      <div className="terr__board-list">
-        {entries.map((entry, index) => (
-          <button
-            type="button"
-            key={entry.uid}
-            className={`terr__board-row${entry.uid === meUid ? ' terr__board-row--me' : ''}`}
-            onClick={() => navigate(`/felhasznalo/${encodeURIComponent(entry.username)}`)}
-            aria-label={`${entry.username} profiljának megnyitása`}
-          >
-            <span className="terr__board-rank">{index + 1}.</span>
-            <Avatar url={entry.photoURL} name={entry.username} size={28} />
-            <span className="terr__board-identity">
-              <span className="terr__board-name">{entry.username}</span>
-              <RivalBadge uid={entry.uid} />
-            </span>
-            <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
-          </button>
-        ))}
+      <div className="terr__board-scroll">
+        {podium.length > 0 ? <Podium entries={podium} meUid={meUid} /> : null}
+        <div className="terr__board-list">
+          {entries.map((entry, index) => (
+            <button
+              type="button"
+              key={entry.uid}
+              className={`terr__board-row${entry.uid === meUid ? ' terr__board-row--me' : ''}`}
+              onClick={() => navigate(`/felhasznalo/${encodeURIComponent(entry.username)}`)}
+              aria-label={`${entry.username} profiljának megnyitása`}
+            >
+              <span className="terr__board-rank">{index + 1}.</span>
+              <Avatar url={entry.photoURL} name={entry.username} size={28} />
+              <span className="terr__board-identity">
+                <span className="terr__board-name">{entry.username}</span>
+                <RivalBadge uid={entry.uid} />
+              </span>
+              <span className="terr__board-area">{formatArea(entry.areaM2)}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

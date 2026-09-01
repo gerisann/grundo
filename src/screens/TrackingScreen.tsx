@@ -774,6 +774,7 @@ export function TrackingScreen() {
           onViewport={setNearbyView}
           blobs={showHexes ? nearbyBlobs?.blobs : undefined}
           ownerColors={mapOwnerColors}
+          trailColor={captureAccent}
           plainCells={cells}
         />
       ) : null}
@@ -1290,6 +1291,7 @@ const MapPane = memo(function MapPane({
   onViewport,
   blobs,
   ownerColors,
+  trailColor,
   plainCells,
 }: {
   layers: NonNullable<MapViewProps['layers']>;
@@ -1302,6 +1304,8 @@ const MapPane = memo(function MapPane({
   onViewport: NonNullable<MapViewProps['onViewport']>;
   blobs: MapViewProps['blobs'];
   ownerColors: MapViewProps['ownerColors'];
+  /** A felhasználó választott cellaszíne — a nyomvonal ebben rajzolódik. */
+  trailColor: MapViewProps['trailColor'];
   /** A Mapbox nélküli visszaesési ág (`HexMap`) cellái. */
   plainCells: string[];
 }) {
@@ -1326,6 +1330,9 @@ const MapPane = memo(function MapPane({
             blobs={blobs}
             /* Mindenki a saját választott színében látszik a térképen — ugyanaz, mint a Grundon. */
             ownerColors={ownerColors}
+            /* A saját út és a saját mezők a választott színben — ne az
+               általános szerep-lilában (Geri, 2026-09-01). */
+            trailColor={trailColor}
             fill
           />
         </Suspense>

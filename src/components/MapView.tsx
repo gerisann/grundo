@@ -34,6 +34,14 @@ export interface MapViewProps {
   blobs?: readonly { id: string; owner: string; areaM2: number; rings: [number, number][][] }[];
   /** uid → választott cellaszín kulcsa, a `/api/tiles` válaszából. */
   ownerColors?: Record<string, string>;
+  /**
+   * A NYOMVONAL színe HEXKÓDKÉNT — a felhasználó választott cellaszíne.
+   *
+   * Geri kérése (2026-09-01): rögzítés közben a saját út és a saját mezők ne
+   * az általános lila szerep-színben legyenek. Hiányában marad a
+   * `ROLE_COLOR.trail`.
+   */
+  trailColor?: string | null;
   position?: { lat: number; lng: number } | null;
   follow?: boolean;
   hideRecenter?: boolean;
@@ -62,6 +70,8 @@ export interface MapViewProps {
 const TRACK_SOURCE = 'grundo-track';
 const GHOST_SOURCE = 'grundo-ghost';
 const CELL_SOURCE = 'grundo-cells';
+/** A szabad hatszogracs KULON forrasa — lasd `addLayers` magyarazatat. */
+const GRID_SOURCE = 'grundo-grid';
 const AREA_SOURCE = 'grundo-areas';
 const BLOB_SOURCE = 'grundo-blobs';
 const CELL_DETAIL_MIN_ZOOM = 15;
@@ -150,6 +160,7 @@ export function MapView({
   layers,
   blobs,
   ownerColors,
+  trailColor = null,
   position,
   follow = true,
   hideRecenter = false,
@@ -175,12 +186,14 @@ export function MapView({
   const ghostTrackRef = useRef(ghostTrack);
   const layersRef = useRef(layers);
   const ownerColorsRef = useRef(ownerColors);
+  const trailColorRef = useRef(trailColor);
   const blobsRef = useRef(blobs);
   const fitTrackRef = useRef(fitTrack);
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
   layersRef.current = layers;
   ownerColorsRef.current = ownerColors;
+  trailColorRef.current = trailColor;
   blobsRef.current = blobs;
   fitTrackRef.current = fitTrack;
   const viewportRef = useRef(onViewport);
@@ -222,8 +235,8 @@ export function MapView({
 
     instance.on('load', () => {
       ready.current = true;
-      addLayers(instance);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, blobsRef.current);
+      addLayers(instance, trailColorRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, trailColorRef.current, blobsRef.current);
       fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
       report(instance);
     });
@@ -299,8 +312,8 @@ export function MapView({
     const instance = map.current;
     if (instance === null || !ready.current) return;
     const restore = () => {
-      addLayers(instance);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, blobsRef.current);
+      addLayers(instance, trailColorRef.current);
+      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, trailColorRef.current, blobsRef.current);
     };
     instance.once('style.load', restore);
     instance.setStyle(mapStyleFor(theme));
@@ -353,8 +366,35 @@ export function MapView({
     const instance = map.current;
     if (instance === null || !ready.current) return;
     syncAreaData(instance, layers, ownerColors);
-    syncCellData(instance, layers, ownerColors);
-  }, [layers, ownerColors]);
+    syncCellData(instance, layers, ownerColors, trailColor);
+  }, [layers, ownerColors, trailColor]);
+
+  /**
+   * A SZABAD RÁCS KÜLÖN HATÁS, KÜLÖN FÜGGŐSÉGGEL.
+   *
+   * A háttérháló csak új csempeválasznál változik, a nyomvonal viszont pár
+   * másodpercenként. A `layers` tömb minden rendernél új, a benne lévő
+   * szabad cellák tömbje viszont memoizált (`TrackingScreen` `nearbyFree`) —
+   * ezért a hatás ARRA a hivatkozásra figyel, nem a burkoló tömbre. Így egy
+   * új nyomvonal-cella nem építi újra a tizenháromezres hálót.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    if (!instance.getLayer(`${TRACK_SOURCE}-line`)) return;
+    instance.setPaintProperty(
+      `${TRACK_SOURCE}-line`,
+      'line-color',
+      trailColor ?? cssColor(ROLE_COLOR.trail),
+    );
+  }, [trailColor]);
+
+  const gridCells = layers?.find((layer) => layer.role === 'free')?.cells;
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    syncGridData(instance, layersRef.current);
+  }, [gridCells]);
 
   useEffect(() => {
     const instance = map.current;
@@ -552,7 +592,7 @@ function fitTrackOnce(
   instance.fitBounds(bounds, { padding: 48, duration: 0, maxZoom: 17 });
 }
 
-function addLayers(instance: mapboxgl.Map): void {
+function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
   /**
    * A FOLTRÉTEG MEGY LEGALULRA — szándékosan ELSŐKÉNT hozzáadva.
    *
@@ -661,6 +701,47 @@ function addLayers(instance: mapboxgl.Map): void {
     });
   }
 
+  /**
+   * A SZABAD RÁCS SAJÁT FORRÁSBAN — és ez egy MÉRT teljesítményhiba javítása.
+   *
+   * ⚠️ A szabad hatszögek (a „létezik itt rács" háttérháló) ugyanabban a
+   * GeoJSON-forrásban ültek, mint a nyomvonal és a birtokolt mezők. Mérve,
+   * rögzítés közben (2026-09-01): a forrásban **13 733 poligon** volt, ebből
+   * 13 700 a szabad rács és mindössze 13–33 a nyomvonal. Minden ÚJ
+   * nyomvonal-cellánál — vagyis pár másodpercenként — a teljes,
+   * tizenháromezres réteg újraépült és újracsempéződött.
+   *
+   * A következmény pontosan az volt, amit Geri jelzett: a nyomvonal VONALA
+   * (külön, egyelemű forrás) mindig naprakész, a hatszögek viszont
+   * lemaradnak. Ugyanabban a mérésben: az app 33 cellát tartott számon, a
+   * forrás is 33-at, a ténylegesen KIRAJZOLT viszont csak 12-t.
+   *
+   * A háttérháló ritkán változik (csak új csempeválasznál), a nyomvonal
+   * sűrűn. Külön forrásban a kettő nem rántja magával egymást.
+   */
+  if (!instance.getSource(GRID_SOURCE)) {
+    instance.addSource(GRID_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
+    instance.addLayer({
+      id: `${GRID_SOURCE}-line`,
+      type: 'line',
+      source: GRID_SOURCE,
+      minzoom: CELL_DETAIL_MIN_ZOOM,
+      paint: {
+        'line-color': cssColor(ROLE_COLOR.free),
+        'line-width': 1.2,
+        'line-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          CELL_DETAIL_MIN_ZOOM,
+          0,
+          16.5,
+          ROLE_LINE_OPACITY.free,
+        ],
+      },
+    });
+  }
+
   if (!instance.getSource(CELL_SOURCE)) {
     instance.addSource(CELL_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
     instance.addLayer({
@@ -670,7 +751,20 @@ function addLayers(instance: mapboxgl.Map): void {
       minzoom: CELL_DETAIL_MIN_ZOOM,
       paint: {
         'fill-color': ['get', 'color'],
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], CELL_DETAIL_MIN_ZOOM, 0, 16.5, 0.08],
+        /*
+          A NYOMVONAL SŰRŰBBEN TÖLT. Egy 2-5. szintű saját területen áthaladva
+          a 0,08-as egységes kitöltés gyakorlatilag eltűnt a mezők alatt —
+          nem lehetett látni, merre jártunk (Geri, 2026-09-01).
+        */
+        'fill-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          CELL_DETAIL_MIN_ZOOM,
+          0,
+          16.5,
+          ['case', ['coalesce', ['get', 'trail'], false], 0.3, 0.08],
+        ],
       },
     });
     instance.addLayer({
@@ -680,7 +774,8 @@ function addLayers(instance: mapboxgl.Map): void {
       minzoom: CELL_DETAIL_MIN_ZOOM,
       paint: {
         'line-color': ['get', 'color'],
-        'line-width': 1.2,
+        // Vastagabb körvonal a nyomvonalnak — ugyanaz az indok, mint fent.
+        'line-width': ['case', ['coalesce', ['get', 'trail'], false], 2.8, 1.2],
         'line-opacity': [
           'interpolate',
           ['linear'],
@@ -731,12 +826,32 @@ function addLayers(instance: mapboxgl.Map): void {
 
   if (!instance.getSource(TRACK_SOURCE)) {
     instance.addSource(TRACK_SOURCE, { type: 'geojson', data: emptyCollection() });
+    /**
+     * SZEGÉLY A NYOMVONAL ALATT.
+     *
+     * ⚠️ Ez teszi lehetővé, hogy a vonal a felhasználó SAJÁT színét viselje.
+     * Enélkül a saját területen áthaladva a vonal ugyanolyan színű lenne,
+     * mint alatta a birtok, és egyszerűen eltűnne benne (Geri, 2026-09-01).
+     * A világos/sötét felületszínű szegély minden területszíntől elüt, tehát
+     * az útvonal bármilyen háttéren olvasható marad.
+     */
+    instance.addLayer({
+      id: `${TRACK_SOURCE}-casing`,
+      type: 'line',
+      source: TRACK_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': cssColor('var(--bg-elevated)'),
+        'line-width': 8,
+        'line-opacity': 0.9,
+      },
+    });
     instance.addLayer({
       id: `${TRACK_SOURCE}-line`,
       type: 'line',
       source: TRACK_SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': cssColor(ROLE_COLOR.trail), 'line-width': 4 },
+      paint: { 'line-color': trailColor ?? cssColor(ROLE_COLOR.trail), 'line-width': 4 },
     });
   }
 }
@@ -747,11 +862,13 @@ function syncData(
   ghostTrack: MapViewProps['ghostTrack'],
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
+  trailColor: string | null,
   blobs: MapViewProps['blobs'],
 ): void {
   syncBlobData(instance, blobs, ownerColors);
+  syncGridData(instance, layers);
   syncAreaData(instance, layers, ownerColors);
-  syncCellData(instance, layers, ownerColors);
+  syncCellData(instance, layers, ownerColors, trailColor);
   syncTrackData(instance, track);
   syncGhostData(instance, ghostTrack);
 }
@@ -782,6 +899,32 @@ function syncBlobData(
     });
   }
 
+  source.setData({ type: 'FeatureCollection', features });
+}
+
+/**
+ * A SZABAD HATSZÖGRÁCS kirajzolása — saját, ritkán frissülő forrásba.
+ *
+ * Csak körvonal: a háló tájékozódási segéd, kitöltés nélkül (a régi 0,006-os
+ * kitöltés a gyakorlatban láthatatlan volt, viszont minden hatszöghöz egy
+ * felesleges kitöltés-geometriát jelentett).
+ */
+function syncGridData(instance: mapboxgl.Map, layers: MapViewProps['layers']): void {
+  const source = instance.getSource(GRID_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+  if (!source) return;
+
+  const features = [];
+  for (const layer of layers ?? []) {
+    if (layer.role !== 'free') continue;
+    for (const entry of layer.cells) {
+      const cell = typeof entry === 'string' ? entry : entry.cell;
+      features.push({
+        type: 'Feature' as const,
+        properties: { cell },
+        geometry: { type: 'Polygon' as const, coordinates: [closedRing(cell)] },
+      });
+    }
+  }
   source.setData({ type: 'FeatureCollection', features });
 }
 
@@ -853,20 +996,31 @@ function syncCellData(
   instance: mapboxgl.Map,
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
+  trailColor: string | null,
 ): void {
   const cellSource = instance.getSource(CELL_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (!cellSource) return;
 
   const features = [];
   for (const layer of layers ?? []) {
+    // A szabad rács a saját, ritkán frissülő forrásába megy (`syncGridData`).
+    if (layer.role === 'free') continue;
     for (const entry of layer.cells) {
       const cell = typeof entry === 'string' ? entry : entry.cell;
       const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
       const owner = typeof entry === 'string' ? '' : (entry.owner ?? '');
       const territory = isTerritoryRole(layer.role);
+      const trail = layer.role === 'trail';
+      /**
+       * A NYOMVONAL A FELHASZNÁLÓ SAJÁT SZÍNÉBEN — Geri kérése (2026-09-01):
+       * „ne a default lilát használjuk". Ha nincs választott szín, marad a
+       * szerep alapszíne.
+       */
       const color = territory
         ? areaColor(layer.role, defense, owner, ownerColors)
-        : cssColor(ROLE_COLOR[layer.role]);
+        : trail && trailColor
+          ? trailColor
+          : cssColor(ROLE_COLOR[layer.role]);
       const opacity = territory
         ? cssNumber(`--defense-alpha-${defense}`, defense === 1 ? 0 : 0.2)
         : ROLE_FILL_OPACITY[layer.role];
@@ -877,7 +1031,8 @@ function syncCellData(
           owner,
           color,
           opacity,
-          lineOpacity: ROLE_LINE_OPACITY[layer.role],
+          trail,
+          lineOpacity: trail ? 1 : ROLE_LINE_OPACITY[layer.role],
           defenseLabel: territory ? String(defense) : '',
           labelColor: defense >= 4
             ? cssColor('var(--territory-label-strong)')
