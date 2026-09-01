@@ -4,7 +4,8 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A menet induló HEAD-je **`1d57d61`** volt.
+> Ág: **`main`**. A menet induló HEAD-je **`1d57d61`** volt; jelenlegi HEAD
+> **`fb72645`**, pusholva ÉS élesítve (frontend).
 
 ## ÁLLAPOT
 
@@ -166,20 +167,72 @@ Ezek a „hol lehet még benne hiba / GPS / erőforrás" kérdésre születtek:
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-- **Ez a menet NINCS telepítve** — a kérés kifejezetten a helyi repóra és a
-  `localhost:5173` környezetre szólt.
-- Az előző kiadás változatlanul éles: frontend `41eccea`, backend/frontend kód
-  `605736f`, Cloud Run `grundo-api-00110-94c`.
+- **A teljes menet ÉLES a frontenden** — `fb72645`, https://grundo.web.app.
+  Telepítés utáni ellenőrzés: a belépő chunk neve (`index-DKADuV2G.js`)
+  megegyezik a helyi buildével, mind a hét hang kiszolgálva (`audio/mpeg`,
+  méret egyezik, a böngésző dekódolta is), az új `grundo-grid` térképforrás
+  benne van az éles `MapView` chunkban.
+- A backend NEM változott ebben a menetben, nem is települt.
+- Az előző kiadás backendje változatlanul él: kód `605736f`, Cloud Run
+  `grundo-api-00110-94c`.
 - **Az App Check/rate limit csomag (`d8de34f`) továbbra sincs telepítve** — a
   #26-ban leírt teendők változatlanul nyitottak (lásd lent).
-- Nincs adatmigráció, nincs új index. A hangfájlok statikus eszközök, a
-  frontend-telepítéssel automatikusan kimennek.
-- ⚠️ **Natív oldal**: a hangok és a felugró üzenet tisztán webes megoldás,
-  tehát `npx cap sync` után az Android/iOS WebView-ban is működnie kell — de
-  **KÉSZÜLÉKEN NEM PRÓBÁLTAM KI**. Két dolgot kell ott ellenőrizni: (1) a
-  némító kapcsoló / csengőhang-mód hatását iOS-en, (2) hogy a hangzár
+- Nincs adatmigráció, nincs új index.
+- ⚠️ **Natív oldal**: a hangok, a felugró üzenet és a térképjavítások tisztán
+  webesek, tehát `npx cap sync` után az Android/iOS WebView-ban is működniük
+  kell — de **KÉSZÜLÉKEN NEM PRÓBÁLTAM KI**. Két dolgot kell ott ellenőrizni:
+  (1) a némító kapcsoló / csengőhang-mód hatását iOS-en, (2) hogy a hangzár
   feloldása (`unlockSounds`) a WKWebView-ban is megtörténik az indítógomb
   koppintására.
+
+## 8. A menet második fele — mért hibák és javítások
+
+Ezek Geri menet közbeni visszajelzéseiből születtek, mind élőben mérve a LAB
+E2E-ben.
+
+1. **A cellahang VALÓS IDEJŰ lett.** Elsőre a hurokbezáráshoz kötöttem (ott
+   keletkezik a claim), Geri viszont kétszer is pontosított: a hang akkor
+   szóljon, amikor a futó ténylegesen RÁLÉP egy új mezőre, és azt mondja meg,
+   MIRE lépett rá. Igazolva LAB-ban: rivális területén 8× `cell-stolen`,
+   kilépve 5× `cell-captured`; saját, vegyes védelmű területen egy futáson
+   belül 32× `cell-defend` (1-4. szint) és 26× `cell-max` (5. szint).
+2. **„Grund elfoglalva!" igazolva.** Kétfázisú LAB-teszt (rivális foglal,
+   utána mi megyünk rá): `0,046 km² · 151 cella`, `43 elvéve · 108 új`,
+   piros→magenta csíkkal.
+3. **A felugró üzenet színcsíkja lelógott** a kártya 22 px-es lekerekítéséről.
+   A saját `border-radius` nem elég rá (más görbe) — a kártya `overflow:
+   hidden`-t kapott. A csík egyben lilából magentába megy át, új
+   `--accent-magenta` tokennel (világos/sötét témára külön).
+4. ⚠️ **A HATSZÖGEK LEMARADTAK a valós helyzethez képest** — Geri jelezte, és
+   ez volt a menet legnagyobb találata. A szabad hatszögrács ugyanabban a
+   GeoJSON-forrásban ült, mint a nyomvonal és a birtokolt mezők: a forrásban
+   **13 733 poligon** volt, ebből 13 700 a rács és 13–33 a nyomvonal, és
+   minden ÚJ nyomvonal-cellánál az egész újracsempéződött. A nyomvonal
+   VONALA (külön, egyelemű forrás) ezért volt mindig naprakész.
+   **Mérve előtte:** panel 33 / forrás 33 / **kirajzolt 12**.
+   **Utána:** 34 / 34 / **33**, és a cella-forrás 13 733-ról **276**-ra
+   fogyott. A rács saját, ritkán frissülő forrást kapott.
+   *(Az első hipotézisem — „a fő szál túlterhelt" — MEGDŐLT: 12 másodperc
+   alatt nulla hosszú task. A mérés mentette meg.)*
+5. **A saját út és a saját mezők a VÁLASZTOTT színben.** A nyomvonal cellái
+   vastagabb körvonalat (2,8 px) és sűrűbb kitöltést (0,3) kaptak, a
+   nyomvonal vonala alá pedig kontrasztos szegély került — enélkül azonos
+   színű saját területen a vonal beleolvadt volna a birtokba.
+6. ⚠️ **A LAB tile-bridge bent ragadt a LAB elhagyása után.** A React
+   `StrictMode` kétszer hívja meg a `useState` inicializálóját: két híd
+   regisztrálódott, de a komponens csak az EGYIK feloldóját tartotta meg.
+   Mérve: a LAB-ból a `/grund`-ra navigálva a Grund képernyő a SANDBOX
+   világot mutatta, és egyetlen `/api/tiles` kérés sem ment ki a hálózatra.
+   Fejlesztői módra korlátozódik, de pont a tesztelés közben téveszt meg. A
+   verem helyett egy-slotos, idempotens híd.
+7. **Dokk-gombok egyforma szélessége.** Mérve: 177,5 vs 153,5 px. A `flex: 1`
+   `flex-basis: 0%`-ot jelent, ami `border-box` mellett a keretdobozt
+   nullázza, és a böngésző a bélésre + keretre kerekíti fel — a különbség
+   pontosan a 24 px béléskülönbség volt. Grid `1fr auto 1fr`, kifejtett
+   `justify-items: stretch` (a `normal` alapérték `<button>`-nél `start`).
+   Utána: 165,5 = 165,5 px.
+8. **Terület-toplista**: a dobogó együtt görög a listával, fixen csak a
+   fejléc és a napi/heti/havi/mindenkori fülsor marad.
 
 ## KÖVETKEZŐ MENET
 
