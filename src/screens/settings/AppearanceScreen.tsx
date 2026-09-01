@@ -1,6 +1,8 @@
 import { useState, type CSSProperties, type PointerEvent } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { useThemeContext } from '@/hooks/ThemeProvider';
+import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
+import { updateFeedbackSettings } from '@/lib/feedbackSettings';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { db } from '@/lib/firebase';
@@ -12,7 +14,7 @@ import {
   isCellColor,
   type CellColor,
 } from '@/lib/cellColors';
-import { List, ListRow, ScreenHeader, SegmentedControl, TextField } from '@/components/ui';
+import { List, ListRow, ScreenHeader, SegmentedControl, Switch, TextField } from '@/components/ui';
 import type { AutoStrategy, ThemeMode } from '@/lib/theme';
 import './cellColor.css';
 
@@ -168,6 +170,7 @@ function CellColorSection() {
 
 export function AppearanceScreen() {
   const { theme, settings, update } = useThemeContext();
+  const feedback = useFeedbackSettings();
 
   return (
     <>
@@ -225,6 +228,29 @@ export function AppearanceScreen() {
         ) : null}
 
         <CellColorSection />
+
+        {/*
+          A TERÜLETSZERZÉS VISSZAJELZÉSE — Geri kérése (2026-09-01): a
+          „Grund megszerezve!" üzenet és a mögötte futó konfetti egyetlen
+          kapcsolón lógjon, és itt, a Megjelenés alatt legyen. A hangok
+          KÜLÖN oldalon állíthatók (Beállítások → Hangok), mert az más
+          érzékszerv és más helyzetben zavaró.
+        */}
+        <section className="stack stack--tight">
+          <div className="label">Rögzítés közben</div>
+          <List>
+            <Switch
+              label="Területszerzés-üzenet"
+              description="Felugró visszajelzés és konfetti, amikor bezársz egy kört."
+              checked={feedback.territoryPopup}
+              onChange={(territoryPopup) => updateFeedbackSettings({ territoryPopup })}
+            />
+          </List>
+          <p className="field__hint">
+            Öt másodpercig látszik, és bármikor bezárható. A hozzá tartozó hangokat a
+            Beállítások → Hangok oldalon kapcsolhatod.
+          </p>
+        </section>
 
         <section className="stack stack--tight">
           <div className="label">Jelenleg</div>

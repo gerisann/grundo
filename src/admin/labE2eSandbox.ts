@@ -3,7 +3,8 @@ import { GAMEPLAY } from '@/config/gameplay';
 import { buildActivityGeometry } from '@/game';
 import { layerOf } from '@/game/cells';
 import { distanceM } from '@/game/geo';
-import type { ActivitySummary, TilesResult } from '@/lib/api';
+import { blobsFromCells } from '@/game/territoryBlobs';
+import type { ActivitySummary, TerritoryBlobsResult, TilesResult } from '@/lib/api';
 import type { RecorderUploadInput, RecorderUploadResult } from '@/hooks/useRecorder';
 import type { CellId, CellOwnership, Layer, OwnershipMap } from '@/types';
 import { applyClaimToWorld } from './labScenarioEngine';
@@ -24,6 +25,16 @@ export interface LabE2eSandboxOptions {
   actorId: string;
   displayActorUid: string;
   ownerNames: ReadonlyMap<string, string>;
+  /**
+   * Játékos → cellaszín KULCSA (`lib/cellColors.ts`).
+   *
+   * ⚠️ EZ TESZI A LAB-OT AZONOSSÁ AZ ÉLES FELÜLETTEL. A production
+   * `/api/tiles` a saját és a rivális területeket a tulajdonos VÁLASZTOTT
+   * színével adja vissza; enélkül a sandbox minden játékost az
+   * alapértelmezett palettaszínnel rajzolt volna, és a színekre vonatkozó
+   * változtatásokat nem lehetett volna itt tesztelni.
+   */
+  ownerColors: ReadonlyMap<string, string>;
 }
 
 export class LabE2eSandbox {
@@ -107,7 +118,66 @@ export class LabE2eSandbox {
       }
     }
 
-    return { layer, cells, blocks, owners, ...(partial ? { partial: true } : {}) };
+    const ownerColors: Record<string, string> = {};
+    for (const displayOwner of Object.keys(owners)) {
+      const color = this.options.ownerColors.get(displayOwner);
+      if (color) ownerColors[displayOwner] = color;
+    }
+
+    return { layer, cells, blocks, owners, ownerColors, ...(partial ? { partial: true } : {}) };
+  }
+
+  /**
+   * A TERÜLETFOLTOK a sandbox világból.
+   *
+   * ⚠️ MIÉRT KELL EZ EGYÁLTALÁN? Mert enélkül a LAB E2E képernyő a
+   * `TrackingScreen`-en át a VALÓDI `/api/tiles/blobs` végpontot hívta: a
+   * tile-bridge (`labE2eTileBridge.ts`) csak a cellákat irányította át, a
+   * foltokat nem. A sandbox térképére így az éles világ birtokviszonya
+   * rajzolódott rá — ugyanazon a helyen, ugyanabban a rétegben, mint a
+   * sandbox saját cellái.
+   *
+   * A foltokat a MÁR KISZÁMOLT nézetbeli cellákból építjük, tulajdonosonként.
+   * A LAB világ kicsi, ezért ez olcsó, és pontosan azt mutatja, amit a
+   * cellaréteg — nincs két, egymásnak ellentmondó igazság a képernyőn.
+   */
+  async blobs(
+    layer: Layer,
+    view: { south: number; west: number; north: number; east: number },
+  ): Promise<TerritoryBlobsResult> {
+    const tiles = await this.tiles(layer, view);
+
+    const byOwner = new Map<string, CellId[]>();
+    for (const cell of tiles.cells) {
+      const cells = byOwner.get(cell.owner);
+      if (cells) cells.push(cell.cell);
+      else byOwner.set(cell.owner, [cell.cell]);
+    }
+
+    const blobs: TerritoryBlobsResult['blobs'] = [];
+    for (const [owner, cells] of byOwner) {
+      for (const blob of blobsFromCells(cells)) {
+        blobs.push({
+          // A folt azonosítója a komponensé; tulajdonossal előtagolva
+          // sosem ütközik két játékos szomszédos foltja.
+          id: `${owner}:${blob.id}`,
+          owner,
+          areaM2: blob.areaM2,
+          cellCount: blob.cellCount,
+          rings: blob.rings,
+        });
+      }
+    }
+
+    return {
+      layer,
+      blobs,
+      owners: tiles.owners,
+      ...(tiles.ownerColors ? { ownerColors: tiles.ownerColors } : {}),
+      // A LAB-ban minden folt látszik: itt a nézet nem több százezer
+      // felhasználó adata, hanem egy szándékosan kicsi próbavilág.
+      minAreaM2: 0,
+    };
   }
 
   private persist(): void {

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui';
 import { Dock } from '@/components/Dock';
 import { RecorderProvider, useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
+import { DEFAULT_CELL_COLOR, FREE_CELL_COLOR_KEYS, isCellColor } from '@/lib/cellColors';
 import { TrackingScreen } from '@/screens/TrackingScreen';
 import { memoryStore } from '@/tracking/storage';
 import {
@@ -18,14 +19,35 @@ import { labPlaybackRate, loadLabE2eSession, type LabE2eSession } from './labE2e
 export function LabE2eTrackingScreen() {
   const { sessionId = '' } = useParams();
   const session = useMemo(() => loadLabE2eSession(sessionId), [sessionId]);
-  const profileUid = useProfile().profile?.uid ?? 'lab-admin';
+  const profile = useProfile().profile;
+  const profileUid = profile?.uid ?? 'lab-admin';
+  /**
+   * A SAJÁT, VALÓDI cellaszín a LAB-ban is — így a sandbox pontosan azt a
+   * színt mutatja, amit az éles térkép mutatna ugyanennek a felhasználónak.
+   */
+  const myColor = isCellColor(profile?.cellColor) ? profile.cellColor : DEFAULT_CELL_COLOR;
 
   if (!session) return <Navigate to="/admin/lab/e2e" replace />;
 
-  return <LabE2eTrackingRuntime key={session.id} session={session} profileUid={profileUid} />;
+  return (
+    <LabE2eTrackingRuntime
+      key={session.id}
+      session={session}
+      profileUid={profileUid}
+      myColor={myColor}
+    />
+  );
 }
 
-function LabE2eTrackingRuntime({ session, profileUid }: { session: LabE2eSession; profileUid: string }) {
+function LabE2eTrackingRuntime({
+  session,
+  profileUid,
+  myColor,
+}: {
+  session: LabE2eSession;
+  profileUid: string;
+  myColor: string;
+}) {
   const generated = useMemo(
     () => generateGpsActivity(session.route, { ...session.config, startAt: Date.now() }),
     [session],
@@ -39,14 +61,33 @@ function LabE2eTrackingRuntime({ session, profileUid }: { session: LabE2eSession
     () => new Map(session.players.map((player) => [player.id, player.name])),
     [session.players],
   );
+  /**
+   * A LAB játékosainak színe: a SAJÁT a profilból, a többieké a szabad
+   * palettából, determinisztikusan szétosztva. Determinisztikus, hogy két
+   * futás között ne cserélődjenek meg a színek — akkor a képernyőfotós
+   * összehasonlítás értelmét vesztené.
+   */
+  const ownerColors = useMemo(() => {
+    const colors = new Map<string, string>([[profileUid, myColor]]);
+    let index = 0;
+    for (const player of session.players) {
+      if (player.id === session.playerId) continue;
+      const key = FREE_CELL_COLOR_KEYS[index % FREE_CELL_COLOR_KEYS.length]!;
+      colors.set(player.id, key === myColor ? FREE_CELL_COLOR_KEYS[(index + 1) % FREE_CELL_COLOR_KEYS.length]! : key);
+      index += 1;
+    }
+    return colors;
+  }, [myColor, profileUid, session.playerId, session.players]);
+
   const sandbox = useMemo(
     () => new LabE2eSandbox({
       id: session.sandboxId,
       actorId: session.playerId,
       displayActorUid: profileUid,
       ownerNames,
+      ownerColors,
     }),
-    [ownerNames, profileUid, session.playerId, session.sandboxId],
+    [ownerColors, ownerNames, profileUid, session.playerId, session.sandboxId],
   );
 
   /**
@@ -54,7 +95,10 @@ function LabE2eTrackingRuntime({ session, profileUid }: { session: LabE2eSession
    * tile effectje sem tud production worldöt olvasni. A tokenes bridge a
    * StrictMode próbamountját is helyesen kezeli.
    */
-  const [releaseTiles] = useState(() => activateLabTileBridge((layer, view) => sandbox.tiles(layer, view)));
+  const [releaseTiles] = useState(() => activateLabTileBridge({
+    tiles: (layer, view) => sandbox.tiles(layer, view),
+    blobs: (layer, view) => sandbox.blobs(layer, view),
+  }));
   useEffect(() => releaseTiles, [releaseTiles]);
 
   const environment = useMemo(() => ({

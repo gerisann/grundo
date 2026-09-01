@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
+import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
 import { buildInfo } from '@/lib/buildInfo';
 import { Button, List, ListRow, ScreenHeader } from '@/components/ui';
 
@@ -24,6 +25,7 @@ export function SettingsScreen() {
   const { settings } = useThemeContext();
   const { user, role, signOut, status } = useAuth();
   const { finishGesture } = useRecorderContext();
+  const feedback = useFeedbackSettings();
 
   return (
     <>
@@ -38,6 +40,12 @@ export function SettingsScreen() {
               description="Világos vagy sötét téma, automatikus váltás"
               value={MODE_LABEL[settings.mode] ?? ''}
               onClick={() => navigate('/beallitasok/megjelenes')}
+            />
+            <ListRow
+              label="Hangok"
+              description="Rögzítés közbeni hangeffektek és hangerő"
+              value={feedback.soundEnabled ? 'Be' : 'Ki'}
+              onClick={() => navigate('/beallitasok/hangok')}
             />
             <ListRow
               label="Mértékegységek"

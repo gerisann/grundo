@@ -1,0 +1,77 @@
+/*
+ * Beállítások → Hangok.
+ *
+ * Két saját elem van csak: a hangerő-csúszka sora és a meghallgatás-gombok
+ * rácsa. Minden más a `ui.css` alapkészletéből jön.
+ */
+
+.sounds__volume {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+
+.sounds__volume input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.sounds__volume input[type='range']:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.sounds__volume-value {
+  min-width: 44px;
+  text-align: right;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.sounds__previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.sounds__preview {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 7px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.sounds__preview:hover {
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+.sounds__preview:active {
+  background: var(--accent-soft);
+}
+
+.sounds__preview-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-size: 9px;
+  /* Az „▶" glifa optikailag balra ül a saját dobozában. */
+  padding-left: 1px;
+}

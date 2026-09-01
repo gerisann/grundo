@@ -10,6 +10,12 @@ import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { useClaimProgress } from '@/hooks/useClaimProgress';
+import { useCaptureFeedback } from '@/hooks/useCaptureFeedback';
+import { useCellStepSound } from '@/hooks/useCellStepSound';
+import { TerritoryToast } from '@/components/TerritoryToast';
+import { EMPTY_CAPTURE_SNAPSHOT, type CaptureCell, type CaptureSnapshot } from '@/lib/captureEvents';
+import { cellColorHexOrNull } from '@/lib/cellColors';
+import { primeSounds } from '@/lib/sound';
 import type { RecorderApi } from '@/hooks/useRecorder';
 import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
@@ -44,6 +50,29 @@ const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
 
 /**
+ * Egy előnézeti mező úgy, ahogy a `MapView` várja.
+ *
+ * Az `owner` NEM elhagyható: abból derül ki a térképnek, hogy a felhasználó
+ * választott cellaszínével rajzolja, ne a szerep alapszínével.
+ */
+interface PreviewCell {
+  cell: string;
+  defense: number;
+  owner: string;
+  preview: true;
+}
+
+interface PreviewResult {
+  path: string[];
+  claimable: string[];
+  own: PreviewCell[];
+  stolen: PreviewCell[];
+  gp: number;
+  /** A foglalás-visszajelzés bemenete — lásd `lib/captureEvents.ts`. */
+  snapshot: CaptureSnapshot;
+}
+
+/**
  * Rögzítés.
  *
  * A térkép a HÁTTÉR, minden más fölötte lebeg — rögzítés közben a felhasználó
@@ -56,7 +85,19 @@ const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
  */
 export function TrackingScreen() {
   const recorder = useRecorderContext();
-  const profileUid = useProfile().profile?.uid ?? '';
+  const profile = useProfile().profile;
+  const profileUid = profile?.uid ?? '';
+  /**
+   * A SAJÁT cellaszín KULCSA — a rögzítés képernyő területszíneihez.
+   *
+   * A `/api/tiles` `ownerColors` táblája csak azokat a felhasználókat
+   * tartalmazza, akiknek a látott szakaszon VAN cellájuk. A saját, épp most
+   * foglalt előnézeti mezőim viszont még sehol nem szerepelnek — ezért a
+   * saját színt külön adjuk hozzá (lásd `mapOwnerColors`). Enélkül a frissen
+   * elfoglalt terület az általános szerep-lilában jelenne meg, nem abban a
+   * színben, amit a felhasználó a Megjelenés alatt választott.
+   */
+  const myCellColor = profile?.cellColor;
   const { state } = recorder;
   const {
     pendingType: type,
@@ -212,9 +253,16 @@ export function TrackingScreen() {
    * eredmény továbbra is szerveroldali, de így menet közben már külön látszik
    * az új, az elrabolt és a megerősített mező, a várható védelmi szinttel.
    */
-  const preview = useMemo(() => {
+  const preview = useMemo<PreviewResult>(() => {
     if (displayPoints.length < 2) {
-      return { path: [] as string[], claimable: [] as string[], own: [], stolen: [], gp: 0 };
+      return {
+        path: [],
+        claimable: [],
+        own: [],
+        stolen: [],
+        gp: 0,
+        snapshot: EMPTY_CAPTURE_SNAPSHOT,
+      };
     }
     if (geometrySession.current !== geometrySessionKey) {
       geometryCache.current.reset();
@@ -252,21 +300,57 @@ export function TrackingScreen() {
         },
         geometry,
       );
-      const own: { cell: string; defense: number; preview: true }[] = [];
-      const stolen: { cell: string; defense: number; preview: true }[] = [];
+      const own: PreviewCell[] = [];
+      const stolen: PreviewCell[] = [];
       const claimable: string[] = [];
+      /**
+       * A cellánkénti pillanatkép a foglalás-visszajelzéshez
+       * (`lib/captureEvents.ts`). UGYANEBBŐL a ciklusból épül, mert pontosan
+       * ugyanaz az adat kell hozzá — egy külön bejárás csak a lista kétszeri
+       * végigolvasását jelentené minden új cellánál.
+       */
+      const snapshotCells = new Map<string, CaptureCell>();
       for (const [cell, fate] of result.claim?.fates ?? []) {
+        const defense = result.claim?.updates.get(cell)?.defense ?? 1;
+        snapshotCells.set(cell, { fate, defense });
         if (fate === 'breakthrough') continue;
-        const item = { cell, defense: result.claim?.updates.get(cell)?.defense ?? 1, preview: true as const };
+        /**
+         * `owner` A SAJÁT UID — enélkül a `MapView` `areaColor()`-a a
+         * szerep-alapú alapszínre esne vissza, és az élő előnézet mezői más
+         * színűek lennének, mint ugyanezek a mezők a mentés után. Geri kérése
+         * (2026-09-01): rögzítés közben is a választott saját szín látszódjon.
+         */
+        const item = { cell, defense, owner: profileUid, preview: true as const };
         (fate === 'stolen' ? stolen : own).push(item);
         claimable.push(cell);
       }
-      return { path: cellPath, claimable, own, stolen, gp: result.gp.total };
+      return {
+        path: cellPath,
+        claimable,
+        own,
+        stolen,
+        gp: result.gp.total,
+        snapshot: {
+          loopCount: geometry.loops.length,
+          cells: snapshotCells,
+          /* A motor ÖSSZESÍTÉSE, nem a cellatérkép mérete — nagy, tömör
+             huroknál a kettő szándékosan eltér (lásd `captureEvents.ts`). */
+          gainedCells: (result.claim?.counts.free ?? 0) + (result.claim?.counts.stolen ?? 0),
+          gainedAreaM2: result.claim?.gainedM2 ?? 0,
+        },
+      };
     } catch {
       // A motor túl nagy hurokra kivételt dob (GPS-ugrás). A nyom attól még
       // rajzolható — az előnézet hiánya nem indok arra, hogy a térkép is
       // kiessen.
-      return { path: cellPath, claimable: [] as string[], own: [], stolen: [], gp: 0 };
+      return {
+        path: cellPath,
+        claimable: [],
+        own: [],
+        stolen: [],
+        gp: 0,
+        snapshot: EMPTY_CAPTURE_SNAPSHOT,
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellRevision, distanceBucket, state.status, geometrySessionKey, displayType, nearby, profileUid]);
@@ -351,11 +435,25 @@ export function TrackingScreen() {
       .tiles(layer, box)
       .then((result) => {
         if (!alive) return;
-        nearbyCache.current.set(key, result);
+        rememberTiles(nearbyCache.current, key, result);
         setNearby(result);
       })
-      // Hálózati hiba alatt a legutolsó ismert pillanatkép marad látható.
-      .catch(() => undefined);
+      .catch(() => {
+        /**
+         * ⚠️ HÁLÓZATI HIBA UTÁN ÚJRA LEHESSEN PRÓBÁLNI.
+         *
+         * A `requestedBox` a KÉRÉS ELINDÍTÁSAKOR áll be — ez szándékos, így
+         * nem indul két kérés ugyanarra a dobozra. Hiba esetén viszont bent
+         * ragadt, és amíg a kamera ki nem mozdult a padded dobozból, SOHA
+         * nem próbáltuk újra: egy alagútban elvesztett kérés után a birtok-
+         * viszony a képernyőn befagyott. A jelzőt visszaállítjuk az előzőre,
+         * a látható pillanatkép viszont marad — jobb egy kicsit régi térkép,
+         * mint egy üres.
+         */
+        if (requestedBox.current?.south === box.south && requestedBox.current.layer === layer) {
+          requestedBox.current = previous;
+        }
+      });
 
     /**
      * A TERÜLETFOLTOK — ugyanaz a réteg, mint a Grundon.
@@ -410,6 +508,62 @@ export function TrackingScreen() {
    * vannak. Ilyenkor mindhármat elrejtjük.
    */
   const savePanelOpen = done && countsAsActivity && recorder.upload.status === 'done';
+
+  /**
+   * A HANGFÁJLOK letöltése MÁR A KÉPERNYŐ MEGNYITÁSAKOR.
+   *
+   * A visszaszámlálás első sípja nulla késleltetéssel jön a gombnyomás után;
+   * ha az `<audio>` elem ekkor kezdene tölteni, a hang lekésné a saját
+   * számát. Ez a hívás csak elemeket hoz létre `preload="auto"`-val — a
+   * letöltés ütemét a böngésző dönti el, és a kapcsolót nem nézi, mert a
+   * felhasználó menet közben is bekapcsolhatja a hangot.
+   */
+  useEffect(() => {
+    primeSounds();
+  }, []);
+
+  /**
+   * A FOGLALÁS-VISSZAJELZÉS — „Grund megszerezve!" + hang + konfetti.
+   *
+   * Csak FUTÓ mérésnél: befejezés után a mentés-panel a képernyő, egy
+   * felugró üzenet ott csak takarna. A `geometrySessionKey` a rögzítés
+   * azonossága — váltásakor a hook némán újrahangolja magát, hogy egy
+   * visszaállított futás régi hurkai ne robbanjanak be egyszerre.
+   */
+  const capture = useCaptureFeedback(
+    preview.snapshot,
+    geometrySessionKey,
+    running || remoteState?.status === 'recording',
+  );
+  const captureAccent = cellColorHexOrNull(myCellColor);
+
+  /**
+   * A KÖRNYÉK BIRTOKVISZONYA CELLÁNKÉNT — a valós idejű lépéshanghoz.
+   *
+   * Ugyanaz a `/api/tiles` válasz, amiből a térkép is dolgozik; itt csak
+   * keresésre alkalmas alakban. Külön `useMemo`, hogy a másodperces
+   * stopper-render ne építse újra minden képkockán.
+   */
+  const nearbyOwnership = useMemo(() => {
+    const map = new Map<string, { owner: string; defense: number }>();
+    for (const cell of nearby?.cells ?? []) map.set(cell.cell, { owner: cell.owner, defense: cell.defense });
+    return map;
+  }, [nearby]);
+
+  /**
+   * KOPPANÁS MINDEN ÚJ MEZŐN — Geri kérése (2026-09-01).
+   *
+   * A `cellPath`-ra megy, nem a `trailCells`-re: az utóbbi az élő GPS-fix
+   * celláját is tartalmazza, ami egy cellahatáron oda-vissza billeghet, és
+   * ugyanaz a mező többször szólalna meg. A `cellPath` monoton nő.
+   */
+  useCellStepSound(
+    cellPath,
+    nearbyOwnership,
+    profileUid,
+    geometrySessionKey,
+    running || remoteState?.status === 'recording',
+  );
 
   /**
    * A környék teljes birtokképe ugyanazzal a szintadattal ÉS tulajdonossal,
@@ -516,8 +670,15 @@ export function TrackingScreen() {
    * lefutott (GRUNDO #21 energiaelemzés, B3).
    */
   const mapOwnerColors = useMemo(
-    () => ({ ...nearbyBlobs?.ownerColors, ...nearby?.ownerColors }),
-    [nearbyBlobs?.ownerColors, nearby?.ownerColors],
+    () => ({
+      ...nearbyBlobs?.ownerColors,
+      ...nearby?.ownerColors,
+      /* A SAJÁT SZÍN LEGYEN AZ UTOLSÓ SZÓ. A profil frissebb, mint a
+         `/api/tiles` legutóbbi válasza: aki most állította át a színét a
+         Megjelenés alatt, azonnal abban lássa a saját területét. */
+      ...(profileUid && myCellColor ? { [profileUid]: myCellColor } : {}),
+    }),
+    [nearbyBlobs?.ownerColors, nearby?.ownerColors, profileUid, myCellColor],
   );
 
   const lastPoint = displayPoints.length > 0 ? displayPoints[displayPoints.length - 1]! : null;
@@ -839,6 +1000,21 @@ export function TrackingScreen() {
           onClose={() => setSavedRoutesOpen(false)}
         />
       ) : null}
+
+      {/*
+        A TERÜLETSZERZÉS VISSZAJELZÉSE — portálban, a `body`-ban (lásd
+        `TerritoryToast.tsx`). Öt másodperc után magától eltűnik, addig a ✕-szel
+        bezárható. A kapcsolót a hook nézi (Beállítások → Megjelenés), ide már
+        csak akkor jut el esemény, ha a felhasználó kérte.
+      */}
+      {capture.event !== null && capture.kind !== null ? (
+        <TerritoryToast
+          event={capture.event}
+          kind={capture.kind}
+          onClose={capture.dismiss}
+          accentColor={captureAccent}
+        />
+      ) : null}
     </div>
   );
 }
@@ -910,6 +1086,33 @@ function SavingPanel({ activityId }: { activityId: string | null }) {
       )}
     </div>
   );
+}
+
+/**
+ * A csempe-gyorsítótár FELSŐ KORLÁTJA.
+ *
+ * ⚠️ Ez memóriaszivárgás javítása. A kulcs a lekért doboz koordinátája,
+ * tehát mozgás közben MINDEN új nézetdoboz új bejegyzést hozott létre — és
+ * egy bejegyzés több ezer cellát tartalmazhat. Egy kétórás bringázás alatt a
+ * térkép több száz dobozt kér le, amiket a Map a rögzítés végéig megtartott.
+ * Pont a hosszú aktivitásokon nőtt tehát a memóriahasználat, ahol a WebView
+ * amúgy is a legszűkösebb — iOS-en ez WebContent-újraindulást is okozhat.
+ *
+ * Húsz bejegyzés bőven fedi a mozgás közbeni oda-vissza pásztázást (a
+ * padded doboz miatt egy bejegyzés fél képernyőnyi tartalékot is visz).
+ */
+const NEARBY_CACHE_LIMIT = 20;
+
+/** Beszúrás a legrégebbi bejegyzés kiszórásával (a `Map` sorrendtartó). */
+function rememberTiles(cache: Map<string, TilesResult>, key: string, value: TilesResult): void {
+  // Újra használt kulcs a lista végére kerül, tehát nem esik ki elsőként.
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > NEARBY_CACHE_LIMIT) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
 }
 
 function readFlag(key: string): string | null {

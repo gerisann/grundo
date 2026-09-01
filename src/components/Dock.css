@@ -93,10 +93,31 @@
   padding: var(--sp-2) var(--sp-3);
 }
 
+/*
+  RÁCS, NEM FLEX — és ez egy MÉRT hiba javítása (Geri, 2026-09-01).
+
+  Flexben mindkét oldalsó gomb `flex: 1`-et kapott, ami `flex-basis: 0%`-ot
+  jelent. `box-sizing: border-box` mellett viszont a 0%-os alap a KERETDOBOZT
+  nullázza, amit a böngésző a bélésre + keretre kerekít fel: az „Új kör"
+  gombnak `padding: 0 12px` van, a húzásos „Befejezés" sávnak nulla (a
+  tartalma abszolút pozicionált). A két alap tehát 26 és 2 pixel volt, és a
+  maradék helyet ehhez ADTA hozzá a flex — mérve 177,5 vs 153,5 px, pontosan
+  a 24 pixeles béléskülönbség.
+
+  Rácsban az `1fr` a SÁV szélességét osztja el, nem a maradékot a különböző
+  alapokhoz adja, ezért a két oldal bélésfüggetlenül egyforma marad.
+*/
 .dock--controls .dock__center {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
+  /*
+    KIFEJTVE, nem az alapértelmezésre bízva. A `justify-items` alapértéke
+    (`normal`) blokkdobozoknál nyújtást jelent — de a `<button>` és a
+    formvezérlők ez alól kivételek, ott `start`-ként viselkedik. Mérve:
+    e nélkül az „Új kör" 63,7 px lett egy 165,5 px-es oszlopban.
+  */
+  justify-items: stretch;
   gap: var(--sp-2);
   width: 100%;
 }

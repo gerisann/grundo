@@ -70,7 +70,25 @@ export class NativePositionSource implements PositionSource {
   private drainPromise: Promise<void> | null = null;
   private awaitingForegroundDrain = false;
   private bufferedLocations: NativeLocation[] = [];
-  private deliveredTimestamps = new Set<number>();
+  /**
+   * KÉTGENERÁCIÓS, KORLÁTOS duplikátumszűrő.
+   *
+   * ⚠️ Ez memóriaszivárgás javítása. Korábban egyetlen, sosem ürülő halmaz
+   * gyűjtötte az aktivitás MINDEN időbélyegét — egy kétórás bringázás után
+   * több tízezer bejegyzés, kizárólag azért, hogy egy másodperces
+   * drain/esemény versenyt lekezeljünk.
+   *
+   * A duplikátum kizárólag az ébredéskori drain és az élő esemény
+   * ÁTFEDÉSÉBŐL keletkezhet, ami másodperces nagyságrend. Két generáció
+   * (`recent` + `older`) tehát bőven fedi: amint a friss halmaz megtelik,
+   * lecsúszik az öregbe, és onnan esik ki. A védelem így legalább
+   * `DEDUP_WINDOW`, legfeljebb `2 × DEDUP_WINDOW` mintányi múltra érvényes.
+   *
+   * A második védelmi vonal amúgy is megvan: a `recorder.evaluate()` az
+   * azonos időbélyegű mintát `not_newer` okkal elutasítja.
+   */
+  private recentTimestamps = new Set<number>();
+  private olderTimestamps = new Set<number>();
 
   async start(
     handlers: PositionHandlers,
@@ -127,7 +145,8 @@ export class NativePositionSource implements PositionSource {
     await BackgroundLocation.stop().catch(() => undefined);
     this.awaitingForegroundDrain = false;
     this.bufferedLocations = [];
-    this.deliveredTimestamps.clear();
+    this.recentTimestamps.clear();
+    this.olderTimestamps.clear();
   }
 
   async detach(): Promise<void> {
@@ -170,11 +189,30 @@ export class NativePositionSource implements PositionSource {
   }
 
   private deliver(location: NativeLocation): void {
-    if (this.handlers === null || this.deliveredTimestamps.has(location.t)) return;
-    this.deliveredTimestamps.add(location.t);
+    if (this.handlers === null || this.alreadyDelivered(location.t)) return;
+    this.remember(location.t);
     this.handlers.onSample(location);
   }
+
+  private alreadyDelivered(t: number): boolean {
+    return this.recentTimestamps.has(t) || this.olderTimestamps.has(t);
+  }
+
+  private remember(t: number): void {
+    this.recentTimestamps.add(t);
+    if (this.recentTimestamps.size < DEDUP_WINDOW) return;
+    this.olderTimestamps = this.recentTimestamps;
+    this.recentTimestamps = new Set();
+  }
 }
+
+/**
+ * Ennyi minta után csúszik generációt a duplikátumszűrő.
+ *
+ * 600 minta ~10 perc 1 Hz-en — nagyságrendekkel több, mint amennyi drain/
+ * esemény átfedés valaha keletkezhet, és mégis állandó memóriahasználat.
+ */
+const DEDUP_WINDOW = 600;
 
 function toTrackingError(error: unknown): TrackingError {
   const code = typeof error === 'object' && error !== null && 'code' in error

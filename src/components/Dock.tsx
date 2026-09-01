@@ -5,6 +5,7 @@ import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useTrackingEnvironment } from '@/tracking/environment';
 import { HoldFinishButton, SwipeFinishButton } from '@/components/FinishGestureButtons';
 import { GAMEPLAY } from '@/config/gameplay';
+import { playSound, unlockSounds } from '@/lib/sound';
 import './Dock.css';
 
 /**
@@ -79,10 +80,19 @@ export function Dock() {
     if (countdown === null) return;
     if (countdown <= 0) {
       setCountdown(null);
+      // A „RAJT!" hangja a felirattal EGYSZERRE — Geri kérése (2026-09-01).
+      playSound('count-down-start');
       if (pendingType) void begin(pendingType);
       setShowRajt(true);
       return;
     }
+    /*
+      A síp a SZÁM MEGJELENÉSEKOR szól, nem az időzítő lejártakor: a hatás
+      minden új értékre újrafut (3 → 2 → 1), tehát pontosan háromszor. A
+      hangzár feloldása a gombnyomásnál megtörtént (`primaryAction`), így az
+      első síp sem esik ki.
+    */
+    playSound('count-down-beep');
     const timer = window.setTimeout(() => setCountdown(countdown - 1), 1000);
     return () => window.clearTimeout(timer);
   }, [countdown, pendingType, begin, setCountdown]);
@@ -111,6 +121,15 @@ export function Dock() {
   }, [active, onTrackingScreen, navigate]);
 
   function primaryAction() {
+    /**
+     * ⚠️ A HANGZÁR FELOLDÁSA ITT, ÉS SEHOL MÁSHOL.
+     *
+     * Minden mai böngésző csak felhasználói gesztusból engedi az első
+     * lejátszást — iOS-en elemenként. Ez az a koppintás, ami minden rögzítés
+     * előtt biztosan megtörténik, és még a visszaszámlálás ELŐTT van, tehát
+     * az első síp sem késik le. A hívás idempotens (lásd `sound.ts`).
+     */
+    unlockSounds();
     if (running) return pause();
     if (paused) return resume();
     if (done) {

@@ -29,6 +29,7 @@ import {
   shouldAutoUpload,
   start as startRecorder,
   type RecorderState,
+  type RecorderStatus,
 } from '@/tracking/recorder';
 import {
   createRunPersister,
@@ -255,6 +256,21 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const wakeRef = useRef<WakeLock | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
+  /**
+   * A natív állapot-szinkron ÜTEMEZÉSE.
+   *
+   * ⚠️ ENERGIA. A `syncActivity` natív appban Capacitor-hídhívás: minden
+   * hívás egy JSON sorosítás plusz egy szál közti átadás. Korábban MINDEN
+   * elfogadott GPS-mintára lefutott — másodpercenként, egy órás futáson
+   * több ezerszer —, holott az egyetlen fogyasztója az értesítés/Live
+   * Activity felirata, ami vizuálisan úgyis csak másodpercenként frissül.
+   *
+   * A STÁTUSZVÁLTÁS (szünet, folytatás) VISZONT SOSEM VÁRHAT: az látszik a
+   * zárolt képernyőn, és a késleltetése a felhasználónak hibának tűnne.
+   */
+  const lastSyncRef = useRef<{ at: number; status: RecorderStatus } | null>(null);
+  const SYNC_MIN_INTERVAL_MS = 1000;
+
   /** Minden állapotváltozás egy helyen fut át: ref, React, megőrzés. */
   const apply = useCallback(
     (change: (current: RecorderState) => RecorderState) => {
@@ -263,8 +279,22 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       stateRef.current = next;
       setState(next);
       persister.save(next);
+
       const activityState = toPositionActivityState(next);
-      if (activityState) void positionSource.syncActivity?.(activityState);
+      if (activityState) {
+        const now = Date.now();
+        const last = lastSyncRef.current;
+        if (
+          last === null ||
+          last.status !== next.status ||
+          now - last.at >= SYNC_MIN_INTERVAL_MS
+        ) {
+          lastSyncRef.current = { at: now, status: next.status };
+          void positionSource.syncActivity?.(activityState);
+        }
+      } else {
+        lastSyncRef.current = null;
+      }
       return next;
     },
     [persister, positionSource],
@@ -337,7 +367,17 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const acquireWakeLock = useCallback(async () => {
     if (isNativeApp()) return;
     if (!wakeLockSupported()) return;
-    wakeRef.current = await requestWakeLock();
+    /**
+     * ⚠️ VISSZAHÍVÁSSAL, NEM EGYSZERI KIOLVASÁSSAL.
+     *
+     * A zár menet közben elveszhet (a böngésző háttérbe kerüléskor elengedi)
+     * és visszatérhet. Korábban itt egyetlen `setWakeLockActive(...)` állt a
+     * megszerzés pillanatában, tehát a rögzítés képernyője a futás végéig az
+     * ELSŐ MÁSODPERC állapotát mutatta — akkor is, ha a zár közben elszállt.
+     * A webes mérés éppen ezen áll vagy bukik, ezért itt nem elég a
+     * pillanatkép.
+     */
+    wakeRef.current = await requestWakeLock(setWakeLockActive);
     setWakeLockActive(wakeRef.current.active);
   }, []);
 

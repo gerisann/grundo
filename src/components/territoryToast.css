@@ -1,0 +1,230 @@
+/*
+ * „Grund megszerezve!" — a hurokbezárás felugró visszajelzése.
+ *
+ * A réteg a `body`-ban él (portál), tehát a rögzítés képernyőjének
+ * `overflow`-ja nem vágja le. Az egész réteg `pointer-events: none`, kivéve
+ * a kártyát és a bezáró gombot — futás közben a térkép húzhatónak kell
+ * maradnia akkor is, amikor épp ünnepelünk.
+ */
+
+.tterr {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  /*
+    A TÉRKÉP KÖZEPE FÖLÉ, NEM A STATISZTIKA-PANELRE.
+    Mérve (2026-09-01, LAB E2E): felülre igazítva a kártya pontosan a
+    sebességet és a megtett távot takarta el — vagyis azokat a számokat,
+    amiket a felhasználó futás közben néz. Az alsó térköz a dokkot tartja
+    szabadon, a maradék dobozban a kártya középen ül.
+  */
+  align-items: center;
+  justify-content: center;
+  padding-bottom: calc(var(--dock-height) + 14vh);
+  pointer-events: none;
+}
+
+.tterr__card {
+  position: relative;
+  pointer-events: auto;
+  width: min(320px, calc(100vw - 2 * var(--sp-5)));
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.32);
+  text-align: center;
+  animation: tterr-pop 380ms cubic-bezier(0.18, 1.3, 0.5, 1) both;
+}
+
+/*
+  A FELSŐ SZÍNCSÍK mondja meg egy pillantásra, melyik esetről van szó —
+  a cím elolvasása előtt. Szerzés: a saját területszín; elfoglalás: a
+  rivális/elvett szín; megerősítés: a védett terület színe.
+*/
+.tterr__card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--territory-own);
+}
+
+.tterr__card--stolen::before {
+  background: var(--territory-rival);
+}
+
+.tterr__card--reinforced::before {
+  background: var(--success);
+}
+
+.tterr__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tterr__close:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.tterr__title {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.tterr__summary {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tterr__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-1);
+}
+
+.tterr__chips:empty {
+  display: none;
+}
+
+.tterr__chip {
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.tterr__chip--stolen {
+  background: var(--territory-rival-fill);
+  color: var(--territory-rival);
+}
+
+.tterr__chip--max {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+@keyframes tterr-pop {
+  from {
+    transform: scale(0.82) translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ── Konfetti és tűzijáték ───────────────────────────────────────────────
+ *
+ * Kizárólag `transform` és `opacity` animál, tehát a kompozitor viszi — a fő
+ * szál (ahol a GPS-minták és a hurokdetektor futnak) nem lesz tőle lassabb.
+ * A darabkák számát a komponens korlátozza; itt csak a mozgásuk van.
+ */
+
+.tterr__confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tterr__piece {
+  position: absolute;
+  top: -24px;
+  left: var(--x);
+  width: var(--size);
+  height: calc(var(--size) * var(--ratio));
+  border-radius: 2px;
+  opacity: 0;
+  animation: tterr-fall var(--duration) var(--delay) cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes tterr-fall {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--drift), 105vh, 0) rotate(var(--spin));
+    opacity: 0;
+  }
+}
+
+.tterr__spark {
+  position: absolute;
+  top: var(--y);
+  left: var(--x);
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  opacity: 0;
+  /* A `rotate` a kirepülés IRÁNYA, a `translateX` a TÁVOLSÁGA — így egyetlen
+     kulcskocka-készlettel lehet minden szikra máshova tartani. */
+  transform: rotate(var(--angle)) translateX(0);
+  animation: tterr-spark 900ms var(--delay) ease-out forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes tterr-spark {
+  0% {
+    transform: rotate(var(--angle)) translateX(0) scale(0.4);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--angle)) translateX(var(--distance)) scale(0.2);
+    opacity: 0;
+  }
+}
+
+/*
+  MOZGÁSCSÖKKENTÉS: a darabkákat a komponens ilyenkor létre sem hozza (lásd
+  `confettiPieces`), a kártya pedig előtűnik, nem pattan.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .tterr__card {
+    animation: tterr-fade 240ms linear both;
+  }
+}
+
+@keyframes tterr-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

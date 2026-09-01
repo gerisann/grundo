@@ -41,6 +41,12 @@
 *.pdf  binary
 *.woff  binary
 *.woff2 binary
+# Hangeffektek (public/sounds/) — 2026-09-01 óta. Ugyanaz az indok, mint a
+# képeknél: egyetlen LF-cserétől a fájl lejátszhatatlanná válna.
+*.mp3  binary
+*.m4a  binary
+*.wav  binary
+*.ogg  binary
 
 # ── Diff-olvashatóság ──────────────────────────────────────────────────────
 # A lockfile-ok gépi termékek: a diffjük zaj, a felülvizsgálatuk értelmetlen.

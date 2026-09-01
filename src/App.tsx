@@ -41,6 +41,7 @@ const ProfileBadgesScreen = lazy(() => import('./screens/ProfileSectionScreens')
 const SettingsScreen = lazy(() => import('./screens/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })));
 const AppearanceScreen = lazy(() => import('./screens/settings/AppearanceScreen').then((m) => ({ default: m.AppearanceScreen })));
 const FinishGestureScreen = lazy(() => import('./screens/settings/FinishGestureScreen').then((m) => ({ default: m.FinishGestureScreen })));
+const SoundsScreen = lazy(() => import('./screens/settings/SoundsScreen').then((m) => ({ default: m.SoundsScreen })));
 const PrivacyScreen = lazy(() => import('./screens/settings/PrivacyScreen').then((m) => ({ default: m.PrivacyScreen })));
 const RulesScreen = lazy(() => import('./screens/settings/RulesScreen').then((m) => ({ default: m.RulesScreen })));
 const NotificationsScreen = lazy(() => import('./screens/settings/NotificationsScreen').then((m) => ({ default: m.NotificationsScreen })));
@@ -185,7 +186,21 @@ function Router() {
 
   return (
     <>
-      <div className="app-shell">
+      {/*
+        AZ ADMIN TELJES SZÉLESSÉGŰ — Geri kérése (2026-09-01).
+
+        A játékos-felület asztali gépen is mobil szélességű oszlop
+        (`--app-max-width`, 480 px), és ez szándékos. Az admin viszont sűrű,
+        táblázatos, asztali gépre szánt felület (lásd `admin.css` fejléce) —
+        480 pixelbe préselve a Simulation LAB térképe és az aktivitás-audit
+        táblái használhatatlanok voltak.
+
+        A rögzítés képernyője (LAB E2E is) ez alól kivétel MARAD: a `.track`
+        gyökere `position: fixed`, a felülete pedig saját `max-width`-et
+        használ, tehát ott továbbra is a telefonos elrendezés látszik — pont
+        ez kell ahhoz, hogy a LAB azt mutassa, amit a felhasználó lát.
+      */}
+      <div className={`app-shell${pathname.startsWith('/admin') ? ' app-shell--wide' : ''}`}>
         <Suspense fallback={<Splash />}>
           <Routes>
             {/* Fejlesztői átengedés esetén a belépési képernyők is elérhetők
@@ -211,6 +226,7 @@ function Router() {
             <Route path="/aktivitas/:id" element={<ActivityScreen />} />
             <Route path="/beallitasok" element={<SettingsScreen />} />
             <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
+            <Route path="/beallitasok/hangok" element={<SoundsScreen />} />
             <Route path="/beallitasok/mukodes" element={<FinishGestureScreen />} />
             <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />
             <Route path="/beallitasok/szabalyok" element={<RulesScreen />} />

@@ -55,6 +55,19 @@ a {
   margin-inline: auto;
 }
 
+/*
+  AZ ADMIN NEM MOBIL FELÜLET. Sűrű, táblázatos, asztali gépre szánt terület
+  (lásd `src/admin/admin.css` fejléce) — a 480 pixeles oszlop ott a
+  Simulation LAB térképét és az aktivitás-audit tábláit tette
+  használhatatlanná. Az `App.tsx` teszi rá az osztályt az `/admin` útvonalon.
+
+  A dokk-magasságú alsó térköz is elmarad: az admin alatt nincs dokk.
+*/
+.app-shell--wide {
+  max-width: none;
+  padding-bottom: 0;
+}
+
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
