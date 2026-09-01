@@ -1,114 +1,120 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-08-31** · a **#25** beszélgetés vége, átadás **#26**-ra
+> Frissítve: **2026-09-01** · a **#22** beszélgetés vége, átadás **#23**-ra
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`**. A menet induló HEAD-je **`61153e6`**; az új biztonsági
-> csomag ezt a `HANDOFF.md`-t tartalmazó következő commit.
+> Ág: **`main`**. A menet induló HEAD-je **`61153e6`** volt (ez volt élesben
+> is); jelenlegi HEAD **`c3adb57`**, pusholva.
 
 ## ÁLLAPOT
 
-Az audit következő biztonsági csomagja elkészült: függőségfrissítés,
-Firebase App Check, szerveroldali rate limit és az OTP-versenyhelyzetek
-lezárása. A rollout szándékosan **observe-first**; az enforcementet a web,
-Android és iOS valós tokenmérése előtt nem szabad bekapcsolni.
+A menet két különálló dolgot vitt: (1) a Codex #25/#26 App Check + rate limit
+csomagjának validálása a kódon, (2) egy SOS UI-hiba javítása és élesítése a
+rivális-sávon. Az App Check csomag **továbbra sincs telepítve** — ehhez a
+menethez nem tartozott Cloud Console-lépés.
 
-### Függőségek és audit
+### 1. Az App Check/rate limit csomag validálása (nem kódváltozás)
 
-- Frontend/runtime: Firebase **12.18.0**, React Router **7.18.3**; build/test:
-  Vite **8.2.2**, Vitest **4.1.11**.
-- Natív Firebase pluginek: Authentication és Messaging **8.5.0**, új App
-  Check **8.5.0**.
-- Backend: Firebase Admin **14.3.0**, Nodemailer **9.1.0**, Vitest **4.1.11**.
-- A root production audit **2 közepesről 0-ra** csökkent. A teljes root audit
-  **3 közepes** fejlesztői jelzést hagyott az `@capacitor/cli → xcode → uuid`
-  ágban; a felajánlott `--force` visszalépés lenne, ezért nem alkalmaztuk.
-- A server audit korábbi kritikus/magas jelzései megszűntek. **6 közepes**
-  production jelzés maradt a legfrissebb `firebase-admin →
-  @google-cloud/storage → uuid` tranzitív ágán; nincs biztonságos npm-fix,
-  a `--force` Firebase Admin 10.3-ra léptetne vissza.
+A `d8de34f` commit (App Check, rate limit, OTP-tranzakció) tételes átnézése a
+kódban, nem csak a HANDOFF-leírás alapján:
 
-### App Check
+- **Igazolva, pontos:** App Check middleware wiring (`server.ts:121`,
+  `/api/jobs` kivételezve), rate limit minden routeren egységesen
+  (`server.ts:154-168`), OTP küldés+ellenőrzés valóban Firestore-tranzakcióban
+  fut (`auth.ts:463`, `auth.ts:501`), a 12 App Check/rate limit teszt valóban
+  létezik. A korábbi, `2ff40b4`/`605736f`/`f80dd37` alatt javított két kritikus
+  adatvédelmi hiba (users-doc szétválasztás, aktivitásfotók Storage-
+  láthatósága) élesben tényleg megvan.
+- **Megerősítve NYITOTT (nem ennek a menetnek a hibája — a #26 eleve nem is
+  ígérte):** a korábbi teljes audit HIBA-3 (admin gameplay-config/modifierek
+  nem jutnak el a feldolgozásba) és HIBA-4 (Trust Score observe-only) **egy és
+  ugyanaz a gyökérok**. Van egy kész, jól működő futásidejű config-feloldó
+  (`server/src/lib/gameplayConfig.ts` → `getGameplaySnapshot()`, 60 mp cache,
+  hibatűrő), és a játékmotor (`src/game/*`) **már paraméterként fogadja** a
+  configot mindenhol (`cfg: GameplayConfig = DEFAULT_GAMEPLAY` minta,
+  következetesen). A hiányzó láncszem: `server/src/lib/activityCommit.ts`,
+  `activityChunked.ts` és `server/src/trust/score.ts` **sosem hívják meg**
+  `getGameplaySnapshot()`-ot, hanem a statikus `GAMEPLAY`-t importálják
+  közvetlenül (16 hívási hely összesen), és a `processActivity()`,
+  `resolveClaim()`, `mergeClaims()`, `resolveCompactGroup()`,
+  `computeActivityGp()`, `computeTrustScore()` hívásoknál nem adják át a
+  `cfg`-t. Emiatt az admin `TRUST_OBSERVE_ONLY`-t vagy bármelyik GP-modifiert
+  akárhogy állítja, a tényleges feldolgozás nem veszi figyelembe.
+  **Javítás terve:** `commitActivity`/`commitChunkedActivity` hívási pontján
+  (`server/src/routes/activities.ts:173`, `planActivity()` hívás előtt) egy
+  `getGameplaySnapshot()` hívás, a kapott configot betenni az `ActivityPlan`-be
+  (`activityCommit.ts` `ActivityPlan` interfész), és onnan mindenhol
+  `plan.cfg`-t átadni a fenti hívásoknak a statikus `GAMEPLAY` helyett.
+  `computeTrustScore`-nak is kell egy `cfg` paraméter (jelenleg
+  `@/config/gameplay`-ből importál közvetlenül `MAX_SPEED_KMH`-t és a
+  `TRUST_THRESHOLD_*`-ot, a `verdictFor()` már fogad override paramétert, csak
+  senki nem hívja azzal). **Ez félbemaradt vizsgálat — kódváltozás NEM történt,
+  csak feltérképezés.** Jó jelölt a #23-ra.
+- **Szintén megerősítve NYITOTT:** `server/src/lib/mailer.ts:122-129` — ha
+  `MAIL_PROVIDER=smtp`, de hiányzik `SMTP_HOST`, a szerver csendben
+  visszaesik `consoleMailer`-re ahelyett, hogy fail-closed módon hibázna.
+  Éles hibás konfignál a felhasználó sosem kapná meg az OTP-kódot, mégis
+  „elküldve" választ látna. Kis, önálló javítás — nem függ a fenti
+  gameplay-config munkától.
 
-- Weben reCAPTCHA Enterprise, Androidon Play Integrity, iOS 14+-on App
-  Attest (iOS 13-on a plugin DeviceCheck fallbackot ad).
-- A natív token `CustomProvider` hídon a Firebase JS SDK-hoz is eljut, így a
-  Cloud Run fejléc és később a közvetlen Firestore/Storage kérés is ugyanazt
-  az attesztációt használhatja.
-- A backend `off | observe | enforce` módban működik. A Cloud Scheduler
-  `/api/jobs` ág továbbra is a saját `X-Job-Token` hitelesítését használja.
-- A Cloud Build alapértéke `observe`; a CORS engedi az
-  `X-Firebase-AppCheck` fejlécet. A Codemagic iOS ellenőrzés a szinkronizált
-  App Check SPM-csomagot és az App Attest entitlementet is megköveteli.
-- Az iOS helyi `cap sync` Windows alatt a szükséges SPM-symlink létrehozásán
-  `EPERM` hibával megállt. A Codemagic macOS-en teljes `cap sync ios`-t futtat,
-  majd explicit ellenőrzi az eredményt; az első új TestFlight build ezt még
-  igazolja.
+### 2. SOS hiba: a rivális-sáv összeugrott a home feeden
 
-### Rate limit és OTP
+A `src/components/RivalRow.tsx` a `conn__row` osztályra épített
+(`display:flex; width:100%`), de sosem importálta a `connectionsSheet.css`-t,
+amiben az osztály van. Route-szintű kódszétvágásnál ez csak akkor töltődött
+be, ha más komponens (pl. a profil `RivalsCard`-ja) már behúzta ugyanazt a
+fájlt — ezért működött `/profil`-on, és esett szélesség nélkül pár pixelre a
+home feeden. Javítás: egy hiányzó `import './connectionsSheet.css';` sor.
 
-- A limit közös, Firestore-tranzakciós számláló, ezért Cloud Run példányok
-  között sem kerülhető meg. A dokumentumkulcs HMAC, nyers e-mail,
-  felhasználónév vagy UID nem kerül a `rateLimits` kollekcióba.
-- Külön keret van a belépésre, belépési mód lekérdezésére, OTP küldésre és
-  ellenőrzésre, aktivitásfeltöltésre, küldetéstervezésre, időjárásra,
-  területcsempére és az egyéb írásokra. Az olcsó normál GET-ek nem kapnak
-  külön Firestore-tranzakciót.
-- `observe` módban csak mér és ritkított strukturált naplót ír; `enforce`
-  módban 429 + `Retry-After`, tárolóhiba vagy hiányzó HMAC-kulcs esetén 503.
-- Az OTP küldés és ellenőrzés most tranzakciós, ezért párhuzamos kéréssel nem
-  kerülhető meg sem az újraküldési idő, sem a próbálkozásszám.
+Helyi emulátorban ellenőrizve (Firebase emulátor + backend + Vite dev,
+Budapest-seed 100 aktivitással): JS-méréssel a sáv 341/343 px — gyakorlatilag
+teljes szélesség. `tsc --noEmit` és konzol tiszta.
 
-### Ellenőrzések
-
-- mindkét `npm ci`: sikeres;
-- teljes normál teszt: **592 sikeres, 129 emulátoros kihagyva**;
-- App Check/rate limit célzott teszt: **12/12 zöld**;
-- teljes emulátoros készlet: **129/129 zöld**;
-- kliens typecheck + Vite production build: zöld, **304 modul**;
-- szerver typecheck + production build: zöld;
-- `npx cap sync android`: sikeres, mind a négy plugin felismerve;
-- Android release unit teszt + `lintRelease`: sikeres, új lint-hiba nincs;
-- Cloud Build és Codemagic YAML: parser/lint szerint érvényes;
-- entitlement XML és mindkét package JSON/lock: parser szerint érvényes;
-- `git diff --check`: tiszta.
+**Élesítve: https://grundo.web.app** (`firebase deploy --only hosting`).
+Commitok: `41eccea` (a javítás), `c3adb57` (a deploy `npm install`-ja által
+finomított `package-lock.json`, külön commitolva, hogy a `deploy.sh` piszkos
+munkamásolat miatt legközelebb ne álljon meg).
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
+- A rivális-sáv javítás **éles** (frontend, `41eccea`).
 - Az előző adatvédelmi kiadás változatlanul éles: backend/frontend kód
-  `605736f`, Cloud Run `grundo-api-00110-94c`, szabályok és fotómigráció kész.
+  `605736f`, Cloud Run `grundo-api-00110-94c`.
 - Az iOS háttér-GPS javítás a **TestFlight #27** buildben van, forrása
   `6da0288`; a hosszú készülékes regresszió még hátravan.
 - Az Android háttér-GPS javítás a Google Play belső tesztsáv **#14** buildjében
   van, forrása `57f4d5a`; a hosszú készülékes regresszió még hátravan.
-- A mostani App Check/rate limit/dependency csomag **nincs telepítve**.
-- Nincs kötelező adatmigráció és nincs új index. A `rateLimits.expiresAt`
-  Firestore TTL később opcionálisan bekapcsolható.
+- **Az App Check/rate limit/dependency csomag (`d8de34f`) még mindig nincs
+  telepítve** — ehhez a menethez nem tartozott Cloud Console-munka, a #26-ban
+  leírt teendők változatlanul érvényesek és nyitottak (lásd lent).
+- Nincs kötelező adatmigráció, nincs új index a mostani menethez.
 
 ## KÖVETKEZŐ MENET
 
-1. **Cloud Shell:** létre kell hozni a `RATE_LIMIT_HMAC_KEY` titkot, hozzáadni
-   a Cloud Run service account Secret Manager hozzáférését és a
-   `roles/firebaseappcheck.tokenVerifier` szerepet. A pontos, egysoros
-   parancsok a `docs/06-architektura-es-admin.md` App Check rollout részében
-   vannak.
-2. **Firebase/Google Cloud Console:** regisztrálni kell a webes reCAPTCHA
-   Enterprise, Android Play Integrity és iOS App Attest providereket. A webes
-   publikus Key ID-t ezután kell beírni a `VITE_RECAPTCHA_SITE_KEY` értékébe;
-   jelenleg szándékosan üres, mert külső kulcsot nem találunk ki.
-3. Ezután sorrendben: push → **szabályok** → **backend** (`observe`) →
-   **frontend** → Android belső build → iOS TestFlight build. **Indexek** és
-   adatbázis-migráció nem kellenek.
-4. Mindhárom kliensen ellenőrizni kell a Cloud Run/Firebase App Check
-   metrikákat, a 401/429/503 arányt, a normál belépést, OTP-t, aktivitásmentést,
-   csempét és időjárást. A natív `CustomProvider` híd csak valódi készülékes
-   tokennel tekinthető igazoltnak.
-5. Csak igazolt lefedettség után válthat `_APP_CHECK_MODE=enforce` és
-   `_RATE_LIMIT_MODE=enforce` értékre; a Firestore/Storage konzolos
-   enforcement ennél is későbbi, külön lépés.
-6. A korábban előírt 90 perces / 20 km-es iOS és Android háttér-GPS terepteszt
-   továbbra is nyitott, és az új natív buildben egyben App Check smoke teszt is.
+**A) App Check éles bevezetése — változatlanul nyitott a #26 óta:**
+
+1. **Cloud Shell:** `RATE_LIMIT_HMAC_KEY` titok létrehozása, Cloud Run service
+   account Secret Manager hozzáférés + `roles/firebaseappcheck.tokenVerifier`.
+   Parancsok: `docs/06-architektura-es-admin.md` App Check rollout része.
+2. **Firebase/Google Cloud Console:** webes reCAPTCHA Enterprise, Android Play
+   Integrity, iOS App Attest providerek regisztrálása. Utána a webes Key ID a
+   `VITE_RECAPTCHA_SITE_KEY`-be — jelenleg szándékosan üres.
+3. Sorrend: **szabályok** → **backend** (`observe`) → **frontend** → Android
+   belső build → iOS TestFlight build.
+4. Mindhárom kliensen App Check metrika + 401/429/503 arány ellenőrzés valódi
+   eszközön.
+5. Csak igazolt lefedettség után `enforce` mód.
+6. A 90 perces / 20 km-es iOS és Android háttér-GPS terepteszt is nyitott,
+   egyben App Check smoke teszt is lehetne.
+
+**B) Kód-jelöltek a #23-ra (ebben a menetben feltérképezve, nem javítva):**
+
+7. A gameplay-config runtime snapshot bekötése a tényleges aktivitás-
+   feldolgozásba — lásd fent, „1. Az App Check/rate limit csomag validálása"
+   szakasz a pontos hívási helyekkel. Ez élesíti a Trust Score observe-only
+   kikapcsolhatóságát és az admin GP-modifiereket egyszerre.
+8. `mailer.ts` fail-closed tétele hiányzó `SMTP_HOST`-ra production módban.
 
 ## NYITOTT KISEBB ÜGYEK
 
@@ -124,7 +130,10 @@ Android és iOS valós tokenmérése előtt nem szabad bekapcsolni.
 
 ## 0. MODELLJAVASLAT a folytatáshoz
 
-Az App Check éles konzolkonfigurációjához és a háromplatformos observe →
-enforce kiértékeléshez **GPT-5.6 Sol, erős gondolkodási mélység** indokolt,
-mert hibás sorrenddel a régi kliensek vagy a közvetlen Firestore/Storage
-kérések kizárhatók.
+Attól függ, mit hoz a #23. Ha az App Check éles bevezetése (A szakasz): erős
+gondolkodási mélység indokolt, mert hibás sorrenddel a régi kliensek vagy a
+közvetlen Firestore/Storage kérések kizárhatók. Ha a gameplay-config bekötés
+(B7): szintén erős gondolkodási mélység, mert 16 hívási helyet kell
+következetesen átvezetni anélkül, hogy a GP-gazdaság vagy a Trust Score
+csendben elromlana — mérés nélkül itt nem szabad megállni. Ha csak a mailer
+fail-closed (B8) vagy hasonló kis, önálló javítás: elég a rutin szint.
