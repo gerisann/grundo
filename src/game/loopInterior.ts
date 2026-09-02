@@ -1,15 +1,13 @@
 import {
-  cellToChildren,
   cellToChildrenSize,
   cellToLatLng,
-  cellToParent,
   getResolution,
   polygonToCells,
 } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
 import type { CellId, CompactLoopInterior, DetectedLoop } from '@/types';
 import { floodFillInterior, LoopTooLargeError } from './loops';
-import { ringOf } from './neighbours';
+import { childrenOf, parentOf, ringOf } from './neighbours';
 
 /**
  * Ekkora becsült jelöltrégió alatt a régi, teljes res12 Set gyorsabb és
@@ -69,7 +67,7 @@ export function loopInteriorHas(loop: DetectedLoop, cell: CellId): boolean {
   if (loop.interior.has(cell)) return true;
   const compact = loop.compactInterior;
   if (!compact) return false;
-  return compact.fullParents.has(cellToParent(cell, compact.parentResolution));
+  return compact.fullParents.has(parentOf(cell, compact.parentResolution));
 }
 
 /** A fal + belső teljes, res12-egyenértékű cellaszáma. */
@@ -149,7 +147,7 @@ export function* iterateLoopInteriorCells(loop: DetectedLoop): IterableIterator<
   const compact = loop.compactInterior;
   if (!compact) return;
   for (const parent of compact.fullParents) {
-    for (const child of cellToChildren(parent, GAMEPLAY.H3_RESOLUTION)) yield child;
+    for (const child of childrenOf(parent, GAMEPLAY.H3_RESOLUTION)) yield child;
   }
 }
 
@@ -171,7 +169,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
 
   /* 1. Durva menet. */
   const coarseWall = new Set<CellId>();
-  for (const cell of wall) coarseWall.add(cellToParent(cell, parentResolution));
+  for (const cell of wall) coarseWall.add(parentOf(cell, parentResolution));
 
   const coarseRegion = candidateRegion(coarseWall, parentResolution);
   const coarseOutside = new Set<CellId>();
@@ -192,7 +190,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
   /* 2. Pontos menet csak a falat tartalmazó parentek res12 gyerekein. */
   const band = new Set<CellId>();
   for (const coarse of coarseWall) {
-    for (const child of cellToChildren(coarse, res)) band.add(child);
+    for (const child of childrenOf(coarse, res)) band.add(child);
   }
 
   const fineOutside = new Set<CellId>();
@@ -201,7 +199,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
     if (wall.has(cell)) continue;
     for (const near of ringOf(cell)) {
       if (band.has(near)) continue;
-      const parent = cellToParent(near, parentResolution);
+      const parent = parentOf(near, parentResolution);
       if (coarseOutside.has(parent) || !coarseRegion.has(parent)) {
         fineOutside.add(cell);
         fineQueue.push(cell);
@@ -217,7 +215,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
     for (const cell of fineOutside) {
       for (const near of ringOf(cell)) {
         if (band.has(near) || wall.has(near)) continue;
-        const parent = cellToParent(near, parentResolution);
+        const parent = parentOf(near, parentResolution);
         if (coarseRegion.has(parent) && !coarseOutside.has(parent) && !coarseWall.has(parent)) {
           coarseOutside.add(parent);
           opened.push(parent);
@@ -232,7 +230,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
       if (wall.has(cell) || fineOutside.has(cell)) continue;
       for (const near of ringOf(cell)) {
         if (band.has(near)) continue;
-        if (coarseOutside.has(cellToParent(near, parentResolution))) {
+        if (coarseOutside.has(parentOf(near, parentResolution))) {
           fineOutside.add(cell);
           again.push(cell);
           break;

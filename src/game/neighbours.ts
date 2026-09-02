@@ -31,15 +31,17 @@
  * KÖZÖS MODUL: se DOM, se Firebase, se Node API.
  */
 
-import { gridDisk } from 'h3-js';
+import { cellToChildren, cellToParent, gridDisk } from 'h3-js';
 import type { CellId } from '@/types';
 
 /**
  * Ennyi cella szomszédságát tartjuk meg.
  *
- * Bejegyzésenként hét azonosító, nagyjából 250 bájt — 250 000 cellánál ez
- * ~60 MB, ami bőven belefér a Cloud Run 2 GiB-jébe a foglalás-számítás
- * ~920 MB-os csúcsa mellett is (lásd `loops.ts` `MAX_CLAIM_CELLS`).
+ * Bejegyzésenként hét azonosító a tömb és a `Map` terhével együtt nagyjából
+ * fél kilobájt, tehát a plafonon ~100 MB. A három gyorsítótár (szomszédság,
+ * szülő, gyerekek) együtt is ~150 MB körül tetőzik, ami belefér a Cloud Run
+ * 2 GiB-jébe a foglalás-számítás ~920 MB-os csúcsa mellett is (lásd
+ * `loops.ts` `MAX_CLAIM_CELLS`).
  *
  * A korlát elérésekor a teljes tartalmat eldobjuk, nem egyenként avulunk.
  * Egy LRU könyvelése cellánként több időbe kerülne, mint amennyit a
@@ -68,13 +70,63 @@ export function ringOf(cell: CellId): readonly CellId[] {
 }
 
 /**
- * A gyorsítótár ürítése — teszteknek és hosszan futó folyamatoknak.
+ * FELBONTÁSVÁLTÁS — ugyanezért, ugyanígy.
  *
- * A helyességhez SOHA nem kell (a szomszédság nem avul el); kizárólag a
- * memória visszaadására való.
+ * Az adaptív kitöltés (`loops.ts` `floodFillInteriorAdaptive`) a falat két
+ * felbontással feljebb viszi, majd a határsávot visszabontja: hívásonként
+ * egy `cellToParent` minden falcellára és egy 49 elemű `cellToChildren`
+ * minden durva cellára. A hurokdetektor ezt jelöltenként újra elvégzi
+ * ugyanazokon a cellákon — pontosan az az ismétlés, amit a `ringOf` már
+ * megszüntetett a szomszédságnál.
+ *
+ * A kulcsba a felbontás is bele kell hogy kerüljön: ugyanaz a cella
+ * különböző célfelbontásokon más eredményt ad.
+ */
+const parents = new Map<string, CellId>();
+const children = new Map<string, readonly CellId[]>();
+
+/** `cellToParent(cell, resolution)`, memoizálva. */
+export function parentOf(cell: CellId, resolution: number): CellId {
+  const key = `${resolution}:${cell}`;
+  const cached = parents.get(key);
+  if (cached !== undefined) return cached;
+
+  const parent = cellToParent(cell, resolution) as CellId;
+  if (parents.size >= MAX_CACHED_CELLS) parents.clear();
+  parents.set(key, parent);
+  return parent;
+}
+
+/**
+ * `cellToChildren(cell, resolution)`, memoizálva.
+ *
+ * ⚠️ A visszaadott tömb MEGOSZTOTT és CSAK OLVASHATÓ — ugyanaz a szabály,
+ * mint a `ringOf`-nál.
+ *
+ * A bejegyzés itt 49 azonosító (két felbontásnyi ugrás), tehát hétszer
+ * nagyobb, mint a szomszédságnál — ezért kap hetedakkora plafont.
+ */
+export function childrenOf(cell: CellId, resolution: number): readonly CellId[] {
+  const key = `${resolution}:${cell}`;
+  const cached = children.get(key);
+  if (cached !== undefined) return cached;
+
+  const list = cellToChildren(cell, resolution) as CellId[];
+  if (children.size >= MAX_CACHED_CELLS / 7) children.clear();
+  children.set(key, list);
+  return list;
+}
+
+/**
+ * A gyorsítótárak ürítése — teszteknek és hosszan futó folyamatoknak.
+ *
+ * A helyességhez SOHA nem kell (sem a szomszédság, sem a felbontásváltás nem
+ * avul el); kizárólag a memória visszaadására való.
  */
 export function clearNeighbourCache(): void {
   cache.clear();
+  parents.clear();
+  children.clear();
 }
 
 /** Hány cella szomszédsága van most eltárolva — méréshez. */

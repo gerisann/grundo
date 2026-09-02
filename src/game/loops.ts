@@ -12,8 +12,6 @@
 
 import {
   cellToLatLng,
-  cellToChildren,
-  cellToParent,
   polygonToCells,
   getResolution,
 } from 'h3-js';
@@ -24,7 +22,7 @@ import type {
   LoopDiagnostics,
   RejectedLoopDiagnostic,
 } from '@/types';
-import { ringOf } from './neighbours';
+import { childrenOf, parentOf, ringOf } from './neighbours';
 
 export class LoopTooLargeError extends Error {
   constructor(public readonly candidateCells: number) {
@@ -380,10 +378,13 @@ export function floodFillInteriorExact(wall: ReadonlySet<CellId>): Set<CellId> {
  * A `buildActivityGeometry` MÉRT ideje ugyanarra a nyomvonalra:
  *
  *   92,5 s  kiinduló állapot
- *   40,0 s  a szomszéd-gyorsítótár után (`neighbours.ts`)
+ *   40,0 s  a szomszéd-gyorsítótár után (`neighbours.ts` `ringOf`)
  *   27,4 s  arány = 8
  *   18,4 s  arány = 2        ← ez van beállítva
  *   17,8 s  mindig adaptív (arány = 0)
+ *
+ * A teljes, 126 km-es menet `planActivity`-je ugyanezekkel a lépésekkel, plusz
+ * a felbontásváltás memoizálásával (`parentOf`/`childrenOf`): 453,6 s → 51,0 s.
  *
  * A 2-es a mért optimum gyakorlati széle: az „mindig adaptív"-hoz képest 3%
  * a különbség, cserébe a valóban vékony, belső nélküli jelöltek (folyosó,
@@ -455,7 +456,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
   /* ── 1. Durva menet ─────────────────────────────────────────────── */
 
   const coarseWall = new Set<CellId>();
-  for (const cell of wall) coarseWall.add(cellToParent(cell, coarseRes));
+  for (const cell of wall) coarseWall.add(parentOf(cell, coarseRes));
 
   const coarseRegion = candidateRegion(coarseWall, coarseRes);
   const coarseOutside = new Set<CellId>();
@@ -478,7 +479,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
   /** A határsáv finom cellái: a falat tartalmazó durva cellák gyerekei. */
   const band = new Set<CellId>();
   for (const coarse of coarseWall) {
-    for (const child of cellToChildren(coarse, res)) band.add(child);
+    for (const child of childrenOf(coarse, res)) band.add(child);
   }
 
   const fineOutside = new Set<CellId>();
@@ -489,7 +490,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     // KÍVÜLNEK ismert durva cellában (vagy a régión kívül).
     for (const near of ringOf(cell)) {
       if (band.has(near)) continue;
-      const parent = cellToParent(near, coarseRes);
+      const parent = parentOf(near, coarseRes);
       if (coarseOutside.has(parent) || !coarseRegion.has(parent)) {
         fineOutside.add(cell);
         fineQueue.push(cell);
@@ -506,7 +507,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     for (const cell of fineOutside) {
       for (const near of ringOf(cell)) {
         if (band.has(near) || wall.has(near)) continue;
-        const parent = cellToParent(near, coarseRes);
+        const parent = parentOf(near, coarseRes);
         if (coarseRegion.has(parent) && !coarseOutside.has(parent) && !coarseWall.has(parent)) {
           coarseOutside.add(parent);
           opened.push(parent);
@@ -522,7 +523,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
       if (wall.has(cell) || fineOutside.has(cell)) continue;
       for (const near of ringOf(cell)) {
         if (band.has(near)) continue;
-        if (coarseOutside.has(cellToParent(near, coarseRes))) {
+        if (coarseOutside.has(parentOf(near, coarseRes))) {
           fineOutside.add(cell);
           again.push(cell);
           break;
@@ -555,7 +556,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     if (coarseWall.has(coarse)) continue;
     // Teljesen belső durva cella: MINDEN gyereke belső, egyenként vizsgálat
     // nélkül. Innen jön a nyereség.
-    for (const child of cellToChildren(coarse, res)) interior.add(child);
+    for (const child of childrenOf(coarse, res)) interior.add(child);
   }
   for (const cell of band) {
     if (!wall.has(cell) && !fineOutside.has(cell)) interior.add(cell);
