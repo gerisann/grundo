@@ -1,349 +1,330 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-09-02** · a **#23** beszélgetés vége, átadás **#24**-re
+> Frissítve: **2026-09-02** · a **#24** beszélgetés vége, átadás **#25**-re
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · HEAD **`4aedbff`** · pusholva, munkamásolat tiszta
+> Ág: **`main`** · HEAD **`1e52b48`** · munkamásolat tiszta
 >
-> Tesztek: **626 zöld**, gyökér és `server/` typecheck tiszta (mérve `fb72645`-nél;
-> a `4aedbff` csak ezt a fájlt érintette)
+> Tesztek: **640 zöld** + **129 emulátoros zöld**, gyökér és `server/` typecheck
+> tiszta
 
 ---
 
-## ⚠️ A #24 ELSŐ DOLGA: natív Google-belépés
+## ⚠️ A #25 ELSŐ DOLGA: TELEPÍTÉS
 
-Geri a #23 legvégén jelezte: **a Google-fiókkal belépés egyik natív appon sem
-működik, a webappban tökéletesen megy.** A vizsgálat elindult, de NEM fejeződött
-be. Két külön dologról van szó:
+A #24 munkája **még nem ér el a felhasználókhoz**. Három telepítés kell,
+ebben a sorrendben:
 
-### iOS — ez NEM hiba, szándékos
+1. **indexek** — enélkül a 12 órás mentés továbbra is elhasal
+2. **backend** — a `--timeout=900`, a `--cpu-boost` és a gyorsabb motor
+3. **frontend** — ⚠️ **NEM elhagyható.** A `src/game` motor KÖZÖS a
+   klienssel; a `windingCounts` javítása megváltoztatja a védelmi szintek
+   számítását. Ha csak a backend frissül, a rögzítés közbeni élő előnézet
+   más védettséget mutat, mint amit a mentés jóváír.
 
-A [`src/hooks/AuthProvider.tsx`](src/hooks/AuthProvider.tsx) `signInWithGoogle()`
-és `linkGoogle()` metódusa iOS-en kifejezetten dob:
-
-> „A Google-belépés az iOS alkalmazás első verziójában még nem érhető el.
-> Lépj be e-mail-címmel és jelszóval."
-
-Ez a #26-os audit óta nyitott döntés maradványa: az Apple App Store **4.8-as
-szabálya** miatt Google-belépés mellé kell Sign in with Apple (vagy egyenértékű),
-és ezt még nem építettük meg. **Két út van, dönteni kell:**
-(a) Sign in with Apple bevezetése, és a Google-belépés kinyitása iOS-en,
-(b) a Google-belépés végleges elhagyása iOS-en, tisztább üzenettel.
-
-### Android — VALÓS hiba, a gyanú nincs igazolva
-
-A kód az Android **Credential Manager** API-t használja
-(`nativeGoogleCredential()`, `useCredentialManager: true`). Ez a natív folyamat
-az app **aláíró tanúsítványát** ellenőrzi a Firebase-projektben regisztrált
-ujjlenyomatok ellen — a webes OAuth-popup viszont nem, ezért működik a webapp
-érintetlenül.
-
-⚠️ **HIPOTÉZIS, NEM MÉRÉS**: a Firebase-projektben valószínűleg csak a helyi
-fejlesztői / feltöltő kulcs SHA-1-e van felvéve, a Play-ről telepített build
-viszont a **Play alkalmazás-aláíró kulccsal** van újraaláírva. A két kulcs
-különbözik.
-
-**Amit ellenőrizni kell (ebben a sorrendben):**
-
-1. Firebase Console → ⚙️ Project Settings → General → „Your apps" → GRUNDO
-   Android → milyen **SHA-1** ujjlenyomatok vannak felvéve
-2. Play Console → az aláírókulcs **SHA-1**-e (a megtalálásához lásd lent az
-   „Üzemeltetési jegyzetek" szakaszt — ez nem triviális)
-3. Ha hiányzik: felvenni a Firebase-projektbe
-4. ⚠️ **ÉS EZ A LÉPÉS KÖNNYEN KIMARAD:** az SHA felvétele megváltoztatja a
-   `google-services.json` tartalmát, a Codemagic build viszont egy **statikus,
-   base64-kódolt titokból** írja ki (`GOOGLE_SERVICES_JSON_BASE64`, a
-   `grundo_android` változócsoportban). A Firebase-es hozzáadás önmagában
-   **nem lép érvénybe** — le kell tölteni a friss `google-services.json`-t,
-   base64-be kódolni, és frissíteni a Codemagicban.
-
-A tényleges hibaüzenetet (Android logcat / a felületen látott szöveg) **nem
-láttuk** — ez a leggyorsabb út a megerősítéshez vagy a hipotézis elvetéséhez.
+Adatmigráció nincs.
 
 ---
 
-## ÁLLAPOT — mi készült el a #23-ban
+## ÁLLAPOT — mi készült el a #24-ben
 
-Két nagy blokk: a délutáni terepteszt audio-vizuális felkészítése, és a
-rögzítés-modell átnézéséből származó javítások. Minden élőben ellenőrizve a
-helyi emulátoros környezetben (`localhost:5173` + Firestore/Auth emulátor +
-backend) és a LAB E2E-ben 1×, 10×, 100×, MAX sebességen.
+A menet TELJES EGÉSZÉBEN a mentés és a betöltés hibáiról szólt (Geri
+döntése a lista átnézése után). A hangok, a dokk Play gombja és a profil
+rivális-sávjai szándékosan átcsúsztak — a diagnózisuk viszont lent megvan.
 
-### Hangeffektek (ÚJ)
+### 1. A 12 órás mentés bukása — MEGTALÁLVA, JAVÍTVA
 
-Hét MP3 a `public/sounds/` alatt, lejátszó a `lib/sound.ts`-ben (`<audio>`-elem
-poolok, hangonkénti alaperősítés, felhasználói gesztusból feloldott hangzár).
+Az éles kérésnapló szerint 2026-09-01 este **négy próbálkozás, mind 504-es
+hiba, mind pontosan 300,00 másodperc után** (`POST /api/activities`, 1,1 MB
+törzs). A kliens ebből csak annyit látott, hogy „nincs kapcsolat a
+szerverrel" — az `api.ts` a fetch elhalását hálózati hibának fordítja.
 
-| Esemény | Hang |
+Két, egymástól független ok:
+
+**a) Firestore index-plafon.** A `stderr` naplóban:
+`INVALID_ARGUMENT: too many index entries for entity /activities/777bbde5-…`,
+`reason: INDEX_ENTRIES_COUNT_LIMIT_EXCEEDED`. Az `activityCells` a kör
+TELJES elfoglalt területe — Jamal napján **36 012 elem** —, a Firestore
+pedig minden tömbelemre KÉT indexbejegyzést készít, dokumentumonként
+40 000-es plafonnal. Vagyis **~20 000 cella fölött a mentés soha nem tudott
+sikerülni.** Javítás: `fieldOverrides` az `activities.activityCells`, az
+`activityCellParents` és a `private/track.points` mezőkre. Ugyanez a
+plafon a `blockIndex.blocks`-nál már ki volt védve — ott valaki gondolt rá,
+itt nem.
+
+**b) Cloud Run időkorlát.** Az alapértelmezett 300 s. A szerver a 300 s
+után is dolgozott (a Firestore-hiba a naplóban a kérés kezdete után ~22
+perccel jelent meg), de a kliens addigra elveszítette a kapcsolatot.
+Javítás: `--timeout=900` a `cloudbuild.yaml`-ban.
+
+### 2. A mentés lassúsága — MÉRVE, 8,9× GYORSABB
+
+⚠️ **A 22 perc nem a Firestore volt, hanem a CPU.** Fázismérés egy 126 km-es
+városi rács-menetre (10 571 pont, 22 hurok, 23 927 cella):
+
+| Fázis | Idő |
 |---|---|
-| Visszaszámlálás — a 3, a 2 és az 1 megjelenésekor | `count-down-beep` |
-| „RAJT!" felirattal egyszerre | `count-down-start` |
-| Új mezőre lépés — szabad | `cell-captured` |
-| Új mezőre lépés — saját, védelem még emelhető | `cell-defend` |
-| Új mezőre lépés — saját, MÁR 5-ös szinten | `cell-max` |
-| Új mezőre lépés — riválisé | `cell-stolen` |
-| Hurokbezárás | `loop-closed` |
+| `buildActivityGeometry` (hurokdetektor) | **425 191 ms** |
+| `loopCells` összesítés | 31 ms |
+| `windingCounts` | 247 ms |
+| `resolveLoopClaims` | 388 ms |
+| `mergeClaims` | 18 ms |
+| `expandCellScope` + `blocksFor` | 434 ms |
 
-⚠️ **A cellahangok VALÓS IDEJŰEK, nem a bezáráshoz tartoznak.** Ezt Geri
-kétszer is pontosította: a hang akkor szól, amikor a futó ténylegesen rálép egy
-új mezőre, és azt mondja meg, MIRE lépett rá — nem azt, hogy a bezárás végül mit
-írt jóvá. A tanulság általánosabb: visszajelzésnél azt kell kérdezni, mikor
-VESZI ÉSZRE a felhasználó a dolgot, nem azt, mikor történik meg az adatmodellben.
+Azon belül: a `buildLoopInterior` **430-szor** futott, összesen 87 s-ot
+(hívásonként 202 ms). Vagyis nem a hívások SZÁMA volt sok, hanem egy hívás
+ára — és a 430 jelölt nagyjából ugyanazon a néhány tízezer cellás területen
+dolgozik, újra és újra kiszámolva ugyanazokat a H3-műveleteket.
 
-Mérve, 1×-es LAB-futáson: 15 koppanás 35 másodperc alatt, átlag 2,5
-másodpercenként. A `CELL_STEP_BURST_CAP = 5` csak a natív ébredés /
-visszaállítás okozta kötegeket fogja meg.
+Három lépés, mindegyik mérve, mindegyik VÁLTOZATLAN eredménnyel:
 
-A `cell-max` szabályát Geri utólag megerősítette: **saját mező, ami MÁR 5-ös
-védettségen áll**, tehát nem emelhető tovább.
-
-Beállítás: **Beállítások → Hangok** (ÚJ oldal) — fő kapcsoló, hangerő-csúszka,
-három csatorna külön kapcsolóval, hangonként meghallgatás-gomb (ez oldja fel a
-böngésző hangzárját is). `localStorage`-ban, eszközhöz kötve.
-
-### Területszerzés-üzenet konfettivel (ÚJ)
-
-Hurokbezáráskor felugró kártya: **„Grund megszerezve!"** / **„Grund
-elfoglalva!"** (ha bármit elvettél valakitől — a lopás az erősebb hír) /
-**„Grund megerősítve!"** (a kérésben nem szerepelt, de a játék előállítja).
-Alatta terület + cellaszám a `formatArea()`-n át. Öt másodperc, ✕-szel
-bezárható. Mögötte konfetti + két tűzijáték-robbanás, tiszta CSS-ből.
-
-Kapcsoló: **Beállítások → Megjelenés → Rögzítés közben**.
-
-⚠️ **A hamis riasztás elleni védelem a lényeg** (`lib/captureEvents.ts`): az élő
-előnézet minden `/api/tiles` válaszra is újrafut, és olyankor egy cella sorsa
-visszamenőleg megváltozhat. Ezért az esemény kapuja a **bezárások száma**, nem
-az állapotkülönbség — enélkül egy hálózati válasz hangot és konfettit szórna a
-semmiért. Tesztekkel rögzítve.
-
-### Saját cellaszínek a rögzítés képernyőn
-
-Az élő előnézet mezői viszik az `owner`-t, és az `ownerColors` táblába bekerül a
-saját profil színe is (a `/api/tiles` csak azokat adja vissza, akiknek a látott
-szakaszon már VAN cellájuk). A nyomvonal cellái vastagabb körvonalat és sűrűbb
-kitöltést kaptak, a nyomvonal vonala alá kontrasztos szegély került — enélkül
-azonos színű saját területen a vonal beleolvadt a birtokba.
-
-### `/admin` teljes szélesség · LAB E2E paritás · toplista
-
-- Az `app-shell` 480 px-es mobil oszlopa `/admin` alatt megszűnik. A rögzítés
-  képernyője KIVÉTEL marad, tehát a LAB E2E telefonos elrendezésben mutat.
-- A LAB sandbox `/api/tiles` válasza ad `ownerColors`-t; a tile-bridge
-  mostantól a `territoryBlobs`-ot is átveszi (előtte az ÉLES világ
-  birtokviszonya rajzolódott a sandbox cellái alá, valódi felhasználók
-  adatával).
-- Terület-toplista: a dobogó együtt görög a listával, fixen csak a fejléc és a
-  napi/heti/havi/mindenkori fülsor marad.
-
-### Mért hibák és javítások
-
-A hangsúly a MÉRÉSEN van — kétszer is megdőlt az első hipotézisem.
-
-1. ⚠️ **A hatszögek lemaradtak a valós helyzethez képest** — a menet legnagyobb
-   találata. A szabad hatszögrács ugyanabban a GeoJSON-forrásban ült, mint a
-   nyomvonal: **13 733 poligon**, ebből 13 700 a rács és 13–33 a nyomvonal, és
-   minden ÚJ nyomvonal-cellánál az egész újracsempéződött. A nyomvonal VONALA
-   (külön, egyelemű forrás) ezért volt mindig naprakész.
-   **Előtte:** panel 33 / forrás 33 / **kirajzolt 12**. **Utána:** 34 / 34 /
-   **33**, a cella-forrás 13 733-ról **276**-ra fogyott.
-   *(Az első hipotézisem — „a fő szál túlterhelt" — MEGDŐLT: 12 másodperc alatt
-   nulla hosszú task.)*
-   ⚠️ Ha legközelebb „lemarad a kirajzolás": HÁROM réteget kell szétválasztani —
-   az app állapotát, a térképnek ÁTADOTT adatot (`source._data`), és a
-   ténylegesen KIRAJZOLTAT (`map.queryRenderedFeatures`).
-2. ⚠️ **A LAB tile-bridge bent ragadt a LAB elhagyása után.** A React
-   `StrictMode` kétszer hívja meg a `useState` inicializálóját: két híd
-   regisztrálódott, de a komponens csak az EGYIK feloldóját tartotta meg. Mérve:
-   a LAB-ból a `/grund`-ra navigálva a Grund képernyő a SANDBOX világot mutatta,
-   és egyetlen `/api/tiles` kérés sem ment ki. Verem helyett egy-slotos,
-   idempotens híd.
-3. **Dokk-gombok egyforma szélessége.** Mérve: 177,5 vs 153,5 px. A `flex: 1`
-   `flex-basis: 0%`-ot jelent, ami `border-box` mellett a keretdobozt nullázza,
-   és a böngésző a bélésre + keretre kerekíti fel — a különbség pontosan a 24 px
-   béléskülönbség. Grid `1fr auto 1fr`, kifejtett `justify-items: stretch` (a
-   `normal` alapérték `<button>`-nél `start`). Utána: 165,5 = 165,5 px.
-4. **`browserSource.ts` — őrkutya a néma `watchPosition`-re.** iOS Safariban a
-   figyelés előtérbe visszatérés után némán halott maradhat: se minta, se hiba.
-   45 másodperc teljes csend után újraindul (a hiba is életjel). Rejtett lapon
-   sosem. Tiszta függvény + hat teszt.
-5. **`wakeLock.ts` + `useRecorder.ts` — a képernyőzár állapota élővé vált.**
-   Eddig egyszer, a megszerzéskor íródott be, holott a böngésző háttérbe
-   kerüléskor elengedi: a felület a futás végéig az első másodperc állapotát
-   mutatta.
-6. **`nativeSource.ts`** — korlátos, kétgenerációs duplikátumszűrő (eddig sosem
-   ürülő halmaz gyűjtötte az aktivitás minden időbélyegét).
-7. **`TrackingScreen.tsx`** — 20 bejegyzéses LRU a csempe-gyorsítótáron, és
-   hálózati hiba után újra lehet próbálni (a `requestedBox` jelző bent ragadt).
-8. **`useRecorder.ts`** — a natív `syncActivity` híd­hívás legfeljebb
-   másodpercenként (eddig MINDEN GPS-mintára), de a státuszváltás azonnal megy.
-9. **`.gitattributes`** — `*.mp3|m4a|wav|ogg binary`, hogy egy LF-csere ne
-   tegye lejátszhatatlanná a hangfájlokat.
-
----
-
-## ÉLESBEN FUT / TELEPÍTETLEN
-
-### Web — ÉLES
-
-**`fb72645`**, https://grundo.web.app. Telepítés utáni ellenőrzés megtörtént: a
-belépő chunk neve megegyezik a helyi buildével, mind a hét hang kiszolgálva
-(`audio/mpeg`, a böngésző dekódolta is), az új `grundo-grid` térképforrás benne
-van az éles `MapView` chunkban.
-
-### Backend — VÁLTOZATLAN
-
-Nem változott ebben a menetben, nem is települt. Az előző kiadás fut: kód
-`605736f`, Cloud Run `grundo-api-00110-94c`. Nincs adatmigráció, nincs új index.
-
-### iOS — build indítva, EREDMÉNY NEM VISSZAIGAZOLT
-
-A TestFlight build először **elhasalt** (`xcode-project build-ipa`, exit 65).
-
-⚠️ **Ok, és ez fontos tanulság:** a `d8de34f` (App Check) hozzáadta a
-`com.apple.developer.devicecheck.appattest-environment` entitlementet az
-`App.entitlements`-hez, de az App ID-n a Developer Portalon **nem volt
-bekapcsolva az App Attest capability**. Az archiválás ezért az entitlements és a
-provisioning profil eltérésén bukott el, még mielőtt bármi fordítási hiba lett
-volna. Ez volt az ELSŐ iOS archiválás, ami egyáltalán megpróbálta ezt az
-entitlementet használni (a legutóbbi sikeres build, `6da0288`, még nem
-tartalmazta).
-
-**Amit megcsináltunk:** App Attest capability bekapcsolva az `app.grundo.ios`
-App ID-n; a Developer Portalon **Invalid** státuszúvá vált „GRUNDO ios_app_store
-1787484102" profil törölve, hogy a Codemagic `fetch-signing-files --create`
-frisset generáljon. A „GRUNDO Live Activity" profil érintetlen maradt (érvényes,
-2027/08/23).
-
-⚠️ **Apple provisioning profilok NEM frissülnek maguktól, ha egy App ID
-capability-je utólag változik** — a régit törölni kell.
-
-**A build újraindult, de az eredményét NEM láttuk.** A #24 első teendői közt
-ezt ellenőrizni kell.
-
-### Android — build NEM indult el
-
-A `main` friss HEAD-jét fogja húzni, tehát minden webes újítás benne lesz (a
-`npm run build` + `npx cap sync android` viszi a `dist/`-et). A menet **nem
-érintett natív Android fájlt**.
-
----
-
-## App Check — hol tart
-
-| Lépés | Állapot |
+| Lépés | 126 km-es menet `planActivity` |
 |---|---|
-| Play Integrity API engedélyezve (Cloud Console) | ✅ már korábban megvolt |
-| Android: Play Integrity provider + SHA-256 a Firebase App Checkben | ✅ **a #23-ban megcsinálva** |
-| iOS: App Attest provider | ✅ Registered |
-| Web: reCAPTCHA Enterprise provider | ✅ Registered |
-| `VITE_RECAPTCHA_SITE_KEY` a `.env.production`-ben | ❌ **ÜRES** — a webes Key ID még nincs bekötve |
-| Cloud Shell: `RATE_LIMIT_HMAC_KEY` titok + IAM (`firebaseappcheck.tokenVerifier`) | ❓ nem ellenőriztük |
-| Backend `observe` telepítés | ❌ nem történt meg |
-| `enforce` átkapcsolás | ❌ csak igazolt lefedettség után |
+| kiinduló állapot | **453 643 ms** |
+| `neighbours.ts` — `gridDisk(cell,1)` memoizálva | ~200 000 ms |
+| a kitöltés választása arány-alapú (`ADAPTIVE_AREA_PER_WALL_CELL`) | 83 161 ms |
+| `parentOf` / `childrenOf` memoizálva | **51 000 ms** |
 
-Az Androidhoz a **Play alkalmazás-aláíró kulcs („Klasszikus kulcs") SHA-256**-át
-regisztráltuk — nem a feltöltési kulcsét, és nem a posztkvantum kulcsét.
+A Cloud Run 1 vCPU-ja ennél ~3,1-szer lassabb (ezt az élesben mért 1 320 s
+és a helyi 425 s aránya adja), tehát a legrosszabb mért eset most ~160 s —
+bőven a 900 s-os korlát alatt.
 
-**Metrika még nincs**: a Firebase App Check Metrics csak akkor mutat adatot, ha
-egy telepített build ténylegesen küldött App Check tokent. Ez a natív buildek
-eszközre telepítése után ellenőrizhető.
+⚠️ **A gyorsulás a RÖGZÍTÉS KÉPERNYŐN is érvényes**, mert az inkrementális
+detektor ugyanezt a kitöltést hívja. Ez Jamal „az app újranyitása
+nehézkes" panaszának egy részét is enyhíti (a többiről lent).
+
+### 3. ⚠️ Motorhiba, amit a gyorsítás fedett fel — JAVÍTVA
+
+A `windingCounts` egy régió körüljárási számát az **elsőként megtalált**
+cellájánál mérte. Elvben mindegy (a régió minden cellája ugyanannyit lát),
+a gyakorlatban nem: az `encirclementsAround` racsnija tűréssel dolgozik, és
+a régió peremén két szomszédos cella a küszöb két oldalára eshet.
+
+**Mérve:** pusztán a kitöltés belső halmazának BEJÁRÁSI SORRENDJÉT
+megváltoztatva a kifelé tartó spirál magja 3× helyett 2× védelmen maradt.
+Vagyis a felhasználó területének védettsége egy `Set` beszúrási sorrendjén
+múlt — pontosan az a fajta rejtett függés, amitől a kliens és a szerver
+eredménye szétcsúszhat, holott a modul fejléce bitre azonos eredményt ígér.
+
+Mostantól a régió **lexikografikusan legkisebb** celláján mérünk. Két új
+teszt rögzíti: `winding.order.test.ts` (sorrendfüggetlenség) és
+`loops.fill.test.ts` (a két kitöltési út ugyanazt adja).
+
+### 4. Területfoltok csonkolása — JAVÍTVA (latens volt)
+
+A `recomputeTerritoryBlobs` a felhasználó **első 400 blokkjából** számolta a
+foltokat, majd **törölt mindent, amit nem hozott vissza**. 400 blokk fölött
+tehát a birodalom maradéka egyszerűen eltűnt a térképről — lyukak és üres
+foltok a régen elfoglalt területen. A `loadUserBlockIds` visszaadta a
+`truncated` jelzést, csak épp senki nem nézte meg.
+
+A plafon 4 000 blokk, és **csonkolt listával már nem törlünk**, hanem
+naplózunk. A blokkolvasás kötegelt lett (400-asával), hogy a nagyobb plafon
+ne vigye el a memóriát.
+
+⚠️ **Ez NEM magyarázza Jamal tegnapi lyukait** — lásd lent, „Ami nyitva
+maradt".
+
+### 5. Hidegindítás — RÉSZBEN
+
+`--cpu-boost` a `cloudbuild.yaml`-ban. Mérve az éles naplóban: hidegen az
+első kérés 2,58 s, melegen ugyanaz 0,1–0,7 s. Geri 2026-09-02-án a
+díjmentes felet választotta, tehát **`--min-instances=0` marad** — a
+hidegindítás rövidebb lesz, de nem tűnik el. Ha a feed lassúsága továbbra is
+zavaró, a `--min-instances=1` az egyetlen, ami megszünteti (~12–18 USD/hó).
+
+### 6. Hiányzó index — JAVÍTVA
+
+`modifiers` (scope, from, to). Az óránként futó forduló akció-indulás
+értesítése e nélkül **minden órában** `FAILED_PRECONDITION`-nel hasalt el.
+Ez nem szerepelt a hibalistán — a naplóból derült ki.
 
 ---
 
-## KÖVETKEZŐ MENET
+## MÉRT DIAGNÓZIS a még NEM javított pontokra
 
-**A) A natív Google-belépés** — lásd a fájl elején. Ez a legfrissebb, konkrét,
-felhasználót érintő hiba.
+Ezek a #25 kész munkacsomagjai. Mindegyik mögött konkrét kód áll, nem
+feltételezés.
 
-**B) Az iOS build eredményének ellenőrzése**, és ha lefutott, a TestFlight
-telepítés utáni készülékes próba. Ott két dolog vár igazolásra a #23-ból, amit
-csak eszközön lehet:
-1. a némító kapcsoló / csengőhang-mód hatása a hangeffektekre iOS-en,
-2. hogy a hangzár feloldása (`unlockSounds`) a WKWebView-ban is megtörténik az
-   indítógomb koppintására.
+### A) iOS: a zárolt képernyőn más táv, mint az appban
 
-**C) A terepteszt visszajelzései.** A hangok üteme, hangereje és a felugró
-üzenet hossza csak valódi futás közben ítélhető meg. Hangolópontok:
-`lib/cellStepSound.ts` (`CELL_STEP_GAP_MS`, `CELL_STEP_BURST_CAP`),
-`lib/sound.ts` (`SOUND_GAIN`), `hooks/useCaptureFeedback.ts`
-(`TERRITORY_TOAST_MS`), `components/territoryToast.css`.
+Jamal képernyőképein azonos percben **86,07 km** a zárolt képernyőn és
+**92,69 km** az appban — 7,1% hiány.
 
-**D) App Check éles bevezetése** — a fenti táblázat hiányzó sorai. Sorrend:
-szabályok → backend (`observe`) → frontend → Android → iOS, és csak igazolt
-lefedettség után `enforce`. Részletek:
-`docs/06-architektura-es-admin.md` App Check rollout szakasz.
+**Ok: két, KÜLÖN algoritmusú távolságszámláló.** Előtérben a JS küldi a
+hiteles értéket (`syncActivity`), háttérben viszont a natív
+`GrundoLiveActivityController.record()` maga összegez — más szabályokkal:
 
-**E) Kód-jelöltek, változatlanul nyitva a #22 óta:**
-1. A gameplay-config runtime snapshot bekötése a tényleges
-   aktivitás-feldolgozásba (`activityCommit.ts`, `activityChunked.ts`,
-   `trust/score.ts`, 16 hívási hely). Ez élesíti a Trust Score observe-only
-   kikapcsolhatóságát és az admin GP-modifiereket egyszerre.
-2. `mailer.ts:122-129` fail-closed tétele hiányzó `SMTP_HOST`-ra production
-   módban.
+| | JS (`tracking/filter.ts` + `recorder.ts`) | natív (`record()`) |
+|---|---|---|
+| pontosság-kapu | 30 m | **50 m** |
+| elvetett mintánál a referenciapont | **marad a régi** | **előrelép** |
+| távösszegzés | horgony-alapú, 12 m sugár | egyszerű láncösszeg |
+
+A második sor a lényeg: a `defer { lastLocation = location }` a kapuk ELŐTT
+fut le, tehát egy elvetett fix is új referenciaponttá válik — **az azon
+átívelő szakasz távja végleg elveszik**. Bringánál (`distanceFilter = 12`)
+ez fixenként 12–24 m. A hiba iránya mindig veszteség, ami egybevág a mért
+7,1%-kal.
+
+**Javítás iránya:** a natív ág vegye át a JS szabályát — 30 m-es kapu,
+elvetett fixnél NE lépjen a referencia, és horgony-alapú összegzés 12 m-rel
+(`GAMEPLAY.GPS_STATIONARY_RADIUS_M`). Fájl:
+`ios/App/App/GrundoLiveActivityController.swift`.
+
+### B) iOS: a hangok beragadnak, majd tömegesen leszólalnak
+
+**Ok, és ez platformkorlát, nem hiba a kódban:** az
+`ios/App/App/Info.plist` `UIBackgroundModes` tömbje `location` és
+`remote-notification` — **`audio` NINCS BENNE**, és sehol nincs
+`AVAudioSession` beállítás. Vagyis amíg az app háttérben van (zárolt
+képernyő), a WebView `<audio>` eleme nem szólalhat meg. A `play()` hívás
+nem hibázik, csak vár — és amikor az app előtérbe kerül, a felgyűlt
+lejátszások egyszerre indulnak el. Pontosan ezt írta le Geri.
+
+Ez magyarázza a többi tünetet is: a 3-2-1 és a RAJT azért ment, mert azok
+ELŐTÉRBEN szólnak (épp megnyomta az indítást); a cellahangok és a
+hurokbezárás azért nem, mert azok menet közben, háttérben keletkeznek.
+
+**Két külön teendő:**
+1. **Azonnali, olcsó:** a `lib/sound.ts` `playSound()`-ja ne indítson
+   lejátszást, ha `document.visibilityState === 'hidden'`, és a
+   `playSoundSequence` függő időzítői is szakadjanak meg elrejtéskor. Egy
+   hang, amit MOST nem hallani, később már nem információ, hanem zaj.
+2. **Termékdöntés:** ha a zárolt képernyős menet közben is szólni kell,
+   ahhoz natív hangút kell (iOS: `UIBackgroundModes: audio` +
+   `AVAudioSession` `.playback` + `AVAudioPlayer`; Android: `SoundPool` az
+   előtér-szolgáltatásban). Ez önálló funkció, nem javítás — és iOS-en
+   figyelni kell, hogy a háttérhang-jogosultság App Store-felülvizsgálati
+   kérdés is.
+
+### C) A dokk Play gombja két lépés
+
+Kérés: bárhol nyomjuk meg a dokk Play gombját, egyből a mozgásforma-választó
+jöjjön. Ma a rögzítés oldalra visz, és ott újra kell nyomni. Érintett:
+`components/Dock.tsx` (`primaryAction`) és a `TrackingScreen` indító
+állapota. ⚠️ A Dock indítógombja oldja fel a böngésző hangzárját is
+(`unlockSounds`) — az átalakításnál ez nem eshet ki.
+
+### D) A profil rivális-blokkja kapja meg az új Rival Bars megjelenítést
+
+Minden felhasználó sávja a saját színével. A #23-ban a Home feed
+aktivitás-kártyáin készült el (`RivalRow.tsx` + `connectionsSheet.css`); a
+profil `RivalsCard`-ja még a régit használja.
 
 ---
 
-## NYITOTT KISEBB ÜGYEK
+## AMI NYITVA MARADT — és amihez INFORMÁCIÓ kell
 
-- A rögzítés `applySample`-je minden mintánál ÚJ pontok-tömböt másol
-  (`[...state.points, point]`). Egy 3000 pontos aktivitáson ez négyzetes
-  jellegű munka és GC-nyomás. **Feltérképezve, nem javítva** — a tiszta
-  reducer-szerződés és a React változásfelismerés is ezen áll, tehát mérés
-  nélkül nem szabad hozzányúlni. Önálló menetet érdemel, mért előtte-utána
-  számokkal.
-- A frontend production Mapbox chunk **1,824 MB**, a Firebase chunk **630 kB**.
-- A hat backend auditjelzés tranzitív `firebase-admin` függőség.
-- A Codemagic Google Play ellenőrző parancsában a régi
-  `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` név később megszűnik.
-- A 90 perces / 20 km-es iOS és Android háttér-GPS terepteszt továbbra is
-  nyitott.
+### Jamal „lyukak a térképen" bejelentése
+
+⚠️ **Ez nem a 4. pontban javított hiba.** Éles adaton lemérve
+(2026-09-02): **Jamalnak NULLA blokkja és NULLA területfoltja van** — a 12
+órás menet sosem íródott ki, tehát nem volt mit lyukasnak látni. A
+legnagyobb birodalom jelenleg 84 blokk (geri), vagyis a 400-as csonkolás
+sem sújtott még senkit.
+
+A 23:34-es képernyőképen látható lila terület tehát a **mentetlen aktivitás
+kliensoldali előnézete**, nem a tárolt birtokviszony. Ahhoz, hogy ezt
+érdemben meg lehessen nézni, kérdezzük meg Jamaltól: melyik képernyőn látta
+(Grund térkép / rögzítés / aktivitás részletező), és a lyukak az ő
+területén belül voltak-e, vagy másén. A javított mentéssel érdemes újra
+próbálni, és ha újra előjön, akkor már lesz tárolt adat összehasonlítani.
+
+### „Az app újranyitása sokáig tart hosszú rögzítés után"
+
+A geometria 8,9-szeres gyorsulása ebbe is beleszámít, de **marad egy
+mért, ismert négyzetes költség**, ami a #23 óta nyitva van: a
+`tracking/recorder.ts` `applySample`-je MINDEN mintánál új pontok-tömböt
+másol (`[...state.points, point]`). Ébredéskor a natív sor egyszerre több
+ezer pontot szállít, és mindegyik egy teljes tömbmásolást indít — egy
+8 000 pontos menetnél ez ~32 millió elemmásolás egyetlen kötegben.
+
+⚠️ A #23 kifejezetten azt írta, hogy ehhez **mérés nélkül nem szabad
+hozzányúlni**, mert a tiszta reducer-szerződés és a React
+változásfelismerés is ezen áll. Ez így is van — a helyes irány egy KÖTEGES
+`applySamples(state, samples)`, ami egyszer másol, és amit előtte-utána
+mérni kell (a natív drain kötegméretével).
+
+### Változatlanul nyitva a korábbi menetekből
+
+- **Natív Google-belépés** (a #23 fő témája volt): iOS-en szándékosan
+  tiltva (App Store 4.8 → Sign in with Apple kell hozzá), Androidon valódi
+  hiba, a SHA-1 hipotézis IGAZOLATLAN. Részletek a #23 handoffjában, a
+  git logban.
+- **iOS TestFlight build eredménye** a #23-ból nem lett visszaigazolva.
+- **App Check**: a webes `VITE_RECAPTCHA_SITE_KEY` üres, a backend `observe`
+  telepítése nem történt meg, `enforce` csak igazolt lefedettség után.
+- A gameplay-config runtime snapshot bekötése (`activityCommit.ts`,
+  `activityChunked.ts`, `trust/score.ts`, 16 hívási hely).
+- `mailer.ts:122-129` fail-closed tétele hiányzó `SMTP_HOST`-ra.
+- A frontend production Mapbox chunk 1,824 MB, a Firebase chunk 630 kB.
+- 90 perces / 20 km-es iOS és Android háttér-GPS terepteszt.
 
 ---
 
 ## Üzemeltetési jegyzetek
 
-### Hol van a Play Store aláírókulcs SHA-1 / SHA-256?
+### Éles naplók olvasása — ez a menet ezen állt vagy bukott
 
-⚠️ Ezzel a #23-ban sok kört futottunk feleslegesen. A régi „App integrity"
-oldal **átköltözött**, és az `Alkalmazásintegritás` menüpont csak egy
-átirányítást mutat — körbe. A közvetlen URL (`.../app-signing`) sem működik,
-visszadob az applistára. A tényleges útvonal:
+A gépen bejelentkezett `gcloud` (`gergely.marthon@gmail.com`) lát Cloud
+Logginget. Git Bashből, a repo bármely mappájából:
 
-**Play Console → GRUNDO app → „A Google Play védi" → a „Google Play
-Áruház-védelem" kártya kinyitása a sorvégi ∨ nyíllal → „Alkalmazás-aláíró kulcs
-védelme" sor → „A Play alkalmazás-aláírás kezelése" gomb**
+```
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="grundo-api" AND httpRequest.requestMethod="POST"' --project grundo --freshness=2d --limit 40 --format="value(timestamp,httpRequest.status,httpRequest.latency,httpRequest.requestSize,httpRequest.requestUrl)"
+```
 
-Ott az „Alkalmazás-aláíró kulcs" dobozban a **Klasszikus kulcs** SHA-1 és
-SHA-256 ujjlenyomata. Amit NE használj: a „Posztkvantum titkosítási kulcs"
-értékeit, és a lap alján lévő „Feltöltési kulcs tanúsítványa" ujjlenyomatokat
-(az a te feltöltő kulcsod, a Google ettől eltérő kulccsal írja alá újra).
+⚠️ A KÉRÉSNAPLÓ CSAK A STÁTUSZT ADJA. A konténer saját üzenetei — köztük a
+Firestore-hibák teljes szövege — a `stderr` naplóban vannak: a szűrőbe
+`logName:"stderr"` kell. Ez a menet enélkül nem találta volna meg az
+index-plafont, csak a 300 s-os időkorlátot, és félig javított volna.
+
+⚠️ **PowerShellben a szűrő idézőjelei elvesznek** a natív parancsnak
+átadva („Unparseable filter"). Git Bashből kell futtatni, ott a `gcloud`
+elérhető a `/c/Program Files (x86)/Google/Cloud SDK/…` alól.
+
+### Éles Firestore-olvasás szkriptből
+
+A `server/` mappában, a moduláris firebase-admin API-val (az
+`admin.firestore()` alak a v13-ban már nem létezik):
+
+```
+const { initializeApp, applicationDefault } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const db = getFirestore(initializeApp({ credential: applicationDefault(), projectId: 'grundo' }), 'grundo-db');
+```
+
+PowerShellből: `$env:GOOGLE_CLOUD_PROJECT="grundo"` és `node` a `server/`
+mappából — a szkript a `server/node_modules`-t használja.
 
 ### Helyi teszt-környezet
 
 `localhost:5173` + Firestore/Auth emulátor + backend. Belépés:
 `geri@grundo.local` / `grundo-emulator`, vagy a konzolban
-`await __grundoDevSignIn()`. A seed-fiók a #23-ban **owner** szerepkört kapott
-(`server/src/scripts/setUserRole.ts`), tehát az `/admin` és a Simulation LAB
-elérhető — a szerepkör a tokenben ül, szerepkör-változás után ki/be kell
-jelentkezni.
+`await __grundoDevSignIn()`. A seed-fiók **owner** szerepkörű, tehát az
+`/admin` és a Simulation LAB elérhető.
 
-**LAB E2E gyorsítás:** a session közvetlenül létrehozható `sessionStorage`-ban
-(`grundo.lab.e2e.<id>`), nem kell kézzel útvonalat rajzolni a Scenario LAB-ban.
-A hangok ellenőrzéséhez a `HTMLMediaElement.prototype.play` kipatchelhető egy
-naplótömbbe — így hang nélkül is látszik, MELYIK hang, MIKOR és milyen
-hangerővel szólt.
+Emulátoros tesztek Git Bashből, a Java PATH exportja után:
+`export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.8-hotspot/bin:$PATH"`
+
+### Hol van a Play Store aláírókulcs SHA-1 / SHA-256?
+
+Play Console → GRUNDO app → „A Google Play védi" → a „Google Play
+Áruház-védelem" kártya kinyitása a sorvégi ∨ nyíllal → „Alkalmazás-aláíró
+kulcs védelme" sor → „A Play alkalmazás-aláírás kezelése" gomb. Ott az
+„Alkalmazás-aláíró kulcs" dobozban a **Klasszikus kulcs** ujjlenyomatai
+kellenek — nem a posztkvantum kulcs és nem a feltöltési kulcs.
 
 ---
 
-## 0. MODELLJAVASLAT a #24-hez
+## 0. MODELLJAVASLAT a #25-höz
 
-**Opus, emelt mélység** — ha a natív Google-belépéssel kezdünk (A). Ez mért
-anomália hibakeresése, ahol a hipotézisem még nincs igazolva, és két platform
-konfigurációja fut össze (Firebase SHA-regisztráció, Play App Signing, Codemagic
-statikus titok). A #23 kétszer is megmutatta, hogy a kézenfekvő magyarázat
-megdőlhet.
+**Sonnet, normál mélység** — ha a #24 diagnózisait vezetjük át (A, B/1, C,
+D). Ott már mind a négyhez megvan a hely és a szabály; ez felület- és
+platform-kódírás, nem nyomozás.
 
-**Sonnet, normál mélység** — ha a terepteszt visszajelzéseinek átvezetése (C)
-lesz a téma: ott számhangolások és apró UI-igazítások vannak ismert helyeken.
+**Opus, emelt mélység** — ha a rögzítő `applySample` négyzetes költsége vagy
+a natív Google-belépés lesz a téma. Az egyik mért teljesítmény-átalakítás
+egy tiszta reducer szerződésével a tét, a másik igazolatlan hipotézis két
+platform konfigurációjának metszetében.
