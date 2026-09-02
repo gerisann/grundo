@@ -4,7 +4,8 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · HEAD **`06cf4e5`** · pusholva, munkamásolat tiszta
+> Ág: **`main`** · az utolsó KÓD-commit **`1e52b48`**, utána már csak ez a
+> fájl változott · pusholva, munkamásolat tiszta
 >
 > Élesben: web `06cf4e5` · backend `grundo-api-00111-ldw` · indexek naprakészek
 >
