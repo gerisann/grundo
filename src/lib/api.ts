@@ -181,6 +181,42 @@ async function requestBlob(path: string, signal?: AbortSignal): Promise<Blob> {
   return response.blob();
 }
 
+/**
+ * A KÉRÉS TÖRZSÉNEK GZIP-TÖMÖRÍTÉSE — nagy nyomvonalaknál.
+ *
+ * ⚠️ Miért itt, és nem mindenütt? A `fetch` a KÉRÉS törzsét sosem tömöríti
+ * magától (a VÁLASZ igen — azt a szerver és a böngésző intézi egymás közt).
+ * A legtöbb GRUNDO-kérés pár száz bájt, ott a tömörítés rezsije több kárt
+ * okozna, mint hasznot. Egy hosszú aktivitás nyomvonala viszont ismétlődő
+ * lat/lng/t hármasokból áll — Jamal 12 órás menete (2026-09-01) 1,1 MB nyers
+ * JSON volt, ami mobilneten önmagában 10-30 másodperc feltöltés, MÉG a
+ * szerveroldali feldolgozás előtt.
+ *
+ * A szerver oldalon NEM KELL semmit tenni: az `express.json()` a
+ * body-parseren keresztül alapból dekódolja a `Content-Encoding: gzip`
+ * fejlécű kéréseket (`inflate` alapból bekapcsolt).
+ *
+ * ⚠️ A `CompressionStream` iOS Safari/WKWebView-n csak 16.4-től létezik.
+ * Ahol nincs (vagy bármi közben elhasal), a sima JSON megy tömörítés
+ * nélkül — ez a régi, működő viselkedés, nem hibaágazat. A tömörítés soha
+ * nem állíthatja meg a mentést.
+ */
+async function compressedJsonBody(
+  payload: unknown,
+): Promise<{ body: BodyInit; headers: Record<string, string> }> {
+  const json = JSON.stringify(payload);
+  if (typeof CompressionStream === 'undefined') {
+    return { body: json, headers: {} };
+  }
+  try {
+    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'));
+    const body = await new Response(stream).blob();
+    return { body, headers: { 'Content-Encoding': 'gzip' } };
+  } catch {
+    return { body: json, headers: {} };
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Típusok — a szerver által visszaadott profil (docs/05)
    ═══════════════════════════════════════════════════════════════════ */
@@ -1114,12 +1150,16 @@ export const api = {
    * A szerver MINDENT újraszámol a nyers nyomvonalból — a kliens által
    * mutatott táv és terület csak előnézet. Eltérés esetén a szerveré az
    * igazság; a válaszban ez jön vissza.
+   *
+   * A törzs gzip-tömörítve megy — lásd `compressedJsonBody()` fejlécét.
    */
-  uploadActivity: (input: UploadActivityInput) =>
-    request<{ activityId: string; summary: ActivitySummary; duplicate?: boolean }>(
+  uploadActivity: async (input: UploadActivityInput) => {
+    const { body, headers } = await compressedJsonBody(input);
+    return request<{ activityId: string; summary: ActivitySummary; duplicate?: boolean }>(
       '/api/activities',
-      { method: 'POST', body: JSON.stringify(input) },
-    ),
+      { method: 'POST', body, headers },
+    );
+  },
 
   /** A feed — nézet szerint szűrve. */
   activities: (query: FeedQuery) => {

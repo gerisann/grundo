@@ -59,9 +59,19 @@ app.use((req, res, next) => {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
+    /**
+     * ⚠️ A `Content-Encoding` HIÁNYA UGYANÚGY „nincs kapcsolat a szerverrel"
+     * HIBÁT AD, MINT A `PUT` HIÁNYA FENT (lásd az ottani megjegyzést,
+     * 2026-08-19). Amikor a kliens gzip-tömörítve küldi a nagy aktivitás-
+     * nyomvonalakat (`src/lib/api.ts` `compressedJsonBody`), a böngésző
+     * ELŐKÉRÉST indít, mert a `Content-Encoding` egyedi fejléc — és ha ez
+     * a lista nem engedi, a szerver a valódi kérést SOSEM látja. A tünet a
+     * kliensen pontosan úgy néz ki, mintha a hálózat állna, pedig a szerver
+     * válaszolt volna, csak a fejlécet utasította el.
+     */
     res.setHeader(
       'Access-Control-Allow-Headers',
-      'Authorization, Content-Type, X-Firebase-AppCheck',
+      'Authorization, Content-Type, Content-Encoding, X-Firebase-AppCheck',
     );
     /**
      * A PUT hiánya egyszer már megfogott (2026-08-19): az admin
