@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { type DocumentReference, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db, FIREBASE_STORAGE_BUCKET, storage } from '../lib/firebase';
-import { badRequest, forbidden, notFound } from '../lib/errors';
+import { badRequest, forbidden, HttpError, notFound } from '../lib/errors';
 import { distanceM } from '../../../src/game/geo';
 import { activityTitle } from '../../../src/lib/format';
 import { GAMEPLAY } from '../../../src/config/gameplay';
@@ -42,6 +42,12 @@ import {
 import { existingRivals, recordRivalry, toRivalRecord, type RivalRecord } from '../lib/rivals';
 import { scheduleTerritoryBlobRecompute } from '../lib/territoryBlobStore';
 import { layerOf } from '../../../src/game/cells';
+import {
+  beginActivityUpload,
+  completeActivityUpload,
+  failActivityUpload,
+  readActivityUploadStatus,
+} from '../lib/activityUploads';
 
 export const activitiesRouter = Router();
 
@@ -127,6 +133,7 @@ interface UploadBody {
  * jelenlegi egyetlen valódi méretkorlát (lásd FIRESTORE_MAX_TRANSACTION_WRITES).
  */
 activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
+  let claimedUpload: { activityId: string; uid: string; token: string } | null = null;
   try {
     const uid = req.uid!;
     const body = req.body as UploadBody;
@@ -160,14 +167,30 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
      * annyit ér el, hogy egy nyilvánvaló ismétlésnél ne fussunk le a teljes
      * motoron és a rács-olvasáson.
      */
-    const preflight = await db.collection(COLLECTIONS.activities).doc(activityId).get();
-    if (preflight.exists) {
-      const data = preflight.data() as { userId?: string; summary?: unknown };
-      if (data.userId !== uid) {
-        throw badRequest('activity_conflict', 'Ez az azonosító már foglalt.');
-      }
-      return res.json({ activityId, summary: sanitizePublicSummary(data.summary), duplicate: true });
+    const uploadStart = await beginActivityUpload(activityId, uid);
+    if (uploadStart.status === 'conflict') {
+      throw badRequest('activity_conflict', 'Ez az azonosító már foglalt.');
     }
+    if (uploadStart.status === 'done') {
+      return res.json({
+        activityId,
+        summary: sanitizePublicSummary(uploadStart.summary),
+        duplicate: true,
+      });
+    }
+    if (uploadStart.status === 'processing') {
+      if (req.query.async === '1') {
+        return res.status(202).json({ activityId, processing: true });
+      }
+      // Régi kliensek a 202-es alakot még sikeres, de summary nélküli
+      // mentésnek hinnék. Nekik stabil, újrapróbálható hibát adunk; az új
+      // kliens az `async=1` képességjelzővel kéri a kétfázisú választ.
+      return res.status(503).json({
+        code: 'activity_processing',
+        message: 'Az aktivitás feldolgozása még folyamatban van. Próbáld újra később.',
+      });
+    }
+    claimedUpload = { activityId, uid, token: uploadStart.token };
 
     // Geometria és méretellenőrzés — determinisztikus, tranzakción kívül.
     const plan = planActivity({ activityId, uid, type, points, startedAt, endedAt, movingMs });
@@ -194,6 +217,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       : await db.runTransaction((tx) => commitActivity(tx, plan));
 
     if (committed.duplicate) {
+      await completeActivityUpload(activityId, uploadStart.token).catch(() => undefined);
       return res.json({ activityId, summary: committed.summary, duplicate: true });
     }
 
@@ -326,7 +350,47 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
       console.error('[activities] aktivitás utáni értesítések elhasaltak', error);
     });
 
+    await completeActivityUpload(activityId, uploadStart.token).catch((error: unknown) => {
+      // Az aktivitás már kész; a státuszvégpont először mindig azt ellenőrzi.
+      console.error('[activities] a feldolgozási életjel törlése elhasalt', error);
+    });
     res.status(201).json({ activityId, summary: committed.summary });
+  } catch (error) {
+    if (claimedUpload !== null) {
+      const retryable = error instanceof HttpError ? error.status >= 500 : true;
+      const message = error instanceof HttpError
+        ? error.message
+        : 'A mentés feldolgozása megszakadt. Próbáld újra.';
+      await failActivityUpload(
+        claimedUpload.activityId,
+        claimedUpload.uid,
+        claimedUpload.token,
+        { message, retryable },
+      ).catch((statusError: unknown) => {
+        console.error('[activities] a sikertelen feldolgozás státuszírása elhasalt', statusError);
+      });
+    }
+    next(error);
+  }
+});
+
+/**
+ * GET /api/activities/:id/upload-status — megszakadt klienskapcsolat után.
+ *
+ * Nem ad nyomvonalat vagy játékdiagnosztikát: kizárólag azt mondja meg, hogy
+ * a saját mentés elkészült, még dolgozik rajta a szerver, vagy újraküldhető.
+ */
+activitiesRouter.get('/:id/upload-status', async (req: AuthedRequest, res, next) => {
+  try {
+    const activityId = String(req.params.id ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(activityId)) {
+      throw badRequest('invalid_activity_id', 'Hiányzó vagy hibás aktivitás-azonosító.');
+    }
+    const status = await readActivityUploadStatus(activityId, req.uid!);
+    if (status.status === 'done') {
+      return res.json({ status: 'done', summary: sanitizePublicSummary(status.summary) });
+    }
+    return res.json(status);
   } catch (error) {
     next(error);
   }
@@ -1634,4 +1698,3 @@ function parseFeedDate(raw: unknown, field: string): number | null {
   }
   return value;
 }
-

@@ -55,6 +55,8 @@ export const COLLECTIONS = {
   territoryEvents: 'territoryEvents',
   activityTrust: 'activityTrust',
   activityAudits: 'activityAudits',
+  /** Server-only életjel a hosszú, még véglegesítés előtt álló mentésekhez. */
+  activityUploads: 'activityUploads',
   adminAudit: 'adminAudit',
   reports: 'reports',
   followRequests: 'followRequests',

@@ -1036,7 +1036,15 @@ export function TrackingScreen() {
  * Miért fontos ez? Egy Balaton-méretű mentés ~25 másodperc. Enélkül a
  * felhasználó egy néma feliratot néz, és azt hiszi, lefagyott az app.
  */
-function SavingPanel({ activityId }: { activityId: string | null }) {
+function SavingPanel({
+  activityId,
+  reconnecting,
+  locallySaved,
+}: {
+  activityId: string | null;
+  reconnecting: boolean;
+  locallySaved: boolean;
+}) {
   const progress = useClaimProgress(activityId, true);
   const chunked = progress !== null && progress.total > 1;
   const ratio = chunked ? progress.done / progress.total : 0;
@@ -1067,7 +1075,11 @@ function SavingPanel({ activityId }: { activityId: string | null }) {
       </div>
 
       <strong className="track__saving-title">
-        {chunked ? 'Területek mentése' : 'Mentés folyamatban'}
+        {reconnecting
+          ? 'A mentést biztonságban tartjuk'
+          : chunked
+            ? 'Területek mentése'
+            : 'Mentés folyamatban'}
       </strong>
 
       {chunked ? (
@@ -1084,6 +1096,17 @@ function SavingPanel({ activityId }: { activityId: string | null }) {
         </>
       ) : (
         <span className="track__saving-note">Az útvonal feltöltése és a terület elszámolása…</span>
+      )}
+      {locallySaved ? (
+        <span className="track__saving-safe">
+          <strong>Nyugodtan bezárhatod az appot.</strong>{' '}
+          Az aktivitás megmarad ezen az eszközön, és az értesítések között is
+          megjelenik, amikor elkészült.
+        </span>
+      ) : (
+        <span className="track__saving-safe track__saving-safe--pending">
+          A helyi biztonsági mentés még készül — egy pillanatig ne zárd be az appot.
+        </span>
       )}
     </div>
   );
@@ -1675,8 +1698,14 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
   const navigate = useNavigate();
   const { upload } = recorder;
 
-  if (upload.status === 'sending') {
-    return <SavingPanel activityId={recorder.state.id} />;
+  if (upload.status === 'sending' || upload.status === 'processing') {
+    return (
+      <SavingPanel
+        activityId={recorder.state.id}
+        reconnecting={upload.status === 'processing'}
+        locallySaved={recorder.uploadLocallySaved}
+      />
+    );
   }
 
   if (upload.status === 'error') {

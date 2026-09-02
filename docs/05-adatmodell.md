@@ -191,6 +191,29 @@ de 30 napig visszaállíthatóan megmarad. Ez a tartalom törlése: a már kiosz
 és a konkurens területállapot nem tekerhető vissza. A moderátori törlés külön,
 auditált művelet, amely a GP/terület korrekcióját is elvégezheti.
 
+### `activityUploads/{activityId}` — átmeneti feldolgozási életjel
+
+```ts
+{
+  userId: string
+  status: 'processing'|'failed'
+  startedAt: number
+  updatedAt: number
+  leaseUntil: number
+  token: string                // feldolgozási kísérlet azonosítója
+  message?: string
+  retryable?: boolean
+}
+```
+
+Kizárólag a szerver írja és olvassa. Nem játékadat és nem részleges foglalás:
+az aktivitás geometriája és a birtokviszony továbbra is a végleges mentéskor
+kerül elszámolásra. Arra szolgál, hogy megszakadt HTTP-kapcsolat után a kliens
+meg tudja különböztetni a még futó szerverfeldolgozást az el sem indult
+kéréstől. Sikeres mentéskor törlődik; a lejárt lease újrapróbálhatóvá teszi a
+konténerleállás miatt félbemaradt feldolgozást. Kliensoldali Firestore-hozzáférés
+nincs hozzá, az állapot csak a hitelesített API-végponton kérdezhető le.
+
 ### `grid/{h3res9}` — a cellatulajdonlás (a rendszer szíve)
 
 A birtoklás **cellánként** él, de nem cellánként *tárolódik* — az egyedi dokumentum cellánként kezelhetetlen írásszámot adna. A tárolás **blokkokban** történik: egy `grid` dokumentum egy **H3 res 9** szülőcella (≈105 000 m²), és tartalmazza a benne lévő **343 db res 12 cella** tulajdonviszonyát.

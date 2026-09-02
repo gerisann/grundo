@@ -10,6 +10,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRunPersister,
+  isPendingUpload,
   isResumable,
   memoryStore,
   prepareForRestore,
@@ -175,7 +176,7 @@ describe('összevont írás', () => {
 
     const persister = createRunPersister(store, { minIntervalMs: 0 });
     persister.save(runWithPoints());
-    await expect(persister.flush()).resolves.toBeUndefined();
+    await expect(persister.flush()).resolves.toBe(false);
   });
 });
 
@@ -205,6 +206,13 @@ describe('visszaállíthatóság', () => {
   it('a befejezett futást nem ajánljuk fel', () => {
     const done = finish(runWithPoints(), T0 + 30_000);
     expect(isResumable(fresh(done, T0), T0 + 60_000)).toBe(false);
+  });
+
+  it('a befejezett futást feltöltésre korlátlan ideig megőrzi', () => {
+    const done = finish(runWithPoints(), T0 + 30_000);
+    expect(isPendingUpload(fresh(done, T0))).toBe(true);
+    expect(isPendingUpload(fresh(done, T0 - 30 * 24 * 60 * 60 * 1000))).toBe(true);
+    expect(isPendingUpload(fresh(runWithPoints(), T0))).toBe(false);
   });
 
   it('a pont nélküli rögzítést nem ajánljuk fel', () => {

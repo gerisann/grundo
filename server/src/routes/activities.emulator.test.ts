@@ -53,12 +53,15 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
   let db: FirebaseFirestore.Firestore;
   let collections: Record<string, string>;
   let gameDay: (date: Date) => number;
+  let beginActivityUpload: typeof import('../lib/activityUploads').beginActivityUpload;
+  let completeActivityUpload: typeof import('../lib/activityUploads').completeActivityUpload;
 
   beforeAll(async () => {
     const firebase = await import('../lib/firebase');
     db = firebase.db;
     collections = firebase.COLLECTIONS as unknown as Record<string, string>;
     gameDay = (await import('../lib/grid')).gameDay;
+    ({ beginActivityUpload, completeActivityUpload } = await import('../lib/activityUploads'));
 
     const { activitiesRouter } = await import('./activities');
     const { tilesRouter } = await import('./tiles');
@@ -130,9 +133,14 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     return points.map((point) => ({ ...point, t: start + (point.t - first) }));
   }
 
-  async function upload(uid: string, activityId: string, points: TracePoint[]) {
+  async function upload(
+    uid: string,
+    activityId: string,
+    points: TracePoint[],
+    asyncCapable = false,
+  ) {
     currentUid = uid;
-    const response = await fetch(`${base}/api/activities`, {
+    const response = await fetch(`${base}/api/activities${asyncCapable ? '?async=1' : ''}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -145,6 +153,12 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
       }),
     });
     return { status: response.status, body: (await response.json()) as Record<string, never> };
+  }
+
+  async function uploadStatus(uid: string, activityId: string) {
+    currentUid = uid;
+    const response = await fetch(`${base}/api/activities/${activityId}/upload-status`);
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   }
 
   beforeEach(async () => {
@@ -185,6 +199,78 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
 
     const ledger = await db.collection(collections.gpLedger!).get();
     expect(ledger.size).toBe(1);
+  });
+
+  it('a státuszvégpont késznek látja a mentett aktivitást', async () => {
+    const result = await upload('alice', 'activity-status1', freshLoop());
+    expect(result.status).toBe(201);
+
+    const status = await uploadStatus('alice', 'activity-status1');
+    expect(status.status).toBe(200);
+    expect(status.body.status).toBe('done');
+    expect(status.body.summary).toEqual(result.body.summary);
+    expect(
+      (await db.collection(collections.activityUploads!).doc('activity-status1').get()).exists,
+    ).toBe(false);
+  });
+
+  it('a párhuzamos újraküldést 202-vel várakoztatja', async () => {
+    const now = Date.now();
+    await db.collection(collections.activityUploads!).doc('activity-wait01').set({
+      userId: 'alice',
+      status: 'processing',
+      startedAt: now,
+      updatedAt: now,
+      leaseUntil: now + 60_000,
+    });
+
+    const result = await upload('alice', 'activity-wait01', freshLoop(), true);
+    expect(result.status).toBe(202);
+    expect(result.body.processing).toBe(true);
+    expect(
+      (await db.collection(collections.activities!).doc('activity-wait01').get()).exists,
+    ).toBe(false);
+
+    const status = await uploadStatus('alice', 'activity-wait01');
+    expect(status.body).toEqual({ status: 'processing' });
+
+    const legacy = await upload('alice', 'activity-wait01', freshLoop());
+    expect(legacy.status).toBe(503);
+    expect(legacy.body.code).toBe('activity_processing');
+
+    const hidden = await uploadStatus('bob', 'activity-wait01');
+    expect(hidden.body).toEqual({ status: 'missing' });
+  });
+
+  it('a lejárt életjelet újraküldhetőnek jelzi, de nem törli versenyző írással', async () => {
+    const now = Date.now();
+    const ref = db.collection(collections.activityUploads!).doc('activity-stale1');
+    await ref.set({
+      userId: 'alice',
+      status: 'processing',
+      startedAt: now - 120_000,
+      updatedAt: now - 120_000,
+      leaseUntil: now - 60_000,
+      token: 'stale-attempt',
+    });
+
+    const status = await uploadStatus('alice', 'activity-stale1');
+    expect(status.body).toEqual({ status: 'missing' });
+    expect((await ref.get()).data()?.token).toBe('stale-attempt');
+  });
+
+  it('a lejárt kísérlet nem törölheti az őt átvevő új feldolgozó életjelét', async () => {
+    const first = await beginActivityUpload('activity-token1', 'alice', 1_000);
+    expect(first.status).toBe('acquired');
+    if (first.status !== 'acquired') throw new Error('Az első lease nem jött létre.');
+
+    const second = await beginActivityUpload('activity-token1', 'alice', 1_000 + 30 * 60 * 1000 + 1);
+    expect(second.status).toBe('acquired');
+    if (second.status !== 'acquired') throw new Error('A lejárt lease-t nem vette át.');
+
+    await completeActivityUpload('activity-token1', first.token);
+    const marker = await db.collection(collections.activityUploads!).doc('activity-token1').get();
+    expect(marker.data()?.token).toBe(second.token);
   });
 
   it('a nyilvános dokumentumban nincs trust pontszám és indoklás', async () => {

@@ -48,6 +48,17 @@ export function isResumable(run: PersistedRun, now: number): boolean {
   return isInsideBasicResumeWindow(run.savedAt, now);
 }
 
+/**
+ * A lezárt, de még nem igazoltan szerverre került rögzítés helyi példánya.
+ *
+ * Erre nem vonatkozik az aktív futás egyórás folytatási ablaka: az offline
+ * mentés addig marad az eszközön, amíg a szerver vissza nem igazolja, vagy a
+ * felhasználó tudatosan el nem dobja.
+ */
+export function isPendingUpload(run: PersistedRun): boolean {
+  return run.version === 1 && run.state.status === 'finished' && run.state.points.length >= 2;
+}
+
 export type RestoreStrategy = 'discard' | 'prompt' | 'automatic';
 
 /**
@@ -86,7 +97,8 @@ export interface RunPersister {
   /** Jelzi, hogy az állapot változott. Az írás összevontan történik. */
   save(state: RecorderState): void;
   /** Azonnali kiírás, a következő írás bevárásával. Leállításkor ez kell. */
-  flush(): Promise<void>;
+  /** `true`, ha a legfrissebb állapot ténylegesen tartós tárba került. */
+  flush(): Promise<boolean>;
   clear(): Promise<void>;
 }
 
@@ -118,6 +130,7 @@ export function createRunPersister(store: RunStore, options: PersisterOptions = 
   let pending: RecorderState | null = null;
   let writing: Promise<void> | null = null;
   let lastWriteAt = 0;
+  let lastWriteSucceeded = true;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   async function writeNow(): Promise<void> {
@@ -125,18 +138,19 @@ export function createRunPersister(store: RunStore, options: PersisterOptions = 
     if (state === null) return;
     pending = null;
     lastWriteAt = now();
-    await store.write({ version: 1, state, savedAt: lastWriteAt });
+    try {
+      await store.write({ version: 1, state, savedAt: lastWriteAt });
+      lastWriteSucceeded = true;
+    } catch {
+      // A rögzítés ettől még folytatódhat, de a felület nem állíthatja, hogy
+      // bezárható az app: a legfrissebb állapot csak memóriában van.
+      lastWriteSucceeded = false;
+    }
   }
 
   /** Sorbaállított írás: a folyamatban lévő után fut, nem vele párhuzamosan. */
   function enqueue(): Promise<void> {
-    writing = (writing ?? Promise.resolve())
-      .then(writeNow)
-      .catch(() => {
-        // A tárolás elutasíthat: privát böngészés, betelt kvóta, letiltott
-        // tárhely. A rögzítés ettől nem állhat meg — a memóriabeli állapot ép,
-        // csak az összeomlás utáni visszaállítás nem lesz meg.
-      });
+    writing = (writing ?? Promise.resolve()).then(writeNow);
     return writing;
   }
 
@@ -163,6 +177,7 @@ export function createRunPersister(store: RunStore, options: PersisterOptions = 
         timer = null;
       }
       await enqueue();
+      return lastWriteSucceeded;
     },
 
     async clear() {

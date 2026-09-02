@@ -48,7 +48,7 @@ describe('shouldAutoUpload', () => {
    * a fölösleges kérés akkor is hiba.
    */
   it('csak `idle` feltöltési állapotból indul', () => {
-    for (const status of ['sending', 'done', 'error'] as const) {
+    for (const status of ['sending', 'processing', 'done', 'error'] as const) {
       expect(shouldAutoUpload(futas('finished', 850), status, KUSZOB)).toBe(false);
     }
   });

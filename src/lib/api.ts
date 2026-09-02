@@ -296,6 +296,12 @@ export interface UploadActivityInput {
   movingMs: number;
 }
 
+export type ActivityUploadStatusResult =
+  | { status: 'missing' }
+  | { status: 'processing' }
+  | { status: 'failed'; message: string; retryable: boolean }
+  | { status: 'done'; summary: ActivitySummary };
+
 /**
  * Egy szerző neve és képe — a feedben, a részleteknél, a hozzászólásoknál.
  *
@@ -1155,11 +1161,20 @@ export const api = {
    */
   uploadActivity: async (input: UploadActivityInput) => {
     const { body, headers } = await compressedJsonBody(input);
-    return request<{ activityId: string; summary: ActivitySummary; duplicate?: boolean }>(
-      '/api/activities',
+    return request<
+      | { activityId: string; summary: ActivitySummary; duplicate?: boolean }
+      | { activityId: string; processing: true }
+    >(
+      '/api/activities?async=1',
       { method: 'POST', body, headers },
     );
   },
+
+  /** Hosszú mentés állapota megszakadt klienskapcsolat vagy újranyitás után. */
+  activityUploadStatus: (id: string) =>
+    request<ActivityUploadStatusResult>(
+      `/api/activities/${encodeURIComponent(id)}/upload-status`,
+    ),
 
   /** A feed — nézet szerint szűrve. */
   activities: (query: FeedQuery) => {

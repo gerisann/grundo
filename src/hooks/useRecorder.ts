@@ -34,6 +34,7 @@ import {
 import {
   createRunPersister,
   defaultRunStore,
+  isPendingUpload,
   prepareForRestore,
   restoreStrategy,
   type PersistedRun,
@@ -63,10 +64,9 @@ export interface RecorderUploadInput {
   movingMs: number;
 }
 
-export interface RecorderUploadResult {
-  summary: ActivitySummary;
-  duplicate?: boolean;
-}
+export type RecorderUploadResult =
+  | { summary: ActivitySummary; duplicate?: boolean }
+  | { processing: true };
 
 export type RecorderUploader = (input: RecorderUploadInput) => Promise<RecorderUploadResult>;
 
@@ -107,6 +107,8 @@ export interface RecorderApi {
 
   /** A feltöltés állapota és eredménye. */
   upload: UploadState;
+  /** A lezárt pontsor ténylegesen tartós helyi tárba került-e. */
+  uploadLocallySaved: boolean;
   /** Feltöltés — a szerver újraszámol mindent, és az ő eredménye a hiteles. */
   uploadActivity: () => Promise<void>;
 
@@ -207,6 +209,7 @@ export interface LivePosition {
 export type UploadState =
   | { status: 'idle' }
   | { status: 'sending' }
+  | { status: 'processing'; firstCheckDelayMs: number }
   | { status: 'done'; summary: ActivitySummary; duplicate: boolean }
   | { status: 'error'; message: string; retryable: boolean };
 
@@ -239,6 +242,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const [livePosition, setLivePosition] = useState<LivePosition | null>(null);
   const [resumable, setResumable] = useState<RecorderState | null>(null);
   const [resumableNotice, setResumableNotice] = useState<string | null>(null);
+  const [upload, setUpload] = useState<UploadState>({ status: 'idle' });
+  const [uploadLocallySaved, setUploadLocallySaved] = useState(false);
   const resumableRun = useRef<PersistedRun | null>(null);
   const [pendingType, setPendingType] = useState<ActivityType | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -394,6 +399,17 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       const saved: PersistedRun | null = await runStore.read().catch(() => null);
       if (cancelled || saved === null) return;
 
+      if (isPendingUpload(saved) && saved.state.distanceM >= GAMEPLAY.MIN_DISTANCE_M) {
+        // A teljes pontsor helyben megvan. Előbb megkérdezzük a szervert,
+        // elkészült-e vagy még dolgozik-e rajta; csak a biztosan hiányzó
+        // kérést küldjük újra.
+        setUpload(apiConfigured ? { status: 'processing', firstCheckDelayMs: 0 } : { status: 'idle' });
+        setUploadLocallySaved(true);
+        stateRef.current = saved.state;
+        setState(saved.state);
+        return;
+      }
+
       const strategy = restoreStrategy(saved, Date.now(), isNativeApp());
       if (strategy === 'automatic') {
         // A natív WebView újraindulhat, miközben a natív helyszolgáltatás
@@ -451,6 +467,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
 
   const begin = useCallback(
     async (type?: ActivityType) => {
+      setUploadLocallySaved(false);
       setHasFix(false);
       // Az előző rögzítés utolsó pöttye nem kísérthet az újba.
       setLivePosition(null);
@@ -487,8 +504,6 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     apply((current) => markLapRecorder(current, Date.now()));
   }, [apply]);
 
-  const [upload, setUpload] = useState<UploadState>({ status: 'idle' });
-
   const uploadActivity = useCallback(async () => {
     const current = stateRef.current;
     if (current.status !== 'finished' || current.points.length < 2) return;
@@ -515,6 +530,10 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     setUpload({ status: 'sending' });
     try {
       const result = uploader ? await uploader(input) : await api.uploadActivity(input);
+      if (!('summary' in result)) {
+        setUpload({ status: 'processing', firstCheckDelayMs: 2000 });
+        return;
+      }
       setUpload({
         status: 'done',
         summary: result.summary,
@@ -530,8 +549,14 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
        * nyomvonal" hiba újrapróbálásra sem lesz jobb — a felhasználónak nem
        * gombot kell nyomnia, hanem megérteni, mi történt.
        */
-      const retryable =
-        err instanceof ApiError ? err.status === 0 || err.status >= 500 : true;
+      const retryable = err instanceof ApiError ? err.status === 0 || err.status >= 500 : true;
+      if (!uploader && retryable) {
+        // A hálózati/5xx hiba nem bizonyítja, hogy a szerver leállt: Cloud Run
+        // a megszakadt klienskapcsolat után is folytathatja a feldolgozást.
+        // A státuszvégpont dönti el, hogy várni vagy újraküldeni kell.
+        setUpload({ status: 'processing', firstCheckDelayMs: 2000 });
+        return;
+      }
       setUpload({
         status: 'error',
         message: err instanceof Error ? err.message : 'A mentés nem sikerült.',
@@ -539,6 +564,64 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       });
     }
   }, [persister, uploader]);
+
+  /**
+   * Hosszú mentés követése a POST-kapcsolattól függetlenül.
+   *
+   * `missing` esetén a teljes, helyben megőrzött nyomvonal biztonságosan
+   * újraküldhető. `processing` alatt csak várunk: így egy elveszett HTTP-
+   * válasz nem indít még egy drága geometriai számítást ugyanarra a körre.
+   */
+  useEffect(() => {
+    if (upload.status !== 'processing' || state.status !== 'finished' || uploader) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const wait = (ms: number) => new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+    });
+
+    void (async () => {
+      if (upload.firstCheckDelayMs > 0) await wait(upload.firstCheckDelayMs);
+      while (!cancelled) {
+        try {
+          const result = await api.activityUploadStatus(state.id);
+          if (cancelled) return;
+          if (result.status === 'done') {
+            setUpload({ status: 'done', summary: result.summary, duplicate: false });
+            await persister.clear();
+            return;
+          }
+          if (result.status === 'failed') {
+            setUpload({
+              status: 'error',
+              message: result.message,
+              retryable: result.retryable,
+            });
+            return;
+          }
+          if (result.status === 'missing') {
+            // Az idle állapot indítja újra a meglévő auto-upload hatást.
+            setUpload({ status: 'idle' });
+            return;
+          }
+        } catch (err) {
+          if (cancelled) return;
+          if (err instanceof ApiError && err.status > 0 && err.status < 500) {
+            setUpload({ status: 'error', message: err.message, retryable: false });
+            return;
+          }
+          // Offline állapotban a helyi példány megmarad; csendben újranézzük.
+        }
+        await wait(5000);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [persister, state.id, state.status, upload, uploader]);
 
   /**
    * A BEFEJEZÉS UTÁNI FELTÖLTÉS ITT INDUL, NEM A KÉPERNYŐN.
@@ -566,24 +649,27 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   }, [state.status, state.distanceM, upload.status, uploadActivity]);
 
   /**
-   * FIGYELMEZTETÉS AZ OLDAL ELHAGYÁSÁRA, amíg van mentetlen mérés.
+   * FIGYELMEZTETÉS AZ OLDAL ELHAGYÁSÁRA, amíg nincs tartós helyi másolat.
    *
    * A böngésző „vissza" gombja egyetlen előzmény-bejegyzésnél KILÉP az
    * oldalról — a React Router ilyenkor már nem tud közbeszólni, és a memóriában
    * élő rögzítés a lap bezárásával elszáll. A megőrzött másolat visszakínálja
    * ugyan a futást, de csak ha a felhasználó egyáltalán visszatér.
    *
-   * ⚠️ CSAK FUTÓ VAGY MENTETLEN MÉRÉSNÉL. Egy mindig ott lógó „biztosan
-   * elhagyod?" ablak a leggyakoribb úton (nincs rögzítés) puszta bosszúság
-   * lenne, és pont attól szoknák le róla az emberek, hogy elolvassák.
+   * ⚠️ FUTÓ MÉRÉSNÉL, illetve akkor, ha a befejezett pontsort az IndexedDB
+   * ténylegesen nem tudta kiírni. Sikeres helyi mentés után újranyitáskor
+   * automatikusan egyeztetjük/feltöltjük; csak ekkor igaz a felületen ígért
+   * „nyugodtan bezárhatod" viselkedés. Egy mindig ott lógó „biztosan
+   * elhagyod?" ablak a leggyakoribb úton puszta bosszúság lenne.
    *
    * A szöveget a böngészők nem jelenítik meg (saját, általános üzenetet
    * mutatnak) — a `preventDefault` az, ami számít.
    */
   useEffect(() => {
     const vanFuto = state.status === 'recording' || state.status === 'paused';
-    const vanMentetlen = state.status === 'finished' && upload.status !== 'done';
-    if (!vanFuto && !vanMentetlen) return;
+    const nemTartosMentetlen =
+      state.status === 'finished' && upload.status !== 'done' && !uploadLocallySaved;
+    if (!vanFuto && !nemTartosMentetlen) return;
 
     const figyelmeztet = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -591,7 +677,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     };
     window.addEventListener('beforeunload', figyelmeztet);
     return () => window.removeEventListener('beforeunload', figyelmeztet);
-  }, [state.status, upload.status]);
+  }, [state.status, upload.status, uploadLocallySaved]);
 
   const finish = useCallback(async () => {
     await positionSource.stop();
@@ -599,7 +685,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     await releaseWakeLock();
     // Kiírás bevárva: a lezárt rögzítés nem veszhet el, mert épp egy
     // összevont írás volt függőben.
-    await persister.flush();
+    setUploadLocallySaved(await persister.flush());
   }, [apply, persister, positionSource, releaseWakeLock]);
 
   const discard = useCallback(async () => {
@@ -612,6 +698,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     setLivePosition(null);
     setError(null);
     setUpload({ status: 'idle' });
+    setUploadLocallySaved(false);
     // A szellemvonal EGYETLEN rögzítésre szólt — a következő induljon nélküle,
     // különben egy már mentett vagy eldobott küldetés vonala kísértene tovább.
     clearGhostRoute();
@@ -659,6 +746,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     finishGesture,
     setFinishGesture,
     upload,
+    uploadLocallySaved,
     uploadActivity,
     begin,
     pause,

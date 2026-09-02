@@ -255,6 +255,13 @@ Rögzítés közben a felhasználó **az éppen futott útszakaszra** adhat viss
   - felszerelés hozzárendelése (cipő/bringa),
   - „Ez egy verseny/edzés volt" jelölés (opcionális).
 - **Offline mentés**: nyomvonal helyben tárolva, feltöltés amint van net. A területszámítás mindig szerveroldalon fut.
+- **Hosszú mentés bezárható**: amint a befejezett pontsor ténylegesen tartós
+  helyi tárba került, a mentési panel jelzi, hogy az app nyugodtan bezárható.
+  Újranyitáskor a kliens lekérdezi, hogy a szerver még dolgozik, már elkészült,
+  vagy a kérés újraküldendő; ugyanazt a drága geometriát nem indítja el
+  párhuzamosan. Sikeres feldolgozáskor a meglévő aktivitásértesítés jelez és az
+  adatlapra visz. Ha a helyi tár írása nem sikerült, a felület nem teszi ezt az
+  ígéretet, és megmarad a kilépési figyelmeztetés.
 - **A rögzítés közbeni térkép pillanatkép.** Nem frissítjük valós időben a birtokviszonyokat. A végleges foglalás a mentéskor aktuális térképállapotból számolódik; konkurens foglalásnál az első sikeres adatbázis-commit nyer.
 - **Eszközök közötti utolsó állapot.** Aktív rögzítéskor a kliens 15
   másodpercenként tömör, privát pillanatképet ír. Egy másik eszköz (például a

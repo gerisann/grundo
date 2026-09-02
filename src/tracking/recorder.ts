@@ -170,7 +170,7 @@ export function finish(state: RecorderState, now: number): RecorderState {
  */
 export function shouldAutoUpload(
   state: Pick<RecorderState, 'status' | 'distanceM'>,
-  uploadStatus: 'idle' | 'sending' | 'done' | 'error',
+  uploadStatus: 'idle' | 'sending' | 'processing' | 'done' | 'error',
   minDistanceM: number,
 ): boolean {
   if (state.status !== 'finished') return false;

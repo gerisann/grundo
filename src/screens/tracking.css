@@ -935,6 +935,27 @@
   line-height: 1.4;
 }
 
+.track__saving-safe {
+  max-width: 32rem;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.track__saving-safe strong {
+  color: var(--text-primary);
+}
+
+.track__saving-safe--pending {
+  border-color: var(--warning);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
 /* A folyamatos animáció mozgásérzékenységre kikapcsolható — a haladást a
    számok és a sáv akkor is mutatják. */
 @media (prefers-reduced-motion: reduce) {
