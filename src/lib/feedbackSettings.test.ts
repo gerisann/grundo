@@ -12,7 +12,7 @@ import {
   normalizeFeedbackSettings,
   type FeedbackSettings,
 } from './feedbackSettings';
-import { shouldPlaySound } from './sound';
+import { isSequenceStepStale, shouldPlaySound } from './sound';
 
 describe('normalizeFeedbackSettings', () => {
   it('nem objektumból az alapértelmezettet adja', () => {
@@ -90,5 +90,35 @@ describe('shouldPlaySound', () => {
    */
   it('ismeretlen láthatóság nem némít', () => {
     expect(shouldPlaySound('loop-closed', on, undefined)).toBe(true);
+  });
+});
+
+/**
+ * A KÉSLELTETETT KOPPANÁS ELDOBJA MAGÁT, HA ELKÉSETT.
+ *
+ * MÉRT ESET (2026-09-02): asztali böngészőben a hangok rendben, natív
+ * iOS/Android alatt „egyszerre szól az összes". A `playSoundSequence`
+ * 190-220 ms-onként lépteti a koppanásokat, de a WebView felfüggesztésekor a
+ * beütemezett `setTimeout`-ok megállnak, és előtérbe visszatéréskor a
+ * böngésző MIND elsüti őket egymás után — a sorból egyetlen dörrenés lesz.
+ */
+describe('isSequenceStepStale', () => {
+  it('a pontosan időben lefutó lépés nem elkésett', () => {
+    expect(isSequenceStepStale(190, 190)).toBe(false);
+  });
+
+  it('a főszál apró csúszása belefér', () => {
+    expect(isSequenceStepStale(190 + 500, 190)).toBe(false);
+  });
+
+  it('a másodperces késés viszont már eldobja a hangot', () => {
+    expect(isSequenceStepStale(190 + 1_500, 190)).toBe(true);
+  });
+
+  it('a sor KÉSŐBBI lépéseit a saját idejükhöz méri, nem a sor elejéhez', () => {
+    // A harmadik koppanás 380 ms-ra esedékes: 800 ms-nál még időben van,
+    // 1 200 ms-nál viszont már nem.
+    expect(isSequenceStepStale(800, 380)).toBe(false);
+    expect(isSequenceStepStale(1_200, 380)).toBe(true);
   });
 });

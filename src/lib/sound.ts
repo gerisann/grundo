@@ -261,6 +261,7 @@ export function playSound(name: SoundName, settings = feedbackSettings()): void 
  */
 export function playSoundSequence(names: readonly SoundName[], gapMs = 220): () => void {
   const timers: number[] = [];
+  const startedAt = now();
   const cancel = () => {
     for (const timer of timers) window.clearTimeout(timer);
     timers.length = 0;
@@ -272,7 +273,15 @@ export function playSoundSequence(names: readonly SoundName[], gapMs = 220): () 
       playSound(name);
       return;
     }
-    timers.push(window.setTimeout(() => playSound(name), index * gapMs));
+    const dueAfterMs = index * gapMs;
+    timers.push(
+      window.setTimeout(() => {
+        // ⚠️ Lásd a `STALE_TOLERANCE_MS` indoklását: a jóval késve lefutó
+        // koppanás nem információ, hanem zaj.
+        if (isSequenceStepStale(now() - startedAt, dueAfterMs)) return;
+        playSound(name);
+      }, dueAfterMs),
+    );
   });
 
   if (timers.length > 0) {
@@ -280,6 +289,48 @@ export function playSoundSequence(names: readonly SoundName[], gapMs = 220): () 
     watchVisibility();
   }
   return cancel;
+}
+
+/**
+ * ⚠️ AZ IDŐZÍTŐ NEM ÍGÉRET — EZ VITTE EL A NATÍV HANGOKAT.
+ *
+ * MÉRT ESET (2026-09-02, Geri): asztali böngészőben a hangok rendben,
+ * NATÍV iOS/Android alatt viszont „egyszerre szól az összes hangeffekt".
+ *
+ * Az ok a WebView felfüggesztése. Ez a sor a koppanásokat SZÁNDÉKOSAN
+ * 190-220 ms-onként lépteti, hogy külön-külön hallhatók legyenek. Ha a
+ * telefon közben lezáródik vagy az app háttérbe kerül, a WKWebView (és az
+ * Android WebView) megállítja a JavaScriptet — a már beütemezett
+ * `setTimeout`-ok NEM futnak le a saját idejükben. Előtérbe visszatéréskor
+ * a böngésző az ÖSSZES lejárt időzítőt egymás után, szinte azonnal elsüti:
+ * a szépen ütemezett sorból egyetlen kásás dörrenés lesz.
+ *
+ * Miért nem elég a `visibilitychange`-re épülő megszakítás (lent)? Mert az
+ * feltételezi, hogy az esemény a felfüggesztés ELŐTT még lefut. Ez asztali
+ * böngészőben igaz, natív WebView-ban zárolt képernyőnél nem garantált —
+ * és pontosan ott hibázott.
+ *
+ * Ezért minden késleltetett hang MAGA ellenőrzi, hogy időben szólal-e meg.
+ * A tűrés bőven a legnagyobb gap fölött van, tehát a normál ütemezést (és
+ * egy lassú főszál apró csúszásait) nem érinti; a másodperces
+ * nagyságrendű késést viszont kizárja.
+ */
+const STALE_TOLERANCE_MS = 600;
+
+/**
+ * Elkésett-e ez a lépés? TISZTA FÜGGVÉNY — a döntést itt is a lejátszástól
+ * külön tartjuk, mert Node-ban (DOM nélkül) csak így tesztelhető.
+ *
+ * @param elapsedMs   mennyi telt el ténylegesen a sor indítása óta
+ * @param dueAfterMs  mennyinek KELLETT volna eltelnie ehhez a hanghoz
+ */
+export function isSequenceStepStale(elapsedMs: number, dueAfterMs: number): boolean {
+  return elapsedMs > dueAfterMs + STALE_TOLERANCE_MS;
+}
+
+/** Monoton óra, ahol van; különben a fali óra. A késés MÉRTÉKE számít. */
+function now(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now();
 }
 
 /** A még le nem futott sorok leállítói — elrejtéskor mind lefut. */

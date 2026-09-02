@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
@@ -119,6 +119,43 @@ export function Dock() {
     if (!active || onTrackingScreen) return;
     navigate('/rogzites', { replace: true });
   }, [active, onTrackingScreen, navigate]);
+
+  /**
+   * A VÁLASZTÓ BEZÁRUL, HA ELHAGYJUK A RÖGZÍTÉS KÉPERNYŐJÉT.
+   *
+   * ⚠️ MÉRT HIBA (2026-09-02, Geri visszajelzése): a Play gomb nyitja a
+   * választót és átvisz a `/rogzites`-re (lásd `primaryAction`), de ha innen
+   * a Dock egy MÁSIK menüpontjára navigálunk (nem a Play gombbal, hanem pl.
+   * a Home ikonnal), semmi nem zárta be a `pickerOpen`-t. A gomb ettől
+   * PERMANENSEN elakadt: a `picking` (`idle && pickerOpen && !pendingType`)
+   * igaz maradt, tehát a sárga felfelé nyíl ÉS a `disabled` állapot is
+   * megmaradt — a középső gomb többé nem volt megnyomható.
+   *
+   * ⚠️ ÁTMENETRE FIGYELÜNK, NEM ÁLLAPOTRA — és ez nem finomkodás. Az első
+   * változat azt nézte, hogy „nyitva a választó ÉS nem a rögzítésen
+   * vagyunk". Ez ELBUKOTT (mérve, helyi emulátoron): a `primaryAction`
+   * ugyanabban a koppintásban nyitja a választót ÉS indítja a navigációt, a
+   * React Router útvonala viszont csak a KÖVETKEZŐ renderben áll át. Abban a
+   * köztes renderben a feltétel igaz volt, tehát az effekt bezárta a
+   * választót, mielőtt a rögzítés képernyője felépült volna — a Play gomb
+   * látszólag „nem csinált semmit".
+   *
+   * A `wasOnTrackingScreen` ref ezért a KILÉPÉST figyeli: csak akkor
+   * zárunk, ha az előző renderben még a rögzítésen voltunk, most pedig már
+   * nem. Az odafelé vezető úton (`false → true`) nem szólal meg.
+   *
+   * A `countdown !== null` kizárása szándékos: a visszaszámlálás alatt a
+   * `pendingType` NEM nullázódhat, különben a `begin(pendingType)` hívás
+   * (lásd fent) néma marad, amikor a számláló lejár.
+   */
+  const wasOnTrackingScreen = useRef(onTrackingScreen);
+  useEffect(() => {
+    const left = wasOnTrackingScreen.current && !onTrackingScreen;
+    wasOnTrackingScreen.current = onTrackingScreen;
+    if (!left || !idle || !pickerOpen || countdown !== null) return;
+    setPickerOpen(false);
+    setPendingType(null);
+  }, [idle, pickerOpen, onTrackingScreen, countdown, setPickerOpen, setPendingType]);
 
   function primaryAction() {
     /**
