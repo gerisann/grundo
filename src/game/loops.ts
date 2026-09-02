@@ -15,7 +15,6 @@ import {
   cellToChildren,
   cellToParent,
   polygonToCells,
-  gridDisk,
   getResolution,
 } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
@@ -25,6 +24,7 @@ import type {
   LoopDiagnostics,
   RejectedLoopDiagnostic,
 } from '@/types';
+import { ringOf } from './neighbours';
 
 export class LoopTooLargeError extends Error {
   constructor(public readonly candidateCells: number) {
@@ -70,7 +70,7 @@ export function pruneDeadEnds(wall: ReadonlySet<CellId>): Set<CellId> {
   const neighbours = new Map<CellId, CellId[]>();
   for (const cell of wall) {
     const list: CellId[] = [];
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (near !== cell && wall.has(near)) list.push(near);
     }
     neighbours.set(cell, list);
@@ -202,7 +202,7 @@ export function detectLoopsDetailed(path: readonly CellId[]): {
       ? sameCellPrevious
       : undefined;
     const neighbourCandidates = [...new Set(
-      gridDisk(cell, 1)
+      ringOf(cell)
         .filter((near) => near !== cell)
         .map((near) => lastSeenAt.get(near))
         .filter((index): index is number =>
@@ -310,21 +310,23 @@ export function detectLoops(path: readonly CellId[]): DetectedLoop[] {
  * 3. amit kívülről nem értünk el → belső
  */
 export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
+  if (wall.size === 0) return new Set();
+  return prefersAdaptiveFill(wall)
+    ? floodFillInteriorAdaptive(wall)
+    : floodFillInteriorExact(wall);
+}
+
+/**
+ * A TERÜLET-arányos, pontos menet.
+ *
+ * A `floodFillInterior` választja ki, de kívülről is elérhető, mert a
+ * gyorsítás egésze azon a feltevésen áll, hogy a két út UGYANAZT adja — és
+ * ezt tesztelni kell tudni (`loops.fill.test.ts`), nem elhinni.
+ */
+export function floodFillInteriorExact(wall: ReadonlySet<CellId>): Set<CellId> {
   const first = wall.values().next().value as CellId | undefined;
   if (first === undefined) return new Set();
   const res = getResolution(first);
-
-  /**
-   * NAGY huroknál átadjuk az adaptív kitöltésnek.
-   *
-   * A küszöb alatt a pontos menet marad — az a hétköznapi eset, és ott ez a
-   * kód gyorsabb is (nincs kétmenetes felkészülés). Efölött viszont a
-   * területtel nőne a memória, és pont ez volt az a plafon, ami minden
-   * nagyobb kört kidobott.
-   */
-  if (estimateRegionCells(wall) > ADAPTIVE_ABOVE_CELLS) {
-    return floodFillInteriorAdaptive(wall);
-  }
 
   // A méretkorlát a polyfill ELŐTT dől el — lásd candidateRegion().
   const candidates = candidateRegion(wall, res);
@@ -334,7 +336,7 @@ export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
   const outside = new Set<CellId>();
   for (const cell of candidates) {
     if (wall.has(cell)) continue;
-    for (const n of gridDisk(cell, 1)) {
+    for (const n of ringOf(cell)) {
       if (!candidates.has(n)) {
         outside.add(cell);
         queue.push(cell);
@@ -346,7 +348,7 @@ export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
   // Szélességi bejárás kívülről befelé, a falon nem lépünk át.
   while (queue.length > 0) {
     const cell = queue.pop()!;
-    for (const n of gridDisk(cell, 1)) {
+    for (const n of ringOf(cell)) {
       if (!candidates.has(n) || wall.has(n) || outside.has(n)) continue;
       outside.add(n);
       queue.push(n);
@@ -361,16 +363,39 @@ export function floodFillInterior(wall: ReadonlySet<CellId>): Set<CellId> {
 }
 
 /**
- * Ekkora jelöltrégió fölött váltunk ADAPTÍV kitöltésre.
+ * MELYIK KITÖLTÉS FUSSON?
  *
- * A finom menet memóriája és futásideje a TERÜLETTEL nő; az adaptívé a
- * KERÜLETTEL. Kis köröknél a finom menet gyorsabb (nincs kétmenetes
- * felkészülés), nagyoknál nagyságrendekkel lassabb — ezért van küszöb, és
- * nem cseréljük le mindenütt.
+ * A pontos menet a TERÜLETTEL nő (a fal befoglaló dobozát cellákra bontja),
+ * az adaptív a KERÜLETTEL (a falat két felbontással feljebb viszi, és csak a
+ * határsávot bontja vissza). A helyes döntés tehát nem egy abszolút
+ * cellaszám, hanem a kettő ARÁNYA: mennyi terület jut egy falcellára.
  *
- * A 40 000 cella ≈ 12 km²: efölött a durva menet már bőven megéri.
+ * ⚠️ EZ KORÁBBAN ABSZOLÚT SZÁM VOLT (40 000 cella ≈ 12 km²), és ez volt a
+ * hosszú aktivitások mentésének fő költsége. MÉRVE (2026-09-02, 55 km-es
+ * városi rács, 3 515 cellás nyomvonal): a hurokdetektor jelöltjeinek fala
+ * átlagosan 1 651 cella, a befoglaló dobozuk viszont több tízezer — vagyis
+ * pont a rossz oldalán álltak a 40 000-es küszöbnek, és mind a drága, terület-
+ * arányos úton mentek.
+ *
+ * A `buildActivityGeometry` MÉRT ideje ugyanarra a nyomvonalra:
+ *
+ *   92,5 s  kiinduló állapot
+ *   40,0 s  a szomszéd-gyorsítótár után (`neighbours.ts`)
+ *   27,4 s  arány = 8
+ *   18,4 s  arány = 2        ← ez van beállítva
+ *   17,8 s  mindig adaptív (arány = 0)
+ *
+ * A 2-es a mért optimum gyakorlati széle: az „mindig adaptív"-hoz képest 3%
+ * a különbség, cserébe a valóban vékony, belső nélküli jelöltek (folyosó,
+ * zsákutca — ahol a doboz alig nagyobb a falnál) maradnak az egyszerűbb,
+ * egymenetes úton. A hurkok száma és a belsejük mind az öt beállításnál
+ * azonos volt; ezt a `loops.fill.test.ts` rögzíti is.
  */
-const ADAPTIVE_ABOVE_CELLS = 40_000;
+const ADAPTIVE_AREA_PER_WALL_CELL = 2;
+
+function prefersAdaptiveFill(wall: ReadonlySet<CellId>): boolean {
+  return estimateRegionCells(wall) > ADAPTIVE_AREA_PER_WALL_CELL * wall.size;
+}
 
 /**
  * Hány felbontással durvább a durva menet?
@@ -438,7 +463,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
 
   for (const cell of coarseRegion) {
     if (coarseWall.has(cell)) continue;
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (!coarseRegion.has(near)) {
         coarseOutside.add(cell);
         queue.push(cell);
@@ -462,7 +487,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     if (wall.has(cell)) continue;
     // Kívülről indulunk: a sáv azon cellái, amiknek van szomszédjuk egy
     // KÍVÜLNEK ismert durva cellában (vagy a régión kívül).
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (band.has(near)) continue;
       const parent = cellToParent(near, coarseRes);
       if (coarseOutside.has(parent) || !coarseRegion.has(parent)) {
@@ -479,7 +504,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
   for (;;) {
     const opened: CellId[] = [];
     for (const cell of fineOutside) {
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (band.has(near) || wall.has(near)) continue;
         const parent = cellToParent(near, coarseRes);
         if (coarseRegion.has(parent) && !coarseOutside.has(parent) && !coarseWall.has(parent)) {
@@ -495,7 +520,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     const again: CellId[] = [];
     for (const cell of band) {
       if (wall.has(cell) || fineOutside.has(cell)) continue;
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (band.has(near)) continue;
         if (coarseOutside.has(cellToParent(near, coarseRes))) {
           fineOutside.add(cell);
@@ -541,7 +566,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     const stack = [...start];
     while (stack.length > 0) {
       const cell = stack.pop()!;
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (!coarseRegion.has(near) || coarseWall.has(near) || coarseOutside.has(near)) continue;
         coarseOutside.add(near);
         stack.push(near);
@@ -553,7 +578,7 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
     const stack = [...start];
     while (stack.length > 0) {
       const cell = stack.pop()!;
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (!band.has(near) || wall.has(near) || fineOutside.has(near)) continue;
         fineOutside.add(near);
         stack.push(near);

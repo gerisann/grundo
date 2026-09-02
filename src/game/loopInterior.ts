@@ -4,12 +4,12 @@ import {
   cellToLatLng,
   cellToParent,
   getResolution,
-  gridDisk,
   polygonToCells,
 } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
 import type { CellId, CompactLoopInterior, DetectedLoop } from '@/types';
 import { floodFillInterior, LoopTooLargeError } from './loops';
+import { ringOf } from './neighbours';
 
 /**
  * Ekkora becsült jelöltrégió alatt a régi, teljes res12 Set gyorsabb és
@@ -179,7 +179,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
 
   for (const cell of coarseRegion) {
     if (coarseWall.has(cell)) continue;
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (!coarseRegion.has(near)) {
         coarseOutside.add(cell);
         coarseQueue.push(cell);
@@ -199,7 +199,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
   const fineQueue: CellId[] = [];
   for (const cell of band) {
     if (wall.has(cell)) continue;
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (band.has(near)) continue;
       const parent = cellToParent(near, parentResolution);
       if (coarseOutside.has(parent) || !coarseRegion.has(parent)) {
@@ -215,7 +215,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
   for (;;) {
     const opened: CellId[] = [];
     for (const cell of fineOutside) {
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (band.has(near) || wall.has(near)) continue;
         const parent = cellToParent(near, parentResolution);
         if (coarseRegion.has(parent) && !coarseOutside.has(parent) && !coarseWall.has(parent)) {
@@ -230,7 +230,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
     const again: CellId[] = [];
     for (const cell of band) {
       if (wall.has(cell) || fineOutside.has(cell)) continue;
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (band.has(near)) continue;
         if (coarseOutside.has(cellToParent(near, parentResolution))) {
           fineOutside.add(cell);
@@ -279,7 +279,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
     const stack = [...start];
     while (stack.length > 0) {
       const cell = stack.pop()!;
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (!coarseRegion.has(near) || coarseWall.has(near) || coarseOutside.has(near)) continue;
         coarseOutside.add(near);
         stack.push(near);
@@ -291,7 +291,7 @@ function buildCompactAdaptiveInterior(wall: ReadonlySet<CellId>): LoopInteriorGe
     const stack = [...start];
     while (stack.length > 0) {
       const cell = stack.pop()!;
-      for (const near of gridDisk(cell, 1)) {
+      for (const near of ringOf(cell)) {
         if (!band.has(near) || wall.has(near) || fineOutside.has(near)) continue;
         fineOutside.add(near);
         stack.push(near);

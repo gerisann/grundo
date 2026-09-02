@@ -21,6 +21,7 @@
 
 import { cellToLatLng, gridDisk } from 'h3-js';
 import type { CellId } from '@/types';
+import { ringOf } from './neighbours';
 
 const TAU = Math.PI * 2;
 const M_PER_DEG_LAT = 111_320;
@@ -181,21 +182,52 @@ export function windingCounts(
     if (!onPath.has(cell)) offPath.push(cell);
   }
 
+  /**
+   * ⚠️ A RÉGIÓ ÉRTÉKE NEM FÜGGHET ATTÓL, MELYIK CELLÁJÁVAL TALÁLKOZTUNK
+   * ELŐSZÖR.
+   *
+   * Elvben a régió minden cellája ugyanannyi körüljárást lát (ha a görbe
+   * elválasztaná őket, nem lennének szomszédok), ezért mindegy volt, hol
+   * mérünk. A gyakorlatban azonban az `encirclementsAround` racsnija egy
+   * TŰRÉSSEL dolgozik (`FULL_TURN_TOLERANCE`), és a régió peremén két
+   * szomszédos cella a küszöb két oldalára eshet. Amíg a bejárás sorrendje
+   * véletlenül stabil volt, ez nem látszott.
+   *
+   * MÉRVE (2026-09-02): a kitöltés belső halmazának bejárási sorrendjét
+   * megváltoztatva a kifelé tartó spirál magja 3× helyett 2×-en maradt —
+   * vagyis a felhasználó VÉDELMI SZINTJE függött egy `Set` beszúrási
+   * sorrendjétől. A modul fejlécében álló ígéret („a kliens és a szerver
+   * bitre ugyanazt adja") ezzel csendben megdőlt volna, amint a két oldal
+   * más úton állítja elő ugyanazt a halmazt.
+   *
+   * Ezért előbb ÖSSZEGYŰJTJÜK a régiót, és utána a régió
+   * LEXIKOGRÁFIKUSAN LEGKISEBB celláján mérünk. Ez a választás önmagában nem
+   * „jobb" a többinél — az viszont, hogy nem a véletlenen múlik.
+   */
   for (const seed of offPath) {
     if (counts.has(seed)) continue;
-    const turns = turnsAt(seed);
 
+    const region: CellId[] = [seed];
     const queue: CellId[] = [seed];
-    counts.set(seed, turns);
+    // Foglaló érték: a régió tagjait már most jelöljük, hogy a bejárás ne
+    // fusson kétszer. A végleges értéket alább írjuk felül.
+    counts.set(seed, 0);
+    let representative = seed;
+
     while (queue.length > 0) {
       const current = queue.pop()!;
-      for (const near of gridDisk(current, 1)) {
+      for (const near of ringOf(current)) {
         if (near === current || onPath.has(near) || !wanted.has(near)) continue;
         if (counts.has(near)) continue;
-        counts.set(near, turns);
+        counts.set(near, 0);
+        region.push(near);
         queue.push(near);
+        if (near < representative) representative = near;
       }
     }
+
+    const turns = turnsAt(representative);
+    for (const cell of region) counts.set(cell, turns);
   }
 
   // ── 2. A görbén lévő cellák a szomszédos régiótól örökölnek ─────────────

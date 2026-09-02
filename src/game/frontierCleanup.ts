@@ -1,4 +1,4 @@
-import { getResolution, gridDisk } from 'h3-js';
+import { getResolution } from 'h3-js';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
 import type {
   CellId,
@@ -6,6 +6,7 @@ import type {
   ClaimResult,
   OwnershipMap,
 } from '@/types';
+import { ringOf } from './neighbours';
 
 export interface FrontierOrphanSearchInput {
   /** Res12 cellák, amelyek környezetében a friss rablás frontierét vizsgáljuk. */
@@ -39,7 +40,7 @@ export function findStolenFrontierReassignments(
 
   for (const seed of input.stolenSeeds) {
     if (getResolution(seed) !== resolution) continue;
-    for (const cell of gridDisk(seed, 1)) candidates.add(cell);
+    for (const cell of ringOf(seed)) candidates.add(cell);
   }
 
   const reassignments = new Map<CellId, CellOwnership>();
@@ -52,7 +53,7 @@ export function findStolenFrontierReassignments(
     const held = input.ownershipAt(candidate);
     if (!held) continue;
 
-    const neighbours = gridDisk(candidate, 1).filter((cell) => cell !== candidate);
+    const neighbours = ringOf(candidate).filter((cell) => cell !== candidate);
     if (input.scope && !neighbours.every((cell) => input.scope!.has(cell))) continue;
 
     const sideCounts = new Map<string, number>();

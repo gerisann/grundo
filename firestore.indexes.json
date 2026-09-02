@@ -203,6 +203,16 @@
         { "fieldPath": "tile", "order": "ASCENDING" },
         { "fieldPath": "areaM2", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "Az óránként futó forduló ebből tudja meg, melyik globális akció indult el most (dailyRollover.ts, notifyStartedModifiersIfDue). Index nélkül a lekérdezés FAILED_PRECONDITION-nel hasal el — mérve az éles naplóban 2026-09-01-en, MINDEN órában.",
+      "collectionGroup": "modifiers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "scope", "order": "ASCENDING" },
+        { "fieldPath": "from", "order": "ASCENDING" },
+        { "fieldPath": "to", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -210,6 +220,24 @@
       "//": "A blokklista tömb NEM indexelendő. A Firestore alapból minden tömbelemre külön indexbejegyzést készít, dokumentumonként 40 000-es plafonnal — egy nagy birodalomnál ez betelne. Lekérdezni sosem kell rá: mindig a teljes listát olvassuk ki egyetlen dokumentumból.",
       "collectionGroup": "blockIndex",
       "fieldPath": "blocks",
+      "indexes": []
+    },
+    {
+      "//": "⚠️ EZ AKADÁLYOZTA MEG EGY 12 ÓRÁS AKTIVITÁS MENTÉSÉT (2026-09-01, négy próbálkozás, mind 504). Az aktivitás cellalistája a kör TELJES elfoglalt területe: egy 126 km-es városi napon 36 012 elem. A Firestore minden tömbelemre KÉT indexbejegyzést készít (növekvő és csökkenő), a plafon pedig dokumentumonként 40 000 — a mentés tehát ~20 000 cella fölött INVALID_ARGUMENT / INDEX_ENTRIES_COUNT_LIMIT_EXCEEDED hibával elhasalt, a kliens pedig csak annyit látott, hogy nincs kapcsolat a szerverrel. Szűrni sosem szűrünk rá: a listát mindig a saját dokumentumával együtt olvassuk, a térkép rajzolásához.",
+      "collectionGroup": "activities",
+      "fieldPath": "activityCells",
+      "indexes": []
+    },
+    {
+      "//": "Ugyanaz az ok, mint az activityCells-nél: a compact hurok belsejének parent-listája szintén tíz- vagy százezres tömb lehet, és soha nem szűrünk rá.",
+      "collectionGroup": "activities",
+      "fieldPath": "activityCellParents",
+      "indexes": []
+    },
+    {
+      "//": "A teljes, levágatlan nyomvonal (activities/{id}/private/track). Több tízezer pont, kizárólag az aktivitás részletezőjéhez olvassuk ki egyben — indexelni sem kell, és nem is szabad.",
+      "collectionGroup": "private",
+      "fieldPath": "points",
       "indexes": []
     },
     {

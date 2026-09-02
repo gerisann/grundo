@@ -19,9 +19,10 @@
  * lekérdezést lásd `server/src/lib/territoryBlobStore.ts`.
  */
 
-import { cellsToMultiPolygon, gridDisk } from 'h3-js';
+import { cellsToMultiPolygon } from 'h3-js';
 import { cellsToM2 } from './cells';
 import type { CellId } from '@/types';
+import { ringOf } from './neighbours';
 
 /** GeoJSON gyűrűk: [gyűrű][pont][lng, lat]. Az első a külső, a többi lyuk. */
 export type BlobRings = [number, number][][];
@@ -64,7 +65,7 @@ export function splitIntoBlobs(cells: Iterable<CellId>): CellId[][] {
 
     while (queue.length > 0) {
       const current = queue.pop()!;
-      for (const neighbour of gridDisk(current, 1)) {
+      for (const neighbour of ringOf(current)) {
         if (!remaining.has(neighbour as CellId)) continue;
         remaining.delete(neighbour as CellId);
         component.push(neighbour as CellId);

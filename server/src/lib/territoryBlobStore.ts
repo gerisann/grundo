@@ -65,11 +65,26 @@ const MAX_BLOBS_PER_VIEW = 400;
 /**
  * A felhasználó blokkjainak felső korlátja újraszámoláskor.
  *
- * Egy blokk 343 cella, tehát 400 blokk ~137 000 cella — ennél nagyobb
- * területnél a folt alakja már úgysem a részleteken múlik. A korlát a
- * mentési út futásidejét védi: ez a beolvasás minden aktivitás után lefut.
+ * Egy blokk 343 cella, tehát 4 000 blokk ~1,37 millió cella (~420 km²).
+ * A korlát a futásidőt védi — mérve ~630 ms 400 blokk beolvasása, tehát
+ * ehhez a plafonhoz néhány másodperc tartozik, és ez a munka amúgy is a
+ * háttérsorban fut, nem a mentési kérésben (lásd
+ * `scheduleTerritoryBlobRecompute`).
+ *
+ * ⚠️ EZ 400 VOLT, ÉS AZ CSENDBEN TERÜLETET TÜNTETETT EL A TÉRKÉPRŐL.
+ * A `loadUserBlockIds` a listát egyszerűen levágta (`slice(0, limit)`), a
+ * `truncated` jelzését pedig senki nem nézte meg — az újraszámolás így a
+ * birodalom ELSŐ 400 blokkjából állította elő a foltokat, majd TÖRÖLTE
+ * mindazt, amit nem hozott vissza. Egy 400 blokknál nagyobb területnek
+ * ettől a maradéka egyszerűen eltűnt: lyukak és üres foltok a már elfoglalt
+ * területen. A `truncated` ág ma már megvédi ettől (lásd lent), ez a szám
+ * pedig csak azért maradt meg, hogy egy hibás adat ne futtasson végtelen
+ * beolvasást.
+ *
+ * (2026-09-02-i éles állapot: a legnagyobb birodalom 84 blokk, tehát ez a
+ * plafon jelenleg senkit nem érint — a hiba latens volt, nem aktív.)
  */
-const MAX_BLOCKS_PER_USER = 400;
+const MAX_BLOCKS_PER_USER = 4_000;
 
 export interface StoredBlob {
   id: string;
@@ -100,9 +115,21 @@ function docId(layer: Layer, owner: string, blobId: string): string {
 export async function recomputeTerritoryBlobs(uid: string, layer: Layer): Promise<number> {
   const index = await loadUserBlockIds(uid, layer, MAX_BLOCKS_PER_USER);
 
+  /**
+   * A blokkokat KÖTEGENKÉNT olvassuk, nem egyetlen `getAll`-lal.
+   *
+   * A plafon 4 000 blokk; egy blokkdokumentum 343 cella tulajdonviszonyát
+   * hordozza, tehát egyetlen hívásban több tíz megabájt érkezne, és a
+   * dekódolt objektumok ennek a többszörösét foglalnák. A kötegelt olvasás
+   * ugyanannyi hálózati munka, de a csúcsmemóriát a kötegméretre szorítja —
+   * a `cells` tömb (csak azonosítók) marad az egyetlen, ami végig nő.
+   */
   const cells: CellId[] = [];
-  if (index.blockIds.length > 0) {
-    const refs = index.blockIds.map((id) => db.collection(COLLECTIONS.grid).doc(id));
+  const BLOCK_READ_CHUNK = 400;
+  for (let i = 0; i < index.blockIds.length; i += BLOCK_READ_CHUNK) {
+    const refs = index.blockIds
+      .slice(i, i + BLOCK_READ_CHUNK)
+      .map((id) => db.collection(COLLECTIONS.grid).doc(id));
     for (const snapshot of await db.getAll(...refs)) {
       if (!snapshot.exists) continue;
       const block = snapshot.data() as GridBlock;
@@ -115,19 +142,39 @@ export async function recomputeTerritoryBlobs(uid: string, layer: Layer): Promis
   const blobs = blobsFromCells(cells);
   const now = new Date();
 
-  // A meglévő foltok azonosítói — amit az újraszámolás nem hozott vissza, az
-  // megszűnt (elvették, vagy összeolvadt egy másikkal), tehát törlendő.
-  const existing = await db
-    .collection(COLLECTIONS.territoryBlobs)
-    .where('layer', '==', layer)
-    .where('owner', '==', uid)
-    .get();
-
-  const keep = new Set(blobs.map((blob) => docId(layer, uid, blob.id)));
+  /**
+   * A meglévő foltok azonosítói — amit az újraszámolás nem hozott vissza, az
+   * megszűnt (elvették, vagy összeolvadt egy másikkal), tehát törlendő.
+   *
+   * ⚠️ CSAK AKKOR, HA TELJES KÉPET LÁTTUNK. Csonkolt blokklistából
+   * törölni annyi, mint egy fél térkép alapján letörölni a másik felét: a
+   * be nem olvasott blokkok foltjai „nem jöttek vissza", tehát a törlés
+   * elvinné őket — a felhasználó pedig lyukakat látna a saját, régen
+   * elfoglalt területén. Ilyenkor inkább maradjon egy elavult folt, mint
+   * hogy eltűnjön egy valódi.
+   *
+   * A csonkolás önmagában hibaállapot: azt jelenti, hogy a
+   * `MAX_BLOCKS_PER_USER` szűk lett a valósághoz képest, és a foltok
+   * ATTÓL FÜGGETLENÜL hiányosak lesznek, hogy törlünk-e. Ezért naplózzuk.
+   */
   const writes: { ref: FirebaseFirestore.DocumentReference; data?: Record<string, unknown> }[] = [];
 
-  for (const snapshot of existing.docs) {
-    if (!keep.has(snapshot.id)) writes.push({ ref: snapshot.ref });
+  if (index.truncated) {
+    console.error(
+      '[territoryBlobs] a blokklista CSONKOLT — a foltok hiányosak lesznek, a törlés kimarad',
+      { uid, layer, limit: MAX_BLOCKS_PER_USER },
+    );
+  } else {
+    const existing = await db
+      .collection(COLLECTIONS.territoryBlobs)
+      .where('layer', '==', layer)
+      .where('owner', '==', uid)
+      .get();
+
+    const keep = new Set(blobs.map((blob) => docId(layer, uid, blob.id)));
+    for (const snapshot of existing.docs) {
+      if (!keep.has(snapshot.id)) writes.push({ ref: snapshot.ref });
+    }
   }
 
   for (const blob of blobs) {

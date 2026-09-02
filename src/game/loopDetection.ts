@@ -1,4 +1,3 @@
-import { gridDisk } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
 import type {
   CellId,
@@ -13,6 +12,7 @@ import {
   loopInteriorHas,
   loopInteriorOverlapCount,
 } from './loopInterior';
+import { ringOf } from './neighbours';
 
 interface AcceptedLoopRecord {
   loop: DetectedLoop;
@@ -149,7 +149,7 @@ export class IncrementalLoopDetector {
      */
     const candidates = new Set<number>();
     addRecentEligible(sameHistory, i, candidates);
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (near === cell) continue;
       addRecentEligible(this.seenAt.get(near) ?? [], i, candidates);
     }
@@ -381,7 +381,7 @@ function clusterCandidateIndices(candidates: ReadonlySet<number>): number[] {
  */
 function insideClosureZone(cell: CellId, loop: DetectedLoop): boolean {
   if (loop.wall.has(cell) || loopInteriorHas(loop, cell)) return true;
-  for (const near of gridDisk(cell, 1)) {
+  for (const near of ringOf(cell)) {
     if (loop.wall.has(near)) return true;
   }
   return false;
@@ -417,7 +417,7 @@ function hasTwoDimensionalInteriorCore(loop: DetectedLoop): boolean {
   if (loop.compactInterior) return true;
   for (const cell of loop.interior) {
     let neighbours = 0;
-    for (const near of gridDisk(cell, 1)) {
+    for (const near of ringOf(cell)) {
       if (near === cell) continue;
       if (loopInteriorHas(loop, near)) neighbours += 1;
       if (neighbours >= 3) return true;

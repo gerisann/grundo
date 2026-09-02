@@ -107,6 +107,30 @@ steps:
       - --port=8080
       - --min-instances=0
       - --max-instances=4
+      # ⚠️ A KÉRÉS IDŐKORLÁTJA. A Cloud Run alapértéke 300 s, és 2026-09-01-en
+      # PONTOSAN EZ buktatta el egy 12 órás, 126 km-es aktivitás mentését:
+      # négy próbálkozás, mind 504-es hibával, mind pontosan 300,00 s után
+      # (éles kérésnapló). A kliens ebből csak annyit látott, hogy „nincs
+      # kapcsolat a szerverrel".
+      #
+      # A geometria azóta ~5,5-szer gyorsabb (lásd `src/game/neighbours.ts` és
+      # `loops.ts` ADAPTIVE_AREA_PER_WALL_CELL), de a HATÁRESET-nek akkor is
+      # kell fejtér. Mérve: ugyanaz a nyomvonal asztali CPU-n 425 s → 83 s,
+      # a Cloud Run 1 vCPU-ja pedig ~3,1-szer lassabb ennél (a 425 s-os
+      # változat élesben ~1 320 s-nál ért el a Firestore-írásig). A 900 s így
+      # a legrosszabb MÉRT esetre is ~3,5× ráhagyás.
+      #
+      # Nem 3600 (a maximum): egy beragadt kérés addig foglalja a példányt, és
+      # a `--max-instances=4` mellett a negyedik beragadás már látszana a
+      # többi felhasználón is.
+      - --timeout=900
+      # Indítási CPU-löket: a példány az első ~10 másodpercben több CPU-t kap.
+      # Mérve (2026-09-02, éles kérésnapló): hidegen az első kérés 2,58 s volt,
+      # melegen ugyanaz 0,1-0,7 s — a feed és az aktivitás-részletező „néha
+      # nagyon lassan tölt be" panasza ez. A `--min-instances=1` teljesen
+      # megszüntetné, de havi díja van; Geri a díjmentes felet választotta
+      # (2026-09-02), tehát a hidegindítás megmarad, csak rövidebb lesz.
+      - --cpu-boost
       # 2 GiB, mert egy nagyon nagy foglalás (Balaton-kör, ~600 km²,
       # ~1,95 millió cella) a számítás alatt ~900 MB-ot vesz igénybe. Mérve
       # ~420 bájt cellánként. A Cloud Run nullára skálázódik, tehát ez csak a

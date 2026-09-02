@@ -8,8 +8,8 @@
  */
 
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
-import { gridDisk } from 'h3-js';
 import type { CellFate, CellId, CellOwnership, ClaimResult, OwnershipMap } from '@/types';
+import { ringOf } from './neighbours';
 export type { ClaimResult };
 
 /**
@@ -130,7 +130,7 @@ export function absorbIsolatedRivalCells(
 
   const candidates = new Set<CellId>();
   for (const acquired of newlyAcquired) {
-    for (const near of gridDisk(acquired, 1)) {
+    for (const near of ringOf(acquired)) {
       if (near !== acquired) candidates.add(near);
     }
   }
@@ -140,7 +140,7 @@ export function absorbIsolatedRivalCells(
     const held = state.get(candidate);
     if (!held || held.owner === actorId || held.defense !== 1) continue;
 
-    const neighbours = gridDisk(candidate, 1).filter((cell) => cell !== candidate);
+    const neighbours = ringOf(candidate).filter((cell) => cell !== candidate);
     if (!neighbours.every((cell) => scope.has(cell))) continue;
     if (neighbours.some((cell) => state.get(cell)?.owner === held.owner)) continue;
     if (!neighbours.some((cell) => newlyAcquiredSet.has(cell))) continue;
