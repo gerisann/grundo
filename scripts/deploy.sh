@@ -71,8 +71,13 @@ fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 # Konkrét eset (2026-08-29): pontosan ez történt, „Ismeretlen mód" jött,
 # minden `info` sor NÉLKÜL — ami elárulta, hogy a hiba a pull előtt van.
 
-info "Projekt beállítása: $PROJECT"
-gcloud config set project "$PROJECT" >/dev/null
+info "Projekt használata: $PROJECT"
+# Csak ERRE a folyamatra állítjuk be a projektet. A `gcloud config set project`
+# a gép globális konfigurációját módosította, és ha az Application Default
+# Credentials quota projektje más volt, minden telepítésnél félrevezető
+# figyelmeztetést írt ki. A környezeti változót minden alfolyamat örökli,
+# miközben a fejlesztő többi terminálját érintetlenül hagyja.
+export CLOUDSDK_CORE_PROJECT="$PROJECT"
 
 # ⚠️ NEM COMMITOLT MÓDOSÍTÁSSAL NEM TELEPÍTÜNK.
 #
@@ -120,16 +125,35 @@ if [ "$before_pull" != "$(git rev-parse HEAD)" ] \
   exec "$REPO_ROOT/scripts/deploy.sh" "$MODE"
 fi
 
-deploy_backend() {
-  # A `--set-secrets` LÉTEZŐ titkot vár: ha hiányzik, a `gcloud run deploy`
-  # a build legvégén hasal el, több perc után, nehezen olvasható hibával.
-  # Előbb megnézzük, és érthető magyar üzenetet adunk helyette.
-  if ! gcloud secrets describe MAPBOX_TOKEN >/dev/null 2>&1; then
-    fail "Nincs MAPBOX_TOKEN titok a Secret Managerben. Létrehozás:
-    printf %s 'pk.xxx' | gcloud secrets create MAPBOX_TOKEN --data-file=-
-    gcloud secrets add-iam-policy-binding MAPBOX_TOKEN --member=\"serviceAccount:65689674957-compute@developer.gserviceaccount.com\" --role=\"roles/secretmanager.secretAccessor\"
-  Részletek: docs/06-architektura-es-admin.md"
+require_secret() {
+  local secret_name="$1"
+  local secret_error
+
+  if secret_error="$(gcloud secrets describe "$secret_name" --format='value(name)' 2>&1)"; then
+    return
   fi
+
+  # A korábbi ellenőrzés MINDEN hibát „nincs ilyen titok”-ként jelentett,
+  # még egy átmeneti auth-, hálózati vagy jogosultsági hibát is. Ettől a
+  # létező MAPBOX_TOKEN mellett is létrehozási utasítást adott. Csak a valódi
+  # NOT_FOUND kap hiányzó-titok üzenetet; minden másnál az eredeti gcloud hiba
+  # kell a javításhoz.
+  if printf '%s' "$secret_error" | grep -Eqi 'NOT_FOUND|not found|does not exist'; then
+    fail "Nincs $secret_name titok a $PROJECT projekt Secret Managerében. Részletek: docs/06-architektura-es-admin.md"
+  fi
+
+  fail "Nem sikerült ellenőrizni a $secret_name titkot. A titok ettől még létezhet.
+Eredeti gcloud hiba:
+$secret_error"
+}
+
+deploy_backend() {
+  # A `--set-secrets` mind a négy létező titkot vár. Előre ellenőrizzük őket,
+  # hogy a build ne több perc után álljon meg egy hiányzó konfiguráció miatt.
+  local secret_name
+  for secret_name in SMTP_PASSWORD JOBS_TOKEN MAPBOX_TOKEN RATE_LIMIT_HMAC_KEY; do
+    require_secret "$secret_name"
+  done
 
   info "Backend build és telepítés (Cloud Run)"
   printf '   Mapbox-token forrása: Secret Manager (MAPBOX_TOKEN:latest)\n'

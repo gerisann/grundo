@@ -8,7 +8,20 @@
 
 ## ÁLLAPOT
 
-Elkészült az aktivitásvezérlés hat új hangja.
+Elkészült az aktivitásvezérlés hat új hangja és a telepítő félrevezető
+Secret Manager-ellenőrzésének javítása.
+
+### Telepítő
+
+- A `scripts/deploy.sh` nem módosítja többé a gép globális gcloud-projektjét;
+  a `grundo` projektet csak a saját folyamatára állítja be. Ettől megszűnik az
+  Application Default Credentials eltérő quota projektjéről szóló zajos
+  figyelmeztetés.
+- A backend előtt mind a négy Cloud Run-titkot ellenőrzi: `SMTP_PASSWORD`,
+  `JOBS_TOKEN`, `MAPBOX_TOKEN`, `RATE_LIMIT_HMAC_KEY`.
+- Csak a valódi `NOT_FOUND` jelent hiányzó titkot. Auth-, hálózati vagy
+  jogosultsági hibánál az eredeti gcloud hiba látszik; nem ad többé téves
+  titoklétrehozási utasítást.
 
 ### Kliens
 
@@ -31,10 +44,10 @@ Elkészült az aktivitásvezérlés hat új hangja.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-- Geri visszajelzése szerint a `4a2f017` backendje és frontendje telepítve van.
-- Az előző `86a5cbf` hosszúmentés-változása és ez a hangos commit még nincs
-  pusholva vagy telepítve.
-- A két commit együttes kiadásához **backend, majd frontend** telepítés kell.
+- A hosszúmentés `c33a935` és a hangok `7e9b396` commitja már a GitHubon van,
+  de a telepítés a hibás Secret Manager-előellenőrzésnél megállt.
+- A telepítőjavítás commitja még nincs pusholva és nincs telepítve.
+- A változások kiadásához **backend, majd frontend** telepítés kell.
   A backend az előző commit miatt szükséges; a hangos commit önmagában csak
   kliensoldali.
 - Adatmigráció, Firestore-szabály- és indextelepítés nem kell.
@@ -52,10 +65,14 @@ Elkészült az aktivitásvezérlés hat új hangja.
   nézetben sem lóg ki. Külön sötét ellenőrzés ebben a menetben nem történt;
   CSS nem változott, az új sorok a meglévő tokenes komponenseket használják.
 - Natív készülékes hang- és életcikluspróba csak az új buildből lehetséges.
+- A telepítő Bash szintaxisellenőrzése sikeres.
+- Git Bashből, folyamatlokális `grundo` projektbeállítással mind a négy
+  szükséges Secret Manager-titok elérhető; a `MAPBOX_TOKEN` ténylegesen
+  létezik és az éles `grundo-api` is ezt használja.
 
 ## KÖVETKEZŐ LÉPÉSEK
 
-1. Geri pusholja a két helyi commitot.
+1. Geri pusholja a telepítőjavítás commitját.
 2. Nincs adatbázis-lépés.
 3. Telepítési sorrend: **backend → frontend**.
 4. Az új HEAD-ből iOS- és Android-build készítendő.
