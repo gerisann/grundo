@@ -4,12 +4,13 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · az utolsó KÓD-commit **`1e52b48`**, utána már csak ez a
+> Ág: **`main`** · az utolsó KÓD-commit **`9fa6e4f`**, utána már csak ez a
 > fájl változott · pusholva, munkamásolat tiszta
 >
-> Élesben: web `06cf4e5` · backend `grundo-api-00111-ldw` · indexek naprakészek
+> Élesben: web `9fa6e4f` (`index-vrolbcY7.js`) · backend `grundo-api-00112-6b2` ·
+> indexek naprakészek · a natív buildek MÉG NEM mentek ki
 >
-> Tesztek: **640 zöld** + **129 emulátoros zöld**, gyökér és `server/` typecheck
+> Tesztek: **642 zöld** + **129 emulátoros zöld**, gyökér és `server/` typecheck
 > tiszta
 
 ---
@@ -21,26 +22,32 @@ A #24 munkája **élesben fut**. Adatmigráció nem kellett.
 | Lépés | Állapot | Ellenőrzés |
 |---|---|---|
 | **indexek** | ✅ | `activityCells`, `activityCellParents`, `private/points` mentesítve (üres indexlistával, `gcloud firestore indexes fields describe`); a `modifiers` összetett index `CREATING` állapotban indult |
-| **backend** | ✅ | revízió **`grundo-api-00111-ldw`**, `timeoutSeconds=900`, `startup-cpu-boost=true`, `/api/health` → `grundo-db` |
-| **frontend** | ✅ | belépő chunk **`index-Cmvc9hgG.js`**, az élesen kiszolgált név megegyezik a helyi buildével; mind a négy `VITE_*` érték benne a bundle-ben; az oldal konzolhiba nélkül tölt |
+| **backend** | ✅ | revízió **`grundo-api-00112-6b2`**, `timeoutSeconds=900`, `startup-cpu-boost=true`, `/api/health` → `grundo-db` |
+| **frontend** | ✅ | belépő chunk **`index-vrolbcY7.js`**, az élesen kiszolgált név megegyezik a helyi buildével; mind a `VITE_*` érték benne a bundle-ben |
 
 ⚠️ A frontend azért NEM volt elhagyható, mert a `src/game` motor KÖZÖS a
 klienssel: a `windingCounts` javítása megváltoztatja a védelmi szintek
 számítását. Csak backend-frissítéssel a rögzítés közbeni élő előnézet mást
 mutatott volna, mint amit a mentés jóváír.
 
-**Ami még hátravan ehhez a menethez:** a natív buildek (Codemagic, iOS +
-Android) a `06cf4e5`-ből. A menet natív fájlt nem érintett, de a `dist/`
-igen — a `npx cap sync` viszi be a motorjavítást és a #23 összes webes
-újítását, amit az Android még sosem kapott meg.
+**Ami még hátravan:** a natív buildek (Codemagic, iOS + Android) a
+**`9fa6e4f`**-ből. Ezek most már nem csak a `dist/`-et viszik: a menet
+MÓDOSÍTOTT natív fájlt is — a zárolt képernyős táv számítását mindkét
+platformon.
+
+⚠️ **A NATÍV VÁLTOZÁST NEM TUDTAM LEFORDÍTANI.** Ezen a gépen nincs Android
+SDK (a `gradlew` „SDK location not found"-dal áll meg) és nincs Xcode. A
+Swift és a Java módosítás kizárólag átolvasva van ellenőrizve — a fordítás
+első valódi próbája a Codemagic build. Ha ott elhasal, a fordítási hibát
+kell nézni, nem a logikát.
 
 ---
 
 ## ÁLLAPOT — mi készült el a #24-ben
 
-A menet TELJES EGÉSZÉBEN a mentés és a betöltés hibáiról szólt (Geri
-döntése a lista átnézése után). A hangok, a dokk Play gombja és a profil
-rivális-sávjai szándékosan átcsúsztak — a diagnózisuk viszont lent megvan.
+A menet ELSŐ FELE a mentés és a betöltés hibáiról szólt (Geri döntése a
+lista átnézése után, 1-6. pont), a MÁSODIK FELE a terepteszt négy maradék
+pontjáról (7. pont).
 
 ### 1. A 12 órás mentés bukása — MEGTALÁLVA, JAVÍTVA
 
@@ -151,76 +158,100 @@ Ez nem szerepelt a hibalistán — a naplóból derült ki.
 
 ---
 
-## MÉRT DIAGNÓZIS a még NEM javított pontokra
+## 7. A terepteszt négy maradék pontja — MIND JAVÍTVA
 
-Ezek a #25 kész munkacsomagjai. Mindegyik mögött konkrét kód áll, nem
-feltételezés.
+Ezek a #24 második felében készültek el, Geri kérésére. Mind a négy mögött
+mérés áll, nem feltételezés.
 
-### A) iOS: a zárolt képernyőn más táv, mint az appban
+### A) A zárolt képernyőn más táv, mint az appban — iOS ÉS Android
 
 Jamal képernyőképein azonos percben **86,07 km** a zárolt képernyőn és
 **92,69 km** az appban — 7,1% hiány.
 
-**Ok: két, KÜLÖN algoritmusú távolságszámláló.** Előtérben a JS küldi a
-hiteles értéket (`syncActivity`), háttérben viszont a natív
-`GrundoLiveActivityController.record()` maga összegez — más szabályokkal:
+**Ok: a natív ág SAJÁT, másik algoritmussal összegzett.** Előtérben a JS
+küldi a hiteles értéket (`syncActivity`), háttérben viszont a natív réteg
+maga számolt — három ponton eltérően:
 
-| | JS (`tracking/filter.ts` + `recorder.ts`) | natív (`record()`) |
+| | JS (`tracking/filter.ts` + `recorder.ts`) | natív (régi) |
 |---|---|---|
 | pontosság-kapu | 30 m | **50 m** |
 | elvetett mintánál a referenciapont | **marad a régi** | **előrelép** |
 | távösszegzés | horgony-alapú, 12 m sugár | egyszerű láncösszeg |
 
-A második sor a lényeg: a `defer { lastLocation = location }` a kapuk ELŐTT
-fut le, tehát egy elvetett fix is új referenciaponttá válik — **az azon
-átívelő szakasz távja végleg elveszik**. Bringánál (`distanceFilter = 12`)
-ez fixenként 12–24 m. A hiba iránya mindig veszteség, ami egybevág a mért
-7,1%-kal.
+A középső sor a súlyos: a `defer { lastLocation = location }` a kapuk ELŐTT
+futott, tehát egy elvetett fix is új referenciaponttá vált, és az azon
+átívelő szakasz távja végleg elveszett. Bringánál (`distanceFilter = 12`)
+ez fixenként 12–24 m.
 
-**Javítás iránya:** a natív ág vegye át a JS szabályát — 30 m-es kapu,
-elvetett fixnél NE lépjen a referencia, és horgony-alapú összegzés 12 m-rel
-(`GAMEPLAY.GPS_STATIONARY_RADIUS_M`). Fájl:
-`ios/App/App/GrundoLiveActivityController.swift`.
+⚠️ **Volt egy MÁSODIK, ellentétes irányú hiba is**, amit csak a javítás
+közben találtam meg: a natív referencia a JS-szinkron után is megmaradt.
+Mivel a `record()` csak háttérben fut, a háttérbe visszatérés utáni ELSŐ fix
+az EGÉSZ előtérben megtett utat hozzáadta a JS által már beleszámolt
+távhoz. A mért −7,1% a két hiba eredője volt. A `sync()` mostantól eldobja a
+natív referenciát és a horgonyt.
 
-### B) iOS: a hangok beragadnak, majd tömegesen leszólalnak
+**Ugyanez a hiba az Androidon is megvolt** (`TrackingLocationService`
+`recordNotificationLocation`), plusz ott a min-move küszöb a MINTAVÉTELI
+szűrő volt (bringán 12 m), nem a JS 5 métere. Mindkét platform mostantól az
+`evaluate` + `anchoredTotal` szabályát követi.
 
-**Ok, és ez platformkorlát, nem hiba a kódban:** az
-`ios/App/App/Info.plist` `UIBackgroundModes` tömbje `location` és
-`remote-notification` — **`audio` NINCS BENNE**, és sehol nincs
-`AVAudioSession` beállítás. Vagyis amíg az app háttérben van (zárolt
-képernyő), a WebView `<audio>` eleme nem szólalhat meg. A `play()` hívás
-nem hibázik, csak vár — és amikor az app előtérbe kerül, a felgyűlt
-lejátszások egyszerre indulnak el. Pontosan ezt írta le Geri.
+⚠️ **A KÉT ÁLLANDÓ-KÉSZLET A JS MÁSOLATA.** Swiftből és Javából nem lehet
+importálni a `gameplay.ts`/`filter.ts` értékeit, tehát ez a rendszer
+egyetlen helye, ahol ugyanaz a szabály háromszor szerepel. Mindhárom fájl
+fejlécében ott a figyelmeztetés: együtt kell őket mozgatni.
 
-Ez magyarázza a többi tünetet is: a 3-2-1 és a RAJT azért ment, mert azok
-ELŐTÉRBEN szólnak (épp megnyomta az indítást); a cellahangok és a
-hurokbezárás azért nem, mert azok menet közben, háttérben keletkeznek.
+### B) A hangok beragadnak, majd tömegesen leszólalnak
 
-**Két külön teendő:**
-1. **Azonnali, olcsó:** a `lib/sound.ts` `playSound()`-ja ne indítson
-   lejátszást, ha `document.visibilityState === 'hidden'`, és a
-   `playSoundSequence` függő időzítői is szakadjanak meg elrejtéskor. Egy
-   hang, amit MOST nem hallani, később már nem információ, hanem zaj.
-2. **Termékdöntés:** ha a zárolt képernyős menet közben is szólni kell,
-   ahhoz natív hangút kell (iOS: `UIBackgroundModes: audio` +
-   `AVAudioSession` `.playback` + `AVAudioPlayer`; Android: `SoundPool` az
-   előtér-szolgáltatásban). Ez önálló funkció, nem javítás — és iOS-en
-   figyelni kell, hogy a háttérhang-jogosultság App Store-felülvizsgálati
-   kérdés is.
+**Ok:** a rejtett lap nem visszautasítja a lejátszást, hanem VÁR vele, és
+előtérbe visszatéréskor mindet egyszerre indítja. A `shouldPlaySound`
+mostantól a láthatóságot is nézi, a `playSoundSequence` függő időzítői pedig
+elrejtéskor megszakadnak.
 
-### C) A dokk Play gombja két lépés
+**Mérve az éles bundle-ben** (a `HTMLMediaElement.prototype.play`
+kipatchelve egy naplótömbbe): rejtett lapon 5 kért hangból **0** szólalt
+meg; egy láthatóan indult, három hangos sorozatból elrejtés után **1**
+maradt (a már elindult első), a másik kettő megszakadt.
 
-Kérés: bárhol nyomjuk meg a dokk Play gombját, egyből a mozgásforma-választó
-jöjjön. Ma a rögzítés oldalra visz, és ott újra kell nyomni. Érintett:
-`components/Dock.tsx` (`primaryAction`) és a `TrackingScreen` indító
-állapota. ⚠️ A Dock indítógombja oldja fel a böngésző hangzárját is
-(`unlockSounds`) — az átalakításnál ez nem eshet ki.
+⚠️ **EZ NEM TESZI HALLHATÓVÁ a zárolt képernyős hangokat, és nem is tudja.**
+Két, egymástól független platformkorlát áll az útjában:
+1. az `ios/App/App/Info.plist` `UIBackgroundModes` tömbjében nincs `audio`,
+   és nincs `AVAudioSession` beállítás sem;
+2. **a WebView JavaScriptje háttérben nem fut**, tehát a „ráléptem egy új
+   mezőre" DÖNTÉS meg sem születik — a natív réteg csak GPS-pontokat sorol
+   be, a H3-cella és a birtokviszony kiértékelése a JS-é.
 
-### D) A profil rivális-blokkja kapja meg az új Rival Bars megjelenítést
+A második a súlyosabb: pusztán a háttérhang-jogosultság megadása SEM lenne
+elég. Valódi, zárolt képernyős cellahanghoz a lépés-felismerést és a
+birtokviszony-keresést natívra kellene vinni (Swift + Kotlin), ami önálló
+funkció, nem javítás — és iOS-en App Store-felülvizsgálati kérdés is.
+**Ez termékdöntés, nem technikai adósság.**
 
-Minden felhasználó sávja a saját színével. A #23-ban a Home feed
-aktivitás-kártyáin készült el (`RivalRow.tsx` + `connectionsSheet.css`); a
-profil `RivalsCard`-ja még a régit használja.
+Ami MA működik: a visszaszámlálás és a RAJT (előtérben szólnak), illetve
+minden hang, amíg a képernyő be van kapcsolva és az app elöl van.
+
+### C) A dokk Play gombja — egy koppintás
+
+Bárhonnan egy koppintás visz a mozgásforma-választóig. A `pickerOpen` a
+recorder közös állapota, tehát túléli az útvonalváltást; a sorrend kötött
+(előbb az állapot, utána a navigáció), hogy egyetlen újrarajzolás legyen.
+
+**Mérve a helyi emulátoros környezetben:** Home → egy kattintás →
+`/rogzites` + nyitott választó (Futás / Séta / Bringa / Mentett útvonalak).
+A második koppintás a választás után továbbra is a 3-2-1-et indítja.
+
+### D) Rivális-sávok a profilon — KÉT hiba volt egymás mögött
+
+1. A `RivalsCard` és a `RivalsSheet` nem adta át a `selfCellColor`-t, tehát
+   a BAL sáv a régi lilán maradt. Mindkettő mostantól a
+   `useProfile()`-ból veszi — nem propként, hogy egy új hívási helyen se
+   lehessen elfelejteni (pontosan ez történt a #23-ban).
+2. ⚠️ **A `/api/rivals` a rivális `cellColor`-ját SEM küldte el**, tehát a
+   JOBB sáv sehol nem tudott színeződni — a profilon és a teljes listán sem.
+   Az aktivitás-kártyán csak azért működött, mert ott a rivális a feedből
+   érkezik, más kódúton.
+
+**Mérve:** bal sáv `#8F3A40` (a saját szín), jobb sáv riválisonként
+`#FF6000` / `#FFD502` / `#E06E70` / `#566F49`.
 
 ---
 
@@ -270,6 +301,8 @@ mérni kell (a natív drain kötegméretével).
 - `mailer.ts:122-129` fail-closed tétele hiányzó `SMTP_HOST`-ra.
 - A frontend production Mapbox chunk 1,824 MB, a Firebase chunk 630 kB.
 - 90 perces / 20 km-es iOS és Android háttér-GPS terepteszt.
+- **Zárolt képernyős cellahang** — termékdöntés, lásd fent a 7/B pontot: a
+  natív hangúthoz a lépés-felismerést is natívra kellene vinni.
 
 ---
 
@@ -329,11 +362,14 @@ kellenek — nem a posztkvantum kulcs és nem a feltöltési kulcs.
 
 ## 0. MODELLJAVASLAT a #25-höz
 
-**Sonnet, normál mélység** — ha a #24 diagnózisait vezetjük át (A, B/1, C,
-D). Ott már mind a négyhez megvan a hely és a szabály; ez felület- és
-platform-kódírás, nem nyomozás.
+**Sonnet, normál mélység** — ha a Codemagic build eredményének átvezetése és
+a készülékes terepteszt visszajelzései lesznek a téma. A #24 minden
+javítása kód szinten kész és a webes fele élesben van; ott már mérni és
+igazítani kell, nem nyomozni.
 
-**Opus, emelt mélység** — ha a rögzítő `applySample` négyzetes költsége vagy
-a natív Google-belépés lesz a téma. Az egyik mért teljesítmény-átalakítás
-egy tiszta reducer szerződésével a tét, a másik igazolatlan hipotézis két
-platform konfigurációjának metszetében.
+**Opus, emelt mélység** — ha a rögzítő `applySample` négyzetes költsége, a
+natív Google-belépés, vagy a zárolt képernyős cellahang natív útja lesz a
+téma. Az első mért teljesítmény-átalakítás egy tiszta reducer
+szerződésével a tét, a második igazolatlan hipotézis két platform
+konfigurációjának metszetében, a harmadik pedig a játékmotor egy részének
+átvitele Swiftbe és Kotlinba.
