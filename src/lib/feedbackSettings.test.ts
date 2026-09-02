@@ -26,6 +26,7 @@ describe('normalizeFeedbackSettings', () => {
     expect(result.soundEnabled).toBe(false);
     expect(result.soundCells).toBe(false);
     expect(result.soundCountdown).toBe(DEFAULT_FEEDBACK_SETTINGS.soundCountdown);
+    expect(result.soundActivity).toBe(DEFAULT_FEEDBACK_SETTINGS.soundActivity);
     expect(result.soundVolume).toBe(DEFAULT_FEEDBACK_SETTINGS.soundVolume);
   });
 
@@ -60,12 +61,21 @@ describe('shouldPlaySound', () => {
     expect(shouldPlaySound('cell-max', cellsOff)).toBe(false);
     expect(shouldPlaySound('loop-closed', cellsOff)).toBe(true);
     expect(shouldPlaySound('count-down-start', cellsOff)).toBe(true);
+    expect(shouldPlaySound('pause-activity', cellsOff)).toBe(true);
   });
 
   it('a visszaszámlálás két hangja egy kapcsolón lóg', () => {
     const countdownOff = { ...on, soundCountdown: false };
     expect(shouldPlaySound('count-down-beep', countdownOff)).toBe(false);
     expect(shouldPlaySound('count-down-start', countdownOff)).toBe(false);
+  });
+
+  it('az aktivitásvezérlés hangjai egy külön kapcsolón lógnak', () => {
+    const activityOff = { ...on, soundActivity: false };
+    expect(shouldPlaySound('pause-activity', activityOff)).toBe(false);
+    expect(shouldPlaySound('pressing-finish-activity', activityOff)).toBe(false);
+    expect(shouldPlaySound('activity-saved', activityOff)).toBe(false);
+    expect(shouldPlaySound('loop-closed', activityOff)).toBe(true);
   });
 
   /**

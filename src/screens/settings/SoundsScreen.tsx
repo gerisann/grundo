@@ -22,11 +22,24 @@ import './sounds.css';
 
 /** Csoportonként: melyik kapcsoló alá milyen hangok tartoznak. */
 const GROUPS: readonly {
-  key: 'soundCountdown' | 'soundCells' | 'soundLoop';
+  key: 'soundCountdown' | 'soundCells' | 'soundLoop' | 'soundActivity';
   label: string;
   description: string;
   sounds: readonly SoundName[];
 }[] = [
+  {
+    key: 'soundActivity',
+    label: 'Aktivitásvezérlés',
+    description: 'Szünet, folytatás, új kör, befejezés és sikeres mentés.',
+    sounds: [
+      'pause-activity',
+      'resume-activity',
+      'new-lap',
+      'pressing-finish-activity',
+      'finish-activity',
+      'activity-saved',
+    ],
+  },
   {
     key: 'soundCountdown',
     label: 'Indítás',
@@ -69,6 +82,7 @@ export function SoundsScreen() {
       soundCountdown: true,
       soundCells: true,
       soundLoop: true,
+      soundActivity: true,
       soundVolume: settings.soundVolume > 0 ? settings.soundVolume : 0.7,
     });
   }

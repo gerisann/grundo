@@ -1790,7 +1790,7 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
             onSaved={() => {
               const activityId = recorder.state.id;
               void recorder.discard();
-              navigate(`/aktivitas/${activityId}`);
+              navigate(`/aktivitas/${activityId}`, { state: { playSavedSound: true } });
             }}
           />
         ) : null}

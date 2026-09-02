@@ -1,80 +1,66 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-09-02** · átadás a **GRUNDO #25** menetből a **#26**-ra
+> Frissítve: **2026-09-02** · átadás a **GRUNDO #26** menetből a **#27**-re
 >
-> Repo: `C:\Users\Geri\Documents\ChatGPT\GRUNDO` · GitHub: `gerisann/grundo`
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
 > Ág: **`main`** · HEAD: ennek az átadónak a commitja · munkamásolat tiszta
 
 ## ÁLLAPOT
 
-Elkészült a hosszú aktivitásmentések „Nyugodtan bezárhatod” kezelése.
+Elkészült az aktivitásvezérlés hat új hangja.
 
 ### Kliens
 
-- A befejezett, még nem igazoltan feltöltött teljes pontsor IndexedDB-ben
-  korlátlan ideig megmarad; nem esik bele az aktív mérés egyórás folytatási
-  ablakába.
-- A panel csak a sikeres helyi írás után mondja, hogy az app bezárható. Ha az
-  IndexedDB-írás elhasal, a szöveg várakozást kér és a `beforeunload` védelem
-  megmarad.
-- Újranyitáskor a kliens előbb lekéri a szerver státuszát. `done` esetén az
-  eredményt mutatja, `processing` esetén ötmásodpercenként követi,
-  `missing` esetén ugyanazzal az idempotens `activityId`-val újraküldi.
-- Hálózati vagy 5xx POST-hiba többé nem végleges „nem sikerült” hiba: a kliens
-  előbb ellenőrzi, hogy a szerver tovább dolgozik-e.
-- A mentési panel világos és sötét témában vizuálisan ellenőrizve.
-
-### Backend
-
-- Új server-only `activityUploads/{activityId}` életjel választja szét a
-  „szerver még dolgozik” és a „kérés el sem indult” állapotot.
-- Az életjel nem tartalmaz geometriát és nem módosít birtokviszonyt. A végleges
-  aktivitáscommit továbbra is a meglévő egytranzakciós/darabolt úton történik.
-- Tranzakciós lease akadályozza meg ugyanazon drága geometria párhuzamos
-  futtatását. A 30 perces lease lejárta után a kérés átvehető.
-- Minden feldolgozási kísérlet egyedi tokent kap, ezért egy lejárt régi worker
-  nem törölheti vagy írhatja felül az őt átvevő új worker státuszát.
-- Új `GET /api/activities/:id/upload-status` végpont csak a saját aktivitás
-  durva állapotát adja; más felhasználó mentését `missing` mögé rejti.
-- Az új kliens `POST /api/activities?async=1` képességjelzővel kérhet 202-es
-  `processing` választ. A régi kliens ugyanerre 503-as, újrapróbálható hibát
-  kap, így a telepítési sorrend visszafelé kompatibilis.
+- Szüneteltetéskor `pause-activity.mp3`, folytatáskor
+  `resume-activity.mp3`, új körnél `new-lap.mp3` szól.
+- A húzásos és a nyomva tartós befejezés sikeres gesztusa után
+  `finish-activity.mp3` szól, még a mentési folyamat indítása előtt.
+- Nyomva tartás közben a `pressing-finish-activity.mp3` fut. Felengedéskor
+  megáll és megőrzi a pozícióját; újranyomáskor innen folytatódik. Sikeres
+  befejezéskor vagy a gomb megszűnésekor megáll és nullára áll.
+- Az `activity-saved.mp3` nem az űrlap elküldésekor szól: a mentésből érkező
+  aktivitás-részletező sikeres adatbetöltése váltja ki. A navigációs jelző
+  egyszer használatos, ezért frissítés vagy visszalépés nem ismétli meg.
+- A Hangok képernyőn új, külön kapcsolható „Aktivitásvezérlés” csoport van,
+  mind a hat hang meghallgatható.
+- A régi `localStorage` beállítások mezőnként migrálódnak; az új csoport
+  alapértelmezetten be van kapcsolva.
+- A hat forrásfájl és a `public/sounds`, illetve a production build példányai
+  SHA-256 szerint bitre azonosak.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-- Geri visszajelzése szerint a korábbi `4a2f017` backendje és frontendje már
-  telepítve van; ezt ebben a menetben nem mértük vissza.
-- Az előző commitból iOS- és Android-build fut. Ezek a mostani
-  mentés/helyreállítás változást **még nem tartalmazzák**.
-- A mostani commit még nincs pusholva és nincs telepítve.
-- Ehhez a változáshoz **backend, majd frontend** telepítés kell.
-- Adatmigráció, Firestore-szabály- és indextelepítés nem kell. Az új kollekció
-  Admin SDK-only; a szabályok alapértelmezetten tiltják a klienselérést.
-- A natív appokban való használathoz a mostani commitból később új iOS- és
-  Android-build szükséges.
+- Geri visszajelzése szerint a `4a2f017` backendje és frontendje telepítve van.
+- Az előző `86a5cbf` hosszúmentés-változása és ez a hangos commit még nincs
+  pusholva vagy telepítve.
+- A két commit együttes kiadásához **backend, majd frontend** telepítés kell.
+  A backend az előző commit miatt szükséges; a hangos commit önmagában csak
+  kliensoldali.
+- Adatmigráció, Firestore-szabály- és indextelepítés nem kell.
+- Az új hangok natív használatához az új HEAD-ből iOS- és Android-build kell;
+  a már futó korábbi buildek nem tartalmazzák az MP3-fájlokat.
 
 ## ELLENŐRZÉSEK
 
 - Gyökér typecheck: sikeres.
-- Szerver typecheck: sikeres.
-- Célzott kliens tesztek: **19 zöld**.
-- Teljes normál Vitest: **647 zöld**, 132 emulátoros kihagyva.
-- Teljes emulátoros készlet: **132 zöld**; az ezután hozzáadott tokenes
-  versenyteszttel az aktivitás-végpont célzott suite-ja **23 zöld**.
+- Célzott hangtesztek: **16 zöld**.
+- Teljes normál Vitest: **650 zöld**, 133 emulátoros kihagyva.
 - Production build: sikeres; a meglévő nagy chunk figyelmeztetés maradt.
-- Vizuális QA: mentési panel világos és sötét témában rendben.
+- A hat MP3 forrás → public → dist SHA-256 egyezése sikeres.
+- Vizuális QA: az új Hangok csoport világos témában rendben, 720 px széles
+  nézetben sem lóg ki. Külön sötét ellenőrzés ebben a menetben nem történt;
+  CSS nem változott, az új sorok a meglévő tokenes komponenseket használják.
+- Natív készülékes hang- és életcikluspróba csak az új buildből lehetséges.
 
 ## KÖVETKEZŐ LÉPÉSEK
 
-1. Geri pusholja ezt a commitot.
+1. Geri pusholja a két helyi commitot.
 2. Nincs adatbázis-lépés.
 3. Telepítési sorrend: **backend → frontend**.
-4. Böngészőben mérendő: hosszú mentés közben kapcsolat megszakítása vagy
-   lapbezárás, újranyitás, `processing` követés, végül automatikus eredmény.
-5. A mostani commitból készülő következő iOS/Android buildben ugyanez mérendő
-   appkilövéssel és újranyitással; a kész aktivitás értesítése nyissa meg az
-   adatlapot.
+4. Az új HEAD-ből iOS- és Android-build készítendő.
+5. Készüléken ellenőrizendő mind a hat esemény, különösen a nyomva tartás
+   felengedés/újranyomás folytonossága és a mentési hang késleltetett időzítése.
 6. Következő fejlesztési menet: szerveroldali inkrementális geometriai
    részszámítás.
 
@@ -83,11 +69,10 @@ Elkészült a hosszú aktivitásmentések „Nyugodtan bezárhatod” kezelése.
 1. A szerveroldali inkrementális geometria még nincs megtervezve vagy kódolva.
    Fontos csapda a sorrenden kívül érkező natív GPS-minta: ilyenkor a
    részállapot érvénytelenné válhat, és kell a mai teljes újraszámolási ág.
-2. Az `activityUploads` sikertelen életjelei a következő próbálkozáskor
-   felülíródnak, de külön időalapú takarító job még nincs. Jelenleg legfeljebb
-   egy kis dokumentum maradhat egy félbehagyott aktivitásazonosítónként.
-3. A natív készülékes bezárás/újranyitás csak a következő, ezt a commitot
-   tartalmazó buildben igazolható.
+2. Az előző commit `activityUploads` sikertelen életjelei a következő
+   próbálkozáskor felülíródnak, de külön időalapú takarító job még nincs.
+3. A hosszú mentés és az új hangok natív készülékes ellenőrzése az új buildre
+   vár.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
@@ -99,14 +84,14 @@ Elkészült a hosszú aktivitásmentések „Nyugodtan bezárhatod” kezelése.
 
 1. `AGENTS.md`
 2. `HANDOFF.md` (ez a fájl)
-3. `src/hooks/useRecorder.ts`
-4. `src/tracking/storage.ts`
-5. `server/src/lib/activityUploads.ts`
-6. `server/src/routes/activities.ts`
-7. `server/src/lib/activityCommit.ts`
-8. `server/src/lib/activityChunked.ts`
+3. `src/lib/sound.ts`
+4. `src/components/Dock.tsx`
+5. `src/components/FinishGestureButtons.tsx`
+6. `src/screens/TrackingScreen.tsx`
+7. `src/screens/ActivityScreen.tsx`
+8. `src/lib/feedbackSettings.ts`
 9. `src/game/index.ts` (`IncrementalActivityGeometry`)
 10. `src/game/loopDetection.ts` (`IncrementalLoopDetector`)
 11. `src/game/cells.ts` (`IncrementalCellPath`)
-12. `docs/02-funkcionalis-spec.md`
-13. `docs/05-adatmodell.md`
+12. `server/src/lib/activityCommit.ts`
+13. `server/src/lib/activityChunked.ts`

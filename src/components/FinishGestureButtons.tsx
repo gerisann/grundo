@@ -39,9 +39,15 @@ const FINISH_RELEASE_MS = 350;
 
 export function HoldFinishButton({
   onFinish,
+  onHoldStart,
+  onHoldPause,
+  onHoldReset,
   showOverlay = true,
 }: {
   onFinish: () => void;
+  onHoldStart?: () => void;
+  onHoldPause?: () => void;
+  onHoldReset?: () => void;
   /** `false`: a képernyő közepére kitett, teljes képernyős visszajelzés
       NEM jelenik meg — csak az önmagában is elég a kis gomb. Geri kérése
       (2026-08-27): a `/beallitasok/mukodes` kipróbáló-előnézetén az
@@ -58,8 +64,19 @@ export function HoldFinishButton({
       olvasnak, hogy egy visszafolyás KÖZBENI újranyomás onnan folytassa,
       ahonnan a sáv épp tart, ne nulláról induljon újra. */
   const progressRef = useRef(0);
+  const onHoldResetRef = useRef(onHoldReset);
 
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  useEffect(() => {
+    onHoldResetRef.current = onHoldReset;
+  }, [onHoldReset]);
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(frame.current);
+      onHoldResetRef.current?.();
+    },
+    [],
+  );
 
   function setProgressValue(value: number) {
     progressRef.current = value;
@@ -69,6 +86,7 @@ export function HoldFinishButton({
   function start() {
     if (holding.current) return;
     holding.current = true;
+    onHoldStart?.();
     cancelAnimationFrame(frame.current);
     // Ha épp visszafolyóban volt a sáv, onnan folytatja fölfelé — nem
     // nulláról indul újra.
@@ -92,6 +110,7 @@ export function HoldFinishButton({
   function cancel() {
     if (!holding.current) return;
     holding.current = false;
+    onHoldPause?.();
     cancelAnimationFrame(frame.current);
 
     const releaseFrom = progressRef.current;

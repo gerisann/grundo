@@ -1,8 +1,8 @@
 /**
  * Hangeffektek — a rögzítés visszajelzésének hangi fele.
  *
- * MIÉRT `HTMLAudioElement` ÉS NEM Web Audio? Mert a hét fájl együtt is csak
- * ~130 kB, semmilyen keverést, effektet vagy mintapontos időzítést nem
+ * MIÉRT `HTMLAudioElement` ÉS NEM Web Audio? Mert a rövid fájlok együtt is
+ * kis méretűek, semmilyen keverést, effektet vagy mintapontos időzítést nem
  * igényelnek, viszont a Web Audio ára valódi: az `AudioContext` létrehozása,
  * a teljes fájlok letöltése ÉS dekódolása már az app indulásakor, plusz egy
  * saját életciklus, amit iOS-en külön kezelni kell. Az `<audio>` elem
@@ -29,10 +29,16 @@ export type SoundName =
   | 'cell-defend'
   | 'cell-stolen'
   | 'cell-max'
-  | 'loop-closed';
+  | 'loop-closed'
+  | 'pause-activity'
+  | 'resume-activity'
+  | 'new-lap'
+  | 'pressing-finish-activity'
+  | 'finish-activity'
+  | 'activity-saved';
 
 /** Melyik beállítás-kapcsoló alá tartozik az adott hang. */
-export type SoundChannel = 'countdown' | 'cells' | 'loop';
+export type SoundChannel = 'countdown' | 'cells' | 'loop' | 'activity';
 
 export const SOUND_CHANNEL: Record<SoundName, SoundChannel> = {
   'count-down-beep': 'countdown',
@@ -42,6 +48,12 @@ export const SOUND_CHANNEL: Record<SoundName, SoundChannel> = {
   'cell-stolen': 'cells',
   'cell-max': 'cells',
   'loop-closed': 'loop',
+  'pause-activity': 'activity',
+  'resume-activity': 'activity',
+  'new-lap': 'activity',
+  'pressing-finish-activity': 'activity',
+  'finish-activity': 'activity',
+  'activity-saved': 'activity',
 };
 
 export const SOUND_NAMES = Object.keys(SOUND_CHANNEL) as SoundName[];
@@ -55,6 +67,12 @@ export const SOUND_LABEL: Record<SoundName, string> = {
   'cell-stolen': 'Cella elvéve egy játékostól',
   'cell-max': 'Cella maximális védelmen',
   'loop-closed': 'Hurok bezárva — terület megszerezve',
+  'pause-activity': 'Aktivitás megállítva',
+  'resume-activity': 'Aktivitás folytatva',
+  'new-lap': 'Új kör indítva',
+  'pressing-finish-activity': 'Befejezés nyomva tartva',
+  'finish-activity': 'Aktivitás befejezve',
+  'activity-saved': 'Aktivitás sikeresen elmentve',
 };
 
 /**
@@ -93,6 +111,8 @@ export function shouldPlaySound(
       return settings.soundCells;
     case 'loop':
       return settings.soundLoop;
+    case 'activity':
+      return settings.soundActivity;
   }
 }
 
@@ -110,7 +130,7 @@ function documentVisibility(): DocumentVisibilityState | undefined {
 /**
  * HANGONKÉNTI ALAPERŐSÍTÉS — a felhasználói hangerő SZORZÓJA.
  *
- * A hét fájl nincs egy szintre normalizálva: a `loop-closed.mp3` egy teli,
+ * A fájlok nincsenek egy szintre normalizálva: a `loop-closed.mp3` egy teli,
  * ~3 másodperces fanfár (98 kB), a cellahangok viszont 3–7 kB-os rövid
  * koppanások. Menet közben a kettő átfedhet (egy bezárás pillanatában még
  * szólhat az utolsó mező koppanása), és a fanfár akkor elnyomná.
@@ -126,6 +146,12 @@ const SOUND_GAIN: Record<SoundName, number> = {
   'cell-stolen': 1,
   'cell-max': 1,
   'loop-closed': 0.85,
+  'pause-activity': 1,
+  'resume-activity': 1,
+  'new-lap': 1,
+  'pressing-finish-activity': 1,
+  'finish-activity': 1,
+  'activity-saved': 1,
 };
 
 /**
@@ -151,6 +177,7 @@ interface Pool {
 }
 
 const pools = new Map<SoundName, Pool>();
+const resumableElements = new Map<SoundName, HTMLAudioElement>();
 let unlocked = false;
 
 function sourceUrl(name: SoundName): string {
@@ -178,15 +205,27 @@ function pool(name: SoundName): Pool | null {
   return created;
 }
 
+function resumableElement(name: SoundName): HTMLAudioElement | null {
+  if (typeof Audio === 'undefined') return null;
+  const existing = resumableElements.get(name);
+  if (existing) return existing;
+  const element = new Audio(sourceUrl(name));
+  element.preload = 'auto';
+  element.setAttribute('playsinline', '');
+  resumableElements.set(name, element);
+  return element;
+}
+
 /**
- * A hét fájl előkészítése — a hálózati letöltés MÉG A RÖGZÍTÉS ELŐTT.
+ * A fájlok előkészítése — a hálózati letöltés MÉG A RÖGZÍTÉS ELŐTT.
  *
  * A visszaszámlálás első sípja 0 ms-mal a gombnyomás után jön; ha az elem
  * ekkor kezdene tölteni, a hang lekésné a saját számát. Ez a hívás olcsó:
- * hét `<audio>` elem és `preload="auto"`, a böngésző maga dönt az ütemről.
+ * néhány `<audio>` elem és `preload="auto"`, a böngésző maga dönt az ütemről.
  */
 export function primeSounds(): void {
   for (const name of SOUND_NAMES) pool(name);
+  resumableElement('pressing-finish-activity');
 }
 
 /**
@@ -204,19 +243,24 @@ export function unlockSounds(): void {
     const target = pools.get(name);
     if (!target) continue;
     for (const element of target.elements) {
-      const restore = element.volume;
-      element.volume = 0;
-      const started = element.play();
-      const settle = () => {
-        element.pause();
-        element.currentTime = 0;
-        element.volume = restore;
-      };
-      // A `play()` régebbi böngészőkben nem ad Promise-t.
-      if (started && typeof started.then === 'function') started.then(settle, settle);
-      else settle();
+      unlockElement(element);
     }
   }
+  const resumable = resumableElements.get('pressing-finish-activity');
+  if (resumable) unlockElement(resumable);
+}
+
+function unlockElement(element: HTMLAudioElement): void {
+  const restore = element.volume;
+  element.volume = 0;
+  const started = element.play();
+  const settle = () => {
+    element.pause();
+    element.currentTime = 0;
+    element.volume = restore;
+  };
+  if (started && typeof started.then === 'function') started.then(settle, settle);
+  else settle();
 }
 
 /**
@@ -236,6 +280,39 @@ export function playSound(name: SoundName, settings = feedbackSettings()): void 
     const started = element.play();
     // Blokkolt lejátszás (nem volt még gesztus) — nem hiba, csak csend.
     if (started && typeof started.catch === 'function') started.catch(() => undefined);
+  } catch {
+    /* a hang sosem állíthatja meg a rögzítést */
+  }
+}
+
+/**
+ * Folytatható hang indítása. A normál `playSound()` minden alkalommal nullára
+ * teker; a nyomva tartás hangjának viszont elengedés után ugyanonnan kell
+ * továbbmennie a következő lenyomáskor.
+ */
+export function resumeSoundPlayback(
+  name: SoundName,
+  settings = feedbackSettings(),
+): void {
+  if (!shouldPlaySound(name, settings)) return;
+  const element = resumableElement(name);
+  if (!element) return;
+  try {
+    element.volume = Math.min(1, Math.max(0, settings.soundVolume * SOUND_GAIN[name]));
+    const started = element.play();
+    if (started && typeof started.catch === 'function') started.catch(() => undefined);
+  } catch {
+    /* a hang sosem állíthatja meg a rögzítést */
+  }
+}
+
+/** Megállítja a folytatható hangot; `reset` esetén a következő lejátszás elölről indul. */
+export function pauseSoundPlayback(name: SoundName, reset = false): void {
+  const element = resumableElements.get(name);
+  if (!element) return;
+  try {
+    element.pause();
+    if (reset) element.currentTime = 0;
   } catch {
     /* a hang sosem állíthatja meg a rögzítést */
   }

@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { RivalBadge } from '@/components/RivalBadge';
 import { Button } from '@/components/ui';
 import { Avatar, ACTIVITY_LABEL } from '@/components/ActivityCard';
@@ -18,6 +18,7 @@ import { GAMEPLAY } from '@/config/gameplay';
 import { expandActivityCells } from '@/lib/activityCells';
 import { processActivity } from '@/game';
 import { api } from '@/lib/api';
+import { playSound } from '@/lib/sound';
 import {
   activityTitle,
   formatArea,
@@ -48,6 +49,7 @@ const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default
 export function ActivityScreen() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { reload: reloadProfile } = useProfile();
   const { activity, points, loading, error, reload } = useActivityDetail(id);
@@ -58,6 +60,20 @@ export function ActivityScreen() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [hexesVisible, setHexesVisible] = useState(false);
+  const savedSoundPlayedFor = useRef<string | null>(null);
+
+  /**
+   * A sikeres mentés hangja csak akkor szól, amikor a mentésből érkező
+   * részletező oldal adata ténylegesen betöltött. A navigációs jelzőt rögtön
+   * elfogyasztjuk, így frissítésnél és visszalépésnél nem ismétlődik meg.
+   */
+  useEffect(() => {
+    const state = location.state as { playSavedSound?: boolean } | null;
+    if (!activity || !state?.playSavedSound || savedSoundPlayedFor.current === id) return;
+    savedSoundPlayedFor.current = id;
+    playSound('activity-saved');
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [activity, id, location.pathname, location.search, location.state, navigate]);
 
   /**
    * A hozzászólás-lap ÁLLAPOTA a cÍMBEN van, nem a komponensben.

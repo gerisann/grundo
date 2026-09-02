@@ -5,7 +5,12 @@ import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useTrackingEnvironment } from '@/tracking/environment';
 import { HoldFinishButton, SwipeFinishButton } from '@/components/FinishGestureButtons';
 import { GAMEPLAY } from '@/config/gameplay';
-import { playSound, unlockSounds } from '@/lib/sound';
+import {
+  pauseSoundPlayback,
+  playSound,
+  resumeSoundPlayback,
+  unlockSounds,
+} from '@/lib/sound';
 import './Dock.css';
 
 /**
@@ -167,8 +172,16 @@ export function Dock() {
      * az első síp sem késik le. A hívás idempotens (lásd `sound.ts`).
      */
     unlockSounds();
-    if (running) return pause();
-    if (paused) return resume();
+    if (running) {
+      pause();
+      playSound('pause-activity');
+      return;
+    }
+    if (paused) {
+      resume();
+      playSound('resume-activity');
+      return;
+    }
     if (done) {
       /**
        * TÚL RÖVID RÖGZÍTÉS: NINCS MIT VÉDENI. Se terület, se GP nem jár érte
@@ -252,6 +265,17 @@ export function Dock() {
             ? 'Válassz mozgásformát'
             : 'Aktivitás indítása';
 
+  function startNewLap() {
+    markLap();
+    playSound('new-lap');
+  }
+
+  function finishActivity() {
+    pauseSoundPlayback('pressing-finish-activity', true);
+    playSound('finish-activity');
+    void finish();
+  }
+
   const controls = (
     <div className="dock__center">
       {active ? (
@@ -260,7 +284,7 @@ export function Dock() {
           kör kezdete értelmezhetetlen: nincs mozgás, amit elválasztana, és a
           folytatás pillanatában amúgy is szakadás van a nyomvonalban.
         */
-        <button className="dock__side dock__side--left" onClick={markLap} disabled={paused}>
+        <button className="dock__side dock__side--left" onClick={startNewLap} disabled={paused}>
           Új kör
         </button>
       ) : null}
@@ -290,9 +314,14 @@ export function Dock() {
 
       {active ? (
         finishGesture === 'swipe' ? (
-          <SwipeFinishButton onFinish={() => void finish()} />
+          <SwipeFinishButton onFinish={finishActivity} />
         ) : (
-          <HoldFinishButton onFinish={() => void finish()} />
+          <HoldFinishButton
+            onFinish={finishActivity}
+            onHoldStart={() => resumeSoundPlayback('pressing-finish-activity')}
+            onHoldPause={() => pauseSoundPlayback('pressing-finish-activity')}
+            onHoldReset={() => pauseSoundPlayback('pressing-finish-activity', true)}
+          />
         )
       ) : null}
 

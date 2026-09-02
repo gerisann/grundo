@@ -33,6 +33,8 @@ export interface FeedbackSettings {
   soundCells: boolean;
   /** A hurokbezárás („Grund megszerezve") hangja. */
   soundLoop: boolean;
+  /** Szünet, folytatás, új kör, befejezés és sikeres mentés. */
+  soundActivity: boolean;
   /**
    * A területszerzés FELUGRÓ ÜZENETE és a mögötte futó konfetti.
    *
@@ -50,6 +52,7 @@ export const DEFAULT_FEEDBACK_SETTINGS: FeedbackSettings = {
   soundCountdown: true,
   soundCells: true,
   soundLoop: true,
+  soundActivity: true,
   territoryPopup: true,
 };
 
@@ -75,6 +78,7 @@ export function normalizeFeedbackSettings(raw: unknown): FeedbackSettings {
     soundCountdown: bool('soundCountdown'),
     soundCells: bool('soundCells'),
     soundLoop: bool('soundLoop'),
+    soundActivity: bool('soundActivity'),
     territoryPopup: bool('territoryPopup'),
   };
 }
