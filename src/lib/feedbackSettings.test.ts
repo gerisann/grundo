@@ -67,4 +67,28 @@ describe('shouldPlaySound', () => {
     expect(shouldPlaySound('count-down-beep', countdownOff)).toBe(false);
     expect(shouldPlaySound('count-down-start', countdownOff)).toBe(false);
   });
+
+  /**
+   * ⚠️ REJTETT LAPON EGYETLEN HANG SEM SZÓLHAT.
+   *
+   * Nem azért, mert zavarna — hanem mert a böngésző nem utasítja vissza a
+   * lejátszást, hanem VÁR vele, és előtérbe visszatéréskor mindet egyszerre
+   * indítja el. Mért eset (2026-09-01, iOS terepteszt): a menet közben néma
+   * cellahangok az app újranyitása után tömegesen lejátszódtak.
+   */
+  it('rejtett lapon minden csatorna néma, a beállításoktól függetlenül', () => {
+    for (const name of ['count-down-beep', 'cell-captured', 'loop-closed'] as const) {
+      expect(shouldPlaySound(name, on, 'hidden')).toBe(false);
+      expect(shouldPlaySound(name, on, 'visible')).toBe(true);
+    }
+  });
+
+  /**
+   * DOM NÉLKÜL (teszt, szerveroldali renderelés) a láthatóság ISMERETLEN — és
+   * az nem jelenthet némaságot, különben egy hiányzó `document` csendben
+   * érvénytelenítené az összes fenti szabályt.
+   */
+  it('ismeretlen láthatóság nem némít', () => {
+    expect(shouldPlaySound('loop-closed', on, undefined)).toBe(true);
+  });
 });

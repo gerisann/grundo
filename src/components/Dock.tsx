@@ -158,17 +158,37 @@ export function Dock() {
       if (upload.status !== 'done') return navigate('/rogzites');
       return void discard();
     }
-    if (!onTrackingScreen) return navigate('/rogzites');
     // Visszaszámlálás közben a gomb inert — nincs mit kezdeni egy újabb
-    // koppintással, amíg a „RAJT!" felé tartunk.
-    if (countdown !== null) return;
+    // koppintással, amíg a „RAJT!" felé tartunk. Ha közben elnavigáltunk, a
+    // koppintás visszavisz, hogy a felhasználó lássa, mi történik.
+    if (countdown !== null) return onTrackingScreen ? undefined : void navigate('/rogzites');
     if (!pickerOpen) {
-      // Első koppintás: nyitja a választót, és MINDIG üresen — Geri kérése
-      // (2026-08-27), hogy sose emlékezzen az előző mozgásformára.
+      /**
+       * ELSŐ KOPPINTÁS: NYITJA A VÁLASZTÓT — AKÁRHONNAN.
+       *
+       * ⚠️ Ez korábban KÉT koppintás volt máshonnan indulva: a dokk Play
+       * gombja előbb csak átvitt a rögzítés oldalra, és ott kellett újra
+       * megnyomni, hogy a mozgásforma-választó megjelenjen. Geri kérése
+       * (2026-09-02): a Play gomb BÁRHOL ugyanoda vigyen — egyenesen arra a
+       * lépésre, ahol már választani lehet.
+       *
+       * A `pickerOpen` a recorder KÖZÖS állapota (`useRecorder`), nem a
+       * képernyőé, ezért túléli az útvonalváltást: mire a `TrackingScreen`
+       * felépül, a választó már nyitva van (a választót ő rajzolja, nem a
+       * dokk). A sorrend így is fontos — előbb az állapot, utána a
+       * navigáció, hogy egyetlen újrarajzolásban történjen meg mindkettő.
+       *
+       * A `pendingType` nullázása marad: a választó MINDIG üresen nyílik,
+       * sose emlékezzen az előző mozgásformára (Geri, 2026-08-27).
+       */
       setPendingType(null);
       setPickerOpen(true);
+      if (!onTrackingScreen) navigate('/rogzites');
       return;
     }
+    // A választó nyitva van, de máshova navigáltunk közben — vissza a
+    // rögzítéshez, hogy a következő koppintás a választón történjen.
+    if (!onTrackingScreen) return navigate('/rogzites');
     if (!pendingType) return; // még nincs választva — a gomb ilyenkor `disabled`.
     setPickerOpen(false);
     setCountdown(3);

@@ -41,6 +41,23 @@ export interface RivalItem {
   uid: string;
   username: string;
   photoURL: string | null;
+  /**
+   * A rivális VÁLASZTOTT cellaszínének kulcsa (lásd `src/lib/cellColors.ts`),
+   * vagy `null`, ha nem választott.
+   *
+   * ⚠️ EZ HIÁNYZOTT, ÉS EMIATT MARADT SZÍNTELEN A PROFIL RIVÁLIS-BLOKKJA. A
+   * `RivalRow` mindkét felet a saját színén rajzolja: a bal sávot a
+   * bejelentkezett felhasználóé, a jobbat EBBŐL a mezőből. Az aktivitás-
+   * kártyán működött, mert ott a rivális a feedből érkezik (`activities.ts`,
+   * `cellColorOf`); a `/api/rivals` viszont soha nem küldte el, tehát a
+   * profilon és a teljes listán a jobb sáv mindig a megszokott korall
+   * maradt, akárhogy állította be magának a rivális.
+   *
+   * `null`, ha nincs választva — a „nem választott" és a „véletlenül pont az
+   * alapszínt választotta" két külön állapot, és a felület is máshogy
+   * rajzolja őket.
+   */
+  cellColor: string | null;
   /** Összes gazdát cserélt mező — a rangsor alapja, ez a fő szám. */
   exchangedCells: number;
   /** Amit ÉN vettem el TŐLE (zölddel). */
@@ -107,10 +124,14 @@ rivalsRouter.get('/', async (req: AuthedRequest, res: Response, next) => {
       // A nulla mezős rivális nem összecsapás; ilyet csak sérült adat adhat.
       if (record.exchangedCells <= 0) continue;
 
+      const profile = user.data() as Record<string, unknown>;
       items.push({
         uid: doc.id,
         username,
-        photoURL: ((user.data() as Record<string, unknown>)?.photoURL as string | null) ?? null,
+        photoURL: (profile?.photoURL as string | null) ?? null,
+        cellColor: typeof profile?.cellColor === 'string' && profile.cellColor
+          ? profile.cellColor
+          : null,
         ...record,
         exchangedM2: record.exchangedCells * cellM2,
         gainedM2: record.gainedCells * cellM2,

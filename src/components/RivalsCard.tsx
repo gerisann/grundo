@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RivalRow } from '@/components/RivalRow';
+import { useProfile } from '@/hooks/ProfileProvider';
 import { api, type Rival } from '@/lib/api';
 import './connectionsSheet.css';
 import './rivalsCard.css';
@@ -25,6 +26,15 @@ import './rivalsCard.css';
  */
 export function RivalsCard({ onOpenAll }: { onOpenAll: () => void }) {
   const navigate = useNavigate();
+  /*
+    A BAL SÁV A SAJÁT SZÍNEM. A rivális-lista mindig a BEJELENTKEZETT
+    felhasználóé (`api.rivals()`), tehát a mérleg bal oldala mindig az övé —
+    a színt ezért innen, a saját profilból vesszük, és nem propként kérjük.
+    Így nem lehet elfelejteni egy új hívási helyen; pontosan ez történt a
+    #23-ban, amikor a színezés csak az aktivitás-kártyán jelent meg, a
+    profilon nem.
+  */
+  const { profile } = useProfile();
   const [rivals, setRivals] = useState<Rival[] | null>(null);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -61,6 +71,7 @@ export function RivalsCard({ onOpenAll }: { onOpenAll: () => void }) {
           <RivalRow
             key={rival.uid}
             rival={rival}
+            selfCellColor={profile?.cellColor ?? null}
             onOpen={() => navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`)}
           />
         ))}

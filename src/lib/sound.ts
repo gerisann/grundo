@@ -60,8 +60,30 @@ export const SOUND_LABEL: Record<SoundName, string> = {
 /**
  * Szólhat-e ez a hang? TISZTA FÜGGVÉNY — a döntést a lejátszástól külön
  * tartjuk, mert ez az, ami tesztelhető (és ami elromolhat).
+ *
+ * ⚠️ A HARMADIK PARAMÉTER NEM BEÁLLÍTÁS, HANEM VÉDELEM. Ha a lap rejtett (az
+ * app háttérben van, zárolt képernyő), a lejátszás NEM hibázik és nem is
+ * szólal meg — a böngésző egyszerűen VÁR vele. Amikor az app előtérbe kerül,
+ * a felgyűlt lejátszások egyszerre indulnak el.
+ *
+ * MÉRT ESET (2026-09-01, terepteszt iOS-en): egy hosszú menet cellahangjai és
+ * hurokbezárásai nem szóltak menet közben, majd az app megnyitása — sőt,
+ * bezárása és újranyitása — után tömegesen, össze-vissza lejátszódtak. Egy
+ * hang, amit MOST nem lehet hallani, később már nem információ, hanem zaj:
+ * ilyenkor a helyes viselkedés az eldobás.
+ *
+ * ⚠️ EZ NEM TESZI HALLHATÓVÁ a zárolt képernyős hangokat — azt nem is tudja.
+ * Az iOS `Info.plist`-ben nincs `audio` háttérmód, és a WebView JavaScriptje
+ * háttérben amúgy sem fut, tehát a „ráléptem egy új mezőre" DÖNTÉS sem
+ * születik meg. Ez a paraméter csak azt szünteti meg, hogy a meg nem hallott
+ * hangok később ömlesztve előjöjjenek.
  */
-export function shouldPlaySound(name: SoundName, settings: FeedbackSettings): boolean {
+export function shouldPlaySound(
+  name: SoundName,
+  settings: FeedbackSettings,
+  visibility: DocumentVisibilityState | undefined = documentVisibility(),
+): boolean {
+  if (visibility === 'hidden') return false;
   if (!settings.soundEnabled) return false;
   if (settings.soundVolume <= 0) return false;
   switch (SOUND_CHANNEL[name]) {
@@ -72,6 +94,17 @@ export function shouldPlaySound(name: SoundName, settings: FeedbackSettings): bo
     case 'loop':
       return settings.soundLoop;
   }
+}
+
+/**
+ * A lap láthatósága, `undefined` ott, ahol nincs DOM (tesztek, szerver).
+ *
+ * A HIÁNYZÓ DOM SOSEM JELENT „rejtett"-et: a tesztek a beállítás-logikát
+ * vizsgálják, és egy néma alapértelmezés csendben minden hangteszetet
+ * érvénytelenítene.
+ */
+function documentVisibility(): DocumentVisibilityState | undefined {
+  return typeof document === 'undefined' ? undefined : document.visibilityState;
 }
 
 /**
@@ -219,9 +252,21 @@ export function playSound(name: SoundName, settings = feedbackSettings()): void 
  *
  * A visszaadott függvénnyel az egész sor leállítható (pl. ha a felhasználó
  * közben eldobja a rögzítést).
+ *
+ * ⚠️ A LAP ELREJTÉSEKOR A FÜGGŐ SOROK MEGSZAKADNAK. A `playSound` őre
+ * önmagában nem elég: az időzítők a háttérben is lejárnak (a böngésző csak
+ * ritkítja őket), és előtérbe visszatéréskor egyszerre sülnek el. Az elmaradt
+ * koppanások pótlása értelmetlen — az esemény, amiről szóltak, percekkel
+ * korábban történt.
  */
 export function playSoundSequence(names: readonly SoundName[], gapMs = 220): () => void {
   const timers: number[] = [];
+  const cancel = () => {
+    for (const timer of timers) window.clearTimeout(timer);
+    timers.length = 0;
+    pendingSequences.delete(cancel);
+  };
+
   names.forEach((name, index) => {
     if (index === 0) {
       playSound(name);
@@ -229,7 +274,31 @@ export function playSoundSequence(names: readonly SoundName[], gapMs = 220): () 
     }
     timers.push(window.setTimeout(() => playSound(name), index * gapMs));
   });
-  return () => {
-    for (const timer of timers) window.clearTimeout(timer);
-  };
+
+  if (timers.length > 0) {
+    pendingSequences.add(cancel);
+    watchVisibility();
+  }
+  return cancel;
+}
+
+/** A még le nem futott sorok leállítói — elrejtéskor mind lefut. */
+const pendingSequences = new Set<() => void>();
+let visibilityWatched = false;
+
+/**
+ * Egyetlen, megosztott `visibilitychange` figyelő.
+ *
+ * Sorozatonként külön feliratkozni pazarlás lenne (egy bezárás három sort is
+ * indíthat), és a leiratkozásukat is könyvelni kellene. Így egy figyelő van,
+ * ami az app életciklusán át megmarad — annyi a dolga, hogy elrejtéskor
+ * kiürítse a függő sorokat.
+ */
+function watchVisibility(): void {
+  if (visibilityWatched || typeof document === 'undefined') return;
+  visibilityWatched = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    for (const cancel of [...pendingSequences]) cancel();
+  });
 }

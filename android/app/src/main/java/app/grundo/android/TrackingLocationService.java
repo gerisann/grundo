@@ -63,9 +63,42 @@ public final class TrackingLocationService extends Service {
     private static final String CHANNEL_ID = "grundo_tracking_live_v2";
     private static final int NOTIFICATION_ID = 7301;
     private static final long LOCATION_INTERVAL_MS = 1_000L;
-    private static final float MAX_NOTIFICATION_ACCURACY_M = 50f;
+
+    /*
+     ⚠️ EZEK A SZÁMOK A JAVASCRIPT OLDAL MÁSOLATAI, és annak is kell
+     maradniuk. A forrásuk `src/config/gameplay.ts` és `src/tracking/filter.ts`;
+     Javából nem lehet importálni őket, tehát ez az egyik olyan hely, ahol a
+     rendszerben ugyanaz a szabály kétszer szerepel (a másik az iOS
+     `GrundoLiveActivityController.swift`).
+
+     Ha ott változik valamelyik, ITT IS ÁT KELL VEZETNI — különben az
+     értesítés megint mást fog mutatni, mint az app, és a hiba pontosan úgy
+     néz majd ki, mint egy GPS-pontatlanság.
+     */
+    /** `GAMEPLAY.MAX_GPS_ACCURACY_M`. Volt: 50 — a JS 30 fölött már eldobta. */
+    private static final float MAX_NOTIFICATION_ACCURACY_M = 30f;
+    /** `FILTER.MAX_SPEED_MPS` — 144 km/h. */
     private static final double MAX_NOTIFICATION_SPEED_MPS = 40d;
+    /** `FILTER.MAX_GAP_MS` — ennyi idő után akkor is rögzítünk. */
     private static final long MAX_NOTIFICATION_IDLE_MS = 30_000L;
+    /**
+     * `FILTER.MIN_MOVE_M` — ennél közelebbi pontot nem fogadunk el.
+     *
+     * ⚠️ NEM a `minDistanceM`, ami eddig ezt a szerepet is vitte. Az a
+     * MINTAVÉTEL szűrője (mozgásformánként 5/8/12 m, lásd
+     * `TrackingLocationPolicy`), és semmi köze a JS elfogadási szabályához —
+     * bringán 12 méteres küszöböt adott ott, ahol a JS 5-tel dolgozik.
+     */
+    private static final float MIN_ACCEPT_MOVE_M = 5f;
+    /**
+     * `GAMEPLAY.GPS_STATIONARY_RADIUS_M` — a táv horgonyának sugara.
+     *
+     * A táv nem a legutóbbi ELFOGADOTT ponthoz mérve nő, hanem egy
+     * horgonyhoz: amíg a minta ezen a körön belül marad, a táv nem változik.
+     * Enélkül egy álló helyzetben vándorló GPS-jel lassan kilométereket adna
+     * hozzá — a láncösszeg ezt nem tudja megkülönböztetni a valódi mozgástól.
+     */
+    private static final float STATIONARY_RADIUS_M = 12f;
 
     private static volatile TrackingLocationService instance;
 
@@ -82,7 +115,18 @@ public final class TrackingLocationService extends Service {
     private boolean paused;
     private double speedMps;
     private float minDistanceM = TrackingLocationPolicy.minDistanceMeters("run");
+    /**
+     * Az utolsó ELFOGADOTT fix — a szűrés EHHEZ mér, nem a legutóbb kapotthoz.
+     *
+     * ⚠️ A KETTŐ NEM UGYANAZ, és a különbség vitte el a távot. Korábban a
+     * mező minden fixnél előrelépett, MÉG A KAPUKON ELBUKOTTAKNÁL IS — az
+     * azokon átívelő szakasz távja így végleg elveszett. Ugyanez a hiba volt
+     * iOS-en, ott mérve is: azonos percben 86,07 km a zárolt képernyőn és
+     * 92,69 km az appban (2026-09-01, 12 órás menet), 7,1% hiány.
+     */
     @Nullable private Location lastNotificationLocation;
+    /** A táv horgonya — lásd {@link #STATIONARY_RADIUS_M}. */
+    @Nullable private Location distanceAnchor;
 
     private final LocationCallback locationCallback = new LocationCallback() {
         @Override
@@ -206,8 +250,24 @@ public final class TrackingLocationService extends Service {
         float previousMinDistanceM = minDistanceM;
         minDistanceM = TrackingLocationPolicy.minDistanceMeters(prefs.getString(PREF_ACTIVITY_TYPE, "run"));
         updateForegroundNotification();
+        /*
+          ⚠️ A HITELES ÉRTÉK MEGÉRKEZETT — a saját referenciánkat el kell
+          dobni. Ez a metódus a JS `syncActivity` minden hívásánál lefut, és a
+          `distanceM`-et a JS által számolt, hiteles értékre állítja vissza
+          (fent). Ha a referenciapontot és a horgonyt megtartanánk, a
+          következő fix delta-ja egy olyan szakaszt adna hozzá, amit a JS már
+          beleszámolt — kétszer könyvelnénk ugyanazt.
+
+          Előtérben ez másodpercenként megtörténik, tehát a szolgáltatás saját
+          összegzése ott nem is számít; háttérben viszont nincs szinkron, így
+          az első fix lehorgonyoz, és onnantól pontosan mér. Az ár legfeljebb
+          egyetlen fixnyi táv, a haszon, hogy minden előtérbe visszatérés
+          HELYREÁLLÍTJA az értesítés számát.
+        */
+        lastNotificationLocation = null;
+        distanceAnchor = null;
+
         if (paused) {
-            lastNotificationLocation = null;
             stopLocationUpdates();
         } else {
             if (requestingLocations && previousMinDistanceM != minDistanceM) stopLocationUpdates();
@@ -353,22 +413,60 @@ public final class TrackingLocationService extends Service {
         requestingLocations = false;
     }
 
+    /**
+     * Az értesítésben mutatott táv — UGYANAZZAL A SZABÁLLYAL, mint a
+     * JavaScript.
+     *
+     * Két lépés, pontosan úgy, ahogy `src/tracking/filter.ts` (`evaluate`) és
+     * `src/tracking/recorder.ts` (`anchoredTotal`) csinálja:
+     *
+     *   1. SZŰRÉS — a mintát az utolsó ELFOGADOTT ponthoz mérjük. Ami elbukik,
+     *      az nyomtalanul eltűnik: nem lesz belőle referencia, és a horgonyt
+     *      sem mozdítja.
+     *   2. HORGONY — az elfogadott pont csak akkor ad távot, ha a horgonytól
+     *      legalább {@link #STATIONARY_RADIUS_M}-re van; ekkor ő lesz az új
+     *      horgony.
+     */
     private void recordNotificationLocation(Location location) {
+        if (paused || location.getAccuracy() > MAX_NOTIFICATION_ACCURACY_M) return;
+
         Location previous = lastNotificationLocation;
-        lastNotificationLocation = location;
-        if (paused || location.getAccuracy() > MAX_NOTIFICATION_ACCURACY_M || previous == null) return;
+        if (previous == null) {
+            // Az első elfogadott fix csak lehorgonyoz — nincs mihez mérni.
+            lastNotificationLocation = location;
+            distanceAnchor = location;
+            return;
+        }
 
         long deltaMs = location.getTime() - previous.getTime();
         if (deltaMs <= 0L) return;
         double meters = location.distanceTo(previous);
         double calculatedSpeed = meters / (deltaMs / 1_000d);
         if (calculatedSpeed > MAX_NOTIFICATION_SPEED_MPS) return;
-        if (meters < minDistanceM && deltaMs < MAX_NOTIFICATION_IDLE_MS) return;
+        if (meters < MIN_ACCEPT_MOVE_M && deltaMs < MAX_NOTIFICATION_IDLE_MS) return;
 
-        distanceM += meters;
+        lastNotificationLocation = location;
         speedMps = location.hasSpeed() && location.getSpeed() >= 0f
             ? location.getSpeed()
             : calculatedSpeed;
+
+        /*
+          A HORGONY CSAK A TÁVOT KAPUZZA, a sebességet és a kiírást NEM.
+          Álló helyzetben a táv helyesen nem nő, de a sebesség attól még
+          változik (nullára) — ha ezen a ponton kilépnénk, az értesítés az
+          utolsó menet közbeni sebességnél ragadna.
+        */
+        Location anchor = distanceAnchor;
+        if (anchor == null) {
+            distanceAnchor = location;
+        } else {
+            double delta = location.distanceTo(anchor);
+            if (delta >= STATIONARY_RADIUS_M) {
+                distanceAnchor = location;
+                distanceM += delta;
+            }
+        }
+
         preferences(this).edit()
             .putLong(PREF_DISTANCE_BITS, Double.doubleToRawLongBits(distanceM))
             .putLong(PREF_SPEED_BITS, Double.doubleToRawLongBits(speedMps))

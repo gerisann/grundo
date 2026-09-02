@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RivalRow } from '@/components/RivalRow';
+import { useProfile } from '@/hooks/ProfileProvider';
 import { api, ApiError, type Rival } from '@/lib/api';
 import './connectionsSheet.css';
 import './rivalsSheet.css';
@@ -22,6 +23,9 @@ import './rivalsSheet.css';
  */
 export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
   const navigate = useNavigate();
+  // A bal sáv a saját színem — lásd a `RivalsCard` azonos helyén álló
+  // indoklást: a lista mindig a bejelentkezett felhasználóé.
+  const { profile } = useProfile();
   const [items, setItems] = useState<Rival[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
@@ -108,6 +112,7 @@ export function RivalsSheet({ onClose, embedded = false }: { onClose?: () => voi
               <RivalRow
                 key={rival.uid}
                 rival={rival}
+                selfCellColor={profile?.cellColor ?? null}
                 onOpen={() => {
                   onClose?.();
                   navigate(`/felhasznalo/${encodeURIComponent(rival.username)}`);
