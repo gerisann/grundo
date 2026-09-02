@@ -4,26 +4,34 @@
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
-> Ág: **`main`** · HEAD **`1e52b48`** · munkamásolat tiszta
+> Ág: **`main`** · HEAD **`06cf4e5`** · pusholva, munkamásolat tiszta
+>
+> Élesben: web `06cf4e5` · backend `grundo-api-00111-ldw` · indexek naprakészek
 >
 > Tesztek: **640 zöld** + **129 emulátoros zöld**, gyökér és `server/` typecheck
 > tiszta
 
 ---
 
-## ⚠️ A #25 ELSŐ DOLGA: TELEPÍTÉS
+## TELEPÍTVE — 2026-09-02, mind a három
 
-A #24 munkája **még nem ér el a felhasználókhoz**. Három telepítés kell,
-ebben a sorrendben:
+A #24 munkája **élesben fut**. Adatmigráció nem kellett.
 
-1. **indexek** — enélkül a 12 órás mentés továbbra is elhasal
-2. **backend** — a `--timeout=900`, a `--cpu-boost` és a gyorsabb motor
-3. **frontend** — ⚠️ **NEM elhagyható.** A `src/game` motor KÖZÖS a
-   klienssel; a `windingCounts` javítása megváltoztatja a védelmi szintek
-   számítását. Ha csak a backend frissül, a rögzítés közbeni élő előnézet
-   más védettséget mutat, mint amit a mentés jóváír.
+| Lépés | Állapot | Ellenőrzés |
+|---|---|---|
+| **indexek** | ✅ | `activityCells`, `activityCellParents`, `private/points` mentesítve (üres indexlistával, `gcloud firestore indexes fields describe`); a `modifiers` összetett index `CREATING` állapotban indult |
+| **backend** | ✅ | revízió **`grundo-api-00111-ldw`**, `timeoutSeconds=900`, `startup-cpu-boost=true`, `/api/health` → `grundo-db` |
+| **frontend** | ✅ | belépő chunk **`index-Cmvc9hgG.js`**, az élesen kiszolgált név megegyezik a helyi buildével; mind a négy `VITE_*` érték benne a bundle-ben; az oldal konzolhiba nélkül tölt |
 
-Adatmigráció nincs.
+⚠️ A frontend azért NEM volt elhagyható, mert a `src/game` motor KÖZÖS a
+klienssel: a `windingCounts` javítása megváltoztatja a védelmi szintek
+számítását. Csak backend-frissítéssel a rögzítés közbeni élő előnézet mást
+mutatott volna, mint amit a mentés jóváír.
+
+**Ami még hátravan ehhez a menethez:** a natív buildek (Codemagic, iOS +
+Android) a `06cf4e5`-ből. A menet natív fájlt nem érintett, de a `dist/`
+igen — a `npx cap sync` viszi be a motorjavítást és a #23 összes webes
+újítását, amit az Android még sosem kapott meg.
 
 ---
 
