@@ -140,6 +140,24 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   objektum közvetlenül nem olvasható; a backend ellenőrzi a tagságot, majd
   hitelesített bináris válaszként szolgálja ki. Ez megőrzi a privát banda
   tartalmának határát akkor is, ha valaki megszerzi az objektum útvonalát.
+- **A publikus banda-böngészés szerveroldalon rendezett és tízes korlátú.**
+  A `GET /api/bandas/discover` csak `popular` vagy `new` rendezést fogad,
+  kizárja a privát bandákat és legfeljebb 10 dokumentumot olvas. A két
+  rendezéshez külön `visibility + memberCount`, illetve `visibility +
+  createdAt` kompozit index tartozik; a kliens fülváltáskor gyorsítótárazza
+  az egyszer már betöltött listát.
+
+## Területszín-paletta (`#28` menet)
+
+- **A végtelen sor ismételt ciklusokkal működik.** A paletta azonos
+  színciklusokat fűz egymás mögé, és a görgetési pozíciót láthatatlanul a
+  középső tartományba helyezi vissza; ezért swipe és nyilas léptetés közben
+  sincs végpont vagy scrollbar. Csak a középső ciklus fókuszálható, így a
+  vizuális ismétlés nem sokszorozza meg a billentyűzetes bejárást.
+- **A kiválasztási háttéreffekt összefüggő axiális hexrácson nő.** Minden
+  új cella már meglévő cellához kapcsolódik, az egyedi késleltetés és
+  halványulás összege pedig soha nem haladhatja meg az 5 másodpercet. A
+  csökkentett mozgást kérő rendszerbeállítás az effektet kikapcsolja.
 
 ## Archívum
 

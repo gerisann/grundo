@@ -329,6 +329,9 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - **Bárki hozhat létre** bandát — nem Pro-funkció (a korábbi Pro-gate ezzel
   törölve). Egy felhasználó **egyszerre több bandának is tagja lehet**.
 - **Publikus** banda: kereshető, csatlakozás **azonnali**.
+- A publikus kereső alatt kétfüles böngészőblokk jelenik meg: **Népszerű
+  Bandák** (taglétszám szerint csökkenő) és **Új Bandák** (létrehozási idő
+  szerint csökkenő). Mindkét fül legfeljebb 10 publikus bandát listáz.
 - **Privát** banda: csatlakozás meghívókóddal (8 karakter), share linkkel
   *(a mélylink-parsolás még nincs kész, csak a nyers kód másolható)*, vagy
   appon belüli meghívással a követett-felhasználó listából (kereséssel
@@ -563,11 +566,14 @@ A GRUNDO-nak **világos és sötét témája** is van, és az **alapértelmezett
 1. **Rögzítés közben nem váltunk témát.** Ha futás közben lemegy a nap, a téma csak a mentés után vált. A térképstílus cseréje félbeszakítaná a megjelenítést és újratöltené a Mapbox stílust — futás közben ez elfogadhatatlan.
 2. **Nincs villanás induláskor.** A téma az első kirajzolás előtt eldől (az `index.html` inline szkriptje), tehát sötét módban sem villan fel egy pillanatra a világos felület.
 
-**Területszín-paletta:** a 16 alapszín négy sorban, soronként négy szabályos,
-egymást nem fedő hexagonként jelenik meg. A 12 prémium szín ugyanezt a
-geometriát használja három 4-es sorban. Színválasztáskor csak a Firestore-
-mentés és a profil helyi `cellColor` mezőjének frissítése fut; a profil és az
-oldal nem töltődik újra.
+**Területszín-paletta:** az alap- és prémium színek külön-külön egyetlen,
+vízszintesen végtelenített sorban jelennek meg. A korábbi palettához képest
+kétszeres méretű, szabályos hexagonok swipe-pal vagy a két oldalsó nyíllal
+görgethetők; scrollbar nincs. A kiválasztott szín középre gördül, majd azonos
+színű, egymáshoz kapcsolódó cellák terítik be röviden a hátteret, és
+véletlenszerű időzítéssel legfeljebb 5 másodperc alatt elhalványulnak.
+Színválasztáskor csak a Firestore-mentés és a profil helyi `cellColor`
+mezőjének frissítése fut; a profil és az oldal nem töltődik újra.
 
 ### Grafika és kirajzolási távolság *(döntés: 2026-09-03)*
 

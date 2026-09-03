@@ -161,6 +161,7 @@ function ColorSwatch({
       data-color={color}
       aria-pressed={active}
       aria-label={locked ? lockedLabel : label}
+      aria-hidden={copy === CENTER_COPY ? undefined : true}
       title={locked ? lockedLabel : label}
       tabIndex={copy === CENTER_COPY ? 0 : -1}
       style={{ '--ccolor': hex } as CSSProperties}

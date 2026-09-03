@@ -5,9 +5,9 @@
 
 ## Jelenlegi cél
 
-A Bandák funkció továbbépítése. A mag-CRUD, meghívások, falak, alapítói
-beállítások és a mostani hírfolyam/chat finomítások elkészültek; a következő
-tervezett feladat a share-link mélylink-parsolása (`?code=...`).
+A Bandák publikus felfedezőlistája és az új területszín-paletta elkészült.
+A következő tervezett feladat a banda share-link mélylink-parsolása
+(`?code=...`).
 
 ## Elkészült
 
@@ -43,6 +43,12 @@ tervezett feladat a share-link mélylink-parsolása (`?code=...`).
    tranzakcióban frissül.
 6. **Ikonfrissítés**: külön új web favicon-forrás, valamint egységes új PWA,
    iOS és Android appikon; az Android splash is az új appikont használja.
+7. **Publikus bandák böngészése + területszín-paletta**: a kereső alatt
+   `Népszerű Bandák` / `Új Bandák` fülek, fülenként legfeljebb 10 elem,
+   szerveroldali rendezéssel és Firestore-indexekkel. A színpaletták egy
+   nagy méretű, végtelenített, nyilakkal és swipe-pal vezérelhető sort
+   használnak; kiválasztáskor középre gördülnek, majd összefüggő háttércellák
+   legfeljebb 5 másodperc alatt elhalványulnak.
 
 ## A legutóbbi menet fő módosításai
 
@@ -61,11 +67,14 @@ funkcionális specifikáció, adatmodell és döntésnapló.
   tesztlimittel (734 teszt) ✅; az alap 5 másodperces futásban egy régi
   nagy-hurok teljesítményteszt egyszer kifutott a limitből.
 - Új formázó/dátum egységtesztek (3/3) ✅.
-- **Emulátoros teszt** (`bandas.emulator.test.ts`, mind a 16 teszt ✅):
+- **Emulátoros teszt** (`bandas.emulator.test.ts`, mind a 18 teszt ✅):
   meghívás → elfogadás/elutasítás, dupla meghívás, `whoCanInvite`
   jogosultság, hírfolyam sorrend+jogosultság+validáció, chat fal,
   beállításmentés+kódláthatóság, szerepkörtükrözés, moderátori
   kirúgás és tulajdonjog-átruházás.
+- A teljes emulátoros csomag 14 fájlban 158/158 teszttel zárt; ebben a
+  publikus felfedező rendezése, tízes korlátja, privát-szűrése és hibás
+  rendezési paramétere is valódi Firestore ellen ellenőrzött.
 - Hírfolyam, chat, kilépés és Storage szabályok közös emulátoros futása:
   21/21 teszt ✅; `firebase deploy --only storage --dry-run` ✅.
 - A Phase 3 képernyőt böngészőben, mobil app-szélességen, világos és

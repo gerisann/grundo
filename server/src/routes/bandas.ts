@@ -39,6 +39,7 @@ import type { AuthedRequest } from '../../server';
 export const bandasRouter = Router();
 
 const SEARCH_LIMIT = 20;
+const DISCOVER_LIMIT = 10;
 const MEMBER_LIST_LIMIT = 200;
 /** Ennyi próbálkozás után adjuk fel az ütközésmentes kód generálását. */
 const INVITE_CODE_MAX_ATTEMPTS = 10;
@@ -263,6 +264,32 @@ bandasRouter.get('/search', async (req: AuthedRequest, res: Response, next) => {
       .orderBy('nameLower')
       .startAt(q)
       .endAt(`${q}${PREFIX_UPPER_BOUND}`)
+      .limit(limit)
+      .get();
+
+    const items = snapshot.docs.map((doc) => toSummary(doc.id, doc.data() as Record<string, unknown>));
+    res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   GET /api/bandas/discover — popular or newest public bandas
+   ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.get('/discover', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const sort =
+      req.query.sort === 'new' ? 'new' : req.query.sort === 'popular' ? 'popular' : null;
+    if (!sort) throw badRequest('invalid_sort', 'A rendezés csak popular vagy new lehet.');
+    const limit = Math.min(DISCOVER_LIMIT, Math.max(1, Number(req.query.limit) || DISCOVER_LIMIT));
+    const orderField = sort === 'popular' ? 'memberCount' : 'createdAt';
+
+    const snapshot = await db
+      .collection(COLLECTIONS.bandas)
+      .where('visibility', '==', 'public')
+      .orderBy(orderField, 'desc')
       .limit(limit)
       .get();
 

@@ -1196,6 +1196,10 @@ export const api = {
     /** Publikus bandák keresése, névprefix szerint. */
     search: (q: string) => request<{ items: Banda[] }>(`/api/bandas/search?q=${encodeURIComponent(q)}`),
 
+    /** Up to ten public bandas ordered by popularity or creation time. */
+    discover: (sort: 'popular' | 'new', limit = 10) =>
+      request<{ items: Banda[] }>(`/api/bandas/discover?sort=${sort}&limit=${Math.min(10, Math.max(1, limit))}`),
+
     /** Publikus bandához azonnali csatlakozás. */
     join: (bandaId: string) =>
       request<{ role: BandaRole }>(`/api/bandas/${encodeURIComponent(bandaId)}/join`, { method: 'POST' }),

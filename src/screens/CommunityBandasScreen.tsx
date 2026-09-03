@@ -43,8 +43,80 @@ export function CommunityBandasScreen() {
         <JoinByCode />
         <CreateBanda />
         <SearchPublicBandas />
+        <DiscoverBandas />
       </div>
     </>
+  );
+}
+
+type BandaDiscoverTab = 'popular' | 'new';
+
+function DiscoverBandas() {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<BandaDiscoverTab>('popular');
+  const [results, setResults] = useState<Record<BandaDiscoverTab, Banda[] | null>>({
+    popular: null,
+    new: null,
+  });
+  const [errors, setErrors] = useState<Record<BandaDiscoverTab, string>>({ popular: '', new: '' });
+
+  useEffect(() => {
+    if (results[tab] !== null) return;
+    let alive = true;
+    api.bandas
+      .discover(tab, 10)
+      .then((result) => {
+        if (alive) setResults((current) => ({ ...current, [tab]: result.items.slice(0, 10) }));
+      })
+      .catch((problem: unknown) => {
+        if (!alive) return;
+        setResults((current) => ({ ...current, [tab]: [] }));
+        setErrors((current) => ({
+          ...current,
+          [tab]: problem instanceof ApiError ? problem.message : 'A bandák most nem tölthetők be.',
+        }));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [results, tab]);
+
+  const items = results[tab];
+  return (
+    <section className="stack">
+      <SegmentedControl
+        label="Bandák böngészése"
+        options={[
+          { value: 'popular', label: 'Népszerű Bandák' },
+          { value: 'new', label: 'Új Bandák' },
+        ]}
+        value={tab}
+        onChange={setTab}
+        block
+      />
+      {items === null ? (
+        <div className="card">Betöltés…</div>
+      ) : errors[tab] ? (
+        <div className="card" role="alert">
+          {errors[tab]}
+        </div>
+      ) : items.length === 0 ? (
+        <EmptyState title="Még nincs megjeleníthető banda" description="Nézz vissza később." />
+      ) : (
+        <List>
+          {items.map((banda) => (
+            <ListRow
+              key={banda.id}
+              label={banda.name}
+              description={`${banda.memberCount} tag${banda.city ? ` · ${banda.city}` : ''}`}
+              value={<Avatar url={banda.photoURL} name={banda.name} size={40} />}
+              chevron
+              onClick={() => navigate(`/bandak/${banda.id}`)}
+            />
+          ))}
+        </List>
+      )}
+    </section>
   );
 }
 

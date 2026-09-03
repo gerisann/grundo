@@ -130,6 +130,24 @@
       ]
     },
     {
+      "//": "Népszerű publikus bandák (GET /api/bandas/discover?sort=popular).",
+      "collectionGroup": "bandas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "memberCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "Legújabb publikus bandák (GET /api/bandas/discover?sort=new).",
+      "collectionGroup": "bandas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "//": "Ranglista (GET /api/tiles/leaderboard): a négy nézet (alltime/day/week/month) mindegyike külön mezőútvonal, réteganként is — a Firestore indexe nem paraméterezhető, ezért 4×2=8 bejegyzés kell. Mind ugyanaz az alak: az adott mező szerint csökkenő, egyenlőségnél ábécésorrend.",
       "collectionGroup": "users",
       "queryScope": "COLLECTION",

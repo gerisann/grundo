@@ -143,6 +143,48 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(codeDoc.data()?.bandaId).toBe(body.banda.id);
   });
 
+  it('a felfedező legfeljebb 10 publikus bandát ad a kért sorrendben', async () => {
+    const batch = db.batch();
+    for (let index = 0; index < 12; index++) {
+      batch.set(db.collection('bandas').doc(`public-${index}`), {
+        name: `Publikus ${index}`,
+        nameLower: `publikus ${index}`,
+        visibility: 'public',
+        ownerId: OWNER,
+        memberCount: index + 1,
+        createdAt: new Date(Date.UTC(2026, 0, index + 1)),
+      });
+    }
+    batch.set(db.collection('bandas').doc('private-largest'), {
+      name: 'Privát óriás',
+      nameLower: 'privát óriás',
+      visibility: 'private',
+      ownerId: OWNER,
+      memberCount: 999,
+      createdAt: new Date(Date.UTC(2027, 0, 1)),
+    });
+    await batch.commit();
+
+    const popular = await (await call('/discover?sort=popular&limit=50', OWNER)).json();
+    expect(popular.items).toHaveLength(10);
+    expect(popular.items.map((item: { memberCount: number }) => item.memberCount)).toEqual([
+      12, 11, 10, 9, 8, 7, 6, 5, 4, 3,
+    ]);
+
+    const newest = await (await call('/discover?sort=new&limit=3', OWNER)).json();
+    expect(newest.items.map((item: { id: string }) => item.id)).toEqual([
+      'public-11',
+      'public-10',
+      'public-9',
+    ]);
+  });
+
+  it('a felfedező ismeretlen rendezést elutasít', async () => {
+    const response = await call('/discover?sort=random', OWNER);
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe('invalid_sort');
+  });
+
   it('publikus bandához azonnal csatlakozhat más felhasználó, kétszer nem', async () => {
     const created = await (
       await call('/', OWNER, {
