@@ -380,6 +380,8 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     expect(aliceDoc.cellCount.foot).toBeLessThan(aliceSummary.claimedCells);
     expect(aliceDoc.cellCount.foot).toBeGreaterThanOrEqual(0);
     expect(aliceDoc.territoryM2.foot).toBeGreaterThanOrEqual(0);
+    expect(bobDoc.bandaStats.run.areaDayM2).toBeGreaterThan(0);
+    expect(bobDoc.bandaStats.run.gpDay).toBeGreaterThan(0);
 
     // Területesemény pontosan egy, determinisztikus azonosítóval.
     const events = await db.collection(collections.territoryEvents!).get();

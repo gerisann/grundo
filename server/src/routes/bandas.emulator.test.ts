@@ -93,8 +93,8 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
   }
 
   /** A `GET /:id/members` a `users/{uid}` dokumentumból olvassa a nevet. */
-  async function makeUser(uid: string, username: string) {
-    await db.collection('users').doc(uid).set({ username, photoURL: null });
+  async function makeUser(uid: string, username: string, bandaStats?: Record<string, unknown>) {
+    await db.collection('users').doc(uid).set({ username, photoURL: null, ...(bandaStats ? { bandaStats } : {}) });
   }
 
   beforeEach(async () => {
@@ -204,8 +204,13 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     const detail = await (await call(`/${bandaId}`, OWNER)).json();
     expect(detail.banda.memberCount).toBe(2);
 
+    await db.collection('users').doc(OTHER).set({
+      bandaStats: { run: { areaDayM2: 1234, gpDay: 56, areaTotalM2: 7890, gpTotal: 321 } },
+    }, { merge: true });
     const members = await (await call(`/${bandaId}/members`, OWNER)).json();
     expect(members.items.map((m: { uid: string }) => m.uid).sort()).toEqual([OTHER, OWNER].sort());
+    expect(members.items.find((m: { uid: string }) => m.uid === OTHER).stats.run)
+      .toMatchObject({ areaDayM2: 1234, gpDay: 56, areaTotalM2: 7890, gpTotal: 321 });
   });
 
   it('privát bandához meghívókóddal csatlakozhat, érvénytelen kóddal nem', async () => {

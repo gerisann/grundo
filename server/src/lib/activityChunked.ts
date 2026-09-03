@@ -847,6 +847,18 @@ async function closeBooks(
         areaDay: { [layer]: FieldValue.increment(gainedAreaM2) },
         areaWeek: { [layer]: FieldValue.increment(gainedAreaM2) },
         areaMonth: { [layer]: FieldValue.increment(gainedAreaM2) },
+        bandaStats: {
+          [type]: {
+            areaDayM2: FieldValue.increment(gainedAreaM2),
+            areaWeekM2: FieldValue.increment(gainedAreaM2),
+            areaMonthM2: FieldValue.increment(gainedAreaM2),
+            areaTotalM2: FieldValue.increment(gainedAreaM2),
+            gpDay: FieldValue.increment(gp.total),
+            gpWeek: FieldValue.increment(gp.total),
+            gpMonth: FieldValue.increment(gp.total),
+            gpTotal: FieldValue.increment(gp.total),
+          },
+        },
         counters: {
           activities: FieldValue.increment(1),
           distanceKm: { [type]: FieldValue.increment(plan.distanceM / 1000) },

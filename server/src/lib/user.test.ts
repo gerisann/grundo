@@ -84,6 +84,7 @@ describe('newUserDoc', () => {
     expect(doc.gpTotal).toBe(0);
     expect(doc.territoryM2).toEqual({ foot: 0, bike: 0 });
     expect(doc.cellCount).toEqual({ foot: 0, bike: 0 });
+    expect(doc.bandaStats.run).toMatchObject({ areaDayM2: 0, areaTotalM2: 0, gpDay: 0, gpTotal: 0 });
   });
 
   it('nincs Pro, és nem hitelesített e-mail', () => {

@@ -79,6 +79,7 @@ export interface RolloverUserState {
   gpTotal?: number;
   streak?: StoredRolloverStreak | null;
   rollover?: { lastDay?: number | null } | null;
+  bandaStats?: Record<string, Record<string, unknown>> | null;
 }
 
 export interface PlannedStreak {
@@ -482,6 +483,18 @@ async function rolloverUser(
     update.areaDay = { foot: 0, bike: 0 };
     if (plan.weekClosed) update.areaWeek = { foot: 0, bike: 0 };
     if (plan.monthClosed) update.areaMonth = { foot: 0, bike: 0 };
+
+    const storedBandaStats = (user.bandaStats as Record<string, Record<string, unknown>> | undefined) ?? {};
+    update.bandaStats = Object.fromEntries(['run', 'walk', 'ride'].map((type) => {
+      const stats = storedBandaStats[type] ?? {};
+      return [type, {
+        ...stats,
+        areaDayM2: 0,
+        gpDay: 0,
+        ...(plan.weekClosed ? { areaWeekM2: 0, gpWeek: 0 } : {}),
+        ...(plan.monthClosed ? { areaMonthM2: 0, gpMonth: 0 } : {}),
+      }];
+    }));
 
     tx.set(userRef, update, { merge: true });
 

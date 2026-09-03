@@ -195,6 +195,8 @@ describe.skipIf(!EMULATOR)('POST /api/activities — compact foglalás', () => {
     expect(Math.round(user.territoryM2.bike)).toBe(summary.areaGainedM2);
     // Az aktivitás GP-je benne van; a jelvények ezen felül jönnek.
     expect(user.gpTotal).toBeGreaterThanOrEqual(summary.gp);
+    expect(user.bandaStats.ride.areaDayM2).toBeGreaterThan(0);
+    expect(user.bandaStats.ride.gpDay).toBeGreaterThan(0);
   });
 
   it('a homogén belsőt NEM bontja cellánkénti tárolásra', async () => {

@@ -332,8 +332,8 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - A publikus kereső alatt kétfüles böngészőblokk jelenik meg: **Népszerű
   Bandák** (taglétszám szerint csökkenő) és **Új Bandák** (létrehozási idő
   szerint csökkenő). Mindkét fül legfeljebb 10 publikus bandát listáz.
-- **Privát** banda: csatlakozás meghívókóddal (8 karakter), share linkkel
-  *(a mélylink-parsolás még nincs kész, csak a nyers kód másolható)*, vagy
+- **Privát** banda: csatlakozás meghívókóddal (8 karakter), működő, a kódot
+  előtöltő share linkkel (`/kozosseg/bandak?code=...`), vagy
   appon belüli meghívással a követett-felhasználó listából (kereséssel
   szűrhető, meghívás gombbal) — a meghívott értesítést kap, amit
   elfogadhat vagy elutasíthat *(GRUNDO #30)*.
@@ -343,6 +343,14 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   #30)* —, valamint egy külön beállítások képernyő (fogaskerék, jobb
   felül) az alapítónak. Itt kezelhetők a jogosultságok, a szerepkörök,
   a tagok és a tulajdonjog. *(GRUNDO #30, Phase 3)*
+- A statisztikai blokk egységesen négy időszakfület használ: **Mai · Heti ·
+  Havi · Mindenkori**. Mindegyikben külön választható a **Futás · Séta ·
+  Bringa**, és együtt látszik a banda összes területe, összes GP-je, a TOP3
+  bandatag dobogón, majd a 4–10. helyezett listája. A rangsor elsődlegesen
+  az adott sportágban és időszakban aktivitással szerzett terület,
+  holtversenynél GP.
+- A Banda fejléc-kártyáján minden tag látja a megosztási linket; a privát
+  banda meghívókódja a beállított szerepkör-jogosultság szerint jelenik meg.
 - A hírfolyam szerkesztője támogatja a félkövér, dőlt és aláhúzott
   szöveget, a felsorolást, számozott felsorolást, idézetet és linket. Egy
   poszthoz egy, tallózással kiválasztott, legfeljebb 2 MB-os kép csatolható;

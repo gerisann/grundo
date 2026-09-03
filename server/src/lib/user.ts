@@ -112,6 +112,12 @@ export function newUserDoc(input: NewUserInput, now: Date) {
     areaDay: { foot: 0, bike: 0 },
     areaWeek: { foot: 0, bike: 0 },
     areaMonth: { foot: 0, bike: 0 },
+    /** Sportágankénti, aktivitással szerzett banda-ranglista értékek. */
+    bandaStats: {
+      run: { areaDayM2: 0, areaWeekM2: 0, areaMonthM2: 0, areaTotalM2: 0, gpDay: 0, gpWeek: 0, gpMonth: 0, gpTotal: 0 },
+      walk: { areaDayM2: 0, areaWeekM2: 0, areaMonthM2: 0, areaTotalM2: 0, gpDay: 0, gpWeek: 0, gpMonth: 0, gpTotal: 0 },
+      ride: { areaDayM2: 0, areaWeekM2: 0, areaMonthM2: 0, areaTotalM2: 0, gpDay: 0, gpWeek: 0, gpMonth: 0, gpTotal: 0 },
+    },
 
     streak: {
       current: 0,

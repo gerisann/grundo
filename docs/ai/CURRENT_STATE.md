@@ -5,9 +5,9 @@
 
 ## Jelenlegi cél
 
-A Bandák publikus felfedezőlistája és az új területszín-paletta elkészült.
-A következő tervezett feladat a banda share-link mélylink-parsolása
-(`?code=...`).
+A Banda részlet négylapos, sportágankénti TOP10 ranglistája és a működő
+megosztási link elkészült. A következő nyitott termékfeladat a banda profil-
+és borítókép feltöltése.
 
 ## Elkészült
 
@@ -49,6 +49,11 @@ A következő tervezett feladat a banda share-link mélylink-parsolása
    nagy méretű, végtelenített, nyilakkal és swipe-pal vezérelhető sort
    használnak; kiválasztáskor középre gördülnek, majd összefüggő háttércellák
    legfeljebb 5 másodperc alatt elhalványulnak.
+8. **Banda statisztika és megosztás**: Mai/Heti/Havi/Mindenkori fülek,
+   mindegyikben Futás/Séta/Bringa bontás, terület- és GP-összegző, TOP3
+   dobogó, majd a 4–10. helyezett. Az aktivitásmentés sportáganként vezeti az
+   időablakos értékeket. A meghívókód külön másolható, a share link
+   `?code=` paraméterrel előtölti a csatlakozási mezőt.
 
 ## A legutóbbi menet fő módosításai
 
@@ -77,6 +82,9 @@ funkcionális specifikáció, adatmodell és döntésnapló.
   rendezési paramétere is valódi Firestore ellen ellenőrzött.
 - Hírfolyam, chat, kilépés és Storage szabályok közös emulátoros futása:
   21/21 teszt ✅; `firebase deploy --only storage --dry-run` ✅.
+- Az új banda-tag statisztika API 19/19, a normál aktivitásmentés 25/25,
+  a darabolt aktivitásmentés 9/9 emulátoros teszttel ✅. Mindkét mentési út
+  bizonyítottan növeli a sportágankénti terület- és GP-értékeket.
 - A Phase 3 képernyőt böngészőben, mobil app-szélességen, világos és
   sötét témában is ellenőriztem ideiglenes helyi előnézeti adatokkal; az
   előnézeti ág nincs benne a végleges kódban. Teljes bejelentkezéses UI E2E
@@ -90,19 +98,14 @@ funkcionális specifikáció, adatmodell és döntésnapló.
 
 Sorban, a felsorolás szerint folytatva:
 
-4. **Share link mélylink-parsolása** (`?code=...` az útvonalon) — jelenleg
-   csak a nyers kód másolható.
-5. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
+1. **Banda profilkép + borítókép feltöltés.**
+2. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
    az ütemezés nincs).
 
 Geri által ezen a meneten felírt, még NEM implementált backlog-tételek
 („írjuk fel” — csak rögzítve, sorrendben a fentiek után jönnek):
 
-- Banda profilkép + borítókép feltöltés.
-- Banda-belüli TOP3 dobogó-megjelenítéssel (ranglista a tagok között).
-- A terület+GP megjelenítés átalakítása: vízszintesen váltható
-  Ma/Heti/Havi/Mindig nézet, mindkettőnél TOP3 + kinyitható teljes
-  toplista.
+- Jelenleg nincs további, csak felírt banda-backlog tétel.
 
 ## Modelljavaslat
 

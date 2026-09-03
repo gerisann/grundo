@@ -1075,6 +1075,20 @@ export interface BandaMember {
   username: string;
   photoURL: string | null;
   role: BandaRole;
+  stats?: Record<BandaSport, BandaMemberStats>;
+}
+
+export type BandaSport = 'run' | 'walk' | 'ride';
+export type BandaPeriod = 'day' | 'week' | 'month' | 'alltime';
+export interface BandaMemberStats {
+  areaDayM2: number;
+  areaWeekM2: number;
+  areaMonthM2: number;
+  areaTotalM2: number;
+  gpDay: number;
+  gpWeek: number;
+  gpMonth: number;
+  gpTotal: number;
 }
 
 /** Egy hírfolyam-poszt VAGY egy chat fal-üzenet — ugyanaz az alak mindkettőnél. */

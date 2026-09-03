@@ -44,6 +44,7 @@ const MEMBER_LIST_LIMIT = 200;
 /** Ennyi próbálkozás után adjuk fel az ütközésmentes kód generálását. */
 const INVITE_CODE_MAX_ATTEMPTS = 10;
 const ROLE_PERMISSIONS = new Set(['everyone', 'moderators', 'owner']);
+const BANDA_SPORTS = ['run', 'walk', 'ride'] as const;
 
 interface BandaSummary {
   id: string;
@@ -67,6 +68,23 @@ function millis(value: unknown): number | null {
 
 function num(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function bandaStats(value: unknown) {
+  const root = (value as Record<string, unknown> | undefined) ?? {};
+  return Object.fromEntries(BANDA_SPORTS.map((sport) => {
+    const raw = (root[sport] as Record<string, unknown> | undefined) ?? {};
+    return [sport, {
+      areaDayM2: num(raw.areaDayM2),
+      areaWeekM2: num(raw.areaWeekM2),
+      areaMonthM2: num(raw.areaMonthM2),
+      areaTotalM2: num(raw.areaTotalM2),
+      gpDay: num(raw.gpDay),
+      gpWeek: num(raw.gpWeek),
+      gpMonth: num(raw.gpMonth),
+      gpTotal: num(raw.gpTotal),
+    }];
+  }));
 }
 
 function toSummary(id: string, data: Record<string, unknown>): BandaSummary {
@@ -781,6 +799,7 @@ bandasRouter.get('/:id/members', async (req: AuthedRequest, res: Response, next)
           username: String(profile.username ?? ''),
           photoURL: (profile.photoURL as string | null) ?? null,
           role: roleById.get(doc.id) ?? 'member',
+          stats: bandaStats(profile.bandaStats),
         };
       })
       .filter((item) => item.username);

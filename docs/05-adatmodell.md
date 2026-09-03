@@ -53,6 +53,13 @@
   areaWeek:     { foot: number, bike: number }   // hétfőn nullázva
   areaMonth:    { foot: number, bike: number }
 
+  // Banda TOP10: aktivitással szerzett terület és GP sportáganként.
+  bandaStats: {
+    run:  { areaDayM2, areaWeekM2, areaMonthM2, areaTotalM2, gpDay, gpWeek, gpMonth, gpTotal },
+    walk: { areaDayM2, areaWeekM2, areaMonthM2, areaTotalM2, gpDay, gpWeek, gpMonth, gpTotal },
+    ride: { areaDayM2, areaWeekM2, areaMonthM2, areaTotalM2, gpDay, gpWeek, gpMonth, gpTotal }
+  }
+
   trust: { level: 'new'|'established'|'trusted'|'watched',
            cleanActivities: number, upheldReports: number, watchedUntil?: Timestamp }
 
@@ -526,8 +533,8 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   rúghat ki, és meglévő tagnak adhatja át a tulajdonjogot; ekkor ő maga
   moderátor marad. A moderátor sima tagot rúghat ki, de moderátort vagy
   alapítót nem. Az alapító csak a rang átadása után léphet ki; a kilépés
-  mindkét tagsági tükört törli. A share-link mélylink-parsolása külön
-  folytatás.
+  mindkét tagsági tükröt törli. A share link a meghívókódot
+  `/kozosseg/bandak?code=...` paraméterben adja át és előtölti a belépőmezőt.
 
 ### `challenges/{challengeId}`
 ```ts

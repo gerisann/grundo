@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CommunityHeader } from '@/components/CommunityHeader';
 import { Avatar } from '@/components/ActivityCard';
 import { Button, Chip, EmptyState, List, ListRow, TextField, SegmentedControl } from '@/components/ui';
@@ -34,13 +34,15 @@ const ROLE_LABEL: Record<BandaRole, string> = {
  * kártyát mutat.
  */
 export function CommunityBandasScreen() {
+  const [searchParams] = useSearchParams();
+  const sharedCode = (searchParams.get('code') ?? '').trim().toUpperCase().slice(0, 8);
   return (
     <>
       <CommunityHeader active="bandas" />
       <div className="screen-body stack">
         <PendingInvites />
         <MyBandas />
-        <JoinByCode />
+        <JoinByCode initialCode={sharedCode} />
         <CreateBanda />
         <SearchPublicBandas />
         <DiscoverBandas />
@@ -260,9 +262,9 @@ function MyBandas() {
   );
 }
 
-function JoinByCode() {
+function JoinByCode({ initialCode = '' }: { initialCode?: string }) {
   const navigate = useNavigate();
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 

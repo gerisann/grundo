@@ -1,0 +1,22 @@
+.banda-share { display: grid; gap: var(--sp-2); }
+.banda-share__row { display: flex; align-items: center; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border-subtle); }
+.banda-share__row strong { letter-spacing: .12em; }
+.banda-share__row .btn { margin-left: auto; }
+.banda-ranking__totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.banda-ranking__totals > div { display: grid; gap: 4px; padding: var(--sp-3); border-radius: var(--r-md); background: var(--bg-elevated); }
+.banda-ranking__totals span { color: var(--text-secondary); font-size: 12px; }
+.banda-ranking__totals strong { color: var(--accent); font-variant-numeric: tabular-nums; }
+.banda-podium { display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: var(--sp-2); padding-top: var(--sp-3); }
+.banda-podium__column { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 4px; border: 0; padding: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.banda-podium__column strong, .banda-podium__column small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banda-podium__column strong { font-size: 13px; }
+.banda-podium__column small { color: var(--text-secondary); font-size: 10px; }
+.banda-podium__crown { color: var(--tier-gold); font-size: 20px; line-height: 1; }
+.banda-podium__bar { width: 100%; min-height: 42px; margin-top: 4px; padding-top: 7px; border-radius: var(--r-sm) var(--r-sm) 0 0; border-top: 2px solid; font-weight: 800; }
+.banda-podium__bar--gold { min-height: 76px; color: var(--tier-gold); border-color: var(--tier-gold); background: color-mix(in srgb, var(--tier-gold) 16%, var(--surface-2)); }
+.banda-podium__bar--silver { min-height: 58px; color: var(--tier-silver); border-color: var(--tier-silver); background: color-mix(in srgb, var(--tier-silver) 16%, var(--surface-2)); }
+.banda-podium__bar--bronze { color: var(--tier-bronze); border-color: var(--tier-bronze); background: color-mix(in srgb, var(--tier-bronze) 16%, var(--surface-2)); }
+.banda-ranking__list { display: grid; border-top: 1px solid var(--border-subtle); }
+.banda-ranking__list button { display: grid; grid-template-columns: 24px 32px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 0; border: 0; border-bottom: 1px solid var(--border-subtle); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.banda-ranking__list small { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+@media (max-width: 390px) { .banda-ranking__list button { grid-template-columns: 22px 32px minmax(0, 1fr); } .banda-ranking__list small { grid-column: 3; } }
