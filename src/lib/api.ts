@@ -1075,6 +1075,15 @@ export interface BandaMember {
   role: BandaRole;
 }
 
+/** Egy hírfolyam-poszt VAGY egy chat fal-üzenet — ugyanaz az alak mindkettőnél. */
+export interface BandaPost {
+  id: string;
+  authorUid: string;
+  authorUsername: string;
+  text: string;
+  createdAt: number | null;
+}
+
 /** Egy rám váró banda-meghívó — a `GET /api/bandas/invites/mine` egy sora. */
 export interface BandaInvite {
   bandaId: string;
@@ -1228,6 +1237,28 @@ export const api = {
     declineInvite: (bandaId: string) =>
       request<{ declined: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/invite/decline`, {
         method: 'POST',
+      }),
+
+    /** A hírfolyam, a legrégebbivel kezdve. */
+    feed: (bandaId: string) =>
+      request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed`),
+
+    /** Új poszt a hírfolyamba — a `settings.postPermission` szerint jogosultsághoz kötve. */
+    postToFeed: (bandaId: string, text: string) =>
+      request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed`, {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+
+    /** A chat fal, a legrégebbivel kezdve. */
+    wall: (bandaId: string) =>
+      request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall`),
+
+    /** Új üzenet a chat falra — bármelyik tag írhat. */
+    postToWall: (bandaId: string, text: string) =>
+      request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall`, {
+        method: 'POST',
+        body: JSON.stringify({ text }),
       }),
   },
 

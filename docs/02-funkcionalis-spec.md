@@ -329,16 +329,16 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - **Bárki hozhat létre** bandát — nem Pro-funkció (a korábbi Pro-gate ezzel
   törölve). Egy felhasználó **egyszerre több bandának is tagja lehet**.
 - **Publikus** banda: kereshető, csatlakozás **azonnali**.
-- **Privát** banda: csatlakozás meghívókóddal (8 karakter), share linkkel,
-  vagy appon belüli meghívással a követett-felhasználó listából
-  (kereséssel szűrhető, meghívás gombbal) — a meghívott értesítést kap,
-  amit elfogadhat vagy elutasíthat. *(Az appon belüli meghívás+értesítés
-  Phase 2 tárgya — lásd `docs/ai/CURRENT_STATE.md`.)*
+- **Privát** banda: csatlakozás meghívókóddal (8 karakter), share linkkel
+  *(a mélylink-parsolás még nincs kész, csak a nyers kód másolható)*, vagy
+  appon belüli meghívással a követett-felhasználó listából (kereséssel
+  szűrhető, meghívás gombbal) — a meghívott értesítést kap, amit
+  elfogadhat vagy elutasíthat *(GRUNDO #30)*.
 - Banda-részletek (új képernyő): tagok, terület+GP összesítés bontással,
   két váltható feed — **hírfolyam** (ki posztolhat: mindenki/moderátorok/
-  csak az alapító, az alapító állítja be) és **nyílt chat fal** —, valamint
-  egy külön beállítások képernyő (fogaskerék, jobb felül) az alapítónak.
-  *(A feed, a chat fal és a beállítások Phase 2/3 tárgya.)*
+  csak az alapító, az alapító állítja be) és **nyílt chat fal** *(GRUNDO
+  #30)* —, valamint egy külön beállítások képernyő (fogaskerék, jobb
+  felül) az alapítónak. *(A beállítások képernyő Phase 3 tárgya.)*
 - Szerepek: **alapító > moderátor > tag**. Az alapító és a moderátor
   kirúghat tagot. Az alapító nevezhet ki moderátort, és állítja be, hogy
   privát bandánál ki hívhat meg mást, és kinek látszik a meghívókód
@@ -510,7 +510,8 @@ profilra, grundra vagy beállítási képernyőre navigálunk.
 | **Streak-emlékeztető** | BE | Este 18:00 helyi idő, ha aznap nincs aktivitás és él a sorozat |
 | Megosztott útvonal | BE | |
 | Cipő futásteljesítmény elérve | BE | |
-| Banda: meghívás / elfogadás / moderátor-kinevezés / kirúgás | BE | *(Phase 2)* |
+| Banda: meghívás (`banda_invited`) | BE | *(GRUNDO #30)* |
+| Banda: moderátor-kinevezés / kirúgás | BE | *(Phase 3)* |
 | Kihívás indul / véget ér / helyezés-változás | BE | |
 | **Napi pont-összegzés** | BE | Este: megszerzett GP, tartott terület bónusz |
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
+import { BandaFeedWall } from '@/components/BandaFeedWall';
 import { BandaInviteSheet } from '@/components/BandaInviteSheet';
 import { Button, Chip, EmptyState, List, ListRow, ScreenHeader } from '@/components/ui';
 import {
@@ -23,12 +24,13 @@ const ROLE_LABEL: Record<BandaRole, string> = {
 const hu = new Intl.NumberFormat('hu-HU');
 
 /**
- * Egy banda részletei (GRUNDO #29, Phase 1).
+ * Egy banda részletei (GRUNDO #29 Phase 1 → #30 Phase 2 folytatás).
  *
  * Nincs a Közösség-fülsor alatt — önálló képernyő, saját fejléccel, mint a
- * `/profil/rivalisok`. A hírfolyam, a chat fal és a beállítások (fogaskerék,
- * jobb felül) Phase 2/3 tárgya — itt egyelőre "hamarosan érkezik" kártyát
- * mutatnak.
+ * `/profil/rivalisok`. A hírfolyam és a chat fal (`BandaFeedWall`) és a
+ * meghívás (`BandaInviteSheet`) már itt élnek — a beállítások (fogaskerék,
+ * jobb felül, moderátor-kinevezés, kirúgás) még Phase 3 tárgya, egyelőre
+ * "hamarosan érkezik" kártyát mutat.
  */
 export function BandaScreen() {
   const { id } = useParams<{ id: string }>();
@@ -163,9 +165,18 @@ export function BandaScreen() {
           )}
         </section>
 
+        {role && settings ? (
+          <BandaFeedWall bandaId={id ?? ''} canPostFeed={canInvite(role, settings.postPermission)} />
+        ) : (
+          <EmptyState
+            title="Csak tagoknak"
+            description="A hírfolyam és a chat fal csak a banda tagjainak látszik — csatlakozz, hogy megnézhesd."
+          />
+        )}
+
         <EmptyState
-          title="A hírfolyam és a chat fal hamarosan érkezik"
-          description="Itt lesz majd a banda hírfolyama és a közös chat fal — a moderátor-kinevezés és a beállítások gomb is ekkor kapcsolódik be."
+          title="A beállítások hamarosan érkeznek"
+          description="Itt lesz majd a moderátor-kinevezés, a kirúgás és a beállítások gomb — Phase 3 tárgya."
         />
       </div>
 

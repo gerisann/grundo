@@ -72,6 +72,10 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
       for (const member of members.docs) await member.ref.delete();
       const invites = await doc.ref.collection('invites').get();
       for (const invite of invites.docs) await invite.ref.delete();
+      const feed = await doc.ref.collection('feed').get();
+      for (const post of feed.docs) await post.ref.delete();
+      const wall = await doc.ref.collection('wall').get();
+      for (const msg of wall.docs) await msg.ref.delete();
       await doc.ref.delete();
     }
     const codes = await db.collection('inviteCodes').get();
@@ -313,5 +317,84 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
       body: JSON.stringify({ targetUid: THIRD }),
     });
     expect(allowed.status).toBe(201);
+  });
+
+  it('hírfolyam: idegen nem olvashat, tag posztolhat, a lista a legrégebbivel kezdődik', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Hírfolyamos Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+
+    const stranger = await call(`/${bandaId}/feed`, THIRD);
+    expect(stranger.status).toBe(403);
+
+    const first = await call(`/${bandaId}/feed`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ text: 'Elsőnek szólok.' }),
+    });
+    expect(first.status).toBe(201);
+    const second = await call(`/${bandaId}/feed`, OTHER, {
+      method: 'POST',
+      body: JSON.stringify({ text: 'Másodiknak.' }),
+    });
+    expect(second.status).toBe(201);
+
+    const list = await (await call(`/${bandaId}/feed`, OWNER)).json();
+    expect(list.items.map((p: { text: string }) => p.text)).toEqual(['Elsőnek szólok.', 'Másodiknak.']);
+    expect(list.items[0].authorUsername).toBe('alapito');
+  });
+
+  it('"postPermission: owner" beállításnál a sima tag nem posztolhat a hírfolyamba, a falra viszont igen', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Szigorú Hírfolyam', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    await db
+      .collection('bandas')
+      .doc(bandaId)
+      .set({ settings: { postPermission: 'owner' } }, { merge: true });
+
+    const deniedFeed = await call(`/${bandaId}/feed`, OTHER, {
+      method: 'POST',
+      body: JSON.stringify({ text: 'Nem szabadna.' }),
+    });
+    expect(deniedFeed.status).toBe(403);
+
+    const allowedWall = await call(`/${bandaId}/wall`, OTHER, {
+      method: 'POST',
+      body: JSON.stringify({ text: 'A falra bárki írhat.' }),
+    });
+    expect(allowedWall.status).toBe(201);
+
+    const wall = await (await call(`/${bandaId}/wall`, OWNER)).json();
+    expect(wall.items).toHaveLength(1);
+    expect(wall.items[0].text).toBe('A falra bárki írhat.');
+  });
+
+  it('üres vagy túl hosszú posztot elutasít', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Validációs Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+
+    const empty = await call(`/${bandaId}/feed`, OWNER, { method: 'POST', body: JSON.stringify({ text: '   ' }) });
+    expect(empty.status).toBe(400);
+
+    const tooLong = await call(`/${bandaId}/feed`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ text: 'a'.repeat(1001) }),
+    });
+    expect(tooLong.status).toBe(400);
   });
 });

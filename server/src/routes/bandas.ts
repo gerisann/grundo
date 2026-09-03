@@ -576,3 +576,120 @@ bandasRouter.get('/:id/members', async (req: AuthedRequest, res: Response, next)
     next(error);
   }
 });
+
+/* ═══════════════════════════════════════════════════════════════════
+   Hírfolyam és chat fal (GRUNDO #30, Phase 2 folytatása)
+
+   Mindkettő csak tagoknak olvasható/írható. A hírfolyamra a
+   `settings.postPermission` szerint posztolhat (a `canInvite`
+   mintájára, `meetsRolePermission`-nel) — a chat falra bárki tag ír,
+   arra nincs külön beállítás (`docs/02-funkcionalis-spec.md`).
+
+   A LISTA A LEGRÉGEBBIVEL KEZDŐDIK (mint a hozzászólások,
+   `routes/activities.ts` → `/:id/comments`): egy hírfolyam/chat fal
+   fordított sorrendben olvashatatlan. A lekérdezés a legfrissebb N
+   dokumentumot kéri le (`orderBy('createdAt', 'desc').limit(N)`), és a
+   válaszban FORDÍTVA adja vissza — ez olcsóbb, mint egy második
+   indexelt mező bevezetése csak a sorrendhez.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const POST_MAX = 1000;
+const FEED_PAGE = 50;
+const WALL_PAGE = 100;
+
+async function loadMemberRole(bandaRef: FirebaseFirestore.DocumentReference, uid: string): Promise<BandaRole> {
+  const memberSnap = await bandaRef.collection('members').doc(uid).get();
+  if (!memberSnap.exists) throw forbidden('Csak a banda tagjai láthatják.');
+  return (memberSnap.data() as { role?: BandaRole }).role ?? 'member';
+}
+
+function toPostSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
+  const data = doc.data() as Record<string, unknown>;
+  return {
+    id: doc.id,
+    authorUid: String(data.authorUid ?? ''),
+    authorUsername: String(data.authorUsername ?? ''),
+    text: String(data.text ?? ''),
+    createdAt: millis(data.createdAt),
+  };
+}
+
+bandasRouter.get('/:id/feed', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, uid);
+
+    const snapshot = await bandaRef.collection('feed').orderBy('createdAt', 'desc').limit(FEED_PAGE).get();
+    res.json({ items: snapshot.docs.map(toPostSummary).reverse(), hasMore: snapshot.docs.length >= FEED_PAGE });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/feed', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    if (!text) throw badRequest('empty_post', 'Írj valamit a posztba.');
+    if (text.length > POST_MAX) throw badRequest('post_too_long', `A poszt legfeljebb ${POST_MAX} karakter.`);
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    const [bandaSnap, role, userSnap] = await Promise.all([
+      bandaRef.get(),
+      loadMemberRole(bandaRef, uid),
+      db.collection(COLLECTIONS.users).doc(uid).get(),
+    ]);
+    if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+
+    const settings = (bandaSnap.data() as { settings?: Partial<BandaSettings> }).settings ?? DEFAULT_BANDA_SETTINGS;
+    if (!canInvite(role, settings.postPermission ?? DEFAULT_BANDA_SETTINGS.postPermission)) {
+      throw forbidden('Ebben a bandában nincs jogosultságod posztolni.');
+    }
+
+    const authorUsername = String((userSnap.data() as { username?: string } | undefined)?.username ?? '');
+    const postRef = bandaRef.collection('feed').doc();
+    await postRef.set({ authorUid: uid, authorUsername, text, createdAt: FieldValue.serverTimestamp() });
+
+    res.status(201).json({ id: postRef.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.get('/:id/wall', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, uid);
+
+    const snapshot = await bandaRef.collection('wall').orderBy('createdAt', 'desc').limit(WALL_PAGE).get();
+    res.json({ items: snapshot.docs.map(toPostSummary).reverse(), hasMore: snapshot.docs.length >= WALL_PAGE });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/wall', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    if (!text) throw badRequest('empty_message', 'Írj valamit az üzenetbe.');
+    if (text.length > POST_MAX) throw badRequest('message_too_long', `Az üzenet legfeljebb ${POST_MAX} karakter.`);
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    // Nincs jogosultság-ellenőrzés — a chat falra bárki tag ír.
+    await loadMemberRole(bandaRef, uid);
+    const userSnap = await db.collection(COLLECTIONS.users).doc(uid).get();
+
+    const authorUsername = String((userSnap.data() as { username?: string } | undefined)?.username ?? '');
+    const messageRef = bandaRef.collection('wall').doc();
+    await messageRef.set({ authorUid: uid, authorUsername, text, createdAt: FieldValue.serverTimestamp() });
+
+    res.status(201).json({ id: messageRef.id });
+  } catch (error) {
+    next(error);
+  }
+});

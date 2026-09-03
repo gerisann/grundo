@@ -323,6 +323,17 @@ service cloud.firestore {
         allow read: if isSelf(uid);
         allow write: if false;
       }
+
+      // Hírfolyam és chat fal (GRUNDO #30) — csak tagoknak olvasható, minden
+      // írás szerveroldalon (a `postPermission`/jogosultság ellenőrzésével).
+      match /feed/{postId} {
+        allow read: if signedIn() && exists(/databases/$(database)/documents/bandas/$(bandaId)/members/$(request.auth.uid));
+        allow write: if false;
+      }
+      match /wall/{msgId} {
+        allow read: if signedIn() && exists(/databases/$(database)/documents/bandas/$(bandaId)/members/$(request.auth.uid));
+        allow write: if false;
+      }
     }
 
     match /inviteCodes/{code} { allow read, write: if false; }  // csak szerver

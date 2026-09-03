@@ -499,13 +499,24 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   megy, collectionGroup-lekérdezés nélkül. Lásd `server/src/routes/bandas.ts`.
 - `inviteCodes/{code}` → `{ bandaId }`
 - Nincs `joinRequests`: publikus bandánál a csatlakozás azonnali, privátnál
-  kizárólag meghívókóddal — az appon-belüli-meghívás+értesítés (Phase 2)
-  `bandas/{id}/invites/{uid}` alá kerül majd. A `totals`-t egy külön,
-  óránként futó rollup job (`jobs/bandaRollover.ts`) számolja a tagok
+  kizárólag meghívókóddal vagy appon belüli meghívással. A `totals`-t egy
+  külön, óránként futó rollup job (`jobs/bandaRollover.ts`) számolja a tagok
   jelenlegi `territoryM2`/`areaDay`/`areaWeek`/`areaMonth`/`gpTotal`/
   `gpWeek`/`gpMonth` mezőiből — nem élő olvasáskor.
-- Phase 2/3 bővíti: `bandas/{id}/feed/{postId}` (hírfolyam),
-  `bandas/{id}/wall/{msgId}` (chat fal), `bandas/{id}/invites/{uid}`.
+- `bandas/{id}/invites/{uid}` → `{ invitedBy, invitedByUsername, createdAt }`
+  *(GRUNDO #30)* — appon belüli meghívás, tükrözve
+  `users/{uid}/bandaInvites/{bandaId}` alá (`{ bandaName, invitedBy,
+  invitedByUsername, createdAt }`), a tagság-tükör mintájára: a „rám váró
+  meghívók" lista ebből megy, collectionGroup-lekérdezés nélkül. Elfogadás/
+  elutasítás mindkét oldalról törli. Lásd `server/src/routes/bandas.ts`.
+- `bandas/{id}/feed/{postId}` és `bandas/{id}/wall/{msgId}` *(GRUNDO #30)* →
+  mindkettő `{ authorUid, authorUsername, text, createdAt }`. Csak tagoknak
+  olvasható. A hírfolyamra a `settings.postPermission` szerint posztolhat
+  (`everyone`/`moderators`/`owner`, a `meetsRolePermission` dönti el), a
+  chat falra bárki tag írhat, arra nincs külön beállítás. Nincs
+  szerkesztés/törlés/lájk/válasz Phase 2-ben — sima, időrendi lista.
+- Phase 3 bővíti: moderátor-kinevezés, kirúgás, tulajdonos-átruházás, a
+  beállítások képernyő, és a share-link mélylink-parsolása.
 
 ### `challenges/{challengeId}`
 ```ts

@@ -22,11 +22,14 @@ const INVITE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export type BandaVisibility = 'public' | 'private';
 export type BandaRole = 'owner' | 'moderator' | 'member';
 
+/** Ki hívhat meg / ki posztolhat — mindkét beállítás ugyanezt a három fokozatot ismeri. */
+export type RolePermission = 'everyone' | 'moderators' | 'owner';
+
 export interface BandaSettings {
-  whoCanInvite: 'everyone' | 'moderators' | 'owner';
-  inviteCodeVisibleTo: 'everyone' | 'moderators' | 'owner';
-  /** Phase 2: ki posztolhat a hírfolyamba. */
-  postPermission: 'everyone' | 'moderators' | 'owner';
+  whoCanInvite: RolePermission;
+  inviteCodeVisibleTo: RolePermission;
+  /** Ki posztolhat a hírfolyamba — a chat falra bárki tag írhat, arra nincs beállítás. */
+  postPermission: RolePermission;
 }
 
 export const DEFAULT_BANDA_SETTINGS: BandaSettings = {
@@ -36,16 +39,19 @@ export const DEFAULT_BANDA_SETTINGS: BandaSettings = {
 };
 
 /**
- * Meghívhat-e egy adott szerepkörű tag, a banda `whoCanInvite`
- * beállítása szerint. Az alapító mindig meghívhat, a beállítástól
- * függetlenül.
+ * Teljesíti-e egy adott szerepkörű tag a banda egy adott jogosultsági
+ * beállítását (`whoCanInvite`, `postPermission`) — az alapító mindig igen,
+ * a beállítástól függetlenül.
  */
-export function canInvite(role: BandaRole, whoCanInvite: BandaSettings['whoCanInvite']): boolean {
+export function meetsRolePermission(role: BandaRole, permission: RolePermission): boolean {
   if (role === 'owner') return true;
-  if (whoCanInvite === 'owner') return false;
-  if (whoCanInvite === 'moderators') return role === 'moderator';
+  if (permission === 'owner') return false;
+  if (permission === 'moderators') return role === 'moderator';
   return true;
 }
+
+/** Meghívhat-e — a `meetsRolePermission` a `whoCanInvite` beállításra. */
+export const canInvite = meetsRolePermission;
 
 export interface BandaAreaTotals {
   foot: number;
