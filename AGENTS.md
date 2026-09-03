@@ -434,3 +434,18 @@ beszélgetés folyt. Ha a kettő eltér, a beszélgetés száma az igazság, és
   levelezés. Ha a meglévő infrastruktúra megoldja, ne hozz be harmadik felet.
 - **A saját korábbi állapotomból indulok ki** a friss HEAD helyett. A repóban
   más forrás is dolgozik; mindig a friss `HEAD`-ből indulj.
+- ⚠️ **A KONFIGURÁCIÓS FORRÁST TÉNYKÉNT KEZELTEM A KÉSZÜLÉK HELYETT.** A
+  hangzár feloldását (`sound.ts`, `unlockSounds()`) natívban kihagytam, mert a
+  szállított Capacitor forrásában feketén-fehéren ott állt, hogy nincs
+  gesztus-követelmény (`mediaTypesRequiringUserActionForPlayback = []`, iOS;
+  `setMediaPlaybackRequiresUserGesture(false)`, Android). A következő iOS
+  buildben **minden hang elnémult** — a WebKit gesztus-kapuja ugyanis nem az
+  egyetlen feltétel: a rendszer hangútvonalát (AVAudioSession) csak egy valódi,
+  gesztusból indított lejátszás nyitja meg. Egy build-ciklusba került.
+  **Egy kapcsoló elolvasása NEM mérés.** Platform-viselkedésre csak készüléken
+  mért bizonyíték számít; forrásból legfeljebb hipotézis lesz. Ha nincs mód a
+  méréshez, mondd ki, hogy a javítás feltételezésen áll — és inkább azt a
+  változatot válaszd, ami hibás feltevés mellett is működik. Kapcsolódik az
+  [1. Mérj, ne feltételezz](#1-mérj-ne-feltételezz) ponthoz, csak ez a fordítottja:
+  ott találgattam mérés helyett, itt egy MÁS kérdésre adott mérést fogadtam el
+  válasznak arra, amit nem mértem.
