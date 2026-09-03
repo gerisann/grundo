@@ -90,6 +90,26 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
 - **A commit és a push az ügynöké**, de minden push után szólni kell.
 - **A natív app nem kerül külön repóba** — a `src/game/` motor közössége miatt.
 
+## Ügynök-konfiguráció betöltése (2026-09-03, mérve a 2.1.255 binárison)
+
+- **A `.claude/rules/` MINDEN fájlja Project-memóriaként töltődik be**, és
+  `paths:` frontmatter nélkül `session_start` okkal, azaz minden menetben. ⚠️
+  **Ne tegyél scope nélküli fájlt a `.claude/rules/`-ba.** Egyszer már
+  megtörtént: 536 sornyi szabály ült minden menet kontextusában.
+  `paths:` esetén a betöltés oka `path_glob_match`, tehát csak akkor jön be,
+  amikor Claude az illeszkedő fájlhoz nyúl.
+- **A Claude Code NEM tölti be az `AGENTS.md`-t.** A memóriabetöltő csak a
+  `CLAUDE.md`-t, a `.claude/CLAUDE.md`-t, a `CLAUDE.local.md`-t és a
+  `.claude/rules/`-t ismeri; az `AGENTS.md` a binárisban csak a
+  Codex-migrációban és az `/init`-ben szerepel. Az `AGENTS.md` ezért **a
+  Codexnek és más ügynököknek** szól, és csak átirányítás — ne kerüljön bele
+  önálló tartalom, mert az azonnal duplikáció lesz.
+- **Eljárás- és referenciaanyag skillbe megy**, nem szabályfájlba: telepítés,
+  menetindítás, menetzárás, mért tanulságok. A skill neve és leírása kerül csak
+  a rendszerpromptba, a törzse hívásra.
+- Cél: a **mindig betöltött** instrukció a projekt `CLAUDE.md`-jére (≈100 sor)
+  és a globális `~/.claude/CLAUDE.md`-re (≈50 sor) szorítkozzon.
+
 ## Archívum
 
 A `#12`–`#13` menetek részletes átadói a
