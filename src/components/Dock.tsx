@@ -3,12 +3,16 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useTrackingEnvironment } from '@/tracking/environment';
-import { HoldFinishButton, SwipeFinishButton } from '@/components/FinishGestureButtons';
+import {
+  FINISH_HOLD_MS,
+  HoldFinishButton,
+  SwipeFinishButton,
+} from '@/components/FinishGestureButtons';
 import { GAMEPLAY } from '@/config/gameplay';
 import {
   pauseSoundPlayback,
+  playHoldSound,
   playSound,
-  resumeSoundPlayback,
   unlockSounds,
 } from '@/lib/sound';
 import './Dock.css';
@@ -318,7 +322,11 @@ export function Dock() {
         ) : (
           <HoldFinishButton
             onFinish={finishActivity}
-            onHoldStart={() => resumeSoundPlayback('pressing-finish-activity')}
+            /* A hang a sáv AKTUÁLIS állásáról indul, nem onnan, ahol legutóbb
+               abbahagytuk — a sáv ugyanis közben visszafolyik. */
+            onHoldStart={(progress) =>
+              playHoldSound('pressing-finish-activity', progress, FINISH_HOLD_MS)
+            }
             onHoldPause={() => pauseSoundPlayback('pressing-finish-activity')}
             onHoldReset={() => pauseSoundPlayback('pressing-finish-activity', true)}
           />

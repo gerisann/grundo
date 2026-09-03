@@ -1,13 +1,15 @@
 /**
- * A HANGZÁR FELOLDÁSA — a natív hangzavar regressziós tesztje.
+ * A HANGZÁR FELOLDÁSA — regressziós teszt.
  *
- * Háttér: iOS-en a `HTMLMediaElement.volume` írása nem hat, ezért a `volume =
- * 0`-ra épülő „néma feloldás" ott TELJES HANGERŐN szólalt meg, elemenként.
- * A részletes indoklás és a mérés a `sound.ts` `unlockSounds()` fejlécében van.
+ * ⚠️ EZ A TESZT EGY ÉLES NÉMULÁS EMLÉKE. 2026-09-03-án natívban kihagytuk a
+ * feloldást (a Capacitor forrása szerint ott nincs gesztus-követelmény) — a
+ * következő iOS buildben MINDEN hang elnémult. A feloldásnak MINDEN platformon
+ * le kell futnia; a részletes indoklás a `sound.ts` `unlockSounds()` fejlécében
+ * van.
  *
- * A teszt MINDKÉT irányt őrzi, mert a javítás könnyen átbillenhet a másik
- * hibába: natívban ne szóljon semmi, weben viszont MINDEN elem oldódjon fel —
- * különben a 3-2-1 visszaszámlálás első sípja maradna néma.
+ * A második eset a hallható farok: iOS-en a `volume = 0` hatástalan, ezért a
+ * `pause()`-nak SZINKRON módon kell lefutnia a `play()` után, nem csak a
+ * promise beérkezésekor.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,61 +22,20 @@ vi.mock('./platform', () => ({
   isNativeAndroid: () => false,
 }));
 
-/**
- * iOS-szerű elem: a `volume` értékadása CSENDBEN elszáll (a hangerő a fizikai
- * gombok alatt van), az olvasás mindig 1-et ad. A `play()` ezért hallhatóan
- * indul akkor is, ha a hívó nullára állította volna.
- */
-class IosAudio {
-  static instances: IosAudio[] = [];
-  /** Minden hallhatóan elindult lejátszás — EZ a mérés tárgya. */
-  static audibleStarts: string[] = [];
-
-  currentTime = 0;
-  paused = true;
-  preload = '';
-  muted = false;
-  private readonly actualVolume = 1;
-
-  constructor(readonly src: string) {
-    IosAudio.instances.push(this);
-  }
-
-  get volume(): number {
-    return this.actualVolume;
-  }
-
-  set volume(_value: number) {
-    /* iOS: az értékadás nem hat */
-  }
-
-  setAttribute(): void {}
-
-  play(): Promise<void> {
-    this.paused = false;
-    if (!this.muted && this.actualVolume > 0) IosAudio.audibleStarts.push(this.src);
-    return Promise.resolve();
-  }
-
-  pause(): void {
-    this.paused = true;
-  }
-}
-
-/** Böngészős elem: a `volume` írása HAT, tehát a feloldás valóban néma. */
-class WebAudio {
-  static instances: WebAudio[] = [];
+class FakeAudio {
+  static instances: FakeAudio[] = [];
 
   currentTime = 0;
   paused = true;
   preload = '';
   volume = 1;
   playCount = 0;
-  /** A `volume` értéke a `play()` pillanatában — a némaság bizonyítéka. */
-  volumeAtPlay: number[] = [];
+  /** Igaz, ha a `pause()` már azelőtt lefutott, hogy a promise beérkezett. */
+  pausedSynchronously = false;
+  private settled = false;
 
   constructor(readonly src: string) {
-    WebAudio.instances.push(this);
+    FakeAudio.instances.push(this);
   }
 
   setAttribute(): void {}
@@ -82,20 +43,19 @@ class WebAudio {
   play(): Promise<void> {
     this.paused = false;
     this.playCount += 1;
-    this.volumeAtPlay.push(this.volume);
-    return Promise.resolve();
+    return Promise.resolve().then(() => {
+      this.settled = true;
+    });
   }
 
   pause(): void {
+    if (!this.settled) this.pausedSynchronously = true;
     this.paused = true;
   }
 }
 
 beforeEach(() => {
-  platform.native = false;
-  IosAudio.instances = [];
-  IosAudio.audibleStarts = [];
-  WebAudio.instances = [];
+  FakeAudio.instances = [];
 });
 
 afterEach(() => {
@@ -104,37 +64,42 @@ afterEach(() => {
 });
 
 describe('unlockSounds', () => {
-  it('natív appban EGYETLEN hangot sem indít el', async () => {
-    platform.native = true;
-    vi.stubGlobal('Audio', IosAudio);
+  it.each([
+    ['weben', false],
+    ['natív appban', true],
+  ])('%s MINDEN elemet felold', async (_label, native) => {
+    platform.native = native;
+    vi.stubGlobal('Audio', FakeAudio);
     const { unlockSounds } = await import('./sound');
 
     unlockSounds();
 
     /**
-     * A javítás nélkül itt 51 hallható indítás van (32 cellahang négyféle
-     * hangból, plusz visszaszámlálás, hurok, aktivitás-hangok) — pontosan az
-     * a hangzavar, amit Geri iOS-en hallott.
+     * ⚠️ NATÍVBAN IS. A kihagyása néma appot eredményezett iOS-en — a
+     * gesztus-kapu feloldása nem elég, a rendszer hangútvonalát is egy valódi,
+     * gesztusból indított lejátszás nyitja meg.
      */
-    expect(IosAudio.audibleStarts).toEqual([]);
-    // Az elemek ettől még LÉTREJÖNNEK: a `primeSounds()` előtöltése kell,
-    // hogy a visszaszámlálás első sípja ne késsen.
-    expect(IosAudio.instances.length).toBeGreaterThan(0);
+    expect(FakeAudio.instances.length).toBeGreaterThan(0);
+    for (const element of FakeAudio.instances) {
+      expect(element.playCount).toBe(1);
+    }
   });
 
-  it('weben MINDEN elemet feloldja, némán', async () => {
-    platform.native = false;
-    vi.stubGlobal('Audio', WebAudio);
+  it('azonnal, szinkron módon megállítja az elemeket', async () => {
+    platform.native = true;
+    vi.stubGlobal('Audio', FakeAudio);
     const { unlockSounds } = await import('./sound');
 
     unlockSounds();
 
-    // A gesztus-követelmény weben valódi: minden elemnek meg kell szólalnia
-    // egyszer, különben a későbbi `play()` blokkolva marad.
-    expect(WebAudio.instances.length).toBeGreaterThan(0);
-    for (const element of WebAudio.instances) {
-      expect(element.playCount).toBe(1);
-      expect(element.volumeAtPlay).toEqual([0]);
+    /**
+     * iOS-en a `volume = 0` hatástalan, ezért a hallható farok hosszát KIZÁRÓLAG
+     * az dönti el, milyen gyorsan jön a `pause()`. A promise-ra várva egy teljes
+     * hangeffekt szólalna meg — elemenként, egyszerre 51-szer.
+     */
+    for (const element of FakeAudio.instances) {
+      expect(element.pausedSynchronously).toBe(true);
+      expect(element.paused).toBe(true);
     }
   });
 });

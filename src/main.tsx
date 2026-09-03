@@ -3,11 +3,19 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { watchChunkLoadErrors } from './lib/chunkReload';
 import './styles/global.css';
 import './components/ui/ui.css';
 
 // Az index.html indítási őrének jelezzük, hogy a JavaScript modul betöltődött.
 document.documentElement.dataset.grundoBooted = 'true';
+
+/**
+ * Telepítés közben nyitva hagyott app: a lustán töltött képernyők a RÉGI
+ * chunk-nevet kérnék, ami már nincs kiszolgálva. Egyetlen újratöltés megoldja
+ * — a részletek és a huroktörés a `chunkReload.ts`-ben.
+ */
+watchChunkLoadErrors();
 
 const queryClient = new QueryClient({
   defaultOptions: {

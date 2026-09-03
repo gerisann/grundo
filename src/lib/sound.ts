@@ -21,7 +21,6 @@
  */
 
 import { feedbackSettings, type FeedbackSettings } from './feedbackSettings';
-import { isNativeApp } from './platform';
 
 export type SoundName =
   | 'count-down-beep'
@@ -236,43 +235,43 @@ export function primeSounds(): void {
  * adott elem `play()`-e gesztus nélkül is engedélyezett (iOS-en ez elemenként
  * érvényes, ezért megy végig mindegyiken).
  *
- * ⚠️ NATÍV APPBAN NEM FUT LE — EZ EGY MÉRT, ÉLES HIBA JAVÍTÁSA (2026-09-03).
+ * ⚠️ EZ MINDEN PLATFORMON LEFUT — ÉS EZ EGY DRÁGÁN MEGTANULT LECKE.
  *
- * A TÜNET (Geri, iOS): cold start után a Dock Play gombjára — még a rögzítés
- * elindítása ELŐTT, pusztán a rögzítés képernyő betöltésekor — tömegesen,
- * egyszerre szólalt meg egy rakás hangeffekt (többféle cellahang ÉS a
- * területszerzés fanfárja). Egy app-indításonként pontosan egyszer; másik
- * oldalra váltva és visszatérve már nem, app bezárása/újranyitása után újra.
+ * 2026-09-03-án natívban KIHAGYTUK ezt a hívást, azzal az indoklással, hogy a
+ * Capacitor mindkét platformon kikapcsolja a gesztus-követelményt (iOS:
+ * `mediaTypesRequiringUserActionForPlayback = []`,
+ * `CAPBridgeViewController.swift:125`; Android:
+ * `setMediaPlaybackRequiresUserGesture(false)`, `Bridge.java:586`). A forrás
+ * ezt tényleg így tartalmazza — a KÉSZÜLÉK viszont mást mondott: a következő
+ * iOS buildben MINDEN hang elnémult, a Hangok képernyő kézi lejátszásával
+ * együtt. Androidon és weben nem változott semmi.
  *
- * AZ OK: iOS-en a `HTMLMediaElement.volume` ÍRÁSA NEM HAT — a hangerő ott a
- * fizikai gombok alatt van, az értékadás csendben elszáll (az olvasás mindig
- * 1-et ad). A fenti `unlockElement()` viszont pontosan ezzel a `volume = 0`
- * trükkel tenné némává a feloldó lejátszást. iOS-en tehát minden elem TELJES
- * HANGERŐN szólalt meg, egyetlen szinkron ciklusban. MÉRVE (a `volume`
- * no-op-ként modellezve): **51 `<audio>` elem indult el hallhatóan** — ebből
- * 32 cellahang négyféle hangból, plusz 2 `loop-closed`. Pontosan az, amit
- * Geri hallott. Weben és Androidon a `volume` működik, ezért ott néma volt —
- * innen a „csak iOS natív appon" tünet. Az egyszeriséget az `unlocked` modul-
- * szintű jelző adja: az app bezárásával új WebView és új JS-környezet indul.
+ * A TANULSÁG: a WebKit gesztus-kapuja NEM az egyetlen feltétel. A rendszer
+ * hangútvonala (AVAudioSession) attól még nem aktiválódik, hogy a `play()`-t
+ * a WebView engedélyezi — ahhoz kell egy valódi, gesztusból indított
+ * lejátszás. Egy konfigurációs kapcsoló olvasása tehát NEM helyettesíti a
+ * készüléken mérést. iOS-en a feloldás kell, pont.
  *
- * MIÉRT ELHAGYHATÓ NATÍVBAN: ott nincs is mit feloldani. A Capacitor mindkét
- * platformon kikapcsolja a gesztus-követelményt — iOS:
- * `webViewConfiguration.mediaTypesRequiringUserActionForPlayback = []`
- * (`CAPBridgeViewController.swift:125`), Android:
- * `settings.setMediaPlaybackRequiresUserGesture(false)` (`Bridge.java:586`),
- * mindkettő a szállított `@capacitor/*` 8.5.0 forrásában. A feloldás natívban
- * tehát semmit nem vett meg, cserébe iOS-en hangzavart okozott.
+ * ⚠️ A MÉG MEGOLDATLAN RÉSZ: iOS-en a `HTMLMediaElement.volume` ÍRÁSA NEM HAT
+ * (a hangerő ott a fizikai gombok alatt van, az olvasás mindig 1-et ad), ezért
+ * az alábbi `unlockElement()` `volume = 0`-s „némítása" ott hatástalan. MÉRVE
+ * (a `volume` no-op-ként modellezve): **51 `<audio>` elem** indul el, és iOS-en
+ * mind hallhatóan — ebből 32 cellahang négyféle hangból. Ez az a hangzavar,
+ * amit Geri az app indítása utáni ELSŐ Play-koppintáskor hall, pontosan
+ * egyszer (az `unlocked` jelző modul-szintű, új WebView → új JS-környezet).
  *
- * ⚠️ A WEBES ÁG MARAD, ÉS EZ SZÁNDÉKOS. Mobil Safariban és Chrome-ban a
- * gesztus-követelmény VALÓDI, és ott a `volume = 0` működik, tehát a feloldás
- * néma és nélkülözhetetlen — enélkül a 3-2-1 visszaszámlálás első sípja némán
- * maradna, pont az, amit a felhasználó a leggyakrabban hall.
+ * Amit ellene tehetünk a feloldás megtörése NÉLKÜL: a `pause()` AZONNAL,
+ * szinkron módon fut le a `play()` után (lásd `unlockElement`), nem csak a
+ * promise beérkezésekor — így a hallható farok a töredékére rövidül. A
+ * `muted = true` KÍSÉRTŐ, de veszélyes: a WebKit a némított lejátszást eleve
+ * korlátozás nélkül engedi, tehát vélhetően NEM „szentelné fel" az elemet a
+ * későbbi hangos lejátszáshoz — vagyis ugyanabba a néma hibába futnánk bele.
+ * Ezt csak KÉSZÜLÉKEN szabad kipróbálni, egy dedikált buildben.
  */
 export function unlockSounds(): void {
   if (unlocked) return;
   unlocked = true;
   primeSounds();
-  if (isNativeApp()) return;
   for (const name of SOUND_NAMES) {
     const target = pools.get(name);
     if (!target) continue;
@@ -284,17 +283,37 @@ export function unlockSounds(): void {
   if (resumable) unlockElement(resumable);
 }
 
+/**
+ * Egyetlen elem feloldása — hangosan indítva, de AZONNAL megállítva.
+ *
+ * ⚠️ A `pause()` SZINKRON, közvetlenül a `play()` után. A gesztus-kapu a
+ * `play()` hívásában oldódik fel (a WebKit ott törli a korlátozást az elemről),
+ * tehát az azonnali megállítás NEM rontja el a feloldást — viszont iOS-en, ahol
+ * a `volume = 0` hatástalan, ez a különbség egy teljes hangeffekt és egy alig
+ * hallható kattanás között. Korábban a megállítás CSAK a `play()` promise-ában
+ * futott le, ami iOS-en a tényleges lejátszás megindulása után érkezik.
+ *
+ * A `volume = 0` maradhat: weben ez teszi a feloldást tökéletesen némává,
+ * iOS-en pedig egyszerűen hatástalan, ártani nem árt.
+ */
 function unlockElement(element: HTMLAudioElement): void {
   const restore = element.volume;
   element.volume = 0;
-  const started = element.play();
   const settle = () => {
     element.pause();
     element.currentTime = 0;
     element.volume = restore;
   };
-  if (started && typeof started.then === 'function') started.then(settle, settle);
-  else settle();
+  try {
+    const started = element.play();
+    // A hallható farok levágása — lásd a fenti magyarázatot.
+    element.pause();
+    // A megszakított `play()` `AbortError`-ral utasít vissza; ez VÁRT, nem hiba.
+    if (started && typeof started.then === 'function') started.then(settle, settle);
+    else settle();
+  } catch {
+    settle();
+  }
 }
 
 /**
@@ -320,12 +339,65 @@ export function playSound(name: SoundName, settings = feedbackSettings()): void 
 }
 
 /**
- * Folytatható hang indítása. A normál `playSound()` minden alkalommal nullára
- * teker; a nyomva tartás hangjának viszont elengedés után ugyanonnan kell
- * továbbmennie a következő lenyomáskor.
+ * A hangerő-korlátok közé szorított playbackRate.
+ *
+ * A böngészők a szélsőséges sebességnél ELNÉMÍTJÁK a hangot (a Chrome nagyjából
+ * a 0,5–4 tartományon kívül). Egy néma visszajelzés rosszabb, mint egy nem
+ * tökéletesen szinkron: a tartományon kívül inkább a szinkronból engedünk.
  */
-export function resumeSoundPlayback(
+const MIN_PLAYBACK_RATE = 0.5;
+const MAX_PLAYBACK_RATE = 4;
+
+/**
+ * A NYOMVA TARTÁS HANGJÁNAK ÖSSZEHANGOLÁSA A GOMB TÖLTÖTTSÉGÉVEL — tiszta
+ * függvény, ez a tesztelhető rész.
+ *
+ * ⚠️ MIÉRT KELL. A `pressing-finish-activity.mp3` MÉRVE **2,04 másodperc**, a
+ * befejezés gomb viszont **1000 ms** alatt telik meg. Ez nem véletlen: a gomb
+ * eredetileg 2000 ms volt, és 2026-08-26-án felezték (lásd `FINISH_HOLD_MS`) —
+ * a hangot viszont nem igazította hozzá senki. Következmény: a hang második
+ * fele SOHA nem hallatszott, a gomb pedig már tele volt, mire a hang a feléhez
+ * ért.
+ *
+ * A második hiba a folytatás volt: elengedéskor a sáv VISSZAFOLYIK (350 ms),
+ * a hang viszont ott állt meg, ahol abbahagytuk, és onnan is folytatta. Egy
+ * 25%-ra visszafolyt sávhoz így egy 60%-nál járó hang tartozott.
+ *
+ * A megoldás mindkettőre ugyanaz: a hang MINDIG oda ugrik, ahol a gomb
+ * töltöttsége éppen tart, és a lejátszási sebesség a teljes hangot a gomb
+ * töltési ablakába préseli. Így a hang vége pontosan akkor ér a végére, amikor
+ * a sáv megtelik — bárhányszor engedjük el és nyomjuk újra közben.
+ *
+ * @param durationSec a hangfájl valódi hossza másodpercben
+ * @param progress    a gomb töltöttsége, 0..1
+ * @param windowMs    a teljes feltöltődés ideje ezredmásodpercben
+ */
+export function holdPlaybackFor(
+  durationSec: number,
+  progress: number,
+  windowMs: number,
+): { rate: number; currentTime: number } | null {
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
+  if (!Number.isFinite(windowMs) || windowMs <= 0) return null;
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0));
+  const rate = durationSec / (windowMs / 1000);
+  return {
+    rate: Math.min(MAX_PLAYBACK_RATE, Math.max(MIN_PLAYBACK_RATE, rate)),
+    currentTime: clamped * durationSec,
+  };
+}
+
+/**
+ * A nyomva tartás hangja, a gomb töltöttségéhez igazítva.
+ *
+ * A `durationSec` a betöltött metaadatból jön; amíg az nincs meg (`NaN`), a
+ * hang egyszerűen onnan szól, ahol áll — a némaság sosem opció, a rögzítés
+ * befejezése nem várhat a hangfájlra.
+ */
+export function playHoldSound(
   name: SoundName,
+  progress: number,
+  windowMs: number,
   settings = feedbackSettings(),
 ): void {
   if (!shouldPlaySound(name, settings)) return;
@@ -333,6 +405,11 @@ export function resumeSoundPlayback(
   if (!element) return;
   try {
     element.volume = Math.min(1, Math.max(0, settings.soundVolume * SOUND_GAIN[name]));
+    const plan = holdPlaybackFor(element.duration, progress, windowMs);
+    if (plan !== null) {
+      element.playbackRate = plan.rate;
+      element.currentTime = plan.currentTime;
+    }
     const started = element.play();
     if (started && typeof started.catch === 'function') started.catch(() => undefined);
   } catch {

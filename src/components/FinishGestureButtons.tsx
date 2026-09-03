@@ -26,7 +26,7 @@ import './Dock.css';
  * hosszú várakozás már csak lassítás. Nullára azért nem megy: a véletlen
  * koppintás nem szakíthatja félbe egy futás rögzítését.
  */
-const FINISH_HOLD_MS = 1000;
+export const FINISH_HOLD_MS = 1000;
 
 /**
  * Elengedéskor NEM ugrik vissza nullára, hanem visszaanimál — Geri kérése
@@ -45,7 +45,14 @@ export function HoldFinishButton({
   showOverlay = true,
 }: {
   onFinish: () => void;
-  onHoldStart?: () => void;
+  /**
+   * A nyomás KEZDETE — a paraméter a sáv AKTUÁLIS töltöttsége (0..1).
+   *
+   * ⚠️ A hívó ebből tudja a hangot a sávhoz igazítani. Egy visszafolyás
+   * közbeni újranyomásnál ez NEM nulla: a sáv onnan folytatja fölfelé, ahol
+   * épp tart, és a hangnak is onnan kell szólnia (Geri, 2026-09-03).
+   */
+  onHoldStart?: (progress: number) => void;
   onHoldPause?: () => void;
   onHoldReset?: () => void;
   /** `false`: a képernyő közepére kitett, teljes képernyős visszajelzés
@@ -86,7 +93,8 @@ export function HoldFinishButton({
   function start() {
     if (holding.current) return;
     holding.current = true;
-    onHoldStart?.();
+    // A sáv MOSTANI állása megy át, hogy a hang pontosan onnan szóljon.
+    onHoldStart?.(progressRef.current);
     cancelAnimationFrame(frame.current);
     // Ha épp visszafolyóban volt a sáv, onnan folytatja fölfelé — nem
     // nulláról indul újra.

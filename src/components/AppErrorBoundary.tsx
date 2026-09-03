@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { isChunkLoadError, reloadForStaleChunk } from '@/lib/chunkReload';
 
 interface Props {
   children: ReactNode;
@@ -21,6 +22,16 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    /**
+     * MÁSODIK VÉDŐHÁLÓ AZ ELAVULT CHUNKRA.
+     *
+     * Az elsődleges kezelés a `vite:preloadError` (lásd `chunkReload.ts`), de
+     * az csak a Vite ELŐTÖLTÉSÉT fedi le. Ha a hiba máshonnan jön — például egy
+     * `React.lazy()` importból, ami már nem az előtöltésen megy —, akkor itt
+     * kötünk ki. Ilyenkor a felhasználónak nem hibaüzenet jár, hanem egy csendes
+     * újratöltés; a huroktörés a `reloadForStaleChunk()`-ban van.
+     */
+    if (isChunkLoadError(error) && reloadForStaleChunk()) return;
     console.error('[GRUNDO] Kezeletlen React hiba az alkalmazás indulásakor.', error, info);
   }
 

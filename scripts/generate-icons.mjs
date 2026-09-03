@@ -54,6 +54,31 @@ const ADAPTIVE_FOREGROUND_SCALE = 0.72;
  */
 const MASKABLE_SCALE = 0.8;
 
+/**
+ * AZ iOS INDÍTÓKÉPERNYŐ (LaunchScreen) mérete és háttere.
+ *
+ * A `LaunchScreen.storyboard` egyetlen, 2732x2732-es négyzetes képet feszít ki
+ * `scaleAspectFill` módban. A háttér SZÁNDÉKOSAN a `splashBackground`
+ * (`android/app/src/main/res/values/colors.xml`), nem az ikon háttere: ez a két
+ * platform indítóképernyőjének KÖZÖS színe.
+ *
+ * ⚠️ Ez a rész 2026-09-03-ig HIÁNYZOTT a szkriptből, pedig a fejléce már akkor
+ * is splasht ígért — az iOS indítóképernyőn ezért egy RÉGI, leváltott logó
+ * (hatszög play-háromszöggel) maradt, jóval az arculatváltás után is.
+ */
+const SPLASH_SIZE = 2732;
+const SPLASH_BACKGROUND = '#09080D';
+
+/**
+ * A logó mérete az indítóképernyőn, a vászon szélességének arányában.
+ *
+ * ⚠️ AZ ARÁNY NEM ÍZLÉS KÉRDÉSE. A `scaleAspectFill` egy négyzetes képet egy
+ * MAGAS telefonképernyőre feszítve OLDALT LEVÁG: egy 1170x2532-es kijelzőn a
+ * kép középső ~46%-a látszik vízszintesen. A 30% ezen bőven belül van, tehát a
+ * hatszög a legkeskenyebb készüléken is teljes egészében látszik.
+ */
+const SPLASH_LOGO_SCALE = 0.3;
+
 async function write(path, buffer) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, buffer);
@@ -84,6 +109,33 @@ async function padded(size, scale, background) {
     create: { width: size, height: size, channels: 4, background },
   })
     .composite([{ input: image, top: offset, left: offset }])
+    .png()
+    .toBuffer();
+}
+
+/**
+ * Az indítóképernyő: a logó a vászon közepén, egyszínű, ÁTLÁTSZATLAN háttéren.
+ *
+ * A `padded()`-től abban tér el, hogy itt a háttér mindig tömör (az
+ * indítóképernyő mögött nincs mire átlátszani), és a méretarány sokkal kisebb.
+ */
+async function splash() {
+  const inner = Math.round(SPLASH_SIZE * SPLASH_LOGO_SCALE);
+  const image = await sharp(source).resize(inner, inner, { fit: 'cover' }).png().toBuffer();
+  const offset = Math.round((SPLASH_SIZE - inner) / 2);
+  return sharp({
+    create: {
+      width: SPLASH_SIZE,
+      height: SPLASH_SIZE,
+      channels: 4,
+      background: SPLASH_BACKGROUND,
+    },
+  })
+    .composite([{ input: image, top: offset, left: offset }])
+    .flatten({ background: SPLASH_BACKGROUND })
+    // A `flatten` átlátszatlanná teszi a képet, de a csatornát meghagyná —
+    // indítóképernyőn az alfa fölösleges súly.
+    .removeAlpha()
     .png()
     .toBuffer();
 }
@@ -131,6 +183,21 @@ async function main() {
     at('ios/App/App/public/icons/icon-maskable-512.png'),
     await padded(512, MASKABLE_SCALE, BACKGROUND),
   );
+
+  /**
+   * Az iOS indítóképernyő HÁROM fájlja azonos tartalommal.
+   *
+   * A `Splash.imageset` 1x/2x/3x változatot vár (a Capacitor így hozza létre),
+   * de mivel a kép már így is 2732 pixeles, nincs értelme három különböző
+   * felbontásnak — a storyboard úgyis a képernyőre feszíti. Android oldalon
+   * nincs teendő: ott az indítóképernyő a `grundo_app_icon`-t használja
+   * (`styles.xml`, `windowSplashScreenAnimatedIcon`), amit fent már megírtunk.
+   */
+  console.log('\niOS indítóképernyő:');
+  const splashImage = await splash();
+  for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
+    await write(at('ios/App/App/Assets.xcassets/Splash.imageset', name), splashImage);
+  }
 
   console.log('\nAndroid:');
   for (const { dir, launcher, foreground } of ANDROID_DENSITIES) {
