@@ -12,6 +12,7 @@ import {
   FREE_CELL_COLOR_KEYS,
   PRO_CELL_COLOR_KEYS,
   isCellColor,
+  isProCellColor,
   type CellColor,
 } from '@/lib/cellColors';
 import { List, ListRow, ScreenHeader, SegmentedControl, Switch, TextField } from '@/components/ui';
@@ -37,6 +38,11 @@ const MODE_HINT: Record<ThemeMode, string> = {
   system: 'A telefonod rendszerbeállítását követi.',
 };
 
+const ALL_CELL_COLOR_KEYS: readonly CellColor[] = [
+  ...FREE_CELL_COLOR_KEYS,
+  ...PRO_CELL_COLOR_KEYS,
+];
+
 function CellColorSection() {
   const { user } = useAuth();
   const { profile, patchProfile } = useProfile();
@@ -48,8 +54,8 @@ function CellColorSection() {
   const appliedRevision = useRef(0);
   const active = selected ?? stored;
 
-  async function choose(color: CellColor, locked: boolean) {
-    if (locked || !user || !db || color === active) return;
+  async function choose(color: CellColor) {
+    if (!user || !db || color === active) return;
     const revision = ++saveRevision.current;
     setSelected(color);
     setError('');
@@ -72,39 +78,24 @@ function CellColorSection() {
   }
 
   return (
-    <>
-      <section className="stack stack--tight">
+    <section className="stack stack--tight">
+      <div className="ccolor__section-head">
         <div className="label">A területed színe</div>
-        <CellColorCarousel
-          colors={FREE_CELL_COLOR_KEYS}
-          active={active}
-          locked={false}
-          onChoose={(color) => void choose(color, false)}
-        />
-        <p className="field__hint">
-          Ebben a színben látszik a területed a térképen — neked és mindenki másnak is.
-        </p>
-        {error ? <p className="field__error">{error}</p> : null}
-      </section>
+        {!isPro ? <span className="ccolor__badge">PRO színek zárolva</span> : null}
+      </div>
 
-      <section className="stack stack--tight">
-        <div className="ccolor__pro-head">
-          <div className="label">Prémium színek</div>
-          <span className="ccolor__badge">PRO</span>
-        </div>
-        <CellColorCarousel
-          colors={PRO_CELL_COLOR_KEYS}
-          active={active}
-          locked={!isPro}
-          onChoose={(color) => void choose(color, !isPro)}
-        />
-        <p className="field__hint">
-          {isPro
-            ? 'A Pro-előfizetéseddel ezek is a tieid.'
-            : 'Ezek a színek Pro-előfizetéssel választhatók.'}
-        </p>
-      </section>
-    </>
+      <CellColorCarousel
+        colors={ALL_CELL_COLOR_KEYS}
+        active={active}
+        isLocked={(color) => !isPro && isProCellColor(color)}
+        onChoose={(color) => void choose(color)}
+      />
+
+      <p className="field__hint">
+        Húzd oldalra a sort, vagy használd a nyilakat. A Pro-színek előfizetéssel választhatók.
+      </p>
+      {error ? <p className="field__error">{error}</p> : null}
+    </section>
   );
 }
 
