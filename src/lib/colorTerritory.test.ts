@@ -13,9 +13,9 @@ describe('generateColorTerritory', () => {
   });
 
   it('finishes every randomized fade within five seconds', () => {
-    const samples = [0, 0.15, 0.5, 0.85, 0.999];
+    const samples = [0, 0.15, 0.5, 0.85, 0.999] as const;
     let index = 0;
-    const cells = generateColorTerritory(() => samples[index++ % samples.length]);
+    const cells = generateColorTerritory(() => samples[index++ % samples.length] ?? 0);
 
     for (const cell of cells) {
       expect(cell.delayMs).toBeGreaterThanOrEqual(0);
