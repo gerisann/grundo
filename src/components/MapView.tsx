@@ -95,6 +95,17 @@ const AREA_DETAIL_MIN_ZOOM = CELL_DETAIL_MIN_ZOOM - 1;
 const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 const TILTED_PITCH = 55;
 const TILT_KEY = 'grundo.mapTilt';
+/**
+ * A menetirány-követés KÜLÖN kapcsoló a 2D/3D-től.
+ *
+ * ⚠️ Korábban a `tilted` (2D/3D) állapot vezérelte a menetirány-követést IS —
+ * 3D-be váltva a térkép automatikusan a haladási irányba fordult, 2D-ben
+ * mindig észak volt fent, külön kapcsoló nélkül. Geri kérése (2026-09-03):
+ * három ÖNÁLLÓ gomb kell — nézet (2D/3D), irány-mód (észak fent / menetirány
+ * fent) és a pozícióra ugrás —, mert eddig a két funkció egy gombon osztozott,
+ * és egymást váltották ki, nem lehetett pl. 3D-ben észak-fent nézetet kérni.
+ */
+const HEADING_UP_KEY = 'grundo.mapHeadingUp';
 
 /**
  * Követő nagyítás felülnézetben és bedöntött nézetben.
@@ -162,6 +173,22 @@ function writeTiltPreference(tilted: boolean): void {
   }
 }
 
+function readHeadingUpPreference(): boolean {
+  try {
+    return localStorage.getItem(HEADING_UP_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function writeHeadingUpPreference(headingUp: boolean): void {
+  try {
+    localStorage.setItem(HEADING_UP_KEY, headingUp ? 'on' : 'off');
+  } catch {
+    /* A mód ettől még átvált, csak nem marad meg. */
+  }
+}
+
 export function MapView({
   track,
   ghostTrack,
@@ -216,6 +243,7 @@ export function MapView({
   const followPaused = useRef(false);
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilted, setTilted] = useState(() => readTiltPreference());
+  const [headingUp, setHeadingUp] = useState(() => readHeadingUpPreference());
   const bearingRef = useRef<number | null>(null);
   const lastTrackSyncAt = useRef(0);
   const lastTrackSyncLength = useRef(0);
@@ -458,7 +486,7 @@ export function MapView({
     }
 
     if (follow && !followPaused.current) {
-      if (tilted) {
+      if (headingUp) {
         /*
           A menetirányt a nyomvonal VÉGE plusz a MOSTANI pozíció adja. A
           nyomvonalba csak ötméterenként kerül pont, a pozíció viszont
@@ -476,7 +504,7 @@ export function MapView({
               : smoothBearing(bearingRef.current, measured, BEARING_SMOOTHING);
         }
       }
-      const bearing = tilted ? bearingRef.current : null;
+      const bearing = headingUp ? bearingRef.current : null;
       const previous = markerPosition.current ?? position;
       instance.easeTo({
         center: [position.lng, position.lat],
@@ -485,7 +513,7 @@ export function MapView({
         ...(bearing !== null ? { bearing } : {}),
       });
     }
-  }, [position, follow, tilted]);
+  }, [position, follow, headingUp]);
 
   useEffect(() => {
     const instance = map.current;
@@ -494,13 +522,24 @@ export function MapView({
     // felcsatoláskor az alapértelmezett budapesti középpontra ráközelíteni
     // értelmetlen ugrás lenne.
     const zoom = centered.current ? { zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM } : {};
-    if (tilted) {
-      instance.easeTo({ pitch: TILTED_PITCH, ...zoom, duration: 400 });
-    } else {
-      bearingRef.current = null;
-      instance.easeTo({ pitch: 0, bearing: 0, ...zoom, duration: 400 });
-    }
+    instance.easeTo({ pitch: tilted ? TILTED_PITCH : 0, ...zoom, duration: 400 });
   }, [tilted]);
+
+  /**
+   * Az irány-mód a NÉZETTŐL (2D/3D) FÜGGETLEN kapcsoló.
+   *
+   * Kikapcsolva (észak fent) a bearinget vissza kell állítani 0-ra, és a
+   * simított menetirányt törölni, hogy a következő bekapcsolásnál ne a régi
+   * irányból induljon.
+   */
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    if (!headingUp) {
+      bearingRef.current = null;
+      instance.easeTo({ bearing: 0, duration: 400 });
+    }
+  }, [headingUp]);
 
   useEffect(() => {
     if (!follow) followPaused.current = false;
@@ -551,39 +590,37 @@ export function MapView({
           type="button"
           className={`mapview__tilt${tilted ? ' mapview__tilt--on' : ''}`}
           aria-pressed={tilted}
-          aria-label={
-            navigationModeControl
-              ? tilted
-                ? 'Észak legyen felfelé'
-                : 'Térkép forgatása a haladási irányba'
-              : tilted
-                ? 'Felülnézet (2D)'
-                : 'Bedöntött nézet (3D)'
-          }
-          title={
-            navigationModeControl
-              ? tilted
-                ? 'Észak felfelé'
-                : 'Haladási irány felfelé'
-              : tilted
-                ? 'Felülnézet'
-                : 'Bedöntött nézet'
-          }
+          aria-label={tilted ? 'Felülnézet (2D)' : 'Bedöntött nézet (3D)'}
+          title={tilted ? 'Felülnézet' : 'Bedöntött nézet'}
           onClick={() => {
             const next = !tilted;
             setTilted(next);
             writeTiltPreference(next);
           }}
         >
-          {navigationModeControl ? (
-            tilted ? <NavigationIcon /> : <CompassIcon />
-          ) : tilted ? '2D' : '3D'}
+          {tilted ? '2D' : '3D'}
+        </button>
+      ) : null}
+      {navigationModeControl ? (
+        <button
+          type="button"
+          className={`mapview__nav${headingUp ? ' mapview__nav--on' : ''}`}
+          aria-pressed={headingUp}
+          aria-label={headingUp ? 'Észak legyen felfelé' : 'Térkép forgatása a haladási irányba'}
+          title={headingUp ? 'Észak felfelé' : 'Haladási irány felfelé'}
+          onClick={() => {
+            const next = !headingUp;
+            setHeadingUp(next);
+            writeHeadingUpPreference(next);
+          }}
+        >
+          {headingUp ? <NavigationIcon /> : <CompassIcon />}
         </button>
       ) : null}
       {showRecenter && position && !hideRecenter ? (
         <button
           type="button"
-          className="mapview__recenter"
+          className={`mapview__recenter${navigationModeControl ? ' mapview__recenter--stacked' : ''}`}
           aria-label="Vissza a pozíciómra"
           onClick={() => {
             followPaused.current = false;
@@ -594,7 +631,7 @@ export function MapView({
                 center: [position.lng, position.lat],
                 zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
                 pitch: tilted ? TILTED_PITCH : 0,
-                bearing: tilted ? (bearingRef.current ?? target.getBearing()) : 0,
+                bearing: headingUp ? (bearingRef.current ?? target.getBearing()) : 0,
                 duration: RECENTER_DURATION_MS,
               });
             }

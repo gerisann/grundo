@@ -103,13 +103,28 @@
 }
 
 /*
-  ── Térképnézet-váltó ───────────────────────────────────────────────
+  Rögzítésnél (`navigationModeControl`) a jobb oldali oszlopban HÁROM gomb
+  van egymás alatt (lentről felfelé: 2D/3D, iránytű/navigáció, pozícióra
+  ugrás — Geri kérése, 2026-09-03, mert korábban a 2D/3D és az irány-mód EGY
+  gombon osztozott). A pozícióra ugrás gomb ilyenkor eggyel feljebb kerül,
+  hogy helyet adjon a köztük lévő iránytű-gombnak.
+*/
+.mapview__recenter--stacked {
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3) + 96px
+  );
+}
+
+/*
+  ── Térképnézet-váltó (2D/3D) ───────────────────────────────────────
   A jobb oldali oszlop ALSÓ, mindig elérhető helyén (lásd a `.mapview__
   recenter` fenti megjegyzését a cseréről) — pontosan egy vonalban a bal
   oldali hexagon-gombbal, AZONOS `bottom`-képlettel.
 
-  Rögzítésnél iránytű / navigáció ikonként az észak-fent és menetirány-fent
-  módot váltja. Más térképeken megmarad a korábbi 2D / 3D felirat.
+  ⚠️ Kizárólag a nézetet (pitch/zoom) váltja — az irány-mód (észak fent /
+  menetirány fent) 2026-09-03 óta KÜLÖN gomb (`.mapview__nav`), mert a kettő
+  korábban egy gombon osztozott, és nem lehetett pl. 3D-ben észak-fent
+  nézetet kérni.
 
   Mindig lila alapon (`--accent`) — Geri kérése (2026-08-27): korábban
   csak bekapcsolt (3D) állapotban volt kiemelve, most a hexagon-gombbal
@@ -144,6 +159,37 @@
 }
 
 .mapview__tilt--on {
+  background: #d946ef;
+  border-color: #d946ef;
+}
+
+/*
+  ── Irány-mód váltó (iránytű / navigáció) ───────────────────────────
+  A jobb oldali oszlop KÖZÉPSŐ helyén, a 2D/3D gomb és a pozícióra ugrás
+  gomb között — 2026-09-03-tól önálló gomb, lásd a `.mapview__tilt`
+  megjegyzését. Csak rögzítésnél jelenik meg (`navigationModeControl`).
+  Ugyanaz a szín- és méretlogika, mint a 2D/3D gombnál, hogy egy csoportnak
+  látsszanak.
+*/
+.mapview__nav {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3) + 48px
+  );
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  color: #fff;
+  z-index: 2;
+}
+
+.mapview__nav--on {
   background: #d946ef;
   border-color: #d946ef;
 }
