@@ -1,6 +1,6 @@
 # GRUNDO handoff
 
-> Frissítve: **2026-09-02** · átadás a **GRUNDO #26** menetből a **#27**-re
+> Frissítve: **2026-09-03** · átadás a **GRUNDO #27** menetből a következőre
 >
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · GitHub: `gerisann/grundo`
 >
@@ -8,77 +8,57 @@
 
 ## ÁLLAPOT
 
-Elkészült az aktivitásvezérlés hat új hangja és a telepítő félrevezető
-Secret Manager-ellenőrzésének javítása.
+Elkészült a rögzítés Mapbox-nézetének négy finomítása.
 
-### Telepítő
-
-- A `scripts/deploy.sh` nem módosítja többé a gép globális gcloud-projektjét;
-  a `grundo` projektet csak a saját folyamatára állítja be. Ettől megszűnik az
-  Application Default Credentials eltérő quota projektjéről szóló zajos
-  figyelmeztetés.
-- A backend előtt mind a négy Cloud Run-titkot ellenőrzi: `SMTP_PASSWORD`,
-  `JOBS_TOKEN`, `MAPBOX_TOKEN`, `RATE_LIMIT_HMAC_KEY`.
-- Csak a valódi `NOT_FOUND` jelent hiányzó titkot. Auth-, hálózati vagy
-  jogosultsági hibánál az eredeti gcloud hiba látszik; nem ad többé téves
-  titoklétrehozási utasítást.
-
-### Kliens
-
-- Szüneteltetéskor `pause-activity.mp3`, folytatáskor
-  `resume-activity.mp3`, új körnél `new-lap.mp3` szól.
-- A húzásos és a nyomva tartós befejezés sikeres gesztusa után
-  `finish-activity.mp3` szól, még a mentési folyamat indítása előtt.
-- Nyomva tartás közben a `pressing-finish-activity.mp3` fut. Felengedéskor
-  megáll és megőrzi a pozícióját; újranyomáskor innen folytatódik. Sikeres
-  befejezéskor vagy a gomb megszűnésekor megáll és nullára áll.
-- Az `activity-saved.mp3` nem az űrlap elküldésekor szól: a mentésből érkező
-  aktivitás-részletező sikeres adatbetöltése váltja ki. A navigációs jelző
-  egyszer használatos, ezért frissítés vagy visszalépés nem ismétli meg.
-- A Hangok képernyőn új, külön kapcsolható „Aktivitásvezérlés” csoport van,
-  mind a hat hang meghallgatható.
-- A régi `localStorage` beállítások mezőnként migrálódnak; az új csoport
-  alapértelmezetten be van kapcsolva.
-- A hat forrásfájl és a `public/sounds`, illetve a production build példányai
-  SHA-256 szerint bitre azonosak.
+- A helyjelölő a két elfogadott GPS-minta között kérésenként animálódik. Az
+  átmenet hossza a minták időbélyegéből következik, korlátokkal: nem lehet
+  túl rövid, nem nyúlhat a következő mintára, és hosszú háttérszünet után
+  röviden felzárkózik.
+- A követő kamera ugyanazzal az időzítéssel, lineáris átmenettel követi a
+  jelölőt. Így a ritkább minta sem ugró pozícióként látszik.
+- A kézi térképmozgás megállapítása `movestart`-on történik; az esemény
+  tényleges felhasználói bemenetét ellenőrzi. Ez egységesen lefedi a húzást,
+  csippentést, görgős zoomot és forgatást, ezért a visszaközpontosító gomb
+  megbízhatóbban jelenik meg.
+- Rögzítéskor az alsó jobb gomb az észak-fent / haladási-irány-fent módot
+  váltja. Észak-fent állapotban iránytű, követő módban navigációs ikon látszik.
+  A visszaközpontosító gomb a fölötte lévő, meglévő pozícióban maradt.
+- A menetirányhoz használt alapvonal 25 m-ről 15 m-re csökkent, a simítás
+  súlya 0,4-ről 0,65-re nőtt: a kamera két-három minta alatt fordul a kanyarba,
+  miközben a rövid, zajos pontok nem fordítják el önmagukban.
+- A mozgásra érzékeny rendszerbeállítás (`prefers-reduced-motion`) esetén a
+  marker és a kamera azonnal vált pozíciót.
 
 ## ÉLESBEN FUT / TELEPÍTETLEN
 
-- A hosszúmentés `c33a935` és a hangok `7e9b396` commitja már a GitHubon van,
-  de a telepítés a hibás Secret Manager-előellenőrzésnél megállt.
-- A telepítőjavítás commitja még nincs pusholva és nincs telepítve.
-- A változások kiadásához **backend, majd frontend** telepítés kell.
-  A backend az előző commit miatt szükséges; a hangos commit önmagában csak
-  kliensoldali.
+- Ez a Mapbox-változás még nincs telepítve.
 - Adatmigráció, Firestore-szabály- és indextelepítés nem kell.
-- Az új hangok natív használatához az új HEAD-ből iOS- és Android-build kell;
-  a már futó korábbi buildek nem tartalmazzák az MP3-fájlokat.
+- Kiadáshoz **frontend** telepítés kell. A backend nem változott.
+- A változás Capacitor-webcsomagban él, ezért az új viselkedés iOS- és
+  Android-buildben is csak az új HEAD-ből jelenik meg.
 
 ## ELLENŐRZÉSEK
 
+- Célzott `mapMotion` és menetirány tesztek: **19 zöld**.
 - Gyökér typecheck: sikeres.
-- Célzott hangtesztek: **16 zöld**.
-- Teljes normál Vitest: **650 zöld**, 133 emulátoros kihagyva.
+- Teljes normál Vitest: **657 zöld**, 133 emulátoros kihagyva.
 - Production build: sikeres; a meglévő nagy chunk figyelmeztetés maradt.
-- A hat MP3 forrás → public → dist SHA-256 egyezése sikeres.
-- Vizuális QA: az új Hangok csoport világos témában rendben, 720 px széles
-  nézetben sem lóg ki. Külön sötét ellenőrzés ebben a menetben nem történt;
-  CSS nem változott, az új sorok a meglévő tokenes komponenseket használják.
-- Natív készülékes hang- és életcikluspróba csak az új buildből lehetséges.
-- A telepítő Bash szintaxisellenőrzése sikeres.
-- Git Bashből, folyamatlokális `grundo` projektbeállítással mind a négy
-  szükséges Secret Manager-titok elérhető; a `MAPBOX_TOKEN` ténylegesen
-  létezik és az éles `grundo-api` is ezt használja.
+- `git diff --check`: sikeres.
+- Vizuális QA: a rögzítés térképén világos témában az új iránytűgomb és
+  akadálymentes címkéi megjelentek. Az automatizált böngésző nem továbbította
+  a Mapbox fölötti vezérlő kattintását, ezért a két állás valós készülékes
+  próbája még szükséges. Sötét témás külön kézi QA nem történt; az ikon a
+  meglévő, tokenes vezérlő színeit használja.
 
 ## KÖVETKEZŐ LÉPÉSEK
 
-1. Geri pusholja a telepítőjavítás commitját.
-2. Nincs adatbázis-lépés.
-3. Telepítési sorrend: **backend → frontend**.
-4. Az új HEAD-ből iOS- és Android-build készítendő.
-5. Készüléken ellenőrizendő mind a hat esemény, különösen a nyomva tartás
-   felengedés/újranyomás folytonossága és a mentési hang késleltetett időzítése.
-6. Következő fejlesztési menet: szerveroldali inkrementális geometriai
+1. Nincs adatbázis-lépés.
+2. Ha Geri kéri a kiadást: **frontend** telepítés.
+3. Az új HEAD-ből iOS- és Android-build készítendő.
+4. Készüléken ellenőrizendő: ritka GPS-mintán a marker/kamera folytonossága,
+   kézi mozgatás után a visszaközpontosító megjelenése, valamint az iránytű két
+   állása világos és sötét témában.
+5. Következő nagy fejlesztés: szerveroldali inkrementális geometriai
    részszámítás.
 
 ## NYITOTT ÜGYEK
@@ -86,10 +66,8 @@ Secret Manager-ellenőrzésének javítása.
 1. A szerveroldali inkrementális geometria még nincs megtervezve vagy kódolva.
    Fontos csapda a sorrenden kívül érkező natív GPS-minta: ilyenkor a
    részállapot érvénytelenné válhat, és kell a mai teljes újraszámolási ág.
-2. Az előző commit `activityUploads` sikertelen életjelei a következő
-   próbálkozáskor felülíródnak, de külön időalapú takarító job még nincs.
-3. A hosszú mentés és az új hangok natív készülékes ellenőrzése az új buildre
-   vár.
+2. A hosszú mentés és aktivitáshangok natív készülékes ellenőrzése az új
+   buildre vár.
 
 ## MODELLJAVASLAT A KÖVETKEZŐ MENETRE
 
@@ -101,14 +79,13 @@ Secret Manager-ellenőrzésének javítása.
 
 1. `AGENTS.md`
 2. `HANDOFF.md` (ez a fájl)
-3. `src/lib/sound.ts`
-4. `src/components/Dock.tsx`
-5. `src/components/FinishGestureButtons.tsx`
-6. `src/screens/TrackingScreen.tsx`
-7. `src/screens/ActivityScreen.tsx`
-8. `src/lib/feedbackSettings.ts`
-9. `src/game/index.ts` (`IncrementalActivityGeometry`)
-10. `src/game/loopDetection.ts` (`IncrementalLoopDetector`)
-11. `src/game/cells.ts` (`IncrementalCellPath`)
-12. `server/src/lib/activityCommit.ts`
-13. `server/src/lib/activityChunked.ts`
+3. `src/lib/mapMotion.ts`
+4. `src/lib/mapMotion.test.ts`
+5. `src/lib/heading.ts`
+6. `src/components/MapView.tsx`
+7. `src/screens/TrackingScreen.tsx`
+8. `src/game/index.ts` (`IncrementalActivityGeometry`)
+9. `src/game/loopDetection.ts` (`IncrementalLoopDetector`)
+10. `src/game/cells.ts` (`IncrementalCellPath`)
+11. `server/src/lib/activityCommit.ts`
+12. `server/src/lib/activityChunked.ts`

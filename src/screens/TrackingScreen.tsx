@@ -612,7 +612,7 @@ export function TrackingScreen() {
   const liveFix = useMemo(
     () =>
       liveActive && livePosition
-        ? { lat: livePosition.lat, lng: livePosition.lng }
+        ? { lat: livePosition.lat, lng: livePosition.lng, t: livePosition.t }
         : null,
     [liveActive, livePosition],
   );
@@ -1342,6 +1342,7 @@ const MapPane = memo(function MapPane({
             ghostTrack={ghostTrack}
             position={position}
             allowTilt
+            navigationModeControl
             hexesVisible={hexesVisible}
             onToggleHexes={onToggleHexes}
             follow={follow}

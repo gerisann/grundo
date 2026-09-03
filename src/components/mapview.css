@@ -103,10 +103,13 @@
 }
 
 /*
-  ── 2D / 3D nézetváltó ──────────────────────────────────────────────
+  ── Térképnézet-váltó ───────────────────────────────────────────────
   A jobb oldali oszlop ALSÓ, mindig elérhető helyén (lásd a `.mapview__
   recenter` fenti megjegyzését a cseréről) — pontosan egy vonalban a bal
   oldali hexagon-gombbal, AZONOS `bottom`-képlettel.
+
+  Rögzítésnél iránytű / navigáció ikonként az észak-fent és menetirány-fent
+  módot váltja. Más térképeken megmarad a korábbi 2D / 3D felirat.
 
   Mindig lila alapon (`--accent`) — Geri kérése (2026-08-27): korábban
   csak bekapcsolt (3D) állapotban volt kiemelve, most a hexagon-gombbal

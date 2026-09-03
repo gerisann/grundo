@@ -7,6 +7,12 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { mapStyleFor } from '@/lib/theme';
 import { mapboxConfigured, mapboxToken } from '@/lib/mapbox';
 import { smoothBearing, trackBearing } from '@/lib/heading';
+import {
+  interpolateMapPosition,
+  isUserCameraMove,
+  mapMotionDuration,
+  type MapPosition,
+} from '@/lib/mapMotion';
 import { cellsToAreaPolygons } from '@/lib/hexAreas';
 import { cellColorHex } from '@/lib/cellColors';
 import type { HexRole } from './HexMap';
@@ -42,10 +48,12 @@ export interface MapViewProps {
    * `ROLE_COLOR.trail`.
    */
   trailColor?: string | null;
-  position?: { lat: number; lng: number } | null;
+  position?: MapPosition | null;
   follow?: boolean;
   hideRecenter?: boolean;
   allowTilt?: boolean;
+  /** A 2D/3D felirat helyett észak-fent / menetirány-fent kapcsoló. */
+  navigationModeControl?: boolean;
   hexesVisible?: boolean;
   onToggleHexes?: () => void;
   fitTrack?: boolean;
@@ -100,13 +108,11 @@ const FOLLOW_ZOOM = 16;
 const TILTED_ZOOM = 17.6;
 
 /**
- * A követő animáció hossza.
- *
- * Rövidebb kell, mint a minták közti idő (~1 s), különben az új animáció a
- * régi közben indul, és a térkép sosem ér a pozícióhoz — látható, állandó
- * lemaradás. 350 ms elég sima, és 650 ms tartalékot hagy.
+ * A kézi visszaközpontosítás rövid, de jól követhető átmenete. Az automatikus
+ * követés hossza a GPS-minták időközéből jön (`mapMotionDuration`), hogy a
+ * kamera két minta között is folyamatosan haladjon.
  */
-const FOLLOW_DURATION_MS = 350;
+const RECENTER_DURATION_MS = 400;
 
 /**
  * Élő rögzítésnél ennyi ideig várunk KÉT nyomvonal-`setData` hívás között.
@@ -122,12 +128,14 @@ const TRACK_SYNC_MIN_INTERVAL_MS = 3_000;
 /**
  * A menetirány simítása.
  *
- * 0,2-ről emelve: a régi értékkel a térkép egy kanyar után 8-10 mintán
- * keresztül forgott a helyes irányba, ami futótempóban is 10 másodperc. 0,4
- * mellett három-négy minta alatt beáll, és a `trackBearing` 25 méteres
- * bázisvonala miatt még mindig nem ugrál a GPS zajától.
+ * A navigációs nézetnek gyorsan kell befordulnia a kanyarba, de az új irányt
+ * nem ugorhatja meg egyetlen képkockában. A 0,65-ös súly két-három mintán
+ * belül beáll, a 15 méteres navigációs bázis pedig a zaj nagy részét előtte
+ * már kiszűri.
  */
-const BEARING_SMOOTHING = 0.4;
+const BEARING_SMOOTHING = 0.65;
+/** Navigációban rövidebb bázis kell, hogy a térkép hamarabb vegye a kanyart. */
+const NAVIGATION_BEARING_BASE_M = 15;
 
 /**
  * Ennyi pont végéből számoljuk a menetirányt.
@@ -165,6 +173,7 @@ export function MapView({
   follow = true,
   hideRecenter = false,
   allowTilt = false,
+  navigationModeControl = false,
   hexesVisible,
   onToggleHexes,
   fitTrack = false,
@@ -179,6 +188,8 @@ export function MapView({
   const container = useRef<HTMLDivElement | null>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
+  const markerPosition = useRef<MapPosition | null>(null);
+  const markerAnimation = useRef(0);
   const ready = useRef(false);
   const centered = useRef(false);
   const fitted = useRef(false);
@@ -244,13 +255,15 @@ export function MapView({
     instance.on('moveend', () => report(instance));
 
     const pauseFollow = (event: unknown) => {
-      if ((event as { originalEvent?: unknown }).originalEvent === undefined) return;
+      if (!isUserCameraMove(event as { originalEvent?: unknown })) return;
       followPaused.current = true;
       setShowRecenter(true);
     };
-    instance.on('dragstart', pauseFollow);
-    instance.on('zoomstart', pauseFollow);
-    instance.on('rotatestart', pauseFollow);
+    // Egyetlen Mapbox-esemény lefedi a húzást, csippentést, görgős zoomot és
+    // forgatást. A három külön `dragstart`/`zoomstart`/`rotatestart` figyelő
+    // mobilon nem minden gesztussorozatot látott, ezért a visszaközpontosító
+    // hol megjelent, hol nem.
+    instance.on('movestart', pauseFollow);
 
     instance.on('click', `${CELL_SOURCE}-fill`, (event) => {
       const feature = event.features?.[0];
@@ -302,6 +315,8 @@ export function MapView({
       ready.current = false;
       marker.current?.remove();
       marker.current = null;
+      markerPosition.current = null;
+      cancelAnimationFrame(markerAnimation.current);
       instance.remove();
       map.current = null;
     };
@@ -412,8 +427,25 @@ export function MapView({
       marker.current = new mapboxgl.Marker({ element: dot })
         .setLngLat([position.lng, position.lat])
         .addTo(instance);
+      markerPosition.current = position;
     } else {
-      marker.current.setLngLat([position.lng, position.lat]);
+      const from = markerPosition.current ?? position;
+      const duration = prefersReducedMotion() ? 0 : mapMotionDuration(from, position);
+      cancelAnimationFrame(markerAnimation.current);
+      if (duration === 0) {
+        marker.current.setLngLat([position.lng, position.lat]);
+        markerPosition.current = position;
+      } else {
+        const startedAt = performance.now();
+        const step = (now: number) => {
+          const progress = Math.min(1, (now - startedAt) / duration);
+          const current = interpolateMapPosition(from, position, progress);
+          marker.current?.setLngLat([current.lng, current.lat]);
+          markerPosition.current = current;
+          if (progress < 1) markerAnimation.current = requestAnimationFrame(step);
+        };
+        markerAnimation.current = requestAnimationFrame(step);
+      }
     }
 
     if (!centered.current) {
@@ -433,7 +465,10 @@ export function MapView({
           másodpercenként frissül — ha csak a nyomvonalat néznénk, az irány
           annyival maradna le, amennyivel a pötty korábban lemaradt.
         */
-        const measured = trackBearing(bearingTrack(trackRef.current, position));
+        const measured = trackBearing(
+          bearingTrack(trackRef.current, position),
+          NAVIGATION_BEARING_BASE_M,
+        );
         if (measured !== null) {
           bearingRef.current =
             bearingRef.current === null
@@ -442,9 +477,11 @@ export function MapView({
         }
       }
       const bearing = tilted ? bearingRef.current : null;
+      const previous = markerPosition.current ?? position;
       instance.easeTo({
         center: [position.lng, position.lat],
-        duration: FOLLOW_DURATION_MS,
+        duration: prefersReducedMotion() ? 0 : mapMotionDuration(previous, position),
+        easing: linearEasing,
         ...(bearing !== null ? { bearing } : {}),
       });
     }
@@ -514,15 +551,33 @@ export function MapView({
           type="button"
           className={`mapview__tilt${tilted ? ' mapview__tilt--on' : ''}`}
           aria-pressed={tilted}
-          aria-label={tilted ? 'Felülnézet (2D)' : 'Bedöntött nézet (3D)'}
-          title={tilted ? 'Felülnézet' : 'Bedöntött nézet'}
+          aria-label={
+            navigationModeControl
+              ? tilted
+                ? 'Észak legyen felfelé'
+                : 'Térkép forgatása a haladási irányba'
+              : tilted
+                ? 'Felülnézet (2D)'
+                : 'Bedöntött nézet (3D)'
+          }
+          title={
+            navigationModeControl
+              ? tilted
+                ? 'Észak felfelé'
+                : 'Haladási irány felfelé'
+              : tilted
+                ? 'Felülnézet'
+                : 'Bedöntött nézet'
+          }
           onClick={() => {
             const next = !tilted;
             setTilted(next);
             writeTiltPreference(next);
           }}
         >
-          {tilted ? '2D' : '3D'}
+          {navigationModeControl ? (
+            tilted ? <NavigationIcon /> : <CompassIcon />
+          ) : tilted ? '2D' : '3D'}
         </button>
       ) : null}
       {showRecenter && position && !hideRecenter ? (
@@ -538,7 +593,9 @@ export function MapView({
               target.easeTo({
                 center: [position.lng, position.lat],
                 zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
-                duration: 400,
+                pitch: tilted ? TILTED_PITCH : 0,
+                bearing: tilted ? (bearingRef.current ?? target.getBearing()) : 0,
+                duration: RECENTER_DURATION_MS,
               });
             }
           }}
@@ -551,6 +608,33 @@ export function MapView({
         </button>
       ) : null}
     </>
+  );
+}
+
+function linearEasing(progress: number): number {
+  return progress;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+function CompassIcon() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="m12 5 3.2 8.3L12 12l-3.2 1.3L12 5Z" fill="currentColor" />
+      <path d="m12 19-3.2-8.3L12 12l3.2-1.3L12 19Z" fill="currentColor" opacity="0.45" />
+    </svg>
+  );
+}
+
+function NavigationIcon() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M4.1 10.7 20.2 3.8a.7.7 0 0 1 .9.9l-6.9 16.1a.7.7 0 0 1-1.3-.1l-2.2-7.4-7.4-2.2a.7.7 0 0 1-.1-1.3Z" />
+    </svg>
   );
 }
 

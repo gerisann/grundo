@@ -92,8 +92,12 @@ export function normalizeBearing(degrees: number): number {
  * sokkal jobb, mint északra ugrani.
  *
  * @param points időrendben növekvő nyomvonal; az utolsó elem a legfrissebb
+ * @param minimumBaseM rövidebb értékkel gyorsabb, de zajérzékenyebb az irány
  */
-export function trackBearing(points: readonly LatLng[]): number | null {
+export function trackBearing(
+  points: readonly LatLng[],
+  minimumBaseM = MIN_BASE_M,
+): number | null {
   if (points.length < 2) return null;
 
   const last = points[points.length - 1]!;
@@ -109,7 +113,7 @@ export function trackBearing(points: readonly LatLng[]): number | null {
   let walked = 0;
   for (let index = points.length - 2; index >= lowest; index -= 1) {
     walked += distanceM(points[index]!, points[index + 1]!);
-    if (walked >= MIN_BASE_M) {
+    if (walked >= minimumBaseM) {
       const base = points[index]!;
       // Két egybeeső pont (álló GPS) irányszöge értelmezhetetlen — az atan2
       // ilyenkor 0-t adna, ami hamis „északnak" látszana.

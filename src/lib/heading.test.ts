@@ -86,6 +86,21 @@ describe('trackBearing', () => {
     expect(trackBearing(points)).toBeCloseTo(90, 0);
   });
 
+  it('rövidebb navigációs bázissal direktebben követi a friss kanyart', () => {
+    const corner = destinationPoint(ORIGIN, 0, 200);
+    const points: LatLng[] = [ORIGIN, corner];
+    for (let index = 1; index <= 4; index += 1) {
+      points.push(destinationPoint(corner, 90, index * 5));
+    }
+
+    const defaultBearing = trackBearing(points);
+    const navigationBearing = trackBearing(points, 15);
+    expect(defaultBearing).not.toBeNull();
+    expect(navigationBearing).not.toBeNull();
+    expect(Math.abs(navigationBearing! - 90)).toBeLessThan(Math.abs(defaultBearing! - 90));
+    expect(navigationBearing).toBeCloseTo(90, 0);
+  });
+
   it('zajos mintákból is a valódi irányt hozza ki', () => {
     /*
       Ez az a helyzet, amiért a hosszabb bázisvonal létezik. A séta kelet felé
