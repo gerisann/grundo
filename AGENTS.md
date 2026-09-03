@@ -224,6 +224,35 @@ használati limit tokenben mér, és a legerősebb modell rutinmunkára pazarlá
 A javaslat legyen egy mondat, ne fejtegetés. Ha a kör közben tervezési
 elágazáshoz érsz, mondd ki, hogy innentől erősebb modell kellene.
 
+## 0.5 Haladásjelzés — MINDEN munka közbeni üzenet végén
+
+**Minden munka közbeni visszajelzés VÉGÉN írd ki, hol tart a feladat**, két
+alakban:
+
+- **százalékosan** — mennyi készült el a kör egészéből,
+- **`x/y` alakban** is, ha több feladat van egyszerre.
+
+Példa egy több tételes kör közben:
+
+> **Haladás: 4/7 kész (≈60%)** — most a mentés-szimuláción dolgozom.
+
+Ez nem formalitás: **Geri kifejezetten kérte (2026-09-03)**, méghozzá egy
+hosszú, hét tételes menet KÖZEPÉN, amikor a válaszaimból nem derült ki, hogy
+mennyi van még hátra. Egy hosszú körben ez a legfontosabb információ a
+számára — abból tudja, ráér-e mással foglalkozni, vagy mindjárt kérdezni
+fognak tőle valamit.
+
+Amire figyelj:
+
+- **A becslés legyen őszinte.** Ha egy tételről kiderül, hogy nagyobb a
+  vártnál, a százalék MEHET VISSZA — jobb, mint egy hazug 90%, ami fél óráig
+  áll.
+- **Ami elkészült, az kész**: a „kész" jelentse azt, hogy meg is van írva ÉS
+  lefutott rá az ellenőrzés, ne azt, hogy elkezdtem.
+- Egy tételes körnél elég a százalék, `x/y` nélkül.
+- A ZÁRÓ üzenetre nem vonatkozik: ott a fájl-táblázat és a teendők sorrendje
+  a dolga (lásd [6. Átadási protokoll](#6-átadási-protokoll)).
+
 ## 1. Mérj, ne feltételezz
 
 **Ez a visszatérő hibám.** Eddig legalább négyszer tippeltem mellé olyan

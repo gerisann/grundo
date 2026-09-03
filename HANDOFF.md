@@ -10,6 +10,22 @@
 > előző átadó viszont #27-et írt. Az AGENTS.md 7. pontja szerint a chat száma
 > az igazság, ezért állt vissza a számozás.
 
+## ⚠️ HALADÁSJELZÉS — EZ MOSTANTÓL MINDEN MENETRE ÉRVÉNYES
+
+**Minden munka közbeni üzenet VÉGÉN írd ki, hol tart a feladat**: százalékban,
+és több tételnél `x/y` alakban is. Példa:
+
+> **Haladás: 4/7 kész (≈60%)** — most a mentés-szimuláción dolgozom.
+
+Geri kifejezetten kérte (2026-09-03), egy hosszú, hét tételes menet közepén,
+mert a válaszaimból nem derült ki, mennyi van hátra. A becslés legyen őszinte:
+ha egy tétel nagyobbnak bizonyul, a százalék mehet vissza. A ZÁRÓ üzenetre nem
+vonatkozik — ott a fájl-táblázat és a teendők sorrendje a dolga.
+
+A szabály tartós helye az `AGENTS.md` **0.5** pontja; itt csak azért áll, hogy
+a következő menet biztosan találkozzon vele. **Ezt a szakaszt a következő
+átadó is vigye tovább.**
+
 ## ÁLLAPOT
 
 Egy éles adatvesztés kivizsgálása, javítása és helyreállítása, majd az abból
