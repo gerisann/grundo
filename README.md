@@ -23,7 +23,7 @@ cd server && npm install && npm run dev
 
 ## Fontos tudnivalók, mielőtt kódot írsz
 
-1. **Olvasd el az [AGENTS.md](AGENTS.md)-t.** Abban vannak a projekt szabályai.
+1. **Olvasd el a [CLAUDE.md](CLAUDE.md)-t.** Abban vannak a projekt szabályai (az [AGENTS.md](AGENTS.md) is oda mutat).
 2. **A `docs/` mappa a specifikáció** — magyarul, teljes egészében. Ha a kód és
    a spec eltér, a spec nyer.
 3. **A Firestore adatbázis neve `grundo-db`**, nem a `(default)`. Ha ezt elrontod,

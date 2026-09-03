@@ -36,7 +36,7 @@ amit utána a `grund.zip` tartalmával töltünk fel.
 
 A `grund.zip` tartalmának feltöltése után add ki a második promptot:
 
-> Feltöltöttem a projekt vázát. **Olvasd el az `AGENTS.md`-t teljes egészében, mielőtt bármit írsz** — abban vannak a projekt szabályai és a specifikáció útmutatója.
+> Feltöltöttem a projekt vázát. **Olvasd el a `CLAUDE.md`-t teljes egészében, mielőtt bármit írsz** — abban vannak a projekt szabályai és a specifikáció útmutatója.
 >
 > A `docs/` mappában van a teljes, magyar nyelvű specifikáció. **Ez az igazság forrása**: ha a kód és a spec eltér, a spec nyer.
 >
