@@ -1,52 +1,45 @@
-# Teszt- és build-gazdálkodás
+---
+description: Teszt-ritmus és a kimenet szűrése
+paths:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "vite.config.ts"
+---
 
-**Ne futtass feleslegeset.** A teljes készlet és a build kimenete drága, és a
-harmadik lefutás ugyanazt mondja, mint a második.
+# Tesztek
 
-## A ritmus
+**Ne futtass feleslegeset.** A harmadik teljes futás ugyanazt mondja, mint a
+második — és a kimenete a kontextusba kerül. *Konkrét eset:* a 3. menetben
+háromszor futott le a teljes készlet, pedig kettő elég lett volna.
 
-1. **Fejlesztés közben célzott futás** — csak az érintett tesztfájl:
-   `npx vitest run src/game/loop.test.ts`
-2. javítás,
-3. újra célzott futás,
-4. **a kör végén EGYSZER** a kötelező teljes ellenőrzés.
-
-*Konkrét eset:* a 3. menetben háromszor futott le a teljes készlet, pedig kettő
-elég lett volna — és minden futás teljes kimenete a kontextusba került.
-
-## Mit mikor
+1. **Fejlesztés közben célzott futás**: `npx vitest run <útvonal>`
+2. javítás → újra célzott futás
+3. **a kör végén EGYSZER** a teljes ellenőrzés
 
 | Ellenőrzés | Parancs | Mikor |
 |---|---|---|
-| Célzott teszt | `npx vitest run <útvonal>` | fejlesztés közben, mindig |
-| Teljes készlet | `npm run test` | commit előtt, **egyszer** |
-| Típusellenőrzés (gyökér) | `npx tsc --noEmit` | kör végén |
-| Típusellenőrzés (szerver) | `cd server && npx tsc --noEmit` | kör végén, **külön** |
+| Teljes készlet | `npm run test` | commit előtt, egyszer |
+| Typecheck | `npx tsc --noEmit` **és** `cd server && npx tsc --noEmit` | kör végén, mindkettő |
 | Emulátoros készlet | `npm run test:emulator` | **csak** ha Firestore-viselkedés változott (tranzakció, lekérdezés, séma, szabály) |
-| Production build | `npm run build` | ha a csomagméret/chunk a tét, vagy telepítés előtt |
+| Production build | `npm run build` | ha a csomagméret a tét, vagy telepítés előtt |
 
-⚠️ **A gyökér `tsc --noEmit` NEM ellenőrzi a `server/` mappát.** Ez már fogott
-meg valódi típushibát, amit a gyökér-ellenőrzés zölden átengedett.
+⚠️ **Az emulátoros aktivitás-tesztek EGYÜTT futtatva bukhatnak, külön-külön
+zöldek** — osztoznak egy emulátoron, a párhuzamos futtatás összeakasztja őket.
+Ez ismert teszt-izolációs hiba, nem regresszió. Futtasd fájlonként:
+
+```
+firebase emulators:exec --only firestore --project demo-grundo "npx vitest run <egy fájl> --testTimeout=45000"
+```
 
 ⚠️ **Git Bashben az emulátoros parancsok elé kell a Java PATH exportja.**
 
-## A kimenet kezelése
+## Kimenet
 
-- Szűrj: `npm run test 2>&1 | tail -25`, `| grep -E "FAIL|✗|Error"`.
-- Nagy kimenetet mentsd fájlba, és **abban** keress — ne öntsd a beszélgetésbe.
-- Egy zöld futásból egyetlen sor elég („681 zöld"). Csak a bukó teszt
-  részletét idézd.
+Szűrj: `| tail -25`, `| grep -E "FAIL|Error"`. Zöld futásból egyetlen sor elég
+(„681 zöld"); csak a bukó teszt részletét idézd. Nagy kimenetet mentsd fájlba,
+és abban keress.
 
-## Mérőeszközök — használd őket magyarázat helyett
+## Amit teszt nem bizonyít
 
-A repo tele van mérőeszközzel: `src/game/fixtures.ts`, a Firestore emulátor,
-`npm run inspect:world`, `npm run replay:world`, az `/admin/aktivitasok`
-auditnézet. **Mérj, mielőtt magyarázol.** Ha mérés nélkül adsz magyarázatot,
-mondd ki, hogy az feltételezés (lásd [`lessons.md`](lessons.md)).
-
-## Amit nem tudsz teszttel bizonyítani
-
-Natív viselkedést (háttér-GPS, hang, értesítés, engedély) **teszt nem
-bizonyít**. Ha ilyet írtál, a kör végén sorold fel tételesen, mit NEM tudtál
-ellenőrizni — ne állítsd késznek. Lásd
-[`native-and-release.md`](native-and-release.md).
+Natív viselkedést (háttér-GPS, hang, értesítés, engedély) teszt **nem** bizonyít
+— lásd [`native.md`](native.md).

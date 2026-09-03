@@ -1,32 +1,35 @@
 # AGENTS.md — GRUNDO
 
 **A projekt szabályai a [`CLAUDE.md`](CLAUDE.md)-ben vannak.** Ez a fájl csak
-átirányítás, hogy minden ügynök (Claude, Codex, bármi más) ugyanazt olvassa —
-így egyetlen helyen kell karbantartani.
+átirányítás, hogy minden ügynök ugyanazt olvassa — egy helyen kell karbantartani.
 
-## Kötelező olvasás minden munkamenet elején
+> **Claude Code-nak nem kell elolvasnia ezt a fájlt**: ő a `CLAUDE.md`-t és a
+> `.claude/rules/` útvonalhoz kötött szabályait tölti be magától. Ez a fájl a
+> Codexnek és más ügynököknek szól, amelyek `AGENTS.md`-t keresnek.
 
-1. [`CLAUDE.md`](CLAUDE.md) — a projekt, a tíz sérthetetlen szabály, a
-   konvenciók, a parancsok (200 sor alatt, szándékosan)
-2. [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md) — hol tartunk, mi a
-   következő lépés
+## Minden munkamenet elején
+
+1. [`CLAUDE.md`](CLAUDE.md) — a projekt, a sérthetetlen szabályok, a parancsok
+2. [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md) — hol tartunk
 3. `git status` és `git diff --stat`
 
-Ezután **célzott kereséssel** nyisd meg azt, ami az adott feladathoz kell. Ne
+Ezután **célzott kereséssel** nyisd meg, ami az adott feladathoz kell. Ne
 olvasd végig a repót.
 
-## A többi szabály — csak témába vágóan
+## Amit csak akkor olvass el, ha odanyúlsz
 
-| Fájl | Mikor |
+| Ha ehhez nyúlsz | Olvasd el |
 |---|---|
-| `.claude/rules/context-efficiency.md` | mindig: keresés, olvasás, kimenetkezelés |
-| `.claude/rules/workflow.md` | mindig: modellválasztás, haladásjelzés, menetzárás, feladatbontás |
-| `.claude/rules/testing.md` | teszt vagy build előtt |
-| `.claude/rules/git-and-deploy.md` | commit, push, telepítés |
-| `.claude/rules/native-and-release.md` | `android/`, `ios/`, GPS, értesítés |
-| `.claude/rules/tooling-traps.md` | fájlírás, PowerShell, YAML/JSON |
-| `.claude/rules/lessons.md` | mért tanulságok, ismert hibaminták |
-| `docs/ai/DECISIONS.md` | amit nem szabad visszacsinálni, és miért |
+| `src/game/`, `src/config/` | `.claude/rules/game-engine.md` |
+| `server/` | `.claude/rules/server.md` |
+| `src/screens/`, `components/`, `styles/`, `lib/`, `hooks/`, `store/` | `.claude/rules/frontend.md` |
+| `android/`, `ios/`, `src/tracking/` | `.claude/rules/native.md` |
+| `firebase.json`, `*.rules`, `.env*` | `.claude/rules/firebase-config.md` |
+| tesztfájl | `.claude/rules/testing.md` |
+| telepítés, kiadás | `.claude/skills/grundo-deploy/SKILL.md` |
+| menetzárás, átadás | `.claude/skills/grundo-handoff/SKILL.md` |
+| mért tanulságok, hibaminták | `.claude/skills/grundo-lessons/SKILL.md` |
+| tartós döntések | [`docs/ai/DECISIONS.md`](docs/ai/DECISIONS.md) |
 
 ⚠️ **Minden ügynök ebből az egy mappából dolgozik:**
 `C:\Users\Geri\Documents\GitHub\grundo`. Ne hozz létre másik klónt; ha a
@@ -34,4 +37,4 @@ munkamenet más útvonalon indul, állj meg és szólj.
 
 ⚠️ **Geri felé minden chat-üzenet magyarul** (a kód és a kommentek angolul), és
 **minden munka közbeni üzenet végén jelezd a haladást** százalékban, több
-tételnél `x/y` alakban is. Részletek: `.claude/rules/workflow.md`.
+tételnél `x/y` alakban is.

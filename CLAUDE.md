@@ -1,18 +1,17 @@
 # CLAUDE.md — GRUNDO
 
-Ez a fájl minden munkamenet elején betöltődik. **Rövid szándékosan.** A
-részletek hivatkozott fájlokban vannak — csak azt olvasd be, amire az aktuális
-feladathoz szükség van.
+Ez az egyetlen fájl, ami minden munkamenetben automatikusan betöltődik.
+**Szándékosan rövid.** A többi szabály vagy **útvonalhoz kötött** (akkor
+töltődik be, amikor az adott mappához nyúlsz), vagy **skillként** hívható.
 
-## Munkamenet indítása
+## Menetindítás
 
-1. ez a fájl (automatikusan betöltődik),
-2. `docs/ai/CURRENT_STATE.md` — hol tartunk, mi a következő lépés,
-3. `git status` + `git diff --stat`,
-4. csak ezután nyiss meg forrásfájlt, célzott kereséssel.
+1. `docs/ai/CURRENT_STATE.md` — hol tartunk, mi a következő lépés
+2. `git status` + `git diff --stat` — **a repóban más forrás is dolgozik**
+3. célzott keresés (`rg`), és csak a releváns tartomány olvasása
 
-**Ne olvasd végig a repót**, és ne töltsd be a teljes `docs/` fát. A
-kontextus-szabályok: [`.claude/rules/context-efficiency.md`](.claude/rules/context-efficiency.md).
+Teljes indítási eljárás menetszámmal és modelljavaslattal:
+**`/grundo-session-start`**. Menetzárás: **`/grundo-handoff`**.
 
 ## Mi ez a projekt
 
@@ -22,120 +21,76 @@ mozgásra ösztönzés — ezért a terület mellett egy különálló pontrends
 fut, ami az aktivitást önmagában jutalmazza.
 
 **Capacitor-app, EGY repóban:** web + `server/` (Cloud Run) + natív Android
-(Java) + natív iOS (Swift). Külön repóba semmit nem viszünk — a `src/game/`
-motor mindhárom oldalon ugyanaz a kód.
+(Java) + natív iOS (Swift). A `src/game/` motor mindhárom oldalon ugyanaz a kód
+— ezért azonos bitre az élő előnézet és a végleges eredmény.
+
+```
+src/config/  játékkonstansok     src/game/     A JÁTÉKMOTOR (tiszta fv., I/O nélkül)
+src/lib/     firebase, mapbox…   src/screens/  képernyők
+src/tracking/ GPS-rögzítő        src/store/    zustand
+server/      Cloud Run: routes/, trust/, jobs/, lib/
+android/     natív Java          ios/          natív Swift
+scripts/  graphhopper/  public/  vendor/  _archive/  tmp/ (sosem verziókövetett)
+```
+
+## A sérthetetlen szabályok — röviden
+
+A részletük ott töltődik be, ahol számít (lásd a táblázatot lent).
+
+1. A terület **hexagon-cellák halmaza**, nem poligon. Poligon-algebra soha.
+2. A bezárás **önmetszés**; a területszámítás a **teljes** nyomvonalból megy.
+3. A `src/game/` **közös** a szerverrel: nincs DOM, Firebase, Node-API, és
+   nincs platform szerinti elágazás.
+4. **A kliens soha nem ír játékadatot** — terület, GP, szint, jelvény,
+   előfizetés, Trust Score csak `server/`-ből.
+5. **A Trust Score sosem publikus**, csak a verdikt.
+6. **A Pro nem ad játékbeli előnyt.**
+7. **Terület mindig km²**, 3 tizedessel, `formatArea()`-val.
+8. **Minden játékkonstans a `src/config/gameplay.ts`-ben** — soha ne írj számot
+   a logikába.
+9. ⚠️ A Firestore adatbázis **`grundo-db`**, nem a `(default)`. Egy hiányzó
+   második paraméter csendben rossz helyre ír.
+10. **TypeScript `strict`, `any` nem elfogadható.** UI magyarul, kód angolul.
 
 ## A specifikáció
 
 A `docs/` mappa **az igazság forrása**. Ha a kód és a spec eltér, a spec nyer —
-vagy szólj, hogy a spec hibás. Index és alapkonstansok: `docs/README.md`.
-Célzottan nyisd meg azt a fejezetet, ami kell:
+vagy szólj, hogy a spec hibás. Index: `docs/README.md`. Célzottan nyisd meg,
+ami kell: `01` képernyők · `02` funkciók · `03` játékszabályok (hexrács,
+bezárás, védelem, Trust Score) · `04` pontrendszer · `05` adatmodell · `06`
+architektúra és admin · `07`–`08` iOS/Android kiadás.
 
-| Téma | Fájl |
-|---|---|
-| Képernyők, navigáció, design-nyelv | `docs/01-kepernyoterkep.md` |
-| Képernyőnkénti funkciók, privát zóna, Pro | `docs/02-funkcionalis-spec.md` |
-| Hexrács, bezárás, védelem, Trust Score | `docs/03-jatekszabalyok.md` |
-| GP-képlet számpéldákkal | `docs/04-pontrendszer.md` |
-| Firestore séma, indexek, szabályok | `docs/05-adatmodell.md` |
-| Szolgáltatások, jobok, admin, ütemterv | `docs/06-architektura-es-admin.md` |
-| iOS / Android kiadás (Codemagic) | `docs/07-…`, `docs/08-…` |
+Tartós megvalósítási döntések (**mit nem szabad visszacsinálni**):
+`docs/ai/DECISIONS.md`.
 
-## A tíz szabály, amit sosem szabad megsérteni
+## Parancsok (Git Bash, repo gyökér)
 
-1. **A terület hexagon-cellák halmaza**, nem szabad alakú poligon. H3 res 12,
-   307,09 m²/cella. Soha ne vezess be poligon-algebrát (turf.js boolean) a
-   területszámításba.
-2. **A bezárás = önmetszés.** Nem kell visszaérni a rajthoz; a belső cellákat
-   flood fill adja. Egy aktivitás alatt több bezárás is lehet.
-3. **A területszámítás mindig a TELJES nyomvonalból megy**, a privát zóna
-   levágásától függetlenül. A levágás kizárólag megjelenítési művelet.
-4. **A `src/game/` közös a klienssel és a szerverrel.** Ne ágazz el platform
-   szerint benne, és ne használj DOM-ot, Firebase-t vagy Node-API-t. Ezért
-   azonos bitre az élő előnézet és a végleges eredmény.
-5. **A kliens soha nem ír játékadatot.** Terület, GP, szint, jelvény,
-   előfizetés, bizalmi pontszám: kizárólag `server/`-ből. A Firestore-szabályok
-   ezt kikényszerítik — ne lazíts rajtuk.
-6. **A Trust Score sosem publikus.** Se a szám, se a részjelek. Csak a verdikt
-   (`trusted` / `pending_review` / `rejected`).
-7. **A gyanús aktivitás látszik, de nem módosít birtokviszonyt.** Nem tüntetjük
-   el a felhasználó futását.
-8. **A Pro nem ad játékbeli előnyt.** Csak kényelmi és közösségi funkciókat.
-9. **Terület mértékegysége mindig km²**, 3 tizedessel. Mindig a
-   `src/lib/format.ts` `formatArea()`-ját használd, sehol ne formázz kézzel.
-10. **Minden játékkonstans a `src/config/gameplay.ts`-ben van** — soha ne írj
-    számot közvetlenül a logikába. A hangolható konstansokat élesben az
-    `appConfig/gameplay` felülírhatja (séma: `src/config/tunables.ts`); a
-    szerkezetiek (H3 felbontás, cellaterület, `MAX_DEFENSE`, hurokküszöbök,
-    szintlépcső) NEM hangolhatók. A motor a konfigurációt **paraméterként**
-    kapja (`cfg`), és egy aktivitás a legelején pillanatképet vesz — egy futás
-    soha ne számoljon félig régi, félig új szabállyal.
-
-## Három megtévesztően hasonló név
-
-| Név | Mi ez | Hol |
-|---|---|---|
-| **GRUNDO** | az app / termék neve | felületi szövegek, `metadata.json`, `index.html` |
-| **`grundo`** | a Firebase **projekt** azonosítója | `.firebaserc`, `VITE_FIREBASE_PROJECT_ID` |
-| **`grundo-db`** | a Firestore **adatbázis** neve | `firebase.json`, `getFirestore(…)` |
-
-⚠️ A GRUNDO **nem** az alapértelmezett Firestore adatbázist használja. A
-`grundo-db` három helyen van rögzítve, és mindháromnak egyeznie kell:
-`firebase.json` (tömb alak), `src/lib/firebase.ts`, `server/server.ts`. Ha a
-második paraméter lemarad, a hívás **csendben** a `(default)`-ra megy: minden
-„működni fog", csak rossz helyen keletkeznek az adatok. Soha ne hívj
-`getFirestore()`-t máshol — mindig a `db` példányt importáld.
-
-## Technikai konvenciók
-
-- **TypeScript, `strict: true`.** `any` nem elfogadható.
-- **UI nyelve magyar**, a kód / változónév / komment **angol**.
-- **Stílus:** CSS-változók a `src/styles/tokens.css`-ből. Két téma (világos az
-  alapértelmezett). Ne írj beégetett színt, és minden képernyőt nézz meg
-  **mindkét témában**, mielőtt késznek nyilvánítod. Témalogika:
-  `src/lib/theme.ts` — ne duplikáld.
-- **Térkép:** Mapbox GL, a token környezeti változóból.
-- **Állapot:** TanStack Query a szerveradatra, `zustand` a helyi UI-állapotra.
-  Redux nincs.
-- **Hibakezelés:** minden szerverhívás hibája érthető **magyar** üzenetet
-  kapjon; nyers stack trace nem mehet a felületre.
-
-## Mappaszerkezet
-
-```
-src/config/   játékkonstansok      src/game/     A JÁTÉKMOTOR (tiszta fv., I/O nélkül)
-src/lib/      firebase, mapbox…    src/screens/  képernyők
-src/tracking/ GPS-rögzítő          src/store/    zustand
-server/       Cloud Run: routes/, trust/, jobs/, lib/
-android/      Capacitor + natív Java     ios/     Capacitor + natív Swift
-scripts/  graphhopper/  public/  vendor/  _archive/  tmp/ (sosem verziókövetett)
-```
-
-## Fontos parancsok
-
-| Mit | Parancs (Git Bash, repo gyökér) |
+| Mit | Parancs |
 |---|---|
 | Fejlesztői szerver | `npm run dev` |
 | Célzott teszt | `npx vitest run <útvonal>` |
 | Teljes teszt (commit előtt egyszer) | `npm run test` |
-| Emulátoros teszt (csak Firestore-változásnál) | `npm run test:emulator` |
 | Típusellenőrzés | `npx tsc --noEmit` **és külön** `cd server && npx tsc --noEmit` |
 | Build | `npm run build` |
 
-⚠️ A gyökér `tsc --noEmit` **nem** nézi a `server/` mappát. Ez már engedett át
+⚠️ A gyökér `tsc --noEmit` **nem** nézi a `server/` mappát — ez már engedett át
 valódi típushibát.
 
-## Szabályok — csak akkor olvasd be, ha az adott témához nyúlsz
+## Ami magától betöltődik, amikor odanyúlsz
 
-| Fájl | Mikor kell |
+| Útvonal | Szabályfájl |
 |---|---|
-| [`.claude/rules/context-efficiency.md`](.claude/rules/context-efficiency.md) | **mindig** — keresés, olvasás, kimenetkezelés |
-| [`.claude/rules/workflow.md`](.claude/rules/workflow.md) | **mindig** — modellválasztás, haladásjelzés, menetzárás, feladatbontás |
-| [`.claude/rules/testing.md`](.claude/rules/testing.md) | teszt vagy build futtatása előtt |
-| [`.claude/rules/git-and-deploy.md`](.claude/rules/git-and-deploy.md) | commit, push, telepítés |
-| [`.claude/rules/native-and-release.md`](.claude/rules/native-and-release.md) | `android/`, `ios/`, GPS, értesítés, kiadás |
-| [`.claude/rules/tooling-traps.md`](.claude/rules/tooling-traps.md) | fájlírás, PowerShell, YAML/JSON szerkesztés |
-| [`.claude/rules/lessons.md`](.claude/rules/lessons.md) | ha magyarázatot adnál mérés helyett |
+| `src/game/**`, `src/config/**` | `.claude/rules/game-engine.md` |
+| `server/**` | `.claude/rules/server.md` |
+| `src/screens/**`, `components`, `styles`, `lib`, `hooks`, `store` | `.claude/rules/frontend.md` |
+| `android/**`, `ios/**`, `src/tracking/**` | `.claude/rules/native.md` |
+| `firebase.json`, `*.rules`, `.env*`, `src/lib/firebase.ts` | `.claude/rules/firebase-config.md` |
+| `**/*.test.ts` | `.claude/rules/testing.md` |
+
+## Skillek (kézzel hívhatók)
+
+`/grundo-session-start` · `/grundo-handoff` · `/grundo-deploy` (telepítés,
+kiadás) · `/grundo-lessons` (mért tanulságok) · `/task-plan` · `/context-check`
 
 ## Amit kérdezz meg, ne találj ki
 
@@ -143,10 +98,7 @@ valódi típushibát.
   játékegyensúly nem tetszőleges.
 - Külső szolgáltatás kulcsát kérd el; ne generálj helyőrzőt, ami élesben marad.
 - Ha a spec két helyen ellentmond magának, jelezd, ne válassz magadtól.
-- Ha egy név ellentmond annak, amit Geri mondott, **állj meg és kérdezz** — ez
-  egyszer már egy fölösleges, második Firestore adatbázist eredményezett.
 
 ⚠️ **Minden ügynök ebből az egy mappából dolgozik:**
-`C:\Users\Geri\Documents\GitHub\grundo`. Ne hozz létre másik klónt. Ha a
-munkamenet más útvonalon indul, **állj meg és szólj** — 2026-08-29-en két klón
-egy kézzel feloldandó merge-konfliktust eredményezett.
+`C:\Users\Geri\Documents\GitHub\grundo`. Ne hozz létre másik klónt; ha a
+munkamenet más útvonalon indul, **állj meg és szólj**.
