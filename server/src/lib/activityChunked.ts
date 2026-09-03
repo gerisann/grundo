@@ -96,19 +96,35 @@ import type {
  * Hány blokk kerüljön egy csoportba?
  *
  * Csoportonként blokkonként egy írás, plusz a blokk-index és a részeredmény —
- * a 400 tehát bőven a Firestore 500-as korlátja alatt marad, és egy 200 km-es
- * kört is ~15 tranzakcióra oszt.
+ * a Firestore 500-as ÍRÁSSZÁM-korlátja alatt ez bőven elfér.
+ *
+ * ⚠️ AZ ÍRÁSSZÁM NEM AZ EGYETLEN KORLÁT — ez éles adatvesztést okozott
+ * (2026-09-02, `ebb3c240…`, 143 km-es bringakör). A csoport 400 blokkal
+ * `INVALID_ARGUMENT: Transaction too big` hibával elhasalt, pedig a nyers
+ * payload MÉRVE csak 1,48 MB volt, a 10 MiB-os határ töredéke. A tranzakció
+ * méretébe az INDEXBEJEGYZÉSEK is beleszámítanak: egy kibontott blokk `cells`
+ * mezője 343 cella × 3 mező, mindegyikre két index — blokkonként ~2 000
+ * bejegyzés, a csoport 79 vegyes blokkjával együtt ~160 000.
+ *
+ * KÉT VÉDELEM VAN, ez az egyik (előre, olcsón). A másik a `withSplitOnOverflow`:
+ * ha a csoport MÉGIS túl nagy, felezve újrapróbálja. A kettő szándékosan
+ * redundáns — a mentés elvesztése rosszabb, mint néhány extra tranzakció.
  */
-const BLOCKS_PER_GROUP = 400;
+const BLOCKS_PER_GROUP = 200;
 
 /**
  * Ennél több csoportot nem indítunk el egyetlen kérésben.
  *
- * Nem a Firestore korlátja, hanem a kérés futásidejéé: 40 csoport már ~8 000
- * blokk (≈840 km²), amire a Cloud Run időkorlátja is szűk lehet. Efölött
+ * Nem a Firestore korlátja, hanem a kérés futásidejéé: 80 csoport ~16 000
+ * blokk (≈1 680 km²), amire a Cloud Run időkorlátja is szűk lehet. Efölött
  * tiszta hibaüzenet jön — és ott lesz a helye a valódi sorbaállításnak.
+ *
+ * ⚠️ A 40-ről azért nőtt 80-ra, mert a `BLOCKS_PER_GROUP` felére csökkent: a
+ * kettő SZORZATA a lefedett terület, és azt nem akartuk szűkíteni. A felezés
+ * (`withSplitOnOverflow`) ezen felül keletkező al-csoportjai nem számítanak
+ * bele — azok ugyanannak a csoportnak a részei.
  */
-const MAX_GROUPS = 40;
+const MAX_GROUPS = 80;
 
 /**
  * Ennyi frontier-seedet őrzünk meg csoportonként.
@@ -203,10 +219,50 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
   const opening = await db.runTransaction(async (tx) => {
     const existing = await tx.get(activityRef);
     if (existing.exists) {
-      const data = existing.data() as { userId?: string; summary?: unknown };
+      const data = existing.data() as {
+        userId?: string;
+        summary?: unknown;
+        claimStatus?: unknown;
+        trustVerdict?: unknown;
+      };
       if (data.userId !== uid) {
         throw badRequest('activity_conflict', 'Ez az azonosító már foglalt.');
       }
+
+      /**
+       * FÉLBEMARADT MENTÉS = FOLYTATÁS, NEM DUPLIKÁTUM.
+       *
+       * ⚠️ EZ ÉLES ADATVESZTÉST OKOZOTT (2026-09-02, `ebb3c240…`). A darabolt
+       * úton az aktivitás dokumentuma már az 1. fázisban létrejön, a `summary`
+       * viszont csak a könyvzáráskor. Ha a csoportok között bármi elhasal, a
+       * dokumentum ott marad `claimStatus: 'pending'` állapotban — és a
+       * korábbi kód az ÚJRAKÜLDÉST duplikátumnak hitte, mert csak a dokumentum
+       * LÉTEZÉSÉT nézte. Az eredmény: 0 GP, 0 terület, örökre, és a válaszban
+       * egy `summary: undefined`, amitől a kliens eredményképernyője elszállt.
+       *
+       * A folytatás azért biztonságos, mert a csoportok determinisztikus
+       * azonosítójú részdokumentumba könyvelnek (`claimParts/group-N`): a már
+       * kész csoport `done.exists` ágon kilép, a hiányzó pedig lefut. Pontosan
+       * erre a szerződésre épült a darabolt út — eddig csak sosem jutott el
+       * idáig a vezérlés.
+       */
+      if (data.claimStatus === 'pending') {
+        const trustSnapshot = await tx.get(
+          db.collection(COLLECTIONS.activityTrust).doc(activityId),
+        );
+        const decision = (
+          trustSnapshot.data() as { appliedGameplayDecision?: unknown } | undefined
+        )?.appliedGameplayDecision;
+        return {
+          duplicate: false as const,
+          // A trust döntés a MENTÉS PILLANATÁBAN született; a folytatás nem
+          // értékeli újra. Hiányzó dokumentumnál a megengedő ág a helyes: a
+          // korábbi verdikt `trusted` volt, különben nem indult volna claim.
+          appliedToGameplay: decision !== 'withheld',
+          publicTrustVerdict: storedVerdict(data.trustVerdict),
+        };
+      }
+
       return { duplicate: true as const, summary: sanitizePublicSummary(data.summary) };
     }
 
@@ -311,8 +367,12 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
 
   if (opening.appliedToGameplay) {
     for (let index = 0; index < groups.length; index += 1) {
-      if (works) await applyCompactGroup(works, groups[index]!, index, partsRef);
-      else await applyGroup(plan, groups[index]!, index, partsRef);
+      const progressDone = index + 1;
+      await withSplitOnOverflow(groups[index]!, `group-${index}`, (blocks, partId) =>
+        works
+          ? applyCompactGroup(works, blocks, partId, progressDone, partsRef)
+          : applyGroup(plan, blocks, partId, progressDone, partsRef),
+      );
     }
 
     /* ── 2.5 FRONTIER — csak a compact úton, és csak lopás után ────── */
@@ -329,10 +389,11 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
   async function applyGroup(
     activityPlan: ActivityPlan,
     groupBlocks: string[],
-    index: number,
+    partId: string,
+    progressDone: number,
     parts: FirebaseFirestore.CollectionReference,
   ): Promise<void> {
-    const partRef = parts.doc(`group-${index}`);
+    const partRef = parts.doc(partId);
 
     await db.runTransaction(async (tx) => {
       // Determinisztikus azonosító → egy csoport kétszer nem könyvelhet.
@@ -395,12 +456,12 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
        */
       tx.set(
         activityRef,
-        { claimProgress: { done: index + 1, total: groups.length }, updatedAt: now },
+        { claimProgress: { done: progressDone, total: groups.length }, updatedAt: now },
         { merge: true },
       );
 
       tx.set(partRef, {
-        group: index,
+        group: partId,
         counts: merged.counts,
         stolenFrom: merged.stolenFrom,
         breakthroughFrom: merged.breakthroughFrom,
@@ -427,10 +488,11 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
   async function applyCompactGroup(
     compactWorks: ReadonlyMap<string, CompactBlockWork>,
     groupBlocks: string[],
-    index: number,
+    partId: string,
+    progressDone: number,
     parts: FirebaseFirestore.CollectionReference,
   ): Promise<void> {
-    const partRef = parts.doc(`group-${index}`);
+    const partRef = parts.doc(partId);
 
     await db.runTransaction(async (tx) => {
       const done = await tx.get(partRef);
@@ -443,7 +505,7 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
 
       tx.set(
         activityRef,
-        { claimProgress: { done: index + 1, total: groups.length }, updatedAt: now },
+        { claimProgress: { done: progressDone, total: groups.length }, updatedAt: now },
         { merge: true },
       );
 
@@ -457,7 +519,7 @@ export async function commitChunkedActivity(plan: ActivityPlan): Promise<CommitO
        */
       const seeds = resolved.stolenFineCells;
       tx.set(partRef, {
-        group: index,
+        group: partId,
         counts: resolved.part.counts,
         stolenFrom: resolved.part.stolenFrom,
         breakthroughFrom: resolved.part.breakthroughFrom,
@@ -648,8 +710,32 @@ async function closeBooks(
   const victimRefs = victims.map(([id]) => db.collection(COLLECTIONS.users).doc(id));
 
   let summary: CommitSummary = blankSummary(plan, publicTrustVerdict);
+  let alreadyClosed = false;
 
   await db.runTransaction(async (tx) => {
+    /**
+     * KÖNYVELNI CSAK EGYSZER SZABAD — ez az őr a folytatás ára.
+     *
+     * A csoportokat a determinisztikus `claimParts` azonosító védi a kétszeri
+     * könyveléstől, a KÖNYVZÁRÁST viszont semmi: a `gpLedger` tétel ugyan
+     * determinisztikus azonosítójú, de a `dailyGp` összeadás, a `gpTotal` és a
+     * területszámlálók `increment`-ek — egy második lefutás megduplázná őket.
+     *
+     * Amíg a félbemaradt mentés duplikátumnak számított, ide nem is lehetett
+     * kétszer eljutni. Most, hogy a folytatás valódi út, két párhuzamos kérés
+     * (lejárt lease, kézi újraküldés) egyszerre érhet ide — ezért olvassuk be
+     * a `claimStatus`-t UGYANEBBEN a tranzakcióban.
+     */
+    const activityNow = await tx.get(activityRef);
+    const stored = activityNow.data() as
+      | { claimStatus?: unknown; summary?: CommitSummary }
+      | undefined;
+    if (stored?.claimStatus === 'done') {
+      alreadyClosed = true;
+      if (stored.summary) summary = stored.summary;
+      return;
+    }
+
     const userNow = await tx.get(userRef);
     if (!userNow.exists) throw notFound('profile_missing', 'Még nincs GRUNDO-profilod.');
     const dailyGpNow = await tx.get(dailyGpRef);
@@ -787,11 +873,13 @@ async function closeBooks(
     }
   });
 
+  // Lezárt könyvelésnél a hívó a `duplicate` ágon áll meg: nem küld újra
+  // értesítést, és nem rögzít még egyszer rivalitást.
   return {
-    duplicate: false,
+    duplicate: alreadyClosed,
     summary,
-    stolenFrom: Object.fromEntries(victims),
-    breakthroughFrom: total.breakthroughFrom,
+    stolenFrom: alreadyClosed ? {} : Object.fromEntries(victims),
+    breakthroughFrom: alreadyClosed ? {} : total.breakthroughFrom,
   };
 
   function blankSummary(
@@ -819,6 +907,68 @@ function chunk<T>(list: readonly T[], size: number): T[][] {
   const groups: T[][] = [];
   for (let i = 0; i < list.length; i += size) groups.push(list.slice(i, i + size));
   return groups;
+}
+
+/**
+ * A tárolt trust verdikt visszaolvasása a folytatáshoz.
+ *
+ * Ismeretlen érték `trusted`-re esik vissza: a claim el sem indult volna
+ * másképp, tehát a folytatás sem szigoríthat visszamenőleg.
+ */
+function storedVerdict(raw: unknown): 'trusted' | 'pending_review' | 'rejected' {
+  return raw === 'pending_review' || raw === 'rejected' ? raw : 'trusted';
+}
+
+/**
+ * A Firestore tranzakció-méretkorlátja — a MÁSIK korlát, nem az 500 írás.
+ *
+ * A tranzakció méretébe az indexbejegyzések is beleszámítanak, ezért egy
+ * mérve 1,5 MB-os csoport is elhasalhat (lásd `BLOCKS_PER_GROUP`). A hibát a
+ * gRPC `INVALID_ARGUMENT` (3) kódon, szövegesen adja vissza — típusos
+ * hibaosztály nincs hozzá, ezért kell az üzenetre illeszteni.
+ */
+export function isTransactionTooBig(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  const text = `${(error as { details?: unknown } | null)?.details ?? ''} ${
+    error instanceof Error ? error.message : ''
+  }`;
+  return code === 3 && /transaction too big/i.test(text);
+}
+
+/**
+ * Egy csoport alkalmazása, FELEZÉSSEL, ha a tranzakció túl nagy.
+ *
+ * MIÉRT NEM ELÉG A KISEBB CSOPORTMÉRET? Mert a tranzakció valódi költségét a
+ * blokkok TARTALMA adja, nem a számuk: egy homogén belső blokk `uniform`-ként
+ * pár száz bájt, egy kevert tulajdonú viszont 343 cellára bomlik, ~2 000
+ * indexbejegyzéssel. Ugyanaz a 200-as csoport tehát a rács állapotától függően
+ * két nagyságrendet ugorhat, és ezt a tervezéskor nem tudjuk megmérni — a
+ * blokkokat csak a tranzakció olvassa be.
+ *
+ * A felezés ezt utólag, magától rendezi: a `slice` determinisztikus, és az
+ * al-csoport azonosítója az útvonalából áll össze (`group-3` → `group-3a`,
+ * `group-3b`), tehát az újrafuttatás ugyanoda könyvel. A könyvzárás a
+ * `claimParts` MINDEN dokumentumát összegzi, ezért az al-csoportok külön
+ * ág nélkül beleszámítanak.
+ *
+ * A gyakori út érintetlen: hiba nélkül pontosan egy tranzakció fut.
+ */
+export async function withSplitOnOverflow(
+  blocks: string[],
+  partId: string,
+  apply: (blocks: string[], partId: string) => Promise<void>,
+): Promise<void> {
+  try {
+    await apply(blocks, partId);
+  } catch (error) {
+    // Egyetlen blokkot már nem lehet tovább vágni: ott a hiba valódi, és a
+    // hívóé — elrejtve némán hiányos foglalás keletkezne.
+    if (blocks.length < 2 || !isTransactionTooBig(error)) throw error;
+
+    const half = Math.ceil(blocks.length / 2);
+    await withSplitOnOverflow(blocks.slice(0, half), `${partId}a`, apply);
+    await withSplitOnOverflow(blocks.slice(half), `${partId}b`, apply);
+  }
 }
 
 /**

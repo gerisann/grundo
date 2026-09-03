@@ -259,6 +259,56 @@ describe.skipIf(!EMULATOR)('POST /api/activities — valódi Firestore ellen', (
     expect((await ref.get()).data()?.token).toBe('stale-attempt');
   });
 
+  /**
+   * ⚠️ EZ EGY ÉLES KLIENS-ÖSSZEOMLÁST RÖGZÍT (2026-09-02, `ebb3c240…`).
+   *
+   * A darabolt mentés az aktivitás dokumentumát MÁR AZ ELSŐ fázisban létrehozza,
+   * a `summary`-t viszont csak a könyvzáráskor írja meg. A státuszvégpont
+   * korábban a puszta létezést késznek vette, ezért `{ status: 'done',
+   * summary: undefined }` ment ki — a kliens eredményképernyője pedig
+   * `summary.distanceM`-nél elszállt („undefined is not an object"), miközben
+   * a mentés valójában félbemaradt.
+   *
+   * A garancia, amit ez a két teszt őriz: `done` válasz `summary` NÉLKÜL nem
+   * létezik. Ez visszafelé is véd — a már telepített kliensek (a hibát
+   * elszenvedő #29-es build is) kötelező mezőként olvassák.
+   */
+  it('a félbemaradt foglalást NEM jelenti késznek, hanem újraküldhetőnek', async () => {
+    await db.collection(collections.activities!).doc('activity-stuck1').set({
+      userId: 'alice',
+      type: 'run',
+      claimStatus: 'pending',
+      claimProgress: { done: 0, total: 2 },
+      gp: { total: 0 },
+      areaGainedM2: 0,
+      // A `summary` SZÁNDÉKOSAN hiányzik: pontosan ez a beragadt állapot.
+    });
+
+    const status = await uploadStatus('alice', 'activity-stuck1');
+    expect(status.body.status).not.toBe('done');
+    expect(status.body).toEqual({ status: 'missing' });
+  });
+
+  it('a félbemaradt foglalást futó feldolgozás alatt várakoztatja', async () => {
+    const now = Date.now();
+    await db.collection(collections.activities!).doc('activity-stuck2').set({
+      userId: 'alice',
+      type: 'run',
+      claimStatus: 'pending',
+      claimProgress: { done: 1, total: 3 },
+    });
+    await db.collection(collections.activityUploads!).doc('activity-stuck2').set({
+      userId: 'alice',
+      status: 'processing',
+      startedAt: now,
+      updatedAt: now,
+      leaseUntil: now + 60_000,
+    });
+
+    const status = await uploadStatus('alice', 'activity-stuck2');
+    expect(status.body).toEqual({ status: 'processing' });
+  });
+
   it('a lejárt kísérlet nem törölheti az őt átvevő új feldolgozó életjelét', async () => {
     const first = await beginActivityUpload('activity-token1', 'alice', 1_000);
     expect(first.status).toBe('acquired');

@@ -245,6 +245,18 @@
       "collectionGroup": "territoryBlobs",
       "fieldPath": "rings",
       "indexes": []
+    },
+    {
+      "//": "⚠️ A RÁCS CELLATÉRKÉPE — EZ VITTE EL EGY 143 KM-ES KÖR MENTÉSÉT (2026-09-02, `ebb3c240…`). A darabolt foglalás csoportja `INVALID_ARGUMENT: Transaction too big` hibával elhasalt, pedig a nyers payload MÉRVE csak 1,48 MB volt — a 10 MiB-os határ töredéke. A különbséget az indexbejegyzések adják: egy kibontott blokk `cells` mezője 343 cella, cellánként három almező (`o`, `d`, `u`), mindegyikre két index — blokkonként ~2 000 bejegyzés, a csoport 79 vegyes blokkjával ~160 000. Szűrni sosem szűrünk rá: a `grid` dokumentumait KIZÁRÓLAG azonosító szerint olvassuk (`readBlocks`, `loadOwnership`, `tiles.ts`), egyetlen `where()` sincs rájuk. Az indexelés tehát tiszta írási költség — a mentés lassulása és a tranzakció felfújása.",
+      "collectionGroup": "grid",
+      "fieldPath": "cells",
+      "indexes": []
+    },
+    {
+      "//": "Ugyanaz az ok, mint a `cells`-nél: a tulajdonosonkénti darabszám-térkép kulcsai felhasználó-azonosítók, tehát dinamikusak, és soha nem szűrünk rájuk — a ranglista a `users` dokumentumok előszámolt mezőiből megy.",
+      "collectionGroup": "grid",
+      "fieldPath": "ownerCounts",
+      "indexes": []
     }
   ]
 }

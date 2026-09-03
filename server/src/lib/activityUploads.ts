@@ -33,6 +33,44 @@ function refs(activityId: string) {
   };
 }
 
+/** Amit az aktivitás dokumentumából a készültséghez ki kell olvasni. */
+interface ActivityState {
+  userId?: string;
+  summary?: unknown;
+  claimStatus?: unknown;
+}
+
+/**
+ * ELKÉSZÜLT-E — mert a dokumentum LÉTEZÉSE nem ugyanaz.
+ *
+ * ⚠️ EZ ÉLES HIBÁT OKOZOTT (2026-09-02, `ebb3c240…`, 143 km-es bringakör). A
+ * darabolt úton (`activityChunked.ts`) az aktivitás dokumentuma már az első
+ * fázisban létrejön, `claimStatus: 'pending'` állapotban — a `summary` viszont
+ * csak a könyvzáráskor, több tranzakcióval később. A korábbi kód a puszta
+ * létezést késznek vette, ezért a menet közbeni újraküldés és a
+ * státuszlekérdezés is `{ status: 'done', summary: undefined }` választ kapott.
+ * A kliens ezt elhitte, és az eredményképernyő `summary.distanceM`-nél
+ * elszállt („undefined is not an object"), miközben a mentés valójában
+ * félbemaradt.
+ *
+ * KÉT FELTÉTEL, mert kettő különböző hibát fog meg:
+ *
+ *   - `claimStatus !== 'pending'` — a darabolt mentés még dolgozik. (Az
+ *     egytranzakciós gyors út nem ír ilyen mezőt: ott a dokumentum és a
+ *     `summary` UGYANABBAN a tranzakcióban születik, tehát a hiánya készet
+ *     jelent.)
+ *   - `summary` megvan — a végső háló. Bármi is történjék, `done` választ
+ *     `summary` nélkül nem adunk ki: a már telepített kliensek (jamal #29-es
+ *     buildje is) kötelező mezőként olvassák.
+ *
+ * Éles adaton ellenőrizve (2026-09-03, mind a 45 aktivitás): egyedül a fenti,
+ * beragadt kör hiányos — nincs olyan régi mentés, amit ez tévesen
+ * befejezetlennek minősítene.
+ */
+function isSettledActivity(data: ActivityState): boolean {
+  return data.claimStatus !== 'pending' && data.summary !== undefined;
+}
+
 /**
  * Egyetlen feldolgozó kapja meg ugyanazt az azonosítót.
  *
@@ -54,10 +92,17 @@ export async function beginActivityUpload(
     ]);
 
     if (activitySnapshot.exists) {
-      const data = activitySnapshot.data() as { userId?: string; summary?: unknown };
-      return data.userId === uid
-        ? { status: 'done' as const, summary: data.summary }
-        : { status: 'conflict' as const };
+      const data = activitySnapshot.data() as ActivityState;
+      if (data.userId !== uid) return { status: 'conflict' as const };
+      if (isSettledActivity(data)) return { status: 'done' as const, summary: data.summary };
+      /**
+       * FÉLBEMARADT DARABOLT MENTÉS — nem kész, de nem is ütközés.
+       *
+       * A vezérlés szándékosan ÁTESIK a lease-ágra: ha épp dolgozik rajta egy
+       * másik kérés, `processing` a válasz; ha nem, a kliens megkapja a
+       * feldolgozási jogot, és a `commitChunkedActivity` a hiányzó
+       * csoportoktól FOLYTATJA. Enélkül a kör örökre 0 GP-vel állna.
+       */
     }
 
     if (uploadSnapshot.exists) {
@@ -128,10 +173,12 @@ export async function readActivityUploadStatus(
   ]);
 
   if (activitySnapshot.exists) {
-    const data = activitySnapshot.data() as { userId?: string; summary?: unknown };
-    return data.userId === uid
-      ? { status: 'done', summary: data.summary }
-      : { status: 'missing' };
+    const data = activitySnapshot.data() as ActivityState;
+    if (data.userId !== uid) return { status: 'missing' };
+    if (isSettledActivity(data)) return { status: 'done', summary: data.summary };
+    // Félbemaradt mentésnél a feldolgozás állapota dönt: fut-e még valaki
+    // rajta (`processing`), elhasalt-e (`failed`), vagy újraküldhető
+    // (`missing`). Készként jelenteni sosem szabad — lásd `isSettledActivity`.
   }
   if (!uploadSnapshot.exists) return { status: 'missing' };
 

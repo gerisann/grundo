@@ -248,6 +248,86 @@ describe.skipIf(!EMULATOR)('POST /api/activities — compact foglalás', () => {
     expect(afterSecond.cellCount.bike).toBe(firstSummary.claimedCells);
   });
 
+  /**
+   * ⚠️ EZ EGY ÉLES ADATVESZTÉST REPRODUKÁL (2026-09-02, `ebb3c240…`).
+   *
+   * Egy 143 km-es bringakör darabolt mentése az ELSŐ csoportnál elhasalt
+   * (`Transaction too big`), és az aktivitás ott maradt `claimStatus:
+   * 'pending'` állapotban: 0 GP, 0 terület, üres `claimParts`. Az újraküldést
+   * viszont a régi kód DUPLIKÁTUMNAK vette — csak azt nézte, létezik-e a
+   * dokumentum —, ezért a kör soha többé nem tudott elkészülni, és a válaszban
+   * egy `summary: undefined` ment ki, amitől a kliens elszállt.
+   *
+   * A folytatás azért biztonságos, mert a csoportok determinisztikus
+   * azonosítójú `claimParts` dokumentumba könyvelnek: ami kész, kimarad; ami
+   * hiányzik, lefut. A darabolt út eleve erre a szerződésre épült — eddig csak
+   * sosem jutott el idáig a vezérlés.
+   */
+  it('a félbemaradt foglalást FOLYTATJA, nem duplikátumnak veszi', async () => {
+    const points = compactRide();
+    const first = await upload('alice', 'compact-resume-1', points);
+    expect(first.status).toBe(201);
+    const firstSummary = first.body.summary as unknown as Record<string, number>;
+
+    /**
+     * A BERAGADT ÁLLAPOT ELŐÁLLÍTÁSA, pontosan úgy, ahogy élesben keletkezett:
+     * az aktivitás dokumentuma megvan, `summary` nélkül, `pending`
+     * állapotban — a foglalásból viszont SEMMI nem könyvelődött el.
+     */
+    const activityRef = db.collection(collections.activities!).doc('compact-resume-1');
+    const stuck = (await activityRef.get()).data()!;
+    delete stuck.summary;
+    const parts = await activityRef.collection('claimParts').get();
+    await Promise.all(parts.docs.map((doc) => doc.ref.delete()));
+    const grid = await db.collection(collections.grid!).get();
+    await Promise.all(grid.docs.map((doc) => doc.ref.delete()));
+    await activityRef.set({
+      ...stuck,
+      claimStatus: 'pending',
+      claimProgress: { done: 0, total: 2 },
+      gp: { total: 0 },
+      areaGainedM2: 0,
+      cellCount: 0,
+    });
+    await seedUser('alice');
+
+    const resumed = await upload('alice', 'compact-resume-1', points);
+
+    expect(resumed.status).toBe(201);
+    const summary = resumed.body.summary as unknown as Record<string, number>;
+    // A LÉNYEG: valódi összegző megy ki, nem `undefined`. Ezen a mezőn hasalt
+    // el a kliens eredményképernyője.
+    expect(summary).toBeDefined();
+    expect(summary.distanceM).toBeGreaterThan(0);
+    expect(summary.claimedCells).toBe(firstSummary.claimedCells);
+    expect(summary.gp).toBeGreaterThan(0);
+
+    const activity = (await activityRef.get()).data()!;
+    expect(activity.claimStatus).toBe('done');
+    expect(activity.claimProgress.done).toBe(activity.claimProgress.total);
+    expect(activity.gp.total).toBeGreaterThan(0);
+
+    // A terület tényleg a játéktérre került, nem csak a válaszba.
+    const user = (await db.collection(collections.users!).doc('alice').get()).data()!;
+    expect(user.cellCount.bike).toBe(summary.claimedCells);
+  });
+
+  it('a folytatás után az újabb küldés már duplikátum, és nem könyvel újra', async () => {
+    const points = compactRide();
+    await upload('alice', 'compact-resume-2', points);
+    const afterFirst = (await db.collection(collections.users!).doc('alice').get()).data()!;
+
+    const again = await upload('alice', 'compact-resume-2', points);
+    expect(again.body.duplicate).toBe(true);
+
+    // A könyvzárás `claimStatus: 'done'` őre nem engedi a második könyvelést:
+    // a GP és a terület nem duplázódhat egy újraküldéstől.
+    const afterSecond = (await db.collection(collections.users!).doc('alice').get()).data()!;
+    expect(afterSecond.gpTotal).toBe(afterFirst.gpTotal);
+    expect(afterSecond.cellCount.bike).toBe(afterFirst.cellCount.bike);
+    expect(afterSecond.territoryM2.bike).toBe(afterFirst.territoryM2.bike);
+  });
+
   it('az ismételt körök a védelmi plafonig erősítenek, azon túl nem', async () => {
     /**
      * Hat valódi traversal ugyanazon a körön. A védelem 1×-től 5×-ig nő, a
