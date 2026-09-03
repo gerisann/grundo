@@ -21,6 +21,7 @@
  */
 
 import { feedbackSettings, type FeedbackSettings } from './feedbackSettings';
+import { isNativeApp } from './platform';
 
 export type SoundName =
   | 'count-down-beep'
@@ -234,11 +235,44 @@ export function primeSounds(): void {
  * Minden elemet elindítunk némán, majd azonnal megállítunk. Ettől kezdve az
  * adott elem `play()`-e gesztus nélkül is engedélyezett (iOS-en ez elemenként
  * érvényes, ezért megy végig mindegyiken).
+ *
+ * ⚠️ NATÍV APPBAN NEM FUT LE — EZ EGY MÉRT, ÉLES HIBA JAVÍTÁSA (2026-09-03).
+ *
+ * A TÜNET (Geri, iOS): cold start után a Dock Play gombjára — még a rögzítés
+ * elindítása ELŐTT, pusztán a rögzítés képernyő betöltésekor — tömegesen,
+ * egyszerre szólalt meg egy rakás hangeffekt (többféle cellahang ÉS a
+ * területszerzés fanfárja). Egy app-indításonként pontosan egyszer; másik
+ * oldalra váltva és visszatérve már nem, app bezárása/újranyitása után újra.
+ *
+ * AZ OK: iOS-en a `HTMLMediaElement.volume` ÍRÁSA NEM HAT — a hangerő ott a
+ * fizikai gombok alatt van, az értékadás csendben elszáll (az olvasás mindig
+ * 1-et ad). A fenti `unlockElement()` viszont pontosan ezzel a `volume = 0`
+ * trükkel tenné némává a feloldó lejátszást. iOS-en tehát minden elem TELJES
+ * HANGERŐN szólalt meg, egyetlen szinkron ciklusban. MÉRVE (a `volume`
+ * no-op-ként modellezve): **51 `<audio>` elem indult el hallhatóan** — ebből
+ * 32 cellahang négyféle hangból, plusz 2 `loop-closed`. Pontosan az, amit
+ * Geri hallott. Weben és Androidon a `volume` működik, ezért ott néma volt —
+ * innen a „csak iOS natív appon" tünet. Az egyszeriséget az `unlocked` modul-
+ * szintű jelző adja: az app bezárásával új WebView és új JS-környezet indul.
+ *
+ * MIÉRT ELHAGYHATÓ NATÍVBAN: ott nincs is mit feloldani. A Capacitor mindkét
+ * platformon kikapcsolja a gesztus-követelményt — iOS:
+ * `webViewConfiguration.mediaTypesRequiringUserActionForPlayback = []`
+ * (`CAPBridgeViewController.swift:125`), Android:
+ * `settings.setMediaPlaybackRequiresUserGesture(false)` (`Bridge.java:586`),
+ * mindkettő a szállított `@capacitor/*` 8.5.0 forrásában. A feloldás natívban
+ * tehát semmit nem vett meg, cserébe iOS-en hangzavart okozott.
+ *
+ * ⚠️ A WEBES ÁG MARAD, ÉS EZ SZÁNDÉKOS. Mobil Safariban és Chrome-ban a
+ * gesztus-követelmény VALÓDI, és ott a `volume = 0` működik, tehát a feloldás
+ * néma és nélkülözhetetlen — enélkül a 3-2-1 visszaszámlálás első sípja némán
+ * maradna, pont az, amit a felhasználó a leggyakrabban hall.
  */
 export function unlockSounds(): void {
   if (unlocked) return;
   unlocked = true;
   primeSounds();
+  if (isNativeApp()) return;
   for (const name of SOUND_NAMES) {
     const target = pools.get(name);
     if (!target) continue;
