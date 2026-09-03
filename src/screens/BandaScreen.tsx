@@ -1,8 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
-import { Chip, EmptyState, List, ListRow, ScreenHeader } from '@/components/ui';
-import { api, ApiError, type Banda, type BandaMember, type BandaRole } from '@/lib/api';
+import { BandaInviteSheet } from '@/components/BandaInviteSheet';
+import { Button, Chip, EmptyState, List, ListRow, ScreenHeader } from '@/components/ui';
+import {
+  api,
+  ApiError,
+  canInvite,
+  type Banda,
+  type BandaMember,
+  type BandaRole,
+  type BandaSettings,
+} from '@/lib/api';
 import { formatArea } from '@/lib/format';
 
 const ROLE_LABEL: Record<BandaRole, string> = {
@@ -26,8 +35,10 @@ export function BandaScreen() {
   const [banda, setBanda] = useState<Banda | null>(null);
   const [role, setRole] = useState<BandaRole | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [settings, setSettings] = useState<BandaSettings | null>(null);
   const [members, setMembers] = useState<BandaMember[] | null>(null);
   const [error, setError] = useState('');
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -40,6 +51,7 @@ export function BandaScreen() {
         setBanda(result.banda);
         setRole(result.role);
         setInviteCode(result.inviteCode);
+        setSettings(result.settings);
       })
       .catch((problem: unknown) => {
         if (!alive) return;
@@ -57,6 +69,8 @@ export function BandaScreen() {
       alive = false;
     };
   }, [id]);
+
+  const memberIds = useMemo(() => new Set((members ?? []).map((member) => member.uid)), [members]);
 
   if (error) {
     return (
@@ -124,7 +138,16 @@ export function BandaScreen() {
         </section>
 
         <section className="stack">
-          <h2 className="discover-feed__title">Tagok</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-2)' }}>
+            <h2 className="discover-feed__title" style={{ margin: 0 }}>
+              Tagok
+            </h2>
+            {role && settings && canInvite(role, settings.whoCanInvite) ? (
+              <Button size="sm" variant="secondary" onClick={() => setInviteSheetOpen(true)}>
+                Meghívás
+              </Button>
+            ) : null}
+          </div>
           {members === null ? (
             <div className="card">Betöltés…</div>
           ) : (
@@ -145,6 +168,10 @@ export function BandaScreen() {
           description="Itt lesz majd a banda hírfolyama és a közös chat fal — a moderátor-kinevezés és a beállítások gomb is ekkor kapcsolódik be."
         />
       </div>
+
+      {inviteSheetOpen && id ? (
+        <BandaInviteSheet bandaId={id} memberIds={memberIds} onClose={() => setInviteSheetOpen(false)} />
+      ) : null}
     </>
   );
 }

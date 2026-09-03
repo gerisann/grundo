@@ -1022,6 +1022,20 @@ export interface ConnectionList {
 export type BandaVisibility = 'public' | 'private';
 export type BandaRole = 'owner' | 'moderator' | 'member';
 
+export interface BandaSettings {
+  whoCanInvite: 'everyone' | 'moderators' | 'owner';
+  inviteCodeVisibleTo: 'everyone' | 'moderators' | 'owner';
+  postPermission: 'everyone' | 'moderators' | 'owner';
+}
+
+/** Ugyanaz a szabály, mint a szerveren (`server/src/lib/bandas.ts` → `canInvite`) — csak a gomb megjelenítéséhez, a tényleges kapu a szerveren van. */
+export function canInvite(role: BandaRole, whoCanInvite: BandaSettings['whoCanInvite']): boolean {
+  if (role === 'owner') return true;
+  if (whoCanInvite === 'owner') return false;
+  if (whoCanInvite === 'moderators') return role === 'moderator';
+  return true;
+}
+
 export interface BandaAreaTotals {
   foot: number;
   bike: number;
@@ -1059,6 +1073,14 @@ export interface BandaMember {
   username: string;
   photoURL: string | null;
   role: BandaRole;
+}
+
+/** Egy rám váró banda-meghívó — a `GET /api/bandas/invites/mine` egy sora. */
+export interface BandaInvite {
+  bandaId: string;
+  bandaName: string;
+  invitedByUsername: string;
+  createdAt: number | null;
 }
 
 /**
@@ -1172,15 +1194,41 @@ export const api = {
         body: JSON.stringify({ code }),
       }),
 
-    /** Egy banda részletei — a hívó szerepével és (tagoknál) a meghívókóddal. */
+    /** Egy banda részletei — a hívó szerepével, beállításaival és (tagoknál) a meghívókóddal. */
     detail: (bandaId: string) =>
-      request<{ banda: Banda; role: BandaRole | null; isMember: boolean; inviteCode: string | null }>(
-        `/api/bandas/${encodeURIComponent(bandaId)}`,
-      ),
+      request<{
+        banda: Banda;
+        role: BandaRole | null;
+        isMember: boolean;
+        inviteCode: string | null;
+        settings: BandaSettings;
+      }>(`/api/bandas/${encodeURIComponent(bandaId)}`),
 
     /** A teljes tag-lista, szerepkörrel. */
     members: (bandaId: string) =>
       request<{ items: BandaMember[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/members`),
+
+    /** Appon belüli meghívás egy másik felhasználónak (GRUNDO #30). */
+    invite: (bandaId: string, targetUid: string) =>
+      request<{ invited: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/invite`, {
+        method: 'POST',
+        body: JSON.stringify({ targetUid }),
+      }),
+
+    /** A rám váró meghívók. */
+    myInvites: () => request<{ items: BandaInvite[] }>('/api/bandas/invites/mine'),
+
+    /** Egy meghívó elfogadása — tag leszek. */
+    acceptInvite: (bandaId: string) =>
+      request<{ role: BandaRole }>(`/api/bandas/${encodeURIComponent(bandaId)}/invite/accept`, {
+        method: 'POST',
+      }),
+
+    /** Egy meghívó elutasítása. */
+    declineInvite: (bandaId: string) =>
+      request<{ declined: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/invite/decline`, {
+        method: 'POST',
+      }),
   },
 
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */

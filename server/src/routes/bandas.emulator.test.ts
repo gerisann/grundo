@@ -6,7 +6,10 @@
  *     és a `users/{uid}/bandas` tükröt (batch), és a `GET /mine` erre épül,
  *   - privát bandánál a meghívókód EGYEDI (`inviteCodes/{code}` tranzakció),
  *   - a csatlakozás tranzakciós — kétszer nem lehet tag valaki,
- *   - privát banda idegen tagnak `forbidden`, tagnak látszik.
+ *   - privát banda idegen tagnak `forbidden`, tagnak látszik,
+ *   - a meghívás mindkét tükröt írja (`invites/{uid}` + `bandaInvites/{id}`),
+ *     elfogadás/elutasítás mindkettőt törli, és a `whoCanInvite` beállítás
+ *     ténylegesen tiltja a nem jogosultakat (GRUNDO #30).
  *
  * FUTTATÁS (a repo gyökeréből): `npm.cmd run test:emulator`
  * Emulátor nélkül a fájl MAGÁTÓL KIMARAD.
@@ -20,6 +23,7 @@ const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST;
 
 const OWNER = 'uid-alapito';
 const OTHER = 'uid-masik';
+const THIRD = 'uid-harmadik';
 
 describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
   let server: Server;
@@ -66,13 +70,17 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     for (const doc of bandas.docs) {
       const members = await doc.ref.collection('members').get();
       for (const member of members.docs) await member.ref.delete();
+      const invites = await doc.ref.collection('invites').get();
+      for (const invite of invites.docs) await invite.ref.delete();
       await doc.ref.delete();
     }
     const codes = await db.collection('inviteCodes').get();
     for (const doc of codes.docs) await doc.ref.delete();
-    for (const uid of [OWNER, OTHER]) {
+    for (const uid of [OWNER, OTHER, THIRD]) {
       const mine = await db.collection('users').doc(uid).collection('bandas').get();
       for (const doc of mine.docs) await doc.ref.delete();
+      const invites = await db.collection('users').doc(uid).collection('bandaInvites').get();
+      for (const doc of invites.docs) await doc.ref.delete();
     }
   }
 
@@ -86,6 +94,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     await wipe();
     await makeUser(OWNER, 'alapito');
     await makeUser(OTHER, 'masik');
+    await makeUser(THIRD, 'harmadik');
   });
 
   function call(path: string, uid: string, init?: RequestInit) {
@@ -191,5 +200,118 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     const member = await call(`/${bandaId}`, OTHER);
     expect(member.status).toBe(200);
     expect((await member.json()).role).toBe('member');
+  });
+
+  it('appon belüli meghívás → elfogadás: tag lesz, a meghívó eltűnik mindkét oldalról', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Meghívós Banda', visibility: 'private' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+
+    const invited = await call(`/${bandaId}/invite`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: OTHER }),
+    });
+    expect(invited.status).toBe(201);
+
+    const mine = await (await call('/invites/mine', OTHER)).json();
+    expect(mine.items).toHaveLength(1);
+    expect(mine.items[0].bandaId).toBe(bandaId);
+    expect(mine.items[0].invitedByUsername).toBe('alapito');
+
+    const accepted = await call(`/${bandaId}/invite/accept`, OTHER, { method: 'POST' });
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json()).role).toBe('member');
+
+    const detail = await (await call(`/${bandaId}`, OTHER)).json();
+    expect(detail.role).toBe('member');
+
+    const inviteDoc = await db.collection('bandas').doc(bandaId).collection('invites').doc(OTHER).get();
+    expect(inviteDoc.exists).toBe(false);
+    const mirrorDoc = await db.collection('users').doc(OTHER).collection('bandaInvites').doc(bandaId).get();
+    expect(mirrorDoc.exists).toBe(false);
+  });
+
+  it('appon belüli meghívás → elutasítás: nem lesz tag, a meghívó eltűnik', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Elutasítós Banda', visibility: 'private' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+
+    await call(`/${bandaId}/invite`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: OTHER }),
+    });
+
+    const declined = await call(`/${bandaId}/invite/decline`, OTHER, { method: 'POST' });
+    expect(declined.status).toBe(200);
+
+    const detail = await call(`/${bandaId}`, OTHER);
+    expect(detail.status).toBe(403);
+
+    const mine = await (await call('/invites/mine', OTHER)).json();
+    expect(mine.items).toHaveLength(0);
+  });
+
+  it('már tagot nem lehet meghívni, kétszer meghívni sem', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Kettős Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+
+    const alreadyMember = await call(`/${bandaId}/invite`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: OTHER }),
+    });
+    expect(alreadyMember.status).toBe(409);
+
+    const first = await call(`/${bandaId}/invite`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: THIRD }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await call(`/${bandaId}/invite`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: THIRD }),
+    });
+    expect(second.status).toBe(409);
+  });
+
+  it('"whoCanInvite: owner" beállításnál a sima tag nem hívhat meg senkit', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Szigorú Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    await db
+      .collection('bandas')
+      .doc(bandaId)
+      .set({ settings: { whoCanInvite: 'owner' } }, { merge: true });
+
+    const denied = await call(`/${bandaId}/invite`, OTHER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: THIRD }),
+    });
+    expect(denied.status).toBe(403);
+
+    const allowed = await call(`/${bandaId}/invite`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: THIRD }),
+    });
+    expect(allowed.status).toBe(201);
   });
 });

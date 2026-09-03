@@ -35,6 +35,18 @@ export const DEFAULT_BANDA_SETTINGS: BandaSettings = {
   postPermission: 'everyone',
 };
 
+/**
+ * Meghívhat-e egy adott szerepkörű tag, a banda `whoCanInvite`
+ * beállítása szerint. Az alapító mindig meghívhat, a beállítástól
+ * függetlenül.
+ */
+export function canInvite(role: BandaRole, whoCanInvite: BandaSettings['whoCanInvite']): boolean {
+  if (role === 'owner') return true;
+  if (whoCanInvite === 'owner') return false;
+  if (whoCanInvite === 'moderators') return role === 'moderator';
+  return true;
+}
+
 export interface BandaAreaTotals {
   foot: number;
   bike: number;

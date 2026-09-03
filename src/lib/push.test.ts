@@ -79,6 +79,7 @@ describe('push eszközkapcsoló', () => {
     expect(pathFromPushData({ screen: 'activity', activityId: 'a/b' })).toBe(
       '/aktivitas/a%2Fb',
     );
+    expect(pathFromPushData({ screen: 'banda', bandaId: 'b1' })).toBe('/bandak/b1');
   });
 
   it('natív iOS-en FCM tokent kér és a leiratkozást tartósan megőrzi', async () => {

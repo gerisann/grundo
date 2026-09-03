@@ -21,7 +21,8 @@ export type NotificationType =
   | 'followed_activity'
   | 'new_follower'
   | 'territory_stolen'
-  | 'territory_defended';
+  | 'territory_defended'
+  | 'banda_invited';
 
 export interface NotificationTypeInfo {
   label: string;
@@ -41,6 +42,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeInfo> 
   new_follower: { label: 'Új követő', fallbackScreen: '/profil' },
   territory_stolen: { label: 'Elvették a grundod', fallbackScreen: '/grund' },
   territory_defended: { label: 'Sikeresen megvédted a grundod', fallbackScreen: '/grund' },
+  banda_invited: { label: 'Banda-meghívó', fallbackScreen: '/kozosseg/bandak' },
 } as const;
 
 /** A sorrend, ahogy a Beállítások képernyőn a kapcsolók megjelennek. */
@@ -56,6 +58,7 @@ export const NOTIFICATION_TYPE_ORDER: readonly NotificationType[] = [
   'new_follower',
   'followed_activity',
   'modifier_started',
+  'banda_invited',
 ];
 
 export interface StoredNotification {
@@ -83,6 +86,7 @@ export function screenFor(notification: StoredNotification): string {
   const activityId = notification.data?.activityId;
   const commentId = notification.data?.commentId;
   const username = notification.data?.username;
+  const bandaId = notification.data?.bandaId;
 
   if (activityId) {
     if (commentId) return `/aktivitas/${activityId}?komment=1&kiemelt=${commentId}`;
@@ -90,5 +94,6 @@ export function screenFor(notification: StoredNotification): string {
     return `/aktivitas/${activityId}`;
   }
   if (username) return `/felhasznalo/${encodeURIComponent(username)}`;
+  if (bandaId) return `/bandak/${encodeURIComponent(bandaId)}`;
   return info.fallbackScreen;
 }

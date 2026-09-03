@@ -285,11 +285,13 @@ export async function unsubscribe(uid: string): Promise<void> {
 export function pathFromPushData(data: Record<string, unknown>): string {
   const activityId = typeof data.activityId === 'string' ? data.activityId : '';
   const username = typeof data.username === 'string' ? data.username : '';
+  const bandaId = typeof data.bandaId === 'string' ? data.bandaId : '';
   const screen = typeof data.screen === 'string' ? data.screen : '';
   const type = typeof data.type === 'string' ? data.type : '';
 
   if (activityId) return `/aktivitas/${encodeURIComponent(activityId)}`;
   if (username) return `/felhasznalo/${encodeURIComponent(username)}`;
+  if (bandaId) return `/bandak/${encodeURIComponent(bandaId)}`;
 
   const byScreen: Record<string, string> = {
     activity: '/',

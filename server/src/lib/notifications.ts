@@ -35,7 +35,8 @@ export type NotificationType =
   | 'followed_activity'
   | 'new_follower'
   | 'territory_stolen'
-  | 'territory_defended';
+  | 'territory_defended'
+  | 'banda_invited';
 
 /**
  * A katalógus — Geri 9 pontos listájából 10 kapcsoló lett, mert a „GP-vel
@@ -60,6 +61,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; defau
   new_follower: { label: 'Új követő', defaultOn: true },
   territory_stolen: { label: 'Elvették a grundod', defaultOn: true },
   territory_defended: { label: 'Sikeresen megvédted a grundod', defaultOn: true },
+  banda_invited: { label: 'Banda-meghívó', defaultOn: true },
 };
 
 export interface CreateNotificationInput {
@@ -480,6 +482,17 @@ export function notifyNewFollower(
     title: 'Új követő',
     body: `${actorUsername} követni kezdett téged.`,
     data: { screen: 'profile', username: actorUsernameLower },
+  });
+}
+
+/** Appon belüli meghívás egy privát vagy publikus bandába, a követett-lista felől. */
+export function notifyBandaInvite(targetUid: string, bandaId: string, bandaName: string, actorUsername: string): void {
+  void createNotification({
+    uid: targetUid,
+    type: 'banda_invited',
+    title: 'Banda-meghívó',
+    body: `${actorUsername} meghívott a(z) „${bandaName}” bandába.`,
+    data: { screen: 'banda', bandaId },
   });
 }
 

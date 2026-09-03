@@ -1,10 +1,10 @@
 /**
- * Bandák — létrehozás, keresés, csatlakozás, részletek.
+ * Bandák — létrehozás, keresés, csatlakozás, részletek, meghívás.
  *
- * Phase 1 (lásd docs/ai/CURRENT_STATE.md): mag-CRUD. Nincs még benne az
- * appon belüli meghívás+értesítés, a hírfolyam, a chat fal és a
- * beállítások (moderátor-kinevezés, kirúgás, tulajdonos-átruházás) — ezek
- * Phase 2/3 tárgya.
+ * Phase 1 (lásd docs/ai/CURRENT_STATE.md): mag-CRUD. Phase 2 első darabja
+ * (GRUNDO #30): appon belüli meghívás+értesítés (`invites/{uid}`), lásd
+ * lent. A hírfolyam, a chat fal és a beállítások (moderátor-kinevezés,
+ * kirúgás, tulajdonos-átruházás) még nincsenek — azok Phase 2/3 folytatása.
  *
  * ⚠️ A TAGSÁG KÉT HELYEN ÉL, TÜKÖRKÉPPEL — a `following`/`followers` és a
  * `rivals` mintája (lásd `lib/rivals.ts` fejléce): `bandas/{id}/members/{uid}`
@@ -22,6 +22,7 @@ import { COLLECTIONS, db } from '../lib/firebase';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import {
   DEFAULT_BANDA_SETTINGS,
+  canInvite,
   generateInviteCode,
   newBandaDoc,
   normalizeBandaName,
@@ -29,8 +30,10 @@ import {
   validateBandaName,
   zeroBandaTotals,
   type BandaRole,
+  type BandaSettings,
   type BandaVisibility,
 } from '../lib/bandas';
+import { notifyBandaInvite } from '../lib/notifications';
 import type { AuthedRequest } from '../../server';
 
 export const bandasRouter = Router();
@@ -209,6 +212,35 @@ bandasRouter.get('/mine', async (req: AuthedRequest, res: Response, next) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════
+   GET /api/bandas/invites/mine — a hívóra váró meghívók (GRUNDO #30)
+
+   A `users/{uid}/bandaInvites/{bandaId}` tükörből — ugyanaz a minta, mint
+   a `/mine` a `users/{uid}/bandas`-ból: nincs collectionGroup-lekérdezés a
+   bandák `invites` alkollekcióján.
+   ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.get('/invites/mine', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const snapshot = await db.collection(COLLECTIONS.users).doc(uid).collection('bandaInvites').get();
+
+    const items = snapshot.docs.map((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      return {
+        bandaId: doc.id,
+        bandaName: String(data.bandaName ?? ''),
+        invitedByUsername: String(data.invitedByUsername ?? ''),
+        createdAt: millis(data.createdAt),
+      };
+    });
+
+    res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
    GET /api/bandas/search?q= — publikus bandák
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -311,6 +343,143 @@ bandasRouter.post('/join-by-code', async (req: AuthedRequest, res: Response, nex
     });
 
     res.json({ role: 'member' as BandaRole, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   POST /api/bandas/:id/invite — appon belüli meghívás (GRUNDO #30)
+
+   Ki hívhat meg: a banda `settings.whoCanInvite` szerint (`canInvite`,
+   lásd `lib/bandas.ts`). A meghívó `bandas/{id}/invites/{targetUid}` +
+   tükörként `users/{targetUid}/bandaInvites/{bandaId}` — a „saját
+   meghívóim" lista ebből megy, a tagság-tükör mintájára.
+   ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.post('/:id/invite', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const targetUid = String(req.body?.targetUid ?? '');
+    if (!targetUid) throw badRequest('missing_target', 'Nincs megadva, kit hívj meg.');
+    if (targetUid === uid) throw badRequest('invalid_target', 'Magadat nem hívhatod meg.');
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    const [bandaSnap, callerMemberSnap, targetMemberSnap, targetUserSnap, callerUserSnap] = await Promise.all([
+      bandaRef.get(),
+      bandaRef.collection('members').doc(uid).get(),
+      bandaRef.collection('members').doc(targetUid).get(),
+      db.collection(COLLECTIONS.users).doc(targetUid).get(),
+      db.collection(COLLECTIONS.users).doc(uid).get(),
+    ]);
+    if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+    if (!targetUserSnap.exists) throw notFound('user_not_found', 'Nincs ilyen felhasználó.');
+
+    const data = bandaSnap.data() as Record<string, unknown>;
+    const callerRole = callerMemberSnap.exists
+      ? ((callerMemberSnap.data() as { role?: BandaRole }).role ?? 'member')
+      : null;
+    if (!callerRole) throw forbidden('Csak a banda tagjai hívhatnak meg valakit.');
+
+    const settings = (data.settings as Partial<BandaSettings> | undefined) ?? DEFAULT_BANDA_SETTINGS;
+    if (!canInvite(callerRole, settings.whoCanInvite ?? DEFAULT_BANDA_SETTINGS.whoCanInvite)) {
+      throw forbidden('Ebben a bandában nincs jogosultságod meghívni.');
+    }
+
+    if (targetMemberSnap.exists) throw conflict('already_member', 'Ez a felhasználó már tagja a bandának.');
+
+    const inviteRef = bandaRef.collection('invites').doc(targetUid);
+    const existingInvite = await inviteRef.get();
+    if (existingInvite.exists) throw conflict('already_invited', 'Már meghívtad ezt a felhasználót.');
+
+    const callerUsername = String((callerUserSnap.data() as { username?: string } | undefined)?.username ?? '');
+    const bandaName = String(data.name ?? '');
+
+    const batch = db.batch();
+    batch.set(inviteRef, {
+      invitedBy: uid,
+      invitedByUsername: callerUsername,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    batch.set(db.collection(COLLECTIONS.users).doc(targetUid).collection('bandaInvites').doc(bandaId), {
+      bandaName,
+      invitedBy: uid,
+      invitedByUsername: callerUsername,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+
+    notifyBandaInvite(targetUid, bandaId, bandaName, callerUsername);
+
+    res.status(201).json({ invited: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   POST /api/bandas/:id/invite/accept · /decline (GRUNDO #30)
+
+   Csak a meghívott saját magára — a `req.uid` MINDIG a meghívott, nincs
+   külön `targetUid` a törzsben.
+   ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.post('/:id/invite/accept', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    const inviteRef = bandaRef.collection('invites').doc(uid);
+    const mirrorRef = db.collection(COLLECTIONS.users).doc(uid).collection('bandaInvites').doc(bandaId);
+
+    const role = await db.runTransaction(async (tx) => {
+      const inviteSnap = await tx.get(inviteRef);
+      if (!inviteSnap.exists) throw notFound('invite_not_found', 'Nincs függő meghívód ehhez a bandához.');
+      const bandaSnap = await tx.get(bandaRef);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+
+      const memberRef = bandaRef.collection('members').doc(uid);
+      const memberSnap = await tx.get(memberRef);
+
+      tx.delete(inviteRef);
+      tx.delete(mirrorRef);
+
+      // Ha időközben már máshogy (kóddal) csatlakozott, a meghívó törlésén
+      // túl nincs több teendő — nincs dupla tagság, nincs dupla számláló.
+      if (memberSnap.exists) return (memberSnap.data() as { role?: BandaRole }).role ?? 'member';
+
+      tx.set(memberRef, { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() });
+      tx.set(
+        db.collection(COLLECTIONS.users).doc(uid).collection('bandas').doc(bandaId),
+        { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() },
+      );
+      tx.set(bandaRef, { memberCount: FieldValue.increment(1) }, { merge: true });
+      return 'member' as BandaRole;
+    });
+
+    res.json({ role });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/invite/decline', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    const inviteRef = bandaRef.collection('invites').doc(uid);
+    const mirrorRef = db.collection(COLLECTIONS.users).doc(uid).collection('bandaInvites').doc(bandaId);
+
+    await db.runTransaction(async (tx) => {
+      const inviteSnap = await tx.get(inviteRef);
+      if (!inviteSnap.exists) throw notFound('invite_not_found', 'Nincs függő meghívód ehhez a bandához.');
+      tx.delete(inviteRef);
+      tx.delete(mirrorRef);
+    });
+
+    res.json({ declined: true });
   } catch (error) {
     next(error);
   }

@@ -3,7 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { CommunityHeader } from '@/components/CommunityHeader';
 import { Avatar } from '@/components/ActivityCard';
 import { Button, Chip, EmptyState, List, ListRow, TextField, SegmentedControl } from '@/components/ui';
-import { api, ApiError, type Banda, type BandaRole, type BandaVisibility, type BandaWithRole } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  type Banda,
+  type BandaInvite,
+  type BandaRole,
+  type BandaVisibility,
+  type BandaWithRole,
+} from '@/lib/api';
 import '@/screens/search.css';
 import '@/screens/discover.css';
 
@@ -19,21 +27,110 @@ const ROLE_LABEL: Record<BandaRole, string> = {
  * Bandák (docs/02 → Közösség → Bandák, GRUNDO #29).
  *
  * Phase 1: saját bandáim, meghívókóddal csatlakozás, publikus keresés +
- * azonnali csatlakozás, létrehozás. Az appon belüli meghívás (értesítéssel),
- * a hírfolyam, a chat fal és a beállítások Phase 2/3 tárgya — a
- * `BandaScreen` ezekre "hamarosan érkezik" kártyát mutat.
+ * azonnali csatlakozás, létrehozás. Phase 2 első darabja (GRUNDO #30): a
+ * `PendingInvites` — a `BandaScreen`-en indított appon belüli meghívás
+ * elfogadása/elutasítása. A hírfolyam, a chat fal és a beállítások még
+ * Phase 2/3 hátralévő tárgya — a `BandaScreen` ezekre "hamarosan érkezik"
+ * kártyát mutat.
  */
 export function CommunityBandasScreen() {
   return (
     <>
       <CommunityHeader active="bandas" />
       <div className="screen-body stack">
+        <PendingInvites />
         <MyBandas />
         <JoinByCode />
         <CreateBanda />
         <SearchPublicBandas />
       </div>
     </>
+  );
+}
+
+function PendingInvites() {
+  const navigate = useNavigate();
+  const [items, setItems] = useState<BandaInvite[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    api.bandas
+      .myInvites()
+      .then((result) => {
+        if (alive) setItems(result.items);
+      })
+      .catch(() => {
+        if (alive) setItems([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function accept(invite: BandaInvite) {
+    if (busyId) return;
+    setBusyId(invite.bandaId);
+    setError('');
+    try {
+      await api.bandas.acceptInvite(invite.bandaId);
+      navigate(`/bandak/${invite.bandaId}`);
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'A meghívó most nem fogadható el.');
+      setBusyId(null);
+    }
+  }
+
+  async function decline(invite: BandaInvite) {
+    if (busyId) return;
+    setBusyId(invite.bandaId);
+    setError('');
+    try {
+      await api.bandas.declineInvite(invite.bandaId);
+      setItems((prev) => (prev ?? []).filter((item) => item.bandaId !== invite.bandaId));
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'A meghívó most nem utasítható el.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <section className="stack">
+      <h2 className="discover-feed__title">Meghívóim</h2>
+      {error ? (
+        <p className="search__note" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <List>
+        {items.map((invite) => (
+          <ListRow
+            key={invite.bandaId}
+            label={invite.bandaName}
+            description={`${invite.invitedByUsername} hívott meg`}
+            value={
+              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busyId === invite.bandaId}
+                  onClick={() => decline(invite)}
+                >
+                  Elutasítás
+                </Button>
+                <Button size="sm" loading={busyId === invite.bandaId} onClick={() => accept(invite)}>
+                  Elfogadás
+                </Button>
+              </div>
+            }
+          />
+        ))}
+      </List>
+    </section>
   );
 }
 
@@ -234,6 +331,26 @@ function SearchPublicBandas() {
   const [error, setError] = useState('');
   const [joinError, setJoinError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Kell tudni, mely találatoknak vagyok már tagja — máskülönben a
+  // „Csatlakozás” gomb egy már-tag bandánál csak `409 already_member`
+  // hibát adna vissza. Egyszer töltjük be, a `MyBandas` listájával
+  // párhuzamosan, nem tőle függően — a két komponens független.
+  const [myBandaIds, setMyBandaIds] = useState<ReadonlySet<string> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.bandas
+      .mine()
+      .then((result) => {
+        if (alive) setMyBandaIds(new Set(result.items.map((item) => item.id)));
+      })
+      .catch(() => {
+        if (alive) setMyBandaIds(new Set());
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -311,22 +428,31 @@ function SearchPublicBandas() {
         <p className="search__note">Nincs ilyen nevű publikus banda.</p>
       ) : (
         <div className="search__list" style={{ marginTop: 'var(--sp-2)' }}>
-          {items.map((banda) => (
-            <div className="search__row discover-search__row" key={banda.id}>
-              <span className="discover-search__identity">
-                <Avatar url={banda.photoURL} name={banda.name} size={40} />
-                <span className="search__identity">
-                  <span className="search__name">{banda.name}</span>
-                  <span className="search__note" style={{ margin: 0 }}>
-                    {banda.memberCount} tag
+          {items.map((banda) => {
+            const isMember = myBandaIds?.has(banda.id) ?? false;
+            return (
+              <div className="search__row discover-search__row" key={banda.id}>
+                <span className="discover-search__identity">
+                  <Avatar url={banda.photoURL} name={banda.name} size={40} />
+                  <span className="search__identity">
+                    <span className="search__name">{banda.name}</span>
+                    <span className="search__note" style={{ margin: 0 }}>
+                      {banda.memberCount} tag{isMember ? ' · már tagja vagy' : ''}
+                    </span>
                   </span>
                 </span>
-              </span>
-              <Button size="sm" loading={busyId === banda.id} onClick={() => join(banda)}>
-                Csatlakozás
-              </Button>
-            </div>
-          ))}
+                {isMember ? (
+                  <Button size="sm" variant="secondary" onClick={() => navigate(`/bandak/${banda.id}`)}>
+                    Megnyitás
+                  </Button>
+                ) : (
+                  <Button size="sm" loading={busyId === banda.id} onClick={() => join(banda)}>
+                    Csatlakozás
+                  </Button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>

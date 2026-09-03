@@ -444,6 +444,7 @@ function toneFor(type: NotificationType): string {
       return 'comment';
     case 'followed_activity':
     case 'new_follower':
+    case 'banda_invited':
       return 'social';
     case 'modifier_started':
       return 'modifier';
@@ -469,6 +470,7 @@ function typeIcon(type: NotificationType) {
     case 'followed_activity':
       return <RunnerIcon />;
     case 'new_follower':
+    case 'banda_invited':
       return <PersonAddIcon />;
     case 'modifier_started':
       return <MegaphoneIcon />;

@@ -3,6 +3,7 @@ import {
   BANDA_NAME_MAX,
   BANDA_NAME_MIN,
   INVITE_CODE_LENGTH,
+  canInvite,
   generateInviteCode,
   normalizeBandaName,
   sumBandaTotals,
@@ -102,5 +103,28 @@ describe('sumBandaTotals', () => {
   it('hiányzó mezőket nullaként kezel, nem dob hibát', () => {
     expect(() => sumBandaTotals([{}])).not.toThrow();
     expect(sumBandaTotals([{}]).areaM2).toEqual({ foot: 0, bike: 0 });
+  });
+});
+
+describe('canInvite', () => {
+  it('az alapító mindig meghívhat, a beállítástól függetlenül', () => {
+    expect(canInvite('owner', 'everyone')).toBe(true);
+    expect(canInvite('owner', 'moderators')).toBe(true);
+    expect(canInvite('owner', 'owner')).toBe(true);
+  });
+
+  it('"everyone"-nál bárki tag meghívhat', () => {
+    expect(canInvite('member', 'everyone')).toBe(true);
+    expect(canInvite('moderator', 'everyone')).toBe(true);
+  });
+
+  it('"moderators"-nál csak a moderátor (és az alapító)', () => {
+    expect(canInvite('moderator', 'moderators')).toBe(true);
+    expect(canInvite('member', 'moderators')).toBe(false);
+  });
+
+  it('"owner"-nál senki más', () => {
+    expect(canInvite('moderator', 'owner')).toBe(false);
+    expect(canInvite('member', 'owner')).toBe(false);
   });
 });

@@ -182,6 +182,13 @@ service cloud.firestore {
         allow read: if isSelf(uid);
         allow write: if false;
       }
+
+      // Rám váró banda-meghívók tükre — a `bandas/{id}/invites/{uid}`
+      // tükre (GRUNDO #30), ugyanazzal az indoklással, mint fent.
+      match /bandaInvites/{bandaId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
     }
 
     // Felhasználónév-foglalás: csak olvasható (az egyediséget a szerver
@@ -309,6 +316,13 @@ service cloud.firestore {
       allow write: if false;
 
       match /members/{uid} { allow read: if signedIn(); allow write: if false; }
+
+      // Appon belüli meghívások (GRUNDO #30) — csak a meghívott olvashatja
+      // a sajátját, minden írás szerveroldalon (`routes/bandas.ts`).
+      match /invites/{uid} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
     }
 
     match /inviteCodes/{code} { allow read, write: if false; }  // csak szerver
