@@ -26,7 +26,10 @@ export function generateColorTerritory(random: () => number = Math.random): Colo
 
   while (result.length < targetCount && frontier.length > 0) {
     const index = Math.min(frontier.length - 1, Math.floor(random() * frontier.length));
-    const [q, r] = frontier.splice(index, 1)[0];
+    const next = frontier.splice(index, 1)[0];
+    if (!next) continue;
+
+    const [q, r] = next;
     const key = `${q},${r}`;
     if (occupied.has(key)) continue;
 
