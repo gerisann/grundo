@@ -64,6 +64,8 @@ export interface MapViewProps {
   allowTilt?: boolean;
   /** A 2D/3D felirat helyett észak-fent / menetirány-fent kapcsoló. */
   navigationModeControl?: boolean;
+  /** Külön +/− vezérlő, amely programozott zoomként nem szakítja meg a követést. */
+  zoomControls?: boolean;
   hexesVisible?: boolean;
   onToggleHexes?: () => void;
   fitTrack?: boolean;
@@ -188,6 +190,7 @@ export function MapView({
   hideRecenter = false,
   allowTilt = false,
   navigationModeControl = false,
+  zoomControls = false,
   hexesVisible,
   onToggleHexes,
   fitTrack = false,
@@ -649,6 +652,28 @@ export function MapView({
         style={fill ? { height: '100%' } : { height }}
       />
       {popupHost && cellPopup ? createPortal(cellPopup, popupHost) : null}
+      {zoomControls ? (
+        <div className="mapview__zoom-controls" role="group" aria-label="Térkép nagyítása">
+          <button
+            type="button"
+            className="mapview__zoom-button"
+            aria-label="Nagyítás"
+            title="Nagyítás"
+            onClick={() => zoomMap(map.current, 1, graphicsProfile.motionScale)}
+          >
+            <span aria-hidden="true">＋</span>
+          </button>
+          <button
+            type="button"
+            className="mapview__zoom-button"
+            aria-label="Kicsinyítés"
+            title="Kicsinyítés"
+            onClick={() => zoomMap(map.current, -1, graphicsProfile.motionScale)}
+          >
+            <span aria-hidden="true">−</span>
+          </button>
+        </div>
+      ) : null}
       {onToggleHexes && hexesVisible !== undefined ? (
         <button
           type="button"
@@ -735,6 +760,16 @@ function linearEasing(progress: number): number {
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+/** A programozott zoom nem kap DOM `originalEvent`-et, így a követés aktív marad. */
+function zoomMap(instance: mapboxgl.Map | null, delta: number, motionScale: number): void {
+  if (instance === null) return;
+  const zoom = Math.min(instance.getMaxZoom(), Math.max(instance.getMinZoom(), instance.getZoom() + delta));
+  instance.easeTo({
+    zoom,
+    duration: prefersReducedMotion() ? 0 : 220 * motionScale,
+  });
 }
 
 function CompassIcon() {

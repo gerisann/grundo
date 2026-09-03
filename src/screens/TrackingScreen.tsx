@@ -1343,6 +1343,7 @@ const MapPane = memo(function MapPane({
             position={position}
             allowTilt
             navigationModeControl
+            zoomControls
             hexesVisible={hexesVisible}
             onToggleHexes={onToggleHexes}
             follow={follow}

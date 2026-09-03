@@ -39,6 +39,11 @@ kötelező lépés a hosszú, valódi készülékes mérés Androidon és iOS-en
    cache-t és MSAA-t enged.
 6. **Dokumentáció:** a funkcionális specifikáció és a tartós renderdöntés
    mindkét térképi távolság pontos szerepével frissítve.
+7. **Rögzítési térképvezérlők.** A bal oldali hexagongomb fölött egybefüggő
+   `+ / −` zoompár jelent meg, kizárólag a rögzítési oldalon. A gombos zoom
+   megtartja a pozíciókövetést és a következő GPS-frissítéseknél is az egyedi
+   zoomszintet. A kikapcsolt cellaréteget szürke gomb és halványpiros áthúzás
+   jelzi.
 
 ## Ellenőrzések
 
@@ -48,10 +53,14 @@ kötelező lépés a hosszú, valódi készülékes mérés Androidon és iOS-en
 - Teljes Vitest: **714 zöld, 137 kihagyva** (79 fájl zöld, 13 kihagyva).
 - Gyökér TypeScript: tiszta; `server/` TypeScript: tiszta.
 - Production build: sikeres. A Grafika chunk 3,30 kB (gzip 1,36 kB), a
-  MapView chunk 20,32 kB (gzip 7,03 kB).
+  MapView chunk 21,06 kB (gzip 7,20 kB), a hozzá tartozó CSS 3,75 kB
+  (gzip 0,92 kB).
 - Böngészős vizuális QA: a Grafika oldal és a 3D köd világos/sötét témán
   rendben; a 250 m, 1000 m és 5000 m beállítás skálázza a kamerát; 2D-ben
-  nincs hozzáadott köd. A tesztállapot sötét témára és 1000 m-re visszaállt.
+  nincs hozzáadott köd. A rögzítési zoompár elhelyezése, +1/−1 működése és a
+  hexagongomb mindkét állapota rendben; gombos zoomnál a követés nem állt le,
+  a Grund oldalon pedig nem jelent meg a vezérlő. A tesztállapot sötét témára,
+  1000 m-re, bekapcsolt cellarétegre és az eredeti zoomra visszaállt.
 - `git diff --check`: tiszta.
 
 ## Amit készüléken kell mérni
@@ -77,7 +86,8 @@ mindkét platformra.
 `docs/02-funkcionalis-spec.md` · `docs/ai/DECISIONS.md` ·
 `docs/ai/CURRENT_STATE.md` · `src/components/MapView.tsx` ·
 `src/lib/graphicsSettings.ts` és tesztje · `src/lib/mapRender.ts` és tesztje ·
-`src/screens/settings/GraphicsScreen.tsx` · `src/styles/tokens.css`
+`src/screens/settings/GraphicsScreen.tsx` · `src/screens/TrackingScreen.tsx` ·
+`src/components/mapview.css` · `src/styles/tokens.css`
 
 Az optimalizálási implementáció a `main` ágra commitolva és felpusholva. A
 munkafa a menet lezárásakor tiszta.

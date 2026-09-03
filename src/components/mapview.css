@@ -195,13 +195,55 @@
 }
 
 /*
+  A +/− pár kizárólag a rögzítési MapView-ban jelenik meg. Programozott
+  kameramozgást indít, ezért a pozíciókövetést nem szünetelteti. A két gomb
+  egyetlen összefüggő vezérlő, közvetlenül a hexagonkapcsoló fölött.
+*/
+.mapview__zoom-controls {
+  position: absolute;
+  left: var(--sp-4);
+  bottom: calc(
+    var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3) + 48px
+  );
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  z-index: 2;
+}
+
+.mapview__zoom-button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.mapview__zoom-button + .mapview__zoom-button {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.mapview__zoom-button:active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/*
   Hexagonréteg — a BAL alsó sarokban, ugyanabban a sorban, mint a jobb
   oldali 2D/3D váltó (azonos `bottom`-képlet — Geri kérése, 2026-08-27,
   korábban a kettő nem volt egy vonalban).
 
-  ⚠️ KI/BE ELTÉRŐ ÁRNYALAT (Geri, 2026-08-27 — második kérés): kikapcsolva
-  sötétebb lila (`--brand-800`), bekapcsolva a szokásos élénk `--accent` —
-  így a gomb ÁLLAPOTA is látszik, nem csak a helye.
+  Kikapcsolva szürke, halványpiros áthúzással; bekapcsolva a szokásos élénk
+  `--accent`. Így a rejtett cellaréteg nem téveszthető össze egy másik aktív
+  lila térképvezérlővel.
 */
 .mapview__hex-toggle {
   position: absolute;
@@ -214,14 +256,26 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--brand-800);
-  border: 1px solid var(--brand-800);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
-  color: #fff;
+  color: var(--text-secondary);
   z-index: 2;
+}
+
+.mapview__hex-toggle[aria-pressed='false']::after {
+  content: '';
+  position: absolute;
+  width: 28px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger) 58%, transparent);
+  transform: rotate(45deg);
+  pointer-events: none;
 }
 
 .mapview__hex-toggle[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
 }

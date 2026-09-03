@@ -68,6 +68,11 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   ezért a méteres értéket a kamera zoomjára képezzük, a távoli peremen pedig
   témaszínű szürke köd ad fokozatos átmenetet. 2D-re váltva mindig az
   alaptérkép eredeti ködbeállítása áll vissza.
+- **A rögzítési zoomgomb nem szakítja meg a pozíciókövetést.** A `+ / −`
+  programozott kameramozgás, ezért nem állítja `followPaused` állapotba a
+  térképet; csak a DOM `originalEvent`-tel érkező valódi felhasználói gesztus
+  teszi ezt. A következő GPS-frissítés középen tartja a pozíciót, de megőrzi a
+  gombbal választott zoomot.
 
 ## Munkamódszer
 
