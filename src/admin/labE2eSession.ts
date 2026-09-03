@@ -3,7 +3,7 @@ import type { GpsSimulationConfig, SimulationWaypoint } from '@/tracking/simulat
 const STORAGE_PREFIX = 'grundo.lab.e2e.';
 const VERSION = 1;
 
-export type LabE2ePlaybackRate = '1' | '10' | '100' | 'max';
+export type LabE2ePlaybackRate = string;
 
 export interface LabE2ePlayerRef {
   id: string;
@@ -64,7 +64,7 @@ export function createLabE2eSession(input: CreateLabE2eSessionInput): LabE2eSess
     players: input.players.map((player) => ({ ...player })),
     route: input.route.map((point) => ({ ...point })),
     config: { ...input.config },
-    playbackRate: input.playbackRate,
+    playbackRate: normalizePlaybackRate(input.playbackRate),
   };
   sessionStorage.setItem(STORAGE_PREFIX + id, JSON.stringify(session));
   return session;
@@ -84,14 +84,11 @@ export function loadLabE2eSession(id: string): LabE2eSession | null {
       || !Array.isArray(value.route)
       || value.route.length < 2
       || !value.config
-      || (value.playbackRate !== '1'
-        && value.playbackRate !== '10'
-        && value.playbackRate !== '100'
-        && value.playbackRate !== 'max')
+      || !isValidPlaybackRate(value.playbackRate)
     ) {
       return null;
     }
-    return value as LabE2eSession;
+    return { ...value, playbackRate: normalizePlaybackRate(value.playbackRate) } as LabE2eSession;
   } catch {
     return null;
   }
@@ -106,5 +103,20 @@ export function deleteLabE2eSession(id: string): void {
 }
 
 export function labPlaybackRate(rate: LabE2ePlaybackRate): number {
-  return rate === 'max' ? 0 : Number(rate);
+  if (rate === 'max') return 0;
+  const numeric = Number(rate);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
+function isValidPlaybackRate(rate: unknown): rate is LabE2ePlaybackRate {
+  if (rate === 'max') return true;
+  if (typeof rate !== 'string') return false;
+  const numeric = Number(rate);
+  return Number.isFinite(numeric) && numeric > 0;
+}
+
+function normalizePlaybackRate(rate: LabE2ePlaybackRate): LabE2ePlaybackRate {
+  if (rate === 'max') return rate;
+  const numeric = Number(rate);
+  return Number.isFinite(numeric) && numeric > 0 ? String(numeric) : '1';
 }
