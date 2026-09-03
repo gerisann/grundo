@@ -176,10 +176,10 @@
     transform: translate(-50%, -50%) scale(0.72);
   }
   14% {
-    opacity: 0.37;
+    opacity: 0.24;
   }
   58% {
-    opacity: 0.25;
+    opacity: 0.16;
   }
   100% {
     opacity: 0;
@@ -196,14 +196,6 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--accent-on);
-}
-
-.appearance-territory-feedback .list {
-  padding-inline: var(--sp-4);
-}
-
-.appearance-territory-feedback .switch-row {
-  padding-block: var(--sp-4);
 }
 
 @media (max-width: 390px) {
