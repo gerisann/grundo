@@ -83,6 +83,17 @@ a {
 }
 
 /*
+  A List-komponens maga csak a kártyakeretet adja. A normál ListRow saját
+  vízszintes paddinggel rendelkezik, a Switch viszont korábban nem, ezért a
+  felirat ráült a bal keretre, a kapcsoló pedig a jobb oldali lekerekítésbe
+  lógott. Csak a LISTÁBAN lévő switcheket igazítjuk a normál sorokhoz;
+  `.card > .switch-row` változatok már a card saját paddingjét használják.
+*/
+.list > .switch-row {
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/*
   Preload/splash logó — a `Splash` komponens (App.tsx) ide tölti be a
   PNG-t, témánként két fájllal (indoklás: `HomeScreen.tsx` fejléce).
 

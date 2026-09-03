@@ -20,7 +20,6 @@ import './sounds.css';
  * böngészőjében nem.
  */
 
-/** Csoportonként: melyik kapcsoló alá milyen hangok tartoznak. */
 const GROUPS: readonly {
   key: 'soundCountdown' | 'soundCells' | 'soundLoop' | 'soundActivity';
   label: string;
@@ -66,16 +65,7 @@ export function SoundsScreen() {
   const settings = useFeedbackSettings();
 
   function preview(name: SoundName) {
-    // A hangzár feloldása is felhasználói gesztust igényel — ez az.
     unlockSounds();
-    /**
-     * A MEGHALLGATÁS MINDIG SZÓL, akkor is, ha a csatorna ki van kapcsolva.
-     *
-     * Ez a gomb nem a rögzítés visszajelzése, hanem a hang azonosítása: aki
-     * azt akarja eldönteni, kell-e neki, annak hallania kell. A `settings`
-     * felülírása ezért szándékos — a rögzítés útjában lévő `playSound()`
-     * hívások továbbra is a valódi beállítást nézik.
-     */
     playSound(name, {
       ...settings,
       soundEnabled: true,
@@ -170,13 +160,6 @@ export function SoundsScreen() {
             </div>
           </section>
         ))}
-
-        <section className="stack stack--tight">
-          <p className="field__hint">
-            A hangok a rögzítés képernyőn szólalnak meg, és az admin Simulation LAB E2E
-            tesztjeiben is — ott ugyanaz a felület fut, mint élesben.
-          </p>
-        </section>
       </div>
     </>
   );

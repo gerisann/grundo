@@ -19,7 +19,8 @@ interface Burst {
   cells: ColorTerritoryCell[];
 }
 
-const COPIES = [0, 1, 2] as const;
+const COPIES = [0, 1, 2, 3, 4] as const;
+const CENTER_COPY = 2;
 const ITEM_GAP_PX = 16;
 
 export function CellColorCarousel({
@@ -32,9 +33,14 @@ export function CellColorCarousel({
   const burstDelayRef = useRef<number | null>(null);
   const burstEndRef = useRef<number | null>(null);
   const burstIdRef = useRef(0);
+  const alreadyCenteredSelectionRef = useRef<CellColor | null>(null);
   const [burst, setBurst] = useState<Burst | null>(null);
 
   useLayoutEffect(() => {
+    if (alreadyCenteredSelectionRef.current === active) {
+      alreadyCenteredSelectionRef.current = null;
+      return;
+    }
     const frame = window.requestAnimationFrame(() => centerActive(viewportRef.current, active));
     return () => window.cancelAnimationFrame(frame);
   }, [active, colors]);
@@ -45,9 +51,12 @@ export function CellColorCarousel({
   }, []);
 
   function select(event: MouseEvent<HTMLButtonElement>, color: CellColor) {
-    if (isLocked(color)) return;
+    const locked = isLocked(color);
     centerElement(viewportRef.current, event.currentTarget, reducedMotion() ? 'auto' : 'smooth');
     scheduleBurst(color, event.currentTarget.offsetWidth);
+
+    if (locked) return;
+    if (color !== active) alreadyCenteredSelectionRef.current = color;
     onChoose(color);
   }
 
@@ -142,6 +151,7 @@ function ColorSwatch({
   onClick: (event: MouseEvent<HTMLButtonElement>, color: CellColor) => void;
 }) {
   const { hex, label } = CELL_COLORS[color];
+  const lockedLabel = `${label} — Pro-előnézet, előfizetéssel választható`;
   return (
     <button
       type="button"
@@ -150,10 +160,9 @@ function ColorSwatch({
       data-copy={copy}
       data-color={color}
       aria-pressed={active}
-      aria-disabled={locked}
-      aria-label={locked ? `${label} — Pro-előfizetéssel` : label}
-      title={locked ? `${label} — Pro-előfizetéssel` : label}
-      tabIndex={copy === 1 ? 0 : -1}
+      aria-label={locked ? lockedLabel : label}
+      title={locked ? lockedLabel : label}
+      tabIndex={copy === CENTER_COPY ? 0 : -1}
       style={{ '--ccolor': hex } as CSSProperties}
       onClick={(event) => onClick(event, color)}
     >
@@ -191,8 +200,8 @@ function centerActive(viewport: HTMLDivElement | null, active: CellColor): void 
   if (!viewport) return;
   const buttons = viewport.querySelectorAll<HTMLButtonElement>('[data-color-swatch]');
   const middle = Array.from(buttons).find(
-    (button) => button.dataset.copy === '1' && button.dataset.color === active,
-  ) ?? Array.from(buttons).find((button) => button.dataset.copy === '1');
+    (button) => button.dataset.copy === String(CENTER_COPY) && button.dataset.color === active,
+  ) ?? Array.from(buttons).find((button) => button.dataset.copy === String(CENTER_COPY));
   if (middle) centerElement(viewport, middle, 'auto');
 }
 
@@ -214,8 +223,17 @@ function normalizeInfiniteScroll(viewport: HTMLDivElement, colorCount: number): 
   const swatch = viewport.querySelector<HTMLElement>('[data-color-swatch]');
   const cycleWidth = swatch ? (swatch.offsetWidth + ITEM_GAP_PX) * colorCount : 0;
   if (cycleWidth <= 0) return;
-  if (viewport.scrollLeft < cycleWidth * 0.5) viewport.scrollLeft += cycleWidth;
-  if (viewport.scrollLeft > cycleWidth * 1.5) viewport.scrollLeft -= cycleWidth;
+
+  // Öt azonos ciklusból mindig a középső három valamelyikében tartjuk a
+  // viewportot. Az azonos tartalom miatt a ±2 ciklusos rebase vizuálisan
+  // ugyanazt a pixelt hagyja a képernyőn, viszont soha nem érünk a valódi
+  // scroll-tartomány végére. A CSS-ben nincs globális smooth scroll, ezért
+  // ez az áthelyezés azonnali és láthatatlan marad swipe közben is.
+  if (viewport.scrollLeft < cycleWidth * 1.25) {
+    viewport.scrollLeft += cycleWidth * 2;
+  } else if (viewport.scrollLeft > cycleWidth * 3.75) {
+    viewport.scrollLeft -= cycleWidth * 2;
+  }
 }
 
 function reducedMotion(): boolean {

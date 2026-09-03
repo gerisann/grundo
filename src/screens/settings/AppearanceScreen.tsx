@@ -160,18 +160,11 @@ export function AppearanceScreen() {
 
         <CellColorSection />
 
-        {/*
-          A TERÜLETSZERZÉS VISSZAJELZÉSE — Geri kérése (2026-09-01): a
-          „Grund megszerezve!" üzenet és a mögötte futó konfetti egyetlen
-          kapcsolón lógjon, és itt, a Megjelenés alatt legyen. A hangok
-          KÜLÖN oldalon állíthatók (Beállítások → Hangok), mert az más
-          érzékszerv és más helyzetben zavaró.
-        */}
-        <section className="stack stack--tight">
+        <section className="stack stack--tight appearance-territory-feedback">
           <div className="label">Rögzítés közben</div>
           <List>
             <Switch
-              label="Területszerzés-üzenet"
+              label="Grund foglalás"
               description="Felugró visszajelzés és konfetti, amikor bezársz egy kört."
               checked={feedback.territoryPopup}
               onChange={(territoryPopup) => updateFeedbackSettings({ territoryPopup })}

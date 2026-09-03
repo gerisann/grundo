@@ -47,7 +47,7 @@ export function GraphicsScreen() {
         </section>
 
         <section className="stack stack--tight">
-          <div className="label">Kirajzolási távolság</div>
+          <div className="label">FOV - LÁTÓMEZŐ</div>
           <div className="graphics-settings__range">
             <span aria-hidden="true">−</span>
             <input
@@ -56,7 +56,7 @@ export function GraphicsScreen() {
               max={MAX_RENDER_RADIUS_M}
               step={RENDER_RADIUS_STEP_M}
               value={settings.renderRadiusM}
-              aria-label="Kirajzolási távolság"
+              aria-label="FOV - Látómező"
               aria-valuetext={`${settings.renderRadiusM} méter`}
               onChange={(event) => updateGraphicsSettings({ renderRadiusM: Number(event.target.value) })}
             />
@@ -70,7 +70,7 @@ export function GraphicsScreen() {
         </section>
 
         <section className="stack stack--tight">
-          <div className="label">Viewing Distance (3D)</div>
+          <div className="label">LÁTÓTÁVOLSÁG (3D NÉZET)</div>
           <div className="graphics-settings__range">
             <span aria-hidden="true">−</span>
             <input
@@ -79,7 +79,7 @@ export function GraphicsScreen() {
               max={MAX_VIEWING_DISTANCE_M}
               step={VIEWING_DISTANCE_STEP_M}
               value={settings.viewingDistanceM}
-              aria-label="3D látótávolság"
+              aria-label="Látótávolság 3D nézetben"
               aria-valuetext={`${settings.viewingDistanceM} méter`}
               onChange={(event) => updateGraphicsSettings({ viewingDistanceM: Number(event.target.value) })}
             />
@@ -87,8 +87,7 @@ export function GraphicsScreen() {
             <strong className="graphics-settings__value">{formatRadius(settings.viewingDistanceM)}</strong>
           </div>
           <p className="field__hint">
-            A bedöntött 3D térkép eddig a távolságig nyílik ki. A távoli széle nem élesen
-            vágódik le: fokozatosan szürke ködbe olvad. A 2D nézetet ez nem módosítja.
+            A bedöntött 3D térkép eddig a távolságig tölt be. A 2D nézetet ez nem befolyásolja.
           </p>
         </section>
 

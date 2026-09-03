@@ -26,7 +26,6 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   touch-action: pan-x;
@@ -113,7 +112,7 @@
 }
 
 .ccolor__swatch--locked {
-  cursor: not-allowed;
+  cursor: pointer;
 }
 
 .ccolor__swatch--locked .ccolor__fill {
@@ -129,10 +128,10 @@
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 65%, transparent);
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.24);
+  background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
   color: var(--text-primary);
   transform: translateY(-50%);
   backdrop-filter: blur(8px);
@@ -177,10 +176,10 @@
     transform: translate(-50%, -50%) scale(0.72);
   }
   14% {
-    opacity: 0.2;
+    opacity: 0.37;
   }
   58% {
-    opacity: 0.13;
+    opacity: 0.25;
   }
   100% {
     opacity: 0;
@@ -199,6 +198,14 @@
   color: var(--accent-on);
 }
 
+.appearance-territory-feedback .list {
+  padding-inline: var(--sp-4);
+}
+
+.appearance-territory-feedback .switch-row {
+  padding-block: var(--sp-4);
+}
+
 @media (max-width: 390px) {
   .ccolor__carousel {
     --ccolor-width: 100px;
@@ -206,10 +213,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ccolor__viewport {
-    scroll-behavior: auto;
-  }
-
   .ccolor__territory {
     display: none;
   }
