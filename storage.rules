@@ -60,6 +60,14 @@ service firebase.storage {
       allow delete: if isSelf(uid);
     }
 
+    // A backend csak az alapító által feltöltött, pontos branding-útvonalat
+    // engedi a banda dokumentumába menteni; itt a kliens saját uid-ja a kapu.
+    match /bandas/{bandaId}/branding/{uid}/{fileName} {
+      allow read: if true;
+      allow create, update: if isSelf(uid) && isImage() && underMB(5);
+      allow delete: if isSelf(uid);
+    }
+
     // ── Generált térkép-előnézetek ────────────────────────────────────────
     // Mindig a LEVÁGOTT nyomvonalból készülnek. Csak a szerver írhatja.
     match /maps/{activityId}/{fileName} {

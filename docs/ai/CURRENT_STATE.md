@@ -5,9 +5,9 @@
 
 ## Jelenlegi cél
 
-A Banda részlet négylapos, sportágankénti TOP10 ranglistája és a működő
-megosztási link elkészült. A következő nyitott termékfeladat a banda profil-
-és borítókép feltöltése.
+A Banda részlet négylapos, sportágankénti TOP10 ranglistája, megosztása,
+profilképe és borítóképe elkészült. A következő feladat az éles migráció és
+telepítés.
 
 ## Elkészült
 
@@ -54,6 +54,9 @@ megosztási link elkészült. A következő nyitott termékfeladat a banda profi
    dobogó, majd a 4–10. helyezett. Az aktivitásmentés sportáganként vezeti az
    időablakos értékeket. A meghívókód külön másolható, a share link
    `?code=` paraméterrel előtölti a csatlakozási mezőt.
+9. **Banda profil- és borítókép**: az alapító a beállításokban töltheti fel;
+   kliensoldali JPEG-tömörítés és EXIF-törlés, fix Storage-útvonal, alapítói
+   szervervalidáció. A borító a banda adatlapjának tetején jelenik meg.
 
 ## A legutóbbi menet fő módosításai
 
@@ -85,6 +88,8 @@ funkcionális specifikáció, adatmodell és döntésnapló.
 - Az új banda-tag statisztika API 19/19, a normál aktivitásmentés 25/25,
   a darabolt aktivitásmentés 9/9 emulátoros teszttel ✅. Mindkét mentési út
   bizonyítottan növeli a sportágankénti terület- és GP-értékeket.
+- A banda-arculat és Storage-jogosultság közös emulátoros futása 25/25 ✅;
+  Storage rules dry-run, kliens 734/734 és szerver 225/225 teszt, build ✅.
 - A Phase 3 képernyőt böngészőben, mobil app-szélességen, világos és
   sötét témában is ellenőriztem ideiglenes helyi előnézeti adatokkal; az
   előnézeti ág nincs benne a végleges kódban. Teljes bejelentkezéses UI E2E
@@ -98,11 +103,10 @@ funkcionális specifikáció, adatmodell és döntésnapló.
 
 Sorban, a felsorolás szerint folytatva:
 
-1. **Banda profilkép + borítókép feltöltés.**
-2. **Éles migráció:** `backfill:banda-stats -- --apply --allow-production`
+1. **Éles migráció:** `backfill:banda-stats -- --apply --allow-production`
    futtatása; a régi `foot` területből a futás/séta történelmileg nem
    választható szét hitelesen, ezért az új sportágankénti mérés nulláról indul.
-3. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
+2. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
    az ütemezés nincs).
 
 Geri által ezen a meneten felírt, még NEM implementált backlog-tételek

@@ -483,7 +483,8 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
 ### `bandas/{bandaId}` *(GRUNDO #29 — Klub → Banda átnevezés, kibővítve)*
 ```ts
 { name: string, nameLower: string,    // kereséshez, a usernameLower mintájára
-  description: string|null, photoURL: string|null, city: string|null, countryCode: string|null,
+  description: string|null, photoURL: string|null, coverURL: string|null,
+  city: string|null, countryCode: string|null,
   visibility: 'public'|'private',
   inviteCode?: string,                // 8 karakter, csak private esetén
   ownerId: string, memberCount: number,
@@ -527,6 +528,10 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
 - A feed-kép a `bandas/{bandaId}/feed/{uid}/{fileName}.jpg` Storage-
   útvonalon él, legfeljebb 2 MB. Közvetlen Storage-olvasás nincs: a backend
   csak tagság-ellenőrzés után szolgálja ki, tartós letöltési token nélkül.
+- A banda profil- és borítóképe fixen a
+  `bandas/{bandaId}/branding/{ownerUid}/{profile|cover}.jpg` útvonalon él;
+  közvetlenül csak a saját uid alá tölthető, a banda dokumentumába pedig csak
+  az alapító menthet pontosan ide mutató Firebase Storage URL-t.
 - Phase 3 tagkezelés *(GRUNDO #30)*: a szerver tranzakcióban tartja egyezőn
   a `bandas/{id}/members/{uid}` és `users/{uid}/bandas/{id}` szerepköröket.
   Az alapító moderátort nevezhet ki vagy minősíthet vissza, tagot/moderátort

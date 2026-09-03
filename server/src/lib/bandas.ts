@@ -133,6 +133,7 @@ export function newBandaDoc(input: NewBandaInput, now: Date) {
     nameLower: normalizeBandaName(name),
     description: input.description?.trim() || null,
     photoURL: null,
+    coverURL: null,
     city: input.city?.trim() || null,
     countryCode: null,
     visibility: input.visibility,

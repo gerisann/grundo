@@ -51,6 +51,7 @@ interface BandaSummary {
   name: string;
   description: string | null;
   photoURL: string | null;
+  coverURL: string | null;
   city: string | null;
   visibility: BandaVisibility;
   ownerId: string;
@@ -87,6 +88,16 @@ function bandaStats(value: unknown) {
   }));
 }
 
+function isBandaBrandUrl(raw: string, bandaId: string, uid: string, kind: 'profile' | 'cover'): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.hostname !== 'firebasestorage.googleapis.com') return false;
+    return decodeURIComponent(url.pathname).includes(`/o/bandas/${bandaId}/branding/${uid}/${kind}.jpg`);
+  } catch {
+    return false;
+  }
+}
+
 function toSummary(id: string, data: Record<string, unknown>): BandaSummary {
   const totalsRaw = (data.totals as Record<string, unknown> | undefined) ?? {};
   const area = (key: string) => {
@@ -98,6 +109,7 @@ function toSummary(id: string, data: Record<string, unknown>): BandaSummary {
     name: String(data.name ?? ''),
     description: (data.description as string | null) ?? null,
     photoURL: (data.photoURL as string | null) ?? null,
+    coverURL: (data.coverURL as string | null) ?? null,
     city: (data.city as string | null) ?? null,
     visibility: data.visibility === 'private' ? 'private' : 'public',
     ownerId: String(data.ownerId ?? ''),
@@ -574,6 +586,48 @@ bandasRouter.get('/:id', async (req: AuthedRequest, res: Response, next) => {
 /* ══════════════════════════════════════════════════════════════════
    Phase 3 — alapítói beállítások és tagkezelés
    ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.patch('/:id/branding', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    const [bandaSnap, memberSnap] = await Promise.all([
+      bandaRef.get(),
+      bandaRef.collection('members').doc(uid).get(),
+    ]);
+    if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+    if (!memberSnap.exists || (memberSnap.data() as { role?: BandaRole }).role !== 'owner') {
+      throw forbidden('Csak a banda alapítója módosíthatja a képeket.');
+    }
+
+    const body = (req.body as { photoURL?: unknown; coverURL?: unknown } | undefined) ?? {};
+    const current = bandaSnap.data() as { photoURL?: string | null; coverURL?: string | null };
+    const update: { photoURL?: string | null; coverURL?: string | null; updatedAt: FirebaseFirestore.FieldValue } = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    for (const kind of ['profile', 'cover'] as const) {
+      const field = kind === 'profile' ? 'photoURL' : 'coverURL';
+      if (!(field in body)) continue;
+      const raw = body[field];
+      const value = raw == null || raw === '' ? null : String(raw);
+      if (value && !isBandaBrandUrl(value, bandaId, uid, kind)) {
+        throw badRequest('invalid_banda_image_url', 'A kép nem ehhez a bandához feltöltött fájlra mutat.');
+      }
+      update[field] = value;
+    }
+    if (update.photoURL === undefined && update.coverURL === undefined) {
+      throw badRequest('missing_branding', 'Válassz profil- vagy borítóképet.');
+    }
+    await bandaRef.set(update, { merge: true });
+    res.json({
+      photoURL: update.photoURL === undefined ? current.photoURL ?? null : update.photoURL,
+      coverURL: update.coverURL === undefined ? current.coverURL ?? null : update.coverURL,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 bandasRouter.patch('/:id/settings', async (req: AuthedRequest, res: Response, next) => {
   try {

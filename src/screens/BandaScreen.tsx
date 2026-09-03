@@ -169,6 +169,7 @@ export function BandaScreen() {
       />
       <div className="screen-body stack">
         <section className="card stack">
+          {banda.coverURL ? <img className="banda-detail__cover" src={banda.coverURL} alt="" /> : null}
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
             <Avatar url={banda.photoURL} name={banda.name} size={56} />
             <div className="stack" style={{ gap: 4 }}>

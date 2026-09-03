@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { Button, Chip, ScreenHeader, SegmentedControl } from '@/components/ui';
+import { useAuth } from '@/hooks/AuthProvider';
+import { uploadBandaBrandImage } from '@/lib/photos';
 import {
   api,
   ApiError,
@@ -26,7 +28,13 @@ const ROLE_LABEL = {
 export function BandaSettingsScreen() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const profileInput = useRef<HTMLInputElement>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('Banda');
+  const [photoURL, setPhotoURL] = useState<string | null>(null);
+  const [coverURL, setCoverURL] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState<'profile' | 'cover' | null>(null);
   const [settings, setSettings] = useState<BandaSettings | null>(null);
   const [members, setMembers] = useState<BandaMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +54,8 @@ export function BandaSettingsScreen() {
         return;
       }
       setName(detail.banda.name);
+      setPhotoURL(detail.banda.photoURL);
+      setCoverURL(detail.banda.coverURL);
       setSettings(detail.settings);
       setMembers(memberList.items);
     } catch (problem) {
@@ -54,6 +64,26 @@ export function BandaSettingsScreen() {
       setLoading(false);
     }
   }, [id]);
+
+  async function uploadBrand(file: File, kind: 'profile' | 'cover') {
+    if (!id || !user) return;
+    setImageBusy(kind);
+    setError('');
+    setMessage('');
+    try {
+      const uploaded = await uploadBandaBrandImage(file, user.uid, id, kind);
+      const result = await api.bandas.updateBranding(id, kind === 'profile'
+        ? { photoURL: uploaded.url }
+        : { coverURL: uploaded.url });
+      setPhotoURL(result.photoURL);
+      setCoverURL(result.coverURL);
+      setMessage(kind === 'profile' ? 'A banda profilképe frissült.' : 'A banda borítóképe frissült.');
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : problem instanceof Error ? problem.message : 'A képet most nem sikerült feltölteni.');
+    } finally {
+      setImageBusy(null);
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -142,6 +172,29 @@ export function BandaSettingsScreen() {
 
         {settings ? (
           <>
+            <section className="card stack">
+              <div>
+                <h2 className="banda-settings__section-title">Banda képei</h2>
+                <p className="banda-settings__hint">A képek feltöltéskor tömörítve, EXIF-adatok nélkül kerülnek fel.</p>
+              </div>
+              <div className="banda-settings__branding">
+                <div className="banda-settings__profile-image">
+                  <Avatar url={photoURL} name={name} size={72} />
+                  <Button variant="secondary" loading={imageBusy === 'profile'} disabled={imageBusy !== null} onClick={() => profileInput.current?.click()}>
+                    Profilkép cseréje
+                  </Button>
+                </div>
+                <div className="banda-settings__cover-wrap">
+                  {coverURL ? <img src={coverURL} alt="Banda borítókép" className="banda-settings__cover" /> : <div className="banda-settings__cover banda-settings__cover--empty">Nincs borítókép</div>}
+                  <Button variant="secondary" loading={imageBusy === 'cover'} disabled={imageBusy !== null} onClick={() => coverInput.current?.click()}>
+                    Borítókép cseréje
+                  </Button>
+                </div>
+              </div>
+              <input ref={profileInput} className="banda-settings__file" type="file" accept="image/*" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void uploadBrand(file, 'profile'); }} />
+              <input ref={coverInput} className="banda-settings__file" type="file" accept="image/*" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void uploadBrand(file, 'cover'); }} />
+            </section>
+
             <section className="card stack">
               <div>
                 <h2 className="banda-settings__title">Ki hívhat meg tagokat?</h2>

@@ -186,6 +186,23 @@ export async function uploadProfilePhoto(file: File, uid: string): Promise<strin
   return `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
 }
 
+/** Banda-arculati kép: fix útvonal, így a következő feltöltés felülírja a régit. */
+export async function uploadBandaBrandImage(
+  file: File,
+  uid: string,
+  bandaId: string,
+  kind: 'profile' | 'cover',
+): Promise<{ path: string; url: string }> {
+  if (!storage) throw new PhotoError('A képfeltöltés nincs beállítva.');
+  const blob = await compressImageToJpeg(file, kind === 'profile' ? 512 : 1600);
+  if (blob.size >= 5 * 1024 * 1024) throw new PhotoError('A tömörített kép legfeljebb 5 MB lehet.');
+  const path = `bandas/${bandaId}/branding/${uid}/${kind}.jpg`;
+  const handle = ref(storage, path);
+  await uploadBytes(handle, blob, { contentType: 'image/jpeg' });
+  const rawUrl = await getDownloadURL(handle);
+  return { path, url: `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}v=${Date.now()}` };
+}
+
 /** A banda-hírfolyam egyetlen csatolt képének felső korlátja. */
 export const MAX_BANDA_FEED_IMAGE_BYTES = 2 * 1024 * 1024;
 

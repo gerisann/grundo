@@ -496,6 +496,23 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(ownerDetail.inviteCode).toBe(created.inviteCode);
   });
 
+  it('csak az alapító menthet saját banda profil- és borítóképet', async () => {
+    const created = await (await call('/', OWNER, {
+      method: 'POST', body: JSON.stringify({ name: 'Képes Banda', visibility: 'public' }),
+    })).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    const photoURL = `https://firebasestorage.googleapis.com/v0/b/grundo.firebasestorage.app/o/${encodeURIComponent(`bandas/${bandaId}/branding/${OWNER}/profile.jpg`)}?alt=media&token=x`;
+    const coverURL = `https://firebasestorage.googleapis.com/v0/b/grundo.firebasestorage.app/o/${encodeURIComponent(`bandas/${bandaId}/branding/${OWNER}/cover.jpg`)}?alt=media&token=y`;
+
+    expect((await call(`/${bandaId}/branding`, OTHER, { method: 'PATCH', body: JSON.stringify({ photoURL }) })).status).toBe(403);
+    expect((await call(`/${bandaId}/branding`, OWNER, { method: 'PATCH', body: JSON.stringify({ photoURL: 'https://example.com/x.jpg' }) })).status).toBe(400);
+    const saved = await call(`/${bandaId}/branding`, OWNER, { method: 'PATCH', body: JSON.stringify({ photoURL, coverURL }) });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ photoURL, coverURL });
+    expect((await call(`/${bandaId}`, OWNER).then((response) => response.json())).banda).toMatchObject({ photoURL, coverURL });
+  });
+
   it('az alapító kinevezhet és visszaminősíthet moderátort, mindkét tükörben', async () => {
     const created = await (
       await call('/', OWNER, {

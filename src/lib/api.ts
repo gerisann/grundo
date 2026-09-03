@@ -1058,6 +1058,7 @@ export interface Banda {
   name: string;
   description: string | null;
   photoURL: string | null;
+  coverURL: string | null;
   city: string | null;
   visibility: BandaVisibility;
   ownerId: string;
@@ -1295,6 +1296,13 @@ export const api = {
       request<{ settings: BandaSettings }>(`/api/bandas/${encodeURIComponent(bandaId)}/settings`, {
         method: 'PATCH',
         body: JSON.stringify(settings),
+      }),
+
+    /** Banda profil- és borítóképének mentése — csak az alapítónak. */
+    updateBranding: (bandaId: string, input: { photoURL?: string | null; coverURL?: string | null }) =>
+      request<{ photoURL: string | null; coverURL: string | null }>(`/api/bandas/${encodeURIComponent(bandaId)}/branding`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
       }),
 
     /** Tag előléptetése moderátorrá vagy vissza taggá. */

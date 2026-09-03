@@ -120,4 +120,15 @@ describe.skipIf(!EMULATOR)('adatvédelmi szabályok — valódi emulátorokon', 
 
     expect(bobUid).not.toBe(aliceUid);
   });
+
+  it('banda-arculati képet csak a saját uid alá és 5 MB alatt lehet írni', async () => {
+    const aliceUid = aliceAuth.currentUser!.uid;
+    const own = ref(aliceStorage, `bandas/banda-rules/branding/${aliceUid}/profile.jpg`);
+    await expect(uploadBytes(own, new Uint8Array([1, 2, 3]), { contentType: 'image/jpeg' })).resolves.toBeDefined();
+    await expect(getBytes(own)).resolves.toBeDefined();
+    await expect(uploadBytes(
+      ref(bobStorage, `bandas/banda-rules/branding/${aliceUid}/cover.jpg`),
+      new Uint8Array([1]), { contentType: 'image/jpeg' },
+    )).rejects.toMatchObject({ code: 'storage/unauthorized' });
+  });
 });

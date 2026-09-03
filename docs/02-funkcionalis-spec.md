@@ -351,6 +351,9 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   holtversenynél GP.
 - A Banda fejléc-kártyáján minden tag látja a megosztási linket; a privát
   banda meghívókódja a beállított szerepkör-jogosultság szerint jelenik meg.
+- Az alapító a Banda beállításaiban profilképet és széles borítóképet tölthet
+  fel. Mindkettő kliensoldalon JPEG-re tömörödik és EXIF-mentes lesz; a
+  profilkép legfeljebb 512, a borítókép legfeljebb 1600 képpontos éllel készül.
 - A hírfolyam szerkesztője támogatja a félkövér, dőlt és aláhúzott
   szöveget, a felsorolást, számozott felsorolást, idézetet és linket. Egy
   poszthoz egy, tallózással kiválasztott, legfeljebb 2 MB-os kép csatolható;
