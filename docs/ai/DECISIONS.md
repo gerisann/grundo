@@ -127,6 +127,11 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   csatlakozási kérést tartalmazott; a Bandáknál publikus csatlakozás
   azonnali, privátnál kizárólag meghívókóddal/meghívással — sosem a
   csatlakozni akaró kezdeményez jóváhagyást igénylő kérést.
+- **Tulajdonjog-átruházáskor a korábbi alapító moderátor marad.**
+  Az új alapító egy meglévő tag; az `ownerId` és mindkét felhasználó
+  két tagsági tükördokumentuma egyetlen tranzakcióban vált. Így mindig
+  pontosan egy `owner` van, miközben az átadó nem veszíti el hirtelen az
+  adminisztrációs kapcsolatát a bandával.
 
 ## Archívum
 

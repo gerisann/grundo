@@ -31,6 +31,7 @@ const TrackingScreen = lazy(() => import('./screens/TrackingScreen').then((m) =>
 const DiscoverScreen = lazy(() => import('./screens/DiscoverScreen').then((m) => ({ default: m.DiscoverScreen })));
 const CommunityBandasScreen = lazy(() => import('./screens/CommunityBandasScreen').then((m) => ({ default: m.CommunityBandasScreen })));
 const BandaScreen = lazy(() => import('./screens/BandaScreen').then((m) => ({ default: m.BandaScreen })));
+const BandaSettingsScreen = lazy(() => import('./screens/BandaSettingsScreen').then((m) => ({ default: m.BandaSettingsScreen })));
 const CommunityChallengesScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityChallengesScreen })));
 const CommunityPassportScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityPassportScreen })));
 const ProfileScreen = lazy(() => import('./screens/ProfileScreen').then((m) => ({ default: m.ProfileScreen })));
@@ -220,6 +221,7 @@ function Router() {
             <Route path="/kozosseg" element={<DiscoverScreen />} />
             <Route path="/kozosseg/bandak" element={<CommunityBandasScreen />} />
             <Route path="/bandak/:id" element={<BandaScreen />} />
+            <Route path="/bandak/:id/beallitasok" element={<BandaSettingsScreen />} />
             <Route path="/kozosseg/kihivasok" element={<CommunityChallengesScreen />} />
             <Route path="/kozosseg/utlevel" element={<CommunityPassportScreen />} />
             <Route path="/profil" element={<ProfileScreen />} />
@@ -260,6 +262,7 @@ function Router() {
       {pathname.startsWith('/aktivitas/') ||
       pathname.startsWith('/admin') ||
       pathname.startsWith('/beallitasok') ||
+      /^\/bandak\/[^/]+\/beallitasok\/?$/.test(pathname) ||
       (pathname === '/rogzites' && savePanelOpen) ? null : <Dock />}
     </>
   );

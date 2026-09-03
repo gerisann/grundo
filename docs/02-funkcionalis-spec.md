@@ -338,11 +338,14 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   két váltható feed — **hírfolyam** (ki posztolhat: mindenki/moderátorok/
   csak az alapító, az alapító állítja be) és **nyílt chat fal** *(GRUNDO
   #30)* —, valamint egy külön beállítások képernyő (fogaskerék, jobb
-  felül) az alapítónak. *(A beállítások képernyő Phase 3 tárgya.)*
+  felül) az alapítónak. Itt kezelhetők a jogosultságok, a szerepkörök,
+  a tagok és a tulajdonjog. *(GRUNDO #30, Phase 3)*
 - Szerepek: **alapító > moderátor > tag**. Az alapító és a moderátor
   kirúghat tagot. Az alapító nevezhet ki moderátort, és állítja be, hogy
   privát bandánál ki hívhat meg mást, és kinek látszik a meghívókód
   (mindenki / csak moderátorok / csak ő).
+- Tulajdonjog-átruházáskor a kijelölt meglévő tag lesz az alapító; a
+  korábbi alapító moderátorként marad a bandában.
 
 ### Kihívások (kép #36)
 - Időszakos, admin által létrehozott feladatok. Típusok:

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { BandaFeedWall } from '@/components/BandaFeedWall';
 import { BandaInviteSheet } from '@/components/BandaInviteSheet';
@@ -28,12 +28,12 @@ const hu = new Intl.NumberFormat('hu-HU');
  *
  * Nincs a Közösség-fülsor alatt — önálló képernyő, saját fejléccel, mint a
  * `/profil/rivalisok`. A hírfolyam és a chat fal (`BandaFeedWall`) és a
- * meghívás (`BandaInviteSheet`) már itt élnek — a beállítások (fogaskerék,
- * jobb felül, moderátor-kinevezés, kirúgás) még Phase 3 tárgya, egyelőre
- * "hamarosan érkezik" kártyát mutat.
+ * meghívás (`BandaInviteSheet`) itt élnek. Az alapító jobb felül a
+ * fogaskerékkel jut a külön Phase 3 beállítás- és tagkezelő képernyőre.
  */
 export function BandaScreen() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [banda, setBanda] = useState<Banda | null>(null);
   const [role, setRole] = useState<BandaRole | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -100,7 +100,23 @@ export function BandaScreen() {
 
   return (
     <>
-      <ScreenHeader title={banda.name} backTo="/kozosseg/bandak" />
+      <ScreenHeader
+        title={banda.name}
+        backTo="/kozosseg/bandak"
+        action={role === 'owner' && id ? (
+          <button
+            type="button"
+            className="screen-header__back"
+            aria-label="Banda beállításai"
+            onClick={() => navigate(`/bandak/${encodeURIComponent(id)}/beallitasok`)}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.6 8.95a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.95 4.6 1.7 1.7 0 0 0 9.97 3.04V3h4v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8.95a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+            </svg>
+          </button>
+        ) : undefined}
+      />
       <div className="screen-body stack">
         <section className="card stack">
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
@@ -173,11 +189,6 @@ export function BandaScreen() {
             description="A hírfolyam és a chat fal csak a banda tagjainak látszik — csatlakozz, hogy megnézhesd."
           />
         )}
-
-        <EmptyState
-          title="A beállítások hamarosan érkeznek"
-          description="Itt lesz majd a moderátor-kinevezés, a kirúgás és a beállítások gomb — Phase 3 tárgya."
-        />
       </div>
 
       {inviteSheetOpen && id ? (

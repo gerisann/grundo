@@ -515,8 +515,12 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   (`everyone`/`moderators`/`owner`, a `meetsRolePermission` dönti el), a
   chat falra bárki tag írhat, arra nincs külön beállítás. Nincs
   szerkesztés/törlés/lájk/válasz Phase 2-ben — sima, időrendi lista.
-- Phase 3 bővíti: moderátor-kinevezés, kirúgás, tulajdonos-átruházás, a
-  beállítások képernyő, és a share-link mélylink-parsolása.
+- Phase 3 tagkezelés *(GRUNDO #30)*: a szerver tranzakcióban tartja egyezőn
+  a `bandas/{id}/members/{uid}` és `users/{uid}/bandas/{id}` szerepköröket.
+  Az alapító moderátort nevezhet ki vagy minősíthet vissza, tagot/moderátort
+  rúghat ki, és meglévő tagnak adhatja át a tulajdonjogot; ekkor ő maga
+  moderátor marad. A moderátor sima tagot rúghat ki, de moderátort vagy
+  alapítót nem. A share-link mélylink-parsolása külön folytatás.
 
 ### `challenges/{challengeId}`
 ```ts

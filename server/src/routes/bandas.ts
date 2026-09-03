@@ -3,8 +3,8 @@
  *
  * Phase 1 (lásd docs/ai/CURRENT_STATE.md): mag-CRUD. Phase 2 első darabja
  * (GRUNDO #30): appon belüli meghívás+értesítés (`invites/{uid}`), lásd
- * lent. A hírfolyam, a chat fal és a beállítások (moderátor-kinevezés,
- * kirúgás, tulajdonos-átruházás) még nincsenek — azok Phase 2/3 folytatása.
+ * lent. A hírfolyam, a chat fal és a Phase 3 banda-adminisztráció
+ * (beállítások, szerepkörök, kirúgás, tulajdonos-átruházás) is itt él.
  *
  * ⚠️ A TAGSÁG KÉT HELYEN ÉL, TÜKÖRKÉPPEL — a `following`/`followers` és a
  * `rivals` mintája (lásd `lib/rivals.ts` fejléce): `bandas/{id}/members/{uid}`
@@ -42,6 +42,7 @@ const SEARCH_LIMIT = 20;
 const MEMBER_LIST_LIMIT = 200;
 /** Ennyi próbálkozás után adjuk fel az ütközésmentes kód generálását. */
 const INVITE_CODE_MAX_ATTEMPTS = 10;
+const ROLE_PERMISSIONS = new Set(['everyone', 'moderators', 'owner']);
 
 interface BandaSummary {
   id: string;
@@ -508,17 +509,175 @@ bandasRouter.get('/:id', async (req: AuthedRequest, res: Response, next) => {
     }
 
     const role = isMember ? ((memberSnap.data() as { role?: BandaRole }).role ?? 'member') : null;
-    const settings = data.settings as Record<string, unknown> | undefined;
+    const storedSettings = (data.settings as Partial<BandaSettings> | undefined) ?? {};
+    const settings: BandaSettings = { ...DEFAULT_BANDA_SETTINGS, ...storedSettings };
 
     res.json({
       banda: toSummary(bandaId, data),
       role,
       isMember,
-      settings: settings ?? DEFAULT_BANDA_SETTINGS,
-      // A meghívókód csak a tagoknak megy ki — a `settings.inviteCodeVisibleTo`
-      // finomítása (mod/csak alapító) Phase 2 tárgya, addig minden tag látja.
-      inviteCode: isMember ? ((data.inviteCode as string | undefined) ?? null) : null,
+      settings,
+      inviteCode: role && canInvite(role, settings.inviteCodeVisibleTo)
+        ? ((data.inviteCode as string | undefined) ?? null)
+        : null,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   Phase 3 — alapítói beállítások és tagkezelés
+   ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.patch('/:id/settings', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    const body = (req.body as Partial<Record<keyof BandaSettings, unknown>> | undefined) ?? {};
+    const keys: (keyof BandaSettings)[] = ['whoCanInvite', 'inviteCodeVisibleTo', 'postPermission'];
+    if (!keys.some((key) => body[key] !== undefined)) {
+      throw badRequest('empty_settings', 'Válassz legalább egy módosítandó beállítást.');
+    }
+    for (const key of keys) {
+      if (body[key] !== undefined && !ROLE_PERMISSIONS.has(String(body[key]))) {
+        throw badRequest('invalid_permission', 'Érvénytelen banda-jogosultság.');
+      }
+    }
+
+    const settings = await db.runTransaction(async (tx) => {
+      const memberRef = bandaRef.collection('members').doc(uid);
+      const [bandaSnap, memberSnap] = await Promise.all([tx.get(bandaRef), tx.get(memberRef)]);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+      if (!memberSnap.exists || (memberSnap.data() as { role?: BandaRole }).role !== 'owner') {
+        throw forbidden('Csak a banda alapítója módosíthatja a beállításokat.');
+      }
+
+      const current = (bandaSnap.data() as { settings?: Partial<BandaSettings> }).settings ?? {};
+      const updated: BandaSettings = { ...DEFAULT_BANDA_SETTINGS, ...current };
+      for (const key of keys) {
+        if (body[key] !== undefined) updated[key] = body[key] as BandaSettings[typeof key];
+      }
+      tx.update(bandaRef, { settings: updated });
+      return updated;
+    });
+
+    res.json({ settings });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.patch('/:id/members/:memberId/role', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const targetUid = String(req.params.memberId ?? '');
+    const role = (req.body as { role?: unknown } | undefined)?.role;
+    if (role !== 'moderator' && role !== 'member') {
+      throw badRequest('invalid_role', 'A szerepkör csak tag vagy moderátor lehet.');
+    }
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    await db.runTransaction(async (tx) => {
+      const callerRef = bandaRef.collection('members').doc(uid);
+      const targetRef = bandaRef.collection('members').doc(targetUid);
+      const [bandaSnap, callerSnap, targetSnap] = await Promise.all([
+        tx.get(bandaRef),
+        tx.get(callerRef),
+        tx.get(targetRef),
+      ]);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+      if (!callerSnap.exists || (callerSnap.data() as { role?: BandaRole }).role !== 'owner') {
+        throw forbidden('Csak a banda alapítója módosíthat szerepkört.');
+      }
+      if (!targetSnap.exists) throw notFound('member_not_found', 'Ez a felhasználó nem tagja a bandának.');
+      if ((targetSnap.data() as { role?: BandaRole }).role === 'owner') {
+        throw conflict('owner_role_locked', 'Az alapító szerepköre itt nem módosítható.');
+      }
+
+      tx.update(targetRef, { role });
+      tx.update(db.collection(COLLECTIONS.users).doc(targetUid).collection('bandas').doc(bandaId), { role });
+    });
+
+    res.json({ role });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.delete('/:id/members/:memberId', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const targetUid = String(req.params.memberId ?? '');
+    if (targetUid === uid) throw conflict('cannot_kick_self', 'Saját magadat nem rúghatod ki a bandából.');
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    await db.runTransaction(async (tx) => {
+      const callerRef = bandaRef.collection('members').doc(uid);
+      const targetRef = bandaRef.collection('members').doc(targetUid);
+      const [bandaSnap, callerSnap, targetSnap] = await Promise.all([
+        tx.get(bandaRef),
+        tx.get(callerRef),
+        tx.get(targetRef),
+      ]);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+      if (!callerSnap.exists) throw forbidden('Csak a banda alapítója vagy moderátora rúghat ki tagot.');
+      if (!targetSnap.exists) throw notFound('member_not_found', 'Ez a felhasználó nem tagja a bandának.');
+
+      const callerRole = (callerSnap.data() as { role?: BandaRole }).role ?? 'member';
+      const targetRole = (targetSnap.data() as { role?: BandaRole }).role ?? 'member';
+      if (callerRole === 'member') throw forbidden('Csak a banda alapítója vagy moderátora rúghat ki tagot.');
+      if (targetRole === 'owner') throw forbidden('A banda alapítója nem rúgható ki.');
+      if (callerRole === 'moderator' && targetRole !== 'member') {
+        throw forbidden('A moderátor csak tagot rúghat ki.');
+      }
+
+      tx.delete(targetRef);
+      tx.delete(db.collection(COLLECTIONS.users).doc(targetUid).collection('bandas').doc(bandaId));
+      tx.update(bandaRef, { memberCount: FieldValue.increment(-1) });
+    });
+
+    res.json({ removed: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/transfer-ownership', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const targetUid = String((req.body as { targetUid?: unknown } | undefined)?.targetUid ?? '');
+    if (!targetUid) throw badRequest('missing_target', 'Válaszd ki az új alapítót.');
+    if (targetUid === uid) throw conflict('already_owner', 'Már te vagy a banda alapítója.');
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    await db.runTransaction(async (tx) => {
+      const callerRef = bandaRef.collection('members').doc(uid);
+      const targetRef = bandaRef.collection('members').doc(targetUid);
+      const [bandaSnap, callerSnap, targetSnap] = await Promise.all([
+        tx.get(bandaRef),
+        tx.get(callerRef),
+        tx.get(targetRef),
+      ]);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+      if (!callerSnap.exists || (callerSnap.data() as { role?: BandaRole }).role !== 'owner') {
+        throw forbidden('Csak a banda alapítója adhatja át a tulajdonjogot.');
+      }
+      if (!targetSnap.exists) throw notFound('member_not_found', 'Az új alapítónak előbb a banda tagjának kell lennie.');
+
+      const oldOwnerMirror = db.collection(COLLECTIONS.users).doc(uid).collection('bandas').doc(bandaId);
+      const newOwnerMirror = db.collection(COLLECTIONS.users).doc(targetUid).collection('bandas').doc(bandaId);
+      tx.update(bandaRef, { ownerId: targetUid });
+      tx.update(callerRef, { role: 'moderator' as BandaRole });
+      tx.update(oldOwnerMirror, { role: 'moderator' as BandaRole });
+      tx.update(targetRef, { role: 'owner' as BandaRole });
+      tx.update(newOwnerMirror, { role: 'owner' as BandaRole });
+    });
+
+    res.json({ ownerId: targetUid, previousOwnerRole: 'moderator' as BandaRole });
   } catch (error) {
     next(error);
   }

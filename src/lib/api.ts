@@ -1028,6 +1028,8 @@ export interface BandaSettings {
   postPermission: 'everyone' | 'moderators' | 'owner';
 }
 
+export type BandaPermission = BandaSettings['whoCanInvite'];
+
 /** Ugyanaz a szabály, mint a szerveren (`server/src/lib/bandas.ts` → `canInvite`) — csak a gomb megjelenítéséhez, a tényleges kapu a szerveren van. */
 export function canInvite(role: BandaRole, whoCanInvite: BandaSettings['whoCanInvite']): boolean {
   if (role === 'owner') return true;
@@ -1260,6 +1262,34 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ text }),
       }),
+
+    /** Alapítói jogosultság-beállítások mentése. */
+    updateSettings: (bandaId: string, settings: BandaSettings) =>
+      request<{ settings: BandaSettings }>(`/api/bandas/${encodeURIComponent(bandaId)}/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(settings),
+      }),
+
+    /** Tag előléptetése moderátorrá vagy vissza taggá. */
+    updateMemberRole: (bandaId: string, memberId: string, role: 'moderator' | 'member') =>
+      request<{ role: 'moderator' | 'member' }>(
+        `/api/bandas/${encodeURIComponent(bandaId)}/members/${encodeURIComponent(memberId)}/role`,
+        { method: 'PATCH', body: JSON.stringify({ role }) },
+      ),
+
+    /** Tag eltávolítása — a szerver a szerephierarchiát is ellenőrzi. */
+    removeMember: (bandaId: string, memberId: string) =>
+      request<{ removed: true }>(
+        `/api/bandas/${encodeURIComponent(bandaId)}/members/${encodeURIComponent(memberId)}`,
+        { method: 'DELETE' },
+      ),
+
+    /** Tulajdonjog átadása egy meglévő tagnak; a régi alapító moderátor marad. */
+    transferOwnership: (bandaId: string, targetUid: string) =>
+      request<{ ownerId: string; previousOwnerRole: 'moderator' }>(
+        `/api/bandas/${encodeURIComponent(bandaId)}/transfer-ownership`,
+        { method: 'POST', body: JSON.stringify({ targetUid }) },
+      ),
   },
 
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */

@@ -9,7 +9,9 @@
  *   - privát banda idegen tagnak `forbidden`, tagnak látszik,
  *   - a meghívás mindkét tükröt írja (`invites/{uid}` + `bandaInvites/{id}`),
  *     elfogadás/elutasítás mindkettőt törli, és a `whoCanInvite` beállítás
- *     ténylegesen tiltja a nem jogosultakat (GRUNDO #30).
+ *     ténylegesen tiltja a nem jogosultakat (GRUNDO #30),
+ *   - az alapítói beállítások, szerepkörök, kirúgás és tulajdonjog-
+ *     átruházás mindkét tagsági tükörben konzisztens (Phase 3).
  *
  * FUTTATÁS (a repo gyökeréből): `npm.cmd run test:emulator`
  * Emulátor nélkül a fájl MAGÁTÓL KIMARAD.
@@ -396,5 +398,144 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
       body: JSON.stringify({ text: 'a'.repeat(1001) }),
     });
     expect(tooLong.status).toBe(400);
+  });
+
+  it('csak az alapító menthet beállítást, a meghívókód láthatósága érvényesül', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Beállításos Banda', visibility: 'private' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call('/join-by-code', OTHER, {
+      method: 'POST',
+      body: JSON.stringify({ code: created.inviteCode }),
+    });
+
+    const denied = await call(`/${bandaId}/settings`, OTHER, {
+      method: 'PATCH',
+      body: JSON.stringify({ whoCanInvite: 'owner' }),
+    });
+    expect(denied.status).toBe(403);
+
+    const invalid = await call(`/${bandaId}/settings`, OWNER, {
+      method: 'PATCH',
+      body: JSON.stringify({ postPermission: 'nobody' }),
+    });
+    expect(invalid.status).toBe(400);
+
+    const saved = await call(`/${bandaId}/settings`, OWNER, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        whoCanInvite: 'moderators',
+        inviteCodeVisibleTo: 'owner',
+        postPermission: 'owner',
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).settings).toEqual({
+      whoCanInvite: 'moderators',
+      inviteCodeVisibleTo: 'owner',
+      postPermission: 'owner',
+    });
+
+    const memberDetail = await (await call(`/${bandaId}`, OTHER)).json();
+    expect(memberDetail.inviteCode).toBeNull();
+    const ownerDetail = await (await call(`/${bandaId}`, OWNER)).json();
+    expect(ownerDetail.inviteCode).toBe(created.inviteCode);
+  });
+
+  it('az alapító kinevezhet és visszaminősíthet moderátort, mindkét tükörben', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Szerepkör Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+
+    const forbiddenRole = await call(`/${bandaId}/members/${OWNER}/role`, OTHER, {
+      method: 'PATCH',
+      body: JSON.stringify({ role: 'member' }),
+    });
+    expect(forbiddenRole.status).toBe(403);
+
+    const promoted = await call(`/${bandaId}/members/${OTHER}/role`, OWNER, {
+      method: 'PATCH',
+      body: JSON.stringify({ role: 'moderator' }),
+    });
+    expect(promoted.status).toBe(200);
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(OTHER).get()).data()?.role).toBe('moderator');
+    expect((await db.collection('users').doc(OTHER).collection('bandas').doc(bandaId).get()).data()?.role).toBe('moderator');
+
+    const demoted = await call(`/${bandaId}/members/${OTHER}/role`, OWNER, {
+      method: 'PATCH',
+      body: JSON.stringify({ role: 'member' }),
+    });
+    expect(demoted.status).toBe(200);
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(OTHER).get()).data()?.role).toBe('member');
+    expect((await db.collection('users').doc(OTHER).collection('bandas').doc(bandaId).get()).data()?.role).toBe('member');
+  });
+
+  it('a moderátor kirúghat tagot, de az alapítót nem', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Moderált Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    await call(`/${bandaId}/join`, THIRD, { method: 'POST' });
+    await call(`/${bandaId}/members/${OTHER}/role`, OWNER, {
+      method: 'PATCH',
+      body: JSON.stringify({ role: 'moderator' }),
+    });
+
+    const ownerDenied = await call(`/${bandaId}/members/${OWNER}`, OTHER, { method: 'DELETE' });
+    expect(ownerDenied.status).toBe(403);
+
+    const removed = await call(`/${bandaId}/members/${THIRD}`, OTHER, { method: 'DELETE' });
+    expect(removed.status).toBe(200);
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(THIRD).get()).exists).toBe(false);
+    expect((await db.collection('users').doc(THIRD).collection('bandas').doc(bandaId).get()).exists).toBe(false);
+    expect((await db.collection('bandas').doc(bandaId).get()).data()?.memberCount).toBe(2);
+  });
+
+  it('a tulajdonjog átadása az új alapítót és a régi alapító moderátori szerepét is tükrözi', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Átadott Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+
+    const transferred = await call(`/${bandaId}/transfer-ownership`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: OTHER }),
+    });
+    expect(transferred.status).toBe(200);
+    expect(await transferred.json()).toEqual({ ownerId: OTHER, previousOwnerRole: 'moderator' });
+
+    expect((await db.collection('bandas').doc(bandaId).get()).data()?.ownerId).toBe(OTHER);
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(OWNER).get()).data()?.role).toBe('moderator');
+    expect((await db.collection('users').doc(OWNER).collection('bandas').doc(bandaId).get()).data()?.role).toBe('moderator');
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(OTHER).get()).data()?.role).toBe('owner');
+    expect((await db.collection('users').doc(OTHER).collection('bandas').doc(bandaId).get()).data()?.role).toBe('owner');
+
+    const oldOwnerDenied = await call(`/${bandaId}/settings`, OWNER, {
+      method: 'PATCH',
+      body: JSON.stringify({ postPermission: 'owner' }),
+    });
+    expect(oldOwnerDenied.status).toBe(403);
+    const newOwnerAllowed = await call(`/${bandaId}/settings`, OTHER, {
+      method: 'PATCH',
+      body: JSON.stringify({ postPermission: 'owner' }),
+    });
+    expect(newOwnerAllowed.status).toBe(200);
   });
 });

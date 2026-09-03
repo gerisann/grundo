@@ -6,9 +6,8 @@
 ## Jelenlegi cél
 
 A #29 menet Bandák Phase 1-je (mag-CRUD) után a felsorolt Phase 2/3 tételek
-sorban haladása, mindegyik után külön commit+push. Ebben a menetben az
-1. és 2. pont készült el; a 3.-nál (beállítások képernyő) a route-bekötés
-felderítéséig jutottunk, kód még nem íródott hozzá.
+sorban haladása, mindegyik után külön commit+push. Az 1–3. pont elkészült;
+a következő feladat a share-link mélylink-parsolása (`?code=...`).
 
 ## Elkészült
 
@@ -27,6 +26,13 @@ felderítéséig jutottunk, kód még nem íródott hozzá.
    `BandaFeedWall` (`SegmentedControl` váltó) a `BandaScreen`-en, csak
    tagoknak. Nincs szerkesztés/törlés/lájk/válasz, nincs lapozás — az
    utolsó 50 (feed) / 100 (wall) elem egy kérésben.
+3. **Alapítói beállítások és tagkezelés**: külön
+   `/bandak/:id/beallitasok` képernyő fogaskerék-belépővel; szerkeszthető
+   `whoCanInvite`/`inviteCodeVisibleTo`/`postPermission`; moderátor kinevezés
+   és visszaminősítés; tag/moderátor kirúgása; tulajdonjog-átruházás.
+   A régi alapító moderátor marad. Minden szerep- és tagságváltás
+   tranzakcióban frissíti a banda- és felhasználóoldali tükört. A
+   `inviteCodeVisibleTo` most már a részlet-válaszban is érvényesül.
 
 ## Módosított fájlok
 
@@ -43,30 +49,34 @@ felderítéséig jutottunk, kód még nem íródott hozzá.
 `src/lib/push.test.ts` (+1) · `src/components/NotificationPanel.tsx` (+2) ·
 `src/screens/BandaScreen.tsx` (+58) ·
 `src/screens/CommunityBandasScreen.tsx` (+162: „Meghívóim”,
-már-tag-jelzés keresésben) · `docs/05-adatmodell.md`, `docs/02-funkcionalis-spec.md` (spec-frissítés).
+már-tag-jelzés keresésben) · `src/screens/BandaSettingsScreen.tsx` +
+`bandaSettings.css` (Phase 3 UI) · `src/App.tsx`, `src/lib/api.ts`,
+`server/src/routes/bandas.ts`, `server/src/routes/bandas.emulator.test.ts`
+(Phase 3 route/API/tesztek) · `docs/05-adatmodell.md`,
+`docs/02-funkcionalis-spec.md`, `docs/ai/DECISIONS.md` (spec+döntés).
 
 ## Ellenőrzések
 
 - Kliens `typecheck` ✅, szerver `typecheck` ✅, production `build` ✅.
 - Kliens `npm test` (731 teszt) ✅, szerver `npm test` (225 teszt, +4
   `canInvite`/`meetsRolePermission`) ✅.
-- **Emulátoros teszt** (`bandas.emulator.test.ts`, mind a 12 teszt ✅):
+- **Emulátoros teszt** (`bandas.emulator.test.ts`, mind a 16 teszt ✅):
   meghívás → elfogadás/elutasítás, dupla meghívás, `whoCanInvite`
-  jogosultság, hírfolyam sorrend+jogosultság+validáció, chat fal.
+  jogosultság, hírfolyam sorrend+jogosultság+validáció, chat fal,
+  beállításmentés+kódláthatóság, szerepkörtükrözés, moderátori
+  kirúgás és tulajdonjog-átruházás.
 - `firebase deploy --only firestore:rules --dry-run` ✅ (szabályok
   szintaktikailag helyesek, nem történt tényleges telepítés).
-- **Amit NEM ellenőriztem**: élő böngészős/emulátoros bejelentkezős teszt
-  (időkorlát miatt kimaradt ebben a menetben — a szerver oldalon az
-  emulátoros HTTP-tesztek adják a lefedettséget, de a UI-t senki nem
-  nyitotta meg böngészőben).
+- A Phase 3 képernyőt böngészőben, mobil app-szélességen, világos és
+  sötét témában is ellenőriztem ideiglenes helyi előnézeti adatokkal; az
+  előnézeti ág nincs benne a végleges kódban. Teljes bejelentkezéses UI E2E
+  nem futott; a szerverviselkedést a 16 valódi Firestore-emulátoros HTTP-
+  teszt fedi.
 
 ## Nyitott ügyek
 
 Sorban, a felsorolás szerint folytatva:
 
-3. **Beállítások képernyő** az alapítónak: moderátor-kinevezés, kirúgás,
-   tulajdonos-átruházás, `whoCanInvite`/`inviteCodeVisibleTo`/
-   `postPermission` szerkesztése. Még nincs kód hozzá.
 4. **Share link mélylink-parsolása** (`?code=...` az útvonalon) — jelenleg
    csak a nyers kód másolható.
 5. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
