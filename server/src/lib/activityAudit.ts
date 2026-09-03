@@ -1,6 +1,6 @@
 import { GAMEPLAY } from '../../../src/config/gameplay';
 import type { ProcessResult } from '../../../src/game';
-import type { CellOwnership, OwnershipMap } from '../../../src/types';
+import type { CellFate, CellOwnership, OwnershipMap } from '../../../src/types';
 
 export type AuditTransitionKind =
   | 'captured_free'
@@ -120,6 +120,112 @@ export function buildActivityAudit(
     },
   };
 }
+
+/**
+ * Ugyanaz, mint a `buildActivityAudit`, de a DARABOLT úthoz.
+ *
+ * A darabolt mentés csoportonként dolgozik, sosem tart egyben egy teljes,
+ * konzisztens `before`/`after` birtoktérképet — ezért a cellánkénti
+ * `transitions` és a `weakened`/`unchangedAtMax` bontás itt nem
+ * rekonstruálható. Amit a csoportok ténylegesen összeszámolnak (a `ClaimPart`
+ * fate-számlálói és károsult-térképei), az viszont pontos, ezért azokból
+ * épül az összesített `claim`. A `loops` szakasz csak a nyomvonal-geometriát
+ * adja (a hurkok maguktól a ponttömbből következnek, azt egyszer kell
+ * kiszámolni) — birtoklási bontás nélkül, mert az csoportonként töredezett.
+ */
+export function buildChunkedActivityAudit(
+  loops: ReadonlyArray<{ wall: ReadonlySet<string>; interior: ReadonlySet<string>; fromIndex: number; toIndex: number }>,
+  totals: {
+    counts: Record<CellFate, number>;
+    stolenFrom: Record<string, number>;
+    breakthroughFrom: Record<string, number>;
+    gainedM2: number;
+    cells: number;
+  },
+  appliedToGameplay: boolean,
+  sourcePoints: number,
+): ActivityAuditData {
+  const victims = new Map<string, AuditVictim>();
+  for (const [userId, count] of Object.entries(totals.stolenFrom)) {
+    if (count > 0) victims.set(userId, { userId, stolenCells: count, weakenedCells: 0 });
+  }
+  for (const [userId, count] of Object.entries(totals.breakthroughFrom)) {
+    if (count <= 0) continue;
+    const existing = victims.get(userId) ?? { userId, stolenCells: 0, weakenedCells: 0 };
+    existing.weakenedCells += count;
+    victims.set(userId, existing);
+  }
+
+  const claim: AuditClaimSummary = {
+    affectedCells: totals.cells,
+    capturedFree: totals.counts.free,
+    stolen: totals.counts.stolen,
+    reinforced: totals.counts.reclaimed,
+    weakened: 0,
+    unchangedAtMax: 0,
+    ownershipChanges: totals.counts.stolen,
+    areaGainedM2: Math.round(totals.gainedM2),
+    // Cellaszintű átmenetek nélkül nincs mit csoportosítani.
+    transitions: [],
+    victims: [...victims.values()].sort(
+      (a, b) => b.stolenCells + b.weakenedCells - a.stolenCells - a.weakenedCells,
+    ),
+  };
+
+  return {
+    version: 1,
+    appliedToGameplay,
+    claim,
+    loops: {
+      successful: loops.map((loop, index) => {
+        const totalCells = new Set([...loop.wall, ...loop.interior]).size;
+        return {
+          index: index + 1,
+          fromIndex: loop.fromIndex,
+          toIndex: loop.toIndex,
+          wallCells: loop.wall.size,
+          interiorCells: loop.interior.size,
+          totalCells,
+          areaM2: Math.round(totalCells * GAMEPLAY.CELL_AREA_M2),
+          // A darabolt út nem tartja csoportosítva a levágott cellákat.
+          prunedCells: 0,
+          // Lásd a fenti megjegyzést: birtoklási bontás csoportonként töredezett.
+          claim: EMPTY_CLAIM_SUMMARY,
+        };
+      }),
+      // A darabolt út nem tart nyilván elutasított hurkot vagy rövid visszatérést
+      // — ezek a `planActivity` egyszeri geometriai fázisában dőlnek el, jóval a
+      // csoportonkénti feldolgozás előtt, és nem kerülnek az `ActivityPlan`-be.
+      rejected: [],
+      shortRevisits: 0,
+      prunedCells: 0,
+      orphanAbsorbedCells: 0,
+    },
+    gps: {
+      sourcePoints,
+      // A nyers GPS-cellapálya hossza csak a geometriai előszámításban ismert
+      // (`planActivity` `probe`-ja), ami nem kerül át az `ActivityPlan`-be —
+      // a darabolt út nem ismétli meg feleslegesen. A szerzett cellák száma a
+      // legközelebbi elérhető helyettesítő.
+      cellPath: totals.cells,
+      droppedPoints: 0,
+      largeGaps: 0,
+    },
+  };
+}
+
+const EMPTY_CLAIM_SUMMARY: AuditClaimSummary = {
+  affectedCells: 0,
+  capturedFree: 0,
+  stolen: 0,
+  reinforced: 0,
+  weakened: 0,
+  unchangedAtMax: 0,
+  ownershipChanges: 0,
+  areaGainedM2: 0,
+  transitions: [],
+  victims: [],
+};
 
 function summarize(
   updates: ReadonlyMap<string, CellOwnership>,

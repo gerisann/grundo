@@ -9,6 +9,7 @@
  * Telepítés:               lásd server/README.md
  */
 
+import compression from 'compression';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { auth as adminAuth, db, FIRESTORE_DATABASE_ID } from './src/lib/firebase';
 import { HttpError, unauthorized } from './src/lib/errors';
@@ -39,6 +40,39 @@ import { weatherRouter } from './src/routes/weather';
 export { db, FIRESTORE_DATABASE_ID };
 
 const app = express();
+
+/* ── Válasz-tömörítés ─────────────────────────────────────────────────
+   MÉRVE (2026-09-03), és a mérés hozta a meglepetést: a szerver eddig
+   SEMMIT nem tömörített. Az `/api/rules` végpont `Accept-Encoding: gzip,
+   deflate, br` kéréssel is `Content-Encoding` fejléc NÉLKÜL, teljes
+   méretében jött vissza — a Cloud Run (Google Frontend) ugyanis NEM
+   tömörít a konténer helyett, a Firebase Hosting automatikus gzipje pedig
+   nem érvényes ide, mert a kliens KÖZVETLENÜL a Cloud Run URL-t hívja
+   (`VITE_API_BASE_URL`), nem Hosting-rewrite-on át.
+
+   MENNYIT ÉR? Éles adaton mérve (`npm run inspect:payload`, mind a 13
+   cellaadatot hordozó aktivitás): 757,1 kB → 123,6 kB, azaz 83,7 %
+   megtakarítás. A legnagyobb kör adatlapja 368,9 kB → 59,5 kB.
+
+   MIÉRT KÜLSŐ CSOMAG, a sovány függőség-lista ellenére? Mert ez huzalszintű
+   HTTP-viselkedés: a `Content-Length` eltávolítása, a `Vary` kezelése, a
+   `HEAD`, a küszöb és a már tömörített tartalom kihagyása mind olyan
+   részlet, amit kézzel újraírva némán lehet elrontani. A `compression` az
+   Express csapatának saját middleware-e.
+
+   ⚠️ A `Vary` SORRENDJE SZÁMÍT, és ez ellenőrizve van: a lenti CORS-ág
+   `res.setHeader('Vary', 'Origin')`-nal FELÜLÍR, nem hozzáfűz. Ez azért nem
+   veszíti el az `Accept-Encoding`-ot, mert a `compression` a saját `vary()`
+   hívását `on-headers`-ben, a fejlécek kiírásakor futtatja — tehát a CORS
+   UTÁN —, és a `vary` csomag a meglévő értéket olvassa és bővíti. Az
+   eredmény `Vary: Origin, Accept-Encoding`. Ha valaha megfordul a sorrend,
+   vagy a CORS-ág későbbre kerül, ezt újra kell mérni.
+
+   Brotli-t a `compression` 1.8.1 nem tud (csak gzip/deflate); mérve 88,8 %-ot
+   adna a gzip 83,7 %-a helyett — az 5 pontnyi különbség nem éri meg, hogy
+   kézzel írt kódra cseréljük a bevált middleware-t.                      */
+app.use(compression());
+
 app.use(express.json({ limit: '10mb' })); // a nyomvonalak nagyok lehetnek
 
 /* ── CORS ─────────────────────────────────────────────────────────────

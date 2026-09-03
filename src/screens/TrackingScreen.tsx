@@ -1727,6 +1727,23 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
   if (upload.status === 'done') {
     const { summary, duplicate } = upload;
     /*
+      VÉDŐHÁLÓ, nem elvárt eset (HANDOFF #27, nyitott ügy #3). A típus szerint
+      `summary` itt sosem hiányzik, de ez a szerver JSON-válaszára rábízott
+      típusállítás, nem futásidejű garancia — 2026-09-02-án éppen egy ilyen,
+      `summary` nélküli „done" válasz futtatta el a klienst „undefined is not
+      an object" hibával (lásd `activityUploads.ts` fejlécét a szerveroldali
+      okról). Ott a gyökér-ok azóta javítva van, de a képernyő maga
+      továbbra sem védtelen: ha bármi más módon mégis hiányozna, inkább egy
+      csendes üzenetet mutasson, mint hogy a teljes eredményképernyő eltűnjön.
+    */
+    if (!summary) {
+      return (
+        <div className="track__panel track__panel--upload">
+          <p className="track__saved">Mentve — az összegzés még nem érkezett meg.</p>
+        </div>
+      );
+    }
+    /*
       A `--upload` változat a képernyő maradék magasságát kapja, és belül
       görget: az űrlap mezői mozognak, a Mentés gomb pedig a panel alján
       marad. Indoklás a tracking.css-ben.

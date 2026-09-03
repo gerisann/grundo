@@ -30,11 +30,14 @@
     "seed:budapest": "tsx src/scripts/seedBudapestActivities.ts",
     "seed:badges": "tsx src/scripts/seedBadges.ts",
     "inspect:push": "tsx src/scripts/inspectPushTokens.ts",
+    "inspect:payload": "tsx src/scripts/inspectActivityPayload.ts",
     "probe:apns": "tsx src/scripts/probeApns.ts",
     "probe:apns:key": "tsx src/scripts/probeApnsKey.ts"
   },
   "dependencies": {
+    "@types/compression": "^1.8.1",
     "@types/nodemailer": "^8.0.1",
+    "compression": "^1.8.1",
     "express": "^4.21.1",
     "firebase-admin": "^14.3.0",
     "h3-js": "^4.1.0",

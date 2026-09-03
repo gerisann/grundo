@@ -79,6 +79,7 @@ import {
   PUBLIC_ROUTE_VERSION,
 } from './publicRoute';
 import { computeTrustScore } from '../trust/score';
+import { buildChunkedActivityAudit } from './activityAudit';
 import { loopCells, mergeClaims, resolveClaim } from '../../../src/game';
 import { computeActivityGp } from '../../../src/game/scoring';
 import { levelFor } from '../../../src/game/levels';
@@ -668,12 +669,14 @@ async function closeBooks(
   publicTrustVerdict: 'trusted' | 'pending_review' | 'rejected',
   groupCount: number,
 ): Promise<CommitOutcome> {
-  const { activityId, uid, type, layer, startedAt, endedAt, movingMs, now, today, loops } = plan;
+  const { activityId, uid, type, layer, startedAt, endedAt, movingMs, now, today, loops, points } =
+    plan;
 
   const activityRef = db.collection(COLLECTIONS.activities).doc(activityId);
   const userRef = db.collection(COLLECTIONS.users).doc(uid);
   const dailyGpRef = db.collection(COLLECTIONS.dailyGp).doc(`${uid}_${today}`);
   const ledgerRef = db.collection(COLLECTIONS.gpLedger).doc(`activity_${activityId}`);
+  const auditRef = db.collection(COLLECTIONS.activityAudits).doc(activityId);
 
   // A részek a tranzakción KÍVÜL olvashatók: mind véglegesek, és a
   // determinisztikus azonosító miatt nem is változhatnak.
@@ -780,6 +783,11 @@ async function closeBooks(
       {
         gp,
         areaGainedM2: Math.round(total.gainedM2),
+        // Ugyanaz a mező, mint a gyors úton (`activityCommit.ts:453`) — enélkül
+        // az adatlap „útvonalmező: 0"-t mutatott minden darabolt mentésnél
+        // (HANDOFF #27, nyitott ügy #1), mert ez a fázis sosem írta felül a
+        // nyitó tranzakció kezdőértékét.
+        cellCount: total.cells,
         // Ugyanaz a két mező, mint a gyors úton (`activityCommit.ts`) — a
         // kártya rivális-sávja nem tudhatja, melyik úton mentődött az
         // aktivitás, tehát MINDKETTŐNEK ki kell írnia.
@@ -793,6 +801,22 @@ async function closeBooks(
       },
       { merge: true },
     );
+
+    // Lásd `buildChunkedActivityAudit` fejlécét: a darabolt út a gyors úttal
+    // (`activityCommit.ts:507`) azonos AZ AGGREGÁLT terjedelemben, de
+    // cellaszintű átmenetek nélkül — HANDOFF #27, nyitott ügy #2. Korábban ez
+    // a fázis egyáltalán nem írt auditot, ezért az admin felület minden
+    // darabolt aktivitásra tévesen az „auditnapló bevezetése előtt készült"
+    // üzenetet mutatta.
+    tx.set(auditRef, {
+      activityId,
+      userId: uid,
+      type,
+      layer,
+      startedAt: new Date(startedAt),
+      createdAt: now,
+      ...buildChunkedActivityAudit(loops, total, appliedToGameplay, points.length),
+    });
 
     if (!appliedToGameplay) return;
 

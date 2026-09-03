@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { compactCells, getResolution } from 'h3-js';
 import { type DocumentReference, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db, FIREBASE_STORAGE_BUCKET, storage } from '../lib/firebase';
 import { badRequest, forbidden, HttpError, notFound } from '../lib/errors';
@@ -692,8 +693,75 @@ function parseCellList(raw: unknown, max: number): string[] {
 }
 
 const MAX_ACTIVITY_CELLS = 20_000;
-/** Egy parent ~49 res12 cellát képvisel, tehát ez bőven lefed egy nagy kört. */
-const MAX_ACTIVITY_CELL_PARENTS = 4_000;
+/**
+ * Egy parent ~49 res12 cellát képvisel. A plafon azért ilyen magas, mert a
+ * `activityCellPayload` a csonkolás helyett IDE teszi a nagy körök tömör
+ * változatát is — mérve egy 143 km-es kör TELJES foglalása 5 274 index.
+ */
+const MAX_ACTIVITY_CELL_PARENTS = 20_000;
+
+/**
+ * A két cellamező a válaszhoz — ÚGY, HOGY A TÉRKÉP NE CSONKULJON.
+ *
+ * ⚠️ ÉLES HIBÁT JAVÍT, MÉRVE (2026-09-03, `ebb3c240…`, a 143 km-es bringakör):
+ * a dokumentum 42 666 cellát tárol, a `MAX_ACTIVITY_CELLS` viszont 20 000-nél
+ * vágta el — **22 666 cella (53 %) SOSEM jutott el a klienshez**, a kör
+ * térképének több mint fele hiányzott. Ez ugyanaz a hiba, amit 2026-08-29-én
+ * már egyszer javítottunk (akkor 5 000 volt a plafon és 6 582 a valóság): a
+ * plafon emelése CSAK ELTOLJA a határt, nem szünteti meg.
+ *
+ * A MEGOLDÁS NEM NAGYOBB PLAFON, hanem tömörebb ábrázolás. A H3-compact
+ * ugyanazt a területet kevesebb indexszel írja le: mérve 42 666 cella → 5 274
+ * index. Ez már bármelyik plafon alá befér, és nem a mérettől függ, hanem a
+ * terület ALAKJÁTÓL — egy összefüggő nagy folt tömören mindig olcsó.
+ *
+ * ⚠️ MIÉRT A `parents` MEZŐBE MEGY, ÉS MIÉRT MARAD MEG A `cells` IS?
+ * Mert a kliens a kettőt KÜLÖNBÖZŐKÉPPEN kezeli (`src/lib/activityCells.ts`):
+ * a `cells` elemeit változtatás nélkül rajzolja ki, a `parents` elemeit
+ * viszont felbontás szerint bontja res12-re. Tömör (≤ res10) indexet tehát
+ * CSAK a `parents` mezőbe szabad tenni — a `cells`-be téve egy régi kliens
+ * óriási, rossz hatszögeket rajzolna.
+ *
+ * A `cells` ezért marad a mai, plafonolt res12 lista: egy 2026-08-29 ELŐTTI
+ * kliens (ami a `parents`-et még nem ismeri) pontosan annyit lát, mint eddig —
+ * nem romlik. Az újabb kliens a `parents`-ből megkapja a TELJESET, és a
+ * halmaz-unió miatt az átfedés magától kiesik. A redundancia ára a mérés
+ * szerint kicsi: a tömör lista gzip után néhány kB.
+ *
+ * A compact CSAK akkor fut le, ha a lista tényleg túllépné a plafont — a
+ * 48 éles aktivitásból ez egyetlen egyre igaz, a többi a szokásos, olcsó ágon
+ * megy tovább.
+ */
+export function activityCellPayload(
+  rawCells: unknown,
+  rawParents: unknown,
+): { activityCells: string[]; activityCellParents: string[] } {
+  const parents = parseCellList(rawParents, MAX_ACTIVITY_CELL_PARENTS);
+  const all = Array.isArray(rawCells) ? rawCells.map(String) : [];
+  if (all.length <= MAX_ACTIVITY_CELLS) {
+    return { activityCells: all, activityCellParents: parents };
+  }
+
+  /*
+    IDEGEN ADAT, ezért óvatosan: a `compactCells` csak AZONOS felbontású
+    halmazon értelmes, és érvénytelen indexre dob. Ha bármi nem stimmel,
+    visszaesünk a régi, csonkoló viselkedésre — az kevesebbet mutat, de
+    biztosan nem hibázik el egy adatlapot.
+  */
+  try {
+    const resolution = getResolution(all[0]!);
+    if (!all.every((cell) => getResolution(cell) === resolution)) {
+      return { activityCells: all.slice(0, MAX_ACTIVITY_CELLS), activityCellParents: parents };
+    }
+    const compacted = compactCells(all);
+    return {
+      activityCells: all.slice(0, MAX_ACTIVITY_CELLS),
+      activityCellParents: [...parents, ...compacted].slice(0, MAX_ACTIVITY_CELL_PARENTS),
+    };
+  } catch {
+    return { activityCells: all.slice(0, MAX_ACTIVITY_CELLS), activityCellParents: parents };
+  }
+}
 
 function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
   const bounds = data.bounds as
@@ -722,8 +790,7 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     photos: parseStoredPhotos(data.photos, userId, id),
     likeCount: Number(data.likeCount ?? 0),
     commentCount: Number(data.commentCount ?? 0),
-    activityCells: parseCellList(data.activityCells, MAX_ACTIVITY_CELLS),
-    activityCellParents: parseCellList(data.activityCellParents, MAX_ACTIVITY_CELL_PARENTS),
+    ...activityCellPayload(data.activityCells, data.activityCellParents),
     center: bounds
       ? { lat: (bounds.north + bounds.south) / 2, lng: (bounds.east + bounds.west) / 2 }
       : null,
@@ -1007,8 +1074,7 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
         photos: parseStoredPhotos(data.photos, owner, snapshot.id),
         likeCount: Number(data.likeCount ?? 0),
         commentCount: Number(data.commentCount ?? 0),
-        activityCells: parseCellList(data.activityCells, MAX_ACTIVITY_CELLS),
-        activityCellParents: parseCellList(data.activityCellParents, MAX_ACTIVITY_CELL_PARENTS),
+        ...activityCellPayload(data.activityCells, data.activityCellParents),
         likedByMe: await hasLiked(snapshot.id, req.uid!),
         startedAt: toMillis(data.startedAt),
         endedAt: toMillis(data.endedAt),

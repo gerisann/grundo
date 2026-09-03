@@ -40,7 +40,11 @@ import {
 import { computeTrustScore } from '../trust/score';
 import { buildCompactBlockPlan } from './compactBlockPlan';
 import type { CompactBlockWork } from './compactBlockClaim';
-import { processActivity } from '../../../src/game';
+import {
+  buildActivityGeometry,
+  processActivityGeometry,
+  type ActivityGeometry,
+} from '../../../src/game';
 import { buildCompactClaimCredits } from '../../../src/game/compactClaim';
 import { layerOf } from '../../../src/game/cells';
 import { levelFor } from '../../../src/game/levels';
@@ -180,6 +184,27 @@ export interface ActivityPlan extends ActivityInput {
    */
   loops: DetectedLoop[];
   /**
+   * A NYOMVONALBÓL KÖVETKEZŐ TELJES GEOMETRIA — egyszer kiszámolva.
+   *
+   * ⚠️ EZ EGY VALÓDI, MÉRT PAZARLÁST SZÜNTET MEG. A gyors út korábban KÉTSZER
+   * futtatta le a hurokfelismerést ugyanarra a nyomvonalra: egyszer itt, a
+   * tervezésnél, majd MÉG EGYSZER a `commitActivity`-ben — ráadásul a
+   * Firestore-TRANZAKCIÓN BELÜL. A tranzakció ütközéskor magától újrapróbál,
+   * tehát a legdrágább számítás annyiszor futott le, ahányszor a commit
+   * újraindult. Mérve: 20 km-es körnél a `processActivity` 337 ms-ából 289 ms
+   * (86 %) a geometria; egy éles 143 km-es körnél a teljes hívás 68 másodperc.
+   *
+   * A geometria KIZÁRÓLAG a pontokból következik (ownership-független), tehát
+   * egy retry sem változtatna rajta semmit — nincs értelme újraszámolni.
+   *
+   * ⚠️ MIÉRT SZABAD ÚJRAHASZNÁLNI? Mert a fogyasztói nem módosítják: a
+   * `loopCells()` új Setet ad vissza, a `resolveLoopClaims()` a saját
+   * másolatával dolgozik. Ez nem elmélet — a DARABOLT út (`activityChunked.ts`)
+   * ugyanezt a `loops` tömböt már ma is átviszi tizenöt külön tranzakción,
+   * élesben. Ha az újrahasználat rontana, ott már rég látszana.
+   */
+  geometry: ActivityGeometry;
+  /**
    * COMPACT hurok esetén a res9 blokkonkénti claim-munka; különben `null`.
    *
    * ⚠️ EZ NEM KÉNYELMI GYORSÍTÓTÁR, hanem a compact út EGYETLEN forrása arról,
@@ -241,15 +266,24 @@ export function planActivity(input: ActivityInput): ActivityPlan {
   }
 
   const layer = layerOf(type);
-  const probe = processActivity({
-    points,
-    type,
-    distanceKm: serverDistanceM / 1000,
-    actorId: uid,
-    ownership: new Map(),
-    streakDays: 0,
-    gpEarnedToday: 0,
-  });
+  /*
+    A GEOMETRIA ITT KÉSZÜL EL, EGYSZER — és innentől a terv hordozza. Lásd
+    `ActivityPlan.geometry`: a `commitActivity` korábban a tranzakción belül
+    számolta újra ugyanezt, és minden Firestore-retry újra lefuttatta.
+  */
+  const geometry = buildActivityGeometry(points);
+  const probe = processActivityGeometry(
+    {
+      points,
+      type,
+      distanceKm: serverDistanceM / 1000,
+      actorId: uid,
+      ownership: new Map(),
+      streakDays: 0,
+      gpEarnedToday: 0,
+    },
+    geometry,
+  );
 
   // Nem csak a nyomvonalat olvassuk: a hurok teljes belseje is ownership-
   // függő. Ez a halmaz kizárólag geometria, ezért tranzakción kívül maradhat.
@@ -296,7 +330,9 @@ export function planActivity(input: ActivityInput): ActivityPlan {
   return {
     ...input,
     layer,
+    // Ugyanaz a tömb, mint a `geometry.loops` — a darabolt út ezt olvassa.
     loops: probe.loops,
+    geometry,
     distanceM: serverDistanceM,
     candidateCells,
     candidateCellParents,
@@ -358,16 +394,26 @@ export async function commitActivity(
   };
   const earnedToday = Number((dailyGpNow.data() as { total?: number } | undefined)?.total ?? 0);
   const ownership = ownershipFromBlocks(layer, orphanScope, blocks, today);
-  const result = processActivity({
-    points,
-    type,
-    distanceKm: serverDistanceM / 1000,
-    actorId: uid,
-    ownership,
-    streakDays: user.streak?.current ?? 0,
-    gpEarnedToday: earnedToday,
-    orphanScope,
-  });
+  /*
+    A KÉSZ GEOMETRIÁVAL, NEM ÚJRASZÁMOLVA. Csak a birtoklási döntés és a
+    pontozás fut le itt — az függ a most beolvasott `ownership`-től, tehát
+    valóban ide tartozik. A hurokfelismerés viszont nem: az a nyomvonalból
+    következik, a `planActivity` már elvégezte (lásd `ActivityPlan.geometry`),
+    és egy tranzakció-újrapróbálásnál sem adna más eredményt.
+  */
+  const result = processActivityGeometry(
+    {
+      points,
+      type,
+      distanceKm: serverDistanceM / 1000,
+      actorId: uid,
+      ownership,
+      streakDays: user.streak?.current ?? 0,
+      gpEarnedToday: earnedToday,
+      orphanScope,
+    },
+    plan.geometry,
+  );
 
   const trust = computeTrustScore({
     points,
