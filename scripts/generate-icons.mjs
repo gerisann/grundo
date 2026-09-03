@@ -1,5 +1,5 @@
 /**
- * AZ APP IKON ELŐÁLLÍTÁSA egyetlen forrásképből, minden platformra.
+ * AZ APP IKON ÉS A FAVICON ELŐÁLLÍTÁSA forrásképekből, minden platformra.
  *
  * MIÉRT SZKRIPT? Mert az ikon nyolc helyen, tizenhét fájlban él (web manifest,
  * favicon, iOS AppIcon, Android mipmap öt sűrűségben, splash), és kézzel
@@ -8,7 +8,8 @@
  * FUTTATÁS (a repo gyökeréből):
  *
  *   npm run icons:generate
- *   npm run icons:generate -- "másik/forras.png"
+ *   npm run icons:generate -- "másik/app-ikon.png" "másik/favicon.png"
+ *   npm run icons:generate -- "másik/app-ikon.png" "másik/favicon.png" --skip-ios-splash
  *
  * A forrás alapból a repóban van (`assets/app-icon-source.png`) — SZÁNDÉKOSAN,
  * hogy az ikon bárhol, bármikor újraelőállítható legyen, ne csak azon a gépen,
@@ -23,7 +24,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 const DEFAULT_SOURCE = 'assets/app-icon-source.png';
-const source = process.argv[2] ?? DEFAULT_SOURCE;
+const DEFAULT_FAVICON_SOURCE = 'assets/favicon-source.png';
+const args = process.argv.slice(2);
+const skipIosSplash = args.includes('--skip-ios-splash');
+const sources = args.filter((arg) => arg !== '--skip-ios-splash');
+const source = sources[0] ?? DEFAULT_SOURCE;
+const faviconSource = sources[1] ?? DEFAULT_FAVICON_SOURCE;
 
 /**
  * Az ikon háttérszíne — a forráskép sarkából mintavéve.
@@ -150,6 +156,7 @@ const ANDROID_DENSITIES = [
 
 async function main() {
   const meta = await sharp(source).metadata();
+  const faviconMeta = await sharp(faviconSource).metadata();
   if (!meta.width || !meta.height) throw new Error(`Nem olvasható kép: ${source}`);
   if (meta.width !== meta.height) {
     throw new Error(`A forrásképnek négyzetesnek kell lennie (${meta.width}x${meta.height}).`);
@@ -157,8 +164,15 @@ async function main() {
   if (meta.width < 1024) {
     throw new Error(`A forrás legalább 1024 pixel legyen (most ${meta.width}).`);
   }
+  if (!faviconMeta.width || !faviconMeta.height) {
+    throw new Error(`Nem olvasható favicon: ${faviconSource}`);
+  }
+  if (faviconMeta.width !== faviconMeta.height || faviconMeta.width < 32) {
+    throw new Error(`A favicon legyen négyzetes és legalább 32 pixel (${faviconMeta.width}x${faviconMeta.height}).`);
+  }
 
-  console.log(`Forrás: ${source} (${meta.width}x${meta.height})\n`);
+  console.log(`App ikon: ${source} (${meta.width}x${meta.height})`);
+  console.log(`Favicon: ${faviconSource} (${faviconMeta.width}x${faviconMeta.height})\n`);
   const root = resolve(process.cwd());
   const at = (...parts) => resolve(root, ...parts);
 
@@ -169,7 +183,10 @@ async function main() {
     at('public/icons/icon-maskable-512.png'),
     await padded(512, MASKABLE_SCALE, BACKGROUND),
   );
-  await write(at('public/icons/favicon-32.png'), await plain(32));
+  await write(
+    at('public/icons/favicon-32.png'),
+    await sharp(faviconSource).resize(32, 32, { fit: 'cover' }).png().toBuffer(),
+  );
   await write(at('public/icons/apple-touch-icon.png'), await opaque(180));
 
   console.log('\niOS:');
@@ -193,10 +210,12 @@ async function main() {
    * nincs teendő: ott az indítóképernyő a `grundo_app_icon`-t használja
    * (`styles.xml`, `windowSplashScreenAnimatedIcon`), amit fent már megírtunk.
    */
-  console.log('\niOS indítóképernyő:');
-  const splashImage = await splash();
-  for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
-    await write(at('ios/App/App/Assets.xcassets/Splash.imageset', name), splashImage);
+  if (!skipIosSplash) {
+    console.log('\niOS indítóképernyő:');
+    const splashImage = await splash();
+    for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
+      await write(at('ios/App/App/Assets.xcassets/Splash.imageset', name), splashImage);
+    }
   }
 
   console.log('\nAndroid:');

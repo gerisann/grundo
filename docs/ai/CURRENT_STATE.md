@@ -5,9 +5,9 @@
 
 ## Jelenlegi cél
 
-A #29 menet Bandák Phase 1-je (mag-CRUD) után a felsorolt Phase 2/3 tételek
-sorban haladása, mindegyik után külön commit+push. Az 1–3. pont elkészült;
-a következő feladat a share-link mélylink-parsolása (`?code=...`).
+A Bandák funkció továbbépítése. A mag-CRUD, meghívások, falak, alapítói
+beállítások és a mostani hírfolyam/chat finomítások elkészültek; a következő
+tervezett feladat a share-link mélylink-parsolása (`?code=...`).
 
 ## Elkészült
 
@@ -33,45 +33,49 @@ a következő feladat a share-link mélylink-parsolása (`?code=...`).
    A régi alapító moderátor marad. Minden szerep- és tagságváltás
    tranzakcióban frissíti a banda- és felhasználóoldali tükört. A
    `inviteCodeVisibleTo` most már a részlet-válaszban is érvényesül.
+4. **Hírfolyam/chat finomítások**: fix méretű szerkesztő külön görgethető
+   üzenetlistával; hírfolyamban biztonságosan renderelt félkövér, dőlt,
+   aláhúzott, felsorolás, számozás, idézet és link; egy, legfeljebb 2 MB-os,
+   kliensoldalon JPEG-re tömörített kép; védett backend-kiszolgálás; relatív,
+   egy hét után teljes dátum a posztokon és chatüzeneteken.
+5. **Kilépési szabály**: tag és moderátor kiléphet, az alapító viszont csak
+   a rang átadása után; a tagság kétoldali tükre és a taglétszám egyetlen
+   tranzakcióban frissül.
+6. **Ikonfrissítés**: külön új web favicon-forrás, valamint egységes új PWA,
+   iOS és Android appikon; az Android splash is az új appikont használja.
 
-## Módosított fájlok
+## A legutóbbi menet fő módosításai
 
-`server/src/lib/bandas.ts` (+26: `canInvite`/`meetsRolePermission`,
-`RolePermission` típus) · `server/src/lib/notifications.ts` (+15:
-`banda_invited`) · `server/src/routes/bandas.ts` (+296: 8 új végpont) ·
-`server/src/lib/bandas.test.ts` (+24) ·
-`server/src/routes/bandas.emulator.test.ts` (+209: 8 új teszt) ·
-`firestore.rules` (+25: `invites`/`feed`/`wall` alkollekciók) ·
-`src/components/BandaInviteSheet.tsx` (új, 168 sor) ·
-`src/components/BandaFeedWall.tsx` (új, 165 sor) ·
-`src/lib/api.ts` (+87: típusok, `api.bandas.*`) ·
-`src/lib/notificationTypes.ts` (+7) · `src/lib/push.ts` (+2) ·
-`src/lib/push.test.ts` (+1) · `src/components/NotificationPanel.tsx` (+2) ·
-`src/screens/BandaScreen.tsx` (+58) ·
-`src/screens/CommunityBandasScreen.tsx` (+162: „Meghívóim”,
-már-tag-jelzés keresésben) · `src/screens/BandaSettingsScreen.tsx` +
-`bandaSettings.css` (Phase 3 UI) · `src/App.tsx`, `src/lib/api.ts`,
-`server/src/routes/bandas.ts`, `server/src/routes/bandas.emulator.test.ts`
-(Phase 3 route/API/tesztek) · `docs/05-adatmodell.md`,
-`docs/02-funkcionalis-spec.md`, `docs/ai/DECISIONS.md` (spec+döntés).
+`src/components/BandaFeedWall.tsx` + `bandaFeedWall.css` ·
+`src/lib/bandaContent.tsx` + teszt · `src/lib/photos.ts` · `src/lib/api.ts` ·
+`src/screens/BandaScreen.tsx` · `src/screens/BandaSettingsScreen.tsx` ·
+`server/src/routes/bandas.ts` + emulátoros tesztek · `storage.rules` ·
+`assets/app-icon-source.png` + `assets/favicon-source.png` ·
+`scripts/generate-icons.mjs` · web/PWA/iOS/Android generált ikonfájlok ·
+funkcionális specifikáció, adatmodell és döntésnapló.
 
 ## Ellenőrzések
 
-- Kliens `typecheck` ✅, szerver `typecheck` ✅, production `build` ✅.
-- Kliens `npm test` (731 teszt) ✅, szerver `npm test` (225 teszt, +4
-  `canInvite`/`meetsRolePermission`) ✅.
+- Kliens és szerver `typecheck` ✅, production `build` ✅.
+- Szerver `npm test` (225 teszt) ✅. Kliens `vitest` 15 másodperces
+  tesztlimittel (734 teszt) ✅; az alap 5 másodperces futásban egy régi
+  nagy-hurok teljesítményteszt egyszer kifutott a limitből.
+- Új formázó/dátum egységtesztek (3/3) ✅.
 - **Emulátoros teszt** (`bandas.emulator.test.ts`, mind a 16 teszt ✅):
   meghívás → elfogadás/elutasítás, dupla meghívás, `whoCanInvite`
   jogosultság, hírfolyam sorrend+jogosultság+validáció, chat fal,
   beállításmentés+kódláthatóság, szerepkörtükrözés, moderátori
   kirúgás és tulajdonjog-átruházás.
-- `firebase deploy --only firestore:rules --dry-run` ✅ (szabályok
-  szintaktikailag helyesek, nem történt tényleges telepítés).
+- Hírfolyam, chat, kilépés és Storage szabályok közös emulátoros futása:
+  21/21 teszt ✅; `firebase deploy --only storage --dry-run` ✅.
 - A Phase 3 képernyőt böngészőben, mobil app-szélességen, világos és
   sötét témában is ellenőriztem ideiglenes helyi előnézeti adatokkal; az
   előnézeti ág nincs benne a végleges kódban. Teljes bejelentkezéses UI E2E
   nem futott; a szerverviselkedést a 16 valódi Firestore-emulátoros HTTP-
-  teszt fedi.
+  teszt fedi. A frissített hírfolyam/chat sötét és világos témában is
+  ellenőrizve lett ideiglenes helyi előnézettel.
+- `npx cap sync` Androidon teljes; iOS-en a webmásolás teljes, a Windows alól
+  nem létrehozható SPM symlink miatt a pluginfrissítés figyelmeztetést adott.
 
 ## Nyitott ügyek
 
