@@ -24,6 +24,7 @@
     "clean:gp-ledger-junk": "tsx src/scripts/cleanGpLedgerJunk.ts",
     "backfill:blocked-by": "tsx src/scripts/backfillBlockedBy.ts",
     "backfill:area-windows": "tsx src/scripts/backfillAreaWindows.ts",
+    "backfill:banda-stats": "tsx src/scripts/backfillBandaStats.ts",
     "backfill:rivals": "tsx src/scripts/backfillRivals.ts",
     "backfill:activity-rivals": "tsx src/scripts/backfillActivityRivals.ts",
     "backfill:territory-blobs": "tsx src/scripts/backfillTerritoryBlobs.ts",

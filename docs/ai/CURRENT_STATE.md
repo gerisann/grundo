@@ -99,7 +99,10 @@ funkcionális specifikáció, adatmodell és döntésnapló.
 Sorban, a felsorolás szerint folytatva:
 
 1. **Banda profilkép + borítókép feltöltés.**
-2. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
+2. **Éles migráció:** `backfill:banda-stats -- --apply --allow-production`
+   futtatása; a régi `foot` területből a futás/séta történelmileg nem
+   választható szét hitelesen, ezért az új sportágankénti mérés nulláról indul.
+3. **Cloud Scheduler bekötése** a `bandaRollover` jobhoz (az endpoint kész,
    az ütemezés nincs).
 
 Geri által ezen a meneten felírt, még NEM implementált backlog-tételek
