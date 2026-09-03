@@ -65,7 +65,7 @@ platformviselkedésről ezért még nincs készülékes bizonyíték. Natív Jav
 kód nem változott: a közös Capacitor/WebView térképréteg optimalizálása hat
 mindkét platformra.
 
-## Módosított fájlok (commitolatlan)
+## Módosított fájlok
 
 `docs/02-funkcionalis-spec.md` · `docs/ai/DECISIONS.md` ·
 `docs/ai/CURRENT_STATE.md` · `src/App.tsx` · `src/components/MapView.tsx` ·
@@ -73,6 +73,9 @@ mindkét platformra.
 `src/lib/mapRender.ts` és tesztje · `src/screens/settings/SettingsScreen.tsx` ·
 `src/screens/settings/GraphicsScreen.tsx` · `graphics.css`
 
+Az implementáció a `29c7c6f` commitban a `main` ágra felpusholva. A munkafa
+a menet lezárásakor tiszta.
+
 ## Telepítés
 
-Sem commit, push, natív build vagy telepítés nem történt.
+Frontend-, backend- vagy natív telepítés nem történt.
