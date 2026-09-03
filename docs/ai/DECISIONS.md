@@ -53,6 +53,16 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
 - **A kliens soha nem ír játékadatot**, a Firestore-szabályok ezt
   kikényszerítik.
 
+## Térképi teljesítmény
+
+- **Az elszámolási adat és a render-munkakészlet külön életű.** Hosszú
+  rögzítésnél a teljes nyomvonal és cellageometria megmarad a közös
+  játékmotornak, de Mapbox GeoJSON-ba csak a kamera FOV-ja + előtöltési
+  ráhagyás, legfeljebb a pozíció körüli beállított sugár kerül. Ezt nem szabad
+  a teljes nyomvonal visszarajzolására egyszerűsíteni: Android WebViewben a
+  `GeoJSONSource.setData()` teljes tesszellálást és GPU-feltöltést indít, így
+  a költség korábban a megtett távval folyamatosan nőtt.
+
 ## Munkamódszer
 
 - **Egy klón, egy mappa:** `C:\Users\Geri\Documents\GitHub\grundo`. 2026-08-29:

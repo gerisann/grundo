@@ -535,6 +535,25 @@ A GRUNDO-nak **világos és sötét témája** is van, és az **alapértelmezett
 1. **Rögzítés közben nem váltunk témát.** Ha futás közben lemegy a nap, a téma csak a mentés után vált. A térképstílus cseréje félbeszakítaná a megjelenítést és újratöltené a Mapbox stílust — futás közben ez elfogadhatatlan.
 2. **Nincs villanás induláskor.** A téma az első kirajzolás előtt eldől (az `index.html` inline szkriptje), tehát sötét módban sem villan fel egy pillanatra a világos felület.
 
+### Grafika és kirajzolási távolság *(döntés: 2026-09-03)*
+
+A grafikai beállítás **eszközhöz kötött**, mert ugyanaz a felhasználó eltérő
+teljesítményű telefonokon használhatja az appot. Két vezérlője van:
+
+- **Kirajzolási távolság:** 250–2000 méteres sugár a rögzítés aktuális
+  pozíciója körül. A tényleges munkakészlet a kamera látható kivágása és e
+  kör metszete, a minőségi profiltól függő 8–30% előtöltési ráhagyással.
+- **Grafikai minőség:** Low / Medium / High *(alapértelmezett)* / Ultra. Csak
+  a térkép animációjára, csempegyorsítótárára és részletességére, valamint a
+  cella- és útvonalrajzra hat. A menük, szövegek, logó és a játék számítása
+  minden profilon azonos marad.
+
+Rögzítés közben a teljes nyomvonal és a teljes játékmotor-állapot továbbra is
+megmarad az elszámoláshoz, de a Mapboxnak átadott GeoJSON nem nő együtt a
+megtett távolsággal: csak a FOV-ban lévő szakaszok és cellák kerülnek bele.
+Low módban a szabad háttérrács, a védelmi címkék, a 3D épületek és a kisebb
+POI-szimbólumok sem rajzolódnak ki; Medium módban a 3D épületek maradnak ki.
+
 ### Preferenciák (kép #38):
 - Kommentek engedélyezése a saját aktivitásokon.
 - Mértékegységek: KM/MI · KG/LBS · CM/FT+IN.

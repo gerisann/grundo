@@ -40,6 +40,7 @@ const ProfileClansScreen = lazy(() => import('./screens/ProfileSectionScreens').
 const ProfileBadgesScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileBadgesScreen })));
 const SettingsScreen = lazy(() => import('./screens/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })));
 const AppearanceScreen = lazy(() => import('./screens/settings/AppearanceScreen').then((m) => ({ default: m.AppearanceScreen })));
+const GraphicsScreen = lazy(() => import('./screens/settings/GraphicsScreen').then((m) => ({ default: m.GraphicsScreen })));
 const FinishGestureScreen = lazy(() => import('./screens/settings/FinishGestureScreen').then((m) => ({ default: m.FinishGestureScreen })));
 const SoundsScreen = lazy(() => import('./screens/settings/SoundsScreen').then((m) => ({ default: m.SoundsScreen })));
 const PrivacyScreen = lazy(() => import('./screens/settings/PrivacyScreen').then((m) => ({ default: m.PrivacyScreen })));
@@ -226,6 +227,7 @@ function Router() {
             <Route path="/aktivitas/:id" element={<ActivityScreen />} />
             <Route path="/beallitasok" element={<SettingsScreen />} />
             <Route path="/beallitasok/megjelenes" element={<AppearanceScreen />} />
+            <Route path="/beallitasok/grafika" element={<GraphicsScreen />} />
             <Route path="/beallitasok/hangok" element={<SoundsScreen />} />
             <Route path="/beallitasok/mukodes" element={<FinishGestureScreen />} />
             <Route path="/beallitasok/adatvedelem" element={<PrivacyScreen />} />

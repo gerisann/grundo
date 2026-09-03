@@ -3,6 +3,7 @@ import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
+import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
 import { buildInfo } from '@/lib/buildInfo';
 import { Button, List, ListRow, ScreenHeader } from '@/components/ui';
 
@@ -20,12 +21,20 @@ const MODE_LABEL: Record<string, string> = {
   system: 'Rendszer',
 };
 
+const QUALITY_LABEL: Record<string, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  ultra: 'Ultra',
+};
+
 export function SettingsScreen() {
   const navigate = useNavigate();
   const { settings } = useThemeContext();
   const { user, role, signOut, status } = useAuth();
   const { finishGesture } = useRecorderContext();
   const feedback = useFeedbackSettings();
+  const graphics = useGraphicsSettings();
 
   return (
     <>
@@ -46,6 +55,12 @@ export function SettingsScreen() {
               description="Rögzítés közbeni hangeffektek és hangerő"
               value={feedback.soundEnabled ? 'Be' : 'Ki'}
               onClick={() => navigate('/beallitasok/hangok')}
+            />
+            <ListRow
+              label="Grafika"
+              description="Térképrészletesség és kirajzolási távolság"
+              value={QUALITY_LABEL[graphics.quality] ?? ''}
+              onClick={() => navigate('/beallitasok/grafika')}
             />
             <ListRow
               label="Mértékegységek"

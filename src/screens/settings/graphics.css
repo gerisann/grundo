@@ -1,0 +1,36 @@
+.graphics-settings__range {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(64px, auto);
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.graphics-settings__range input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.graphics-settings__value {
+  text-align: right;
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.graphics-settings__note {
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}

@@ -15,6 +15,15 @@ import {
 } from '@/lib/mapMotion';
 import { cellsToAreaPolygons } from '@/lib/hexAreas';
 import { cellColorHex } from '@/lib/cellColors';
+import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
+import { GRAPHICS_PROFILES, type GraphicsProfile } from '@/lib/graphicsSettings';
+import {
+  containsBounds,
+  pointInBounds,
+  renderBounds as calculateRenderBounds,
+  visibleTrackSegments,
+  type RenderBounds,
+} from '@/lib/mapRender';
 import type { HexRole } from './HexMap';
 import {
   RIVAL_MAX_COLOR,
@@ -66,7 +75,7 @@ export interface MapViewProps {
    * Aktívan növekvő nyomvonal-e a `track`?
    *
    * `true`-nál a nyomvonal-rajzolás (nem a pozíciópötty!) legfeljebb
-   * `TRACK_SYNC_MIN_INTERVAL_MS`-enként frissül — lásd a `syncTrackData`
+   * a választott grafikai profil időközénként frissül — lásd a `syncTrackData`
    * hívási helyén lévő magyarázatot. Alapból `false`: a befejezett
    * aktivitásokat mutató képernyők (Feed, Aktivitás, Grund) egyszer kapják
    * meg a nyomvonalat, ott a throttle semmit nem gyorsítana, csak
@@ -82,17 +91,6 @@ const CELL_SOURCE = 'grundo-cells';
 const GRID_SOURCE = 'grundo-grid';
 const AREA_SOURCE = 'grundo-areas';
 const BLOB_SOURCE = 'grundo-blobs';
-const CELL_DETAIL_MIN_ZOOM = 15;
-/**
- * A cellánkénti területréteg (`AREA_SOURCE`) alsó nagyítási határa.
- *
- * Eggyel a hatszögrács alatt: a védelmi szintek árnyalása még azelőtt
- * megjelenik, hogy az egyes hatszögek kirajzolódnának, de már nem olyan
- * távolról, ahonnan a nyers hatszög-körvonal recés szegélyként látszana a
- * sima területfolton.
- */
-const AREA_DETAIL_MIN_ZOOM = CELL_DETAIL_MIN_ZOOM - 1;
-const HEX_SOURCE = { tolerance: 0, maxzoom: 22 } as const;
 const TILTED_PITCH = 55;
 const TILT_KEY = 'grundo.mapTilt';
 /**
@@ -124,17 +122,6 @@ const TILTED_ZOOM = 17.6;
  * kamera két minta között is folyamatosan haladjon.
  */
 const RECENTER_DURATION_MS = 400;
-
-/**
- * Élő rögzítésnél ennyi ideig várunk KÉT nyomvonal-`setData` hívás között.
- *
- * Futótempón (~3 m/s) ez ~6 méteres, bringatempón (~8 m/s) ~16 méteres
- * lemaradást jelent a vonal VÉGÉN — a követő nagyításon (16-os zoom, kb.
- * 100-200 m látható szélesség) ez nem észrevehető, cserébe a `setData`
- * hívások száma a töredékére csökken (GRUNDO #21 energiaelemzés, B7). A
- * POZÍCIÓ ettől függetlenül minden mintánál frissül.
- */
-const TRACK_SYNC_MIN_INTERVAL_MS = 3_000;
 
 /**
  * A menetirány simítása.
@@ -212,6 +199,8 @@ export function MapView({
   live = false,
 }: MapViewProps) {
   const { theme } = useThemeContext();
+  const graphicsSettings = useGraphicsSettings();
+  const graphicsProfile = GRAPHICS_PROFILES[graphicsSettings.quality];
   const container = useRef<HTMLDivElement | null>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
@@ -227,6 +216,11 @@ export function MapView({
   const trailColorRef = useRef(trailColor);
   const blobsRef = useRef(blobs);
   const fitTrackRef = useRef(fitTrack);
+  const positionRef = useRef(position);
+  const liveRef = useRef(live);
+  const graphicsProfileRef = useRef(graphicsProfile);
+  const renderRadiusRef = useRef(graphicsSettings.renderRadiusM);
+  const renderBoundsRef = useRef<RenderBounds | null>(null);
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
   layersRef.current = layers;
@@ -234,6 +228,10 @@ export function MapView({
   trailColorRef.current = trailColor;
   blobsRef.current = blobs;
   fitTrackRef.current = fitTrack;
+  positionRef.current = position;
+  liveRef.current = live;
+  graphicsProfileRef.current = graphicsProfile;
+  renderRadiusRef.current = graphicsSettings.renderRadiusM;
   const viewportRef = useRef(onViewport);
   viewportRef.current = onViewport;
   const pressRef = useRef(onCellPress);
@@ -248,6 +246,39 @@ export function MapView({
   const lastTrackSyncAt = useRef(0);
   const lastTrackSyncLength = useRef(0);
 
+  function refreshRenderWindow(target: mapboxgl.Map, force = false): void {
+    const bounds = target.getBounds();
+    if (!bounds) return;
+    const viewport = {
+      south: bounds.getSouth(),
+      west: bounds.getWest(),
+      north: bounds.getNorth(),
+      east: bounds.getEast(),
+    };
+    const profile = graphicsProfileRef.current;
+    const center = liveRef.current ? positionRef.current ?? null : null;
+    const next = calculateRenderBounds(
+      viewport,
+      profile.viewportBufferRatio,
+      center,
+      center === null ? null : renderRadiusRef.current,
+    );
+    if (!force && containsBounds(renderBoundsRef.current, viewport)) return;
+    if (!force && boundsAreNear(renderBoundsRef.current, next)) return;
+
+    renderBoundsRef.current = next;
+    syncData(
+      target,
+      trackRef.current,
+      ghostTrackRef.current,
+      layersRef.current,
+      ownerColorsRef.current,
+      trailColorRef.current,
+      next,
+      profile,
+    );
+  }
+
   useEffect(() => {
     if (!mapboxConfigured || container.current === null || map.current !== null) return;
 
@@ -261,6 +292,9 @@ export function MapView({
       pitchWithRotate: false,
       dragRotate: false,
       pitch: tilted ? TILTED_PITCH : 0,
+      antialias: graphicsProfileRef.current.antialias,
+      maxTileCacheSize: graphicsProfileRef.current.maxTileCacheSize,
+      performanceMetricsCollection: false,
       // A Mapbox alapból 300 ms-ig ÚSZTATJA BE az új csempék tartalmát. A
       // hatszögeink így a mozgás után is még egy harmad másodpercig
       // halványak — pont akkor, amikor a felhasználó azt nézi, elfoglalta-e
@@ -274,8 +308,10 @@ export function MapView({
 
     instance.on('load', () => {
       ready.current = true;
-      addLayers(instance, trailColorRef.current);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, trailColorRef.current, blobsRef.current);
+      addLayers(instance, trailColorRef.current, graphicsProfileRef.current);
+      applyBaseMapQuality(instance, graphicsProfileRef.current);
+      syncBlobData(instance, blobsRef.current, ownerColorsRef.current);
+      refreshRenderWindow(instance, true);
       fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
       report(instance);
     });
@@ -327,6 +363,7 @@ export function MapView({
     function report(target: mapboxgl.Map) {
       const bounds = target.getBounds();
       if (!bounds) return;
+      refreshRenderWindow(target);
       viewportRef.current?.({
         south: bounds.getSouth(),
         west: bounds.getWest(),
@@ -344,6 +381,7 @@ export function MapView({
       marker.current?.remove();
       marker.current = null;
       markerPosition.current = null;
+      renderBoundsRef.current = null;
       cancelAnimationFrame(markerAnimation.current);
       instance.remove();
       map.current = null;
@@ -355,13 +393,22 @@ export function MapView({
     const instance = map.current;
     if (instance === null || !ready.current) return;
     const restore = () => {
-      addLayers(instance, trailColorRef.current);
-      syncData(instance, trackRef.current, ghostTrackRef.current, layersRef.current, ownerColorsRef.current, trailColorRef.current, blobsRef.current);
+      addLayers(instance, trailColorRef.current, graphicsProfileRef.current);
+      applyBaseMapQuality(instance, graphicsProfileRef.current);
+      syncBlobData(instance, blobsRef.current, ownerColorsRef.current);
+      refreshRenderWindow(instance, true);
     };
     instance.once('style.load', restore);
     instance.setStyle(mapStyleFor(theme));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme]);
+  }, [theme, graphicsSettings.quality]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || !ready.current) return;
+    refreshRenderWindow(instance, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphicsSettings.renderRadiusM]);
 
   useEffect(() => {
     const instance = map.current;
@@ -389,28 +436,29 @@ export function MapView({
      */
     const isReset = length < lastTrackSyncLength.current;
     const mustSyncNow = !live || length <= 2 || isReset;
-    const dueByTime = Date.now() - lastTrackSyncAt.current >= TRACK_SYNC_MIN_INTERVAL_MS;
+    const dueByTime = Date.now() - lastTrackSyncAt.current >= graphicsProfile.trackSyncIntervalMs;
 
     if (mustSyncNow || dueByTime) {
       lastTrackSyncAt.current = Date.now();
       lastTrackSyncLength.current = length;
-      syncTrackData(instance, track);
+      syncTrackData(instance, track, renderBoundsRef.current, graphicsProfile);
     }
     fitTrackOnce(instance, track, fitTrack, fitted);
-  }, [track, fitTrack, live]);
+  }, [track, fitTrack, live, graphicsProfile]);
 
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncGhostData(instance, ghostTrack);
-  }, [ghostTrack]);
+    syncGhostData(instance, ghostTrack, renderBoundsRef.current, graphicsProfile);
+  }, [ghostTrack, graphicsProfile]);
 
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncAreaData(instance, layers, ownerColors);
-    syncCellData(instance, layers, ownerColors, trailColor);
-  }, [layers, ownerColors, trailColor]);
+    const visibleLayers = filterLayersToBounds(layers, renderBoundsRef.current);
+    syncAreaData(instance, visibleLayers, ownerColors, null);
+    syncCellData(instance, visibleLayers, ownerColors, trailColor, null);
+  }, [layers, ownerColors, trailColor, graphicsProfile]);
 
   /**
    * A SZABAD RÁCS KÜLÖN HATÁS, KÜLÖN FÜGGŐSÉGGEL.
@@ -436,8 +484,8 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncGridData(instance, layersRef.current);
-  }, [gridCells]);
+    syncGridData(instance, layersRef.current, renderBoundsRef.current, graphicsProfile);
+  }, [gridCells, graphicsProfile]);
 
   useEffect(() => {
     const instance = map.current;
@@ -458,7 +506,9 @@ export function MapView({
       markerPosition.current = position;
     } else {
       const from = markerPosition.current ?? position;
-      const duration = prefersReducedMotion() ? 0 : mapMotionDuration(from, position);
+      const duration = prefersReducedMotion()
+        ? 0
+        : mapMotionDuration(from, position) * graphicsProfile.motionScale;
       cancelAnimationFrame(markerAnimation.current);
       if (duration === 0) {
         marker.current.setLngLat([position.lng, position.lat]);
@@ -508,12 +558,14 @@ export function MapView({
       const previous = markerPosition.current ?? position;
       instance.easeTo({
         center: [position.lng, position.lat],
-        duration: prefersReducedMotion() ? 0 : mapMotionDuration(previous, position),
+        duration: prefersReducedMotion()
+          ? 0
+          : mapMotionDuration(previous, position) * graphicsProfile.motionScale,
         easing: linearEasing,
         ...(bearing !== null ? { bearing } : {}),
       });
     }
-  }, [position, follow, headingUp]);
+  }, [position, follow, headingUp, graphicsProfile]);
 
   useEffect(() => {
     const instance = map.current;
@@ -522,8 +574,12 @@ export function MapView({
     // felcsatoláskor az alapértelmezett budapesti középpontra ráközelíteni
     // értelmetlen ugrás lenne.
     const zoom = centered.current ? { zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM } : {};
-    instance.easeTo({ pitch: tilted ? TILTED_PITCH : 0, ...zoom, duration: 400 });
-  }, [tilted]);
+    instance.easeTo({
+      pitch: tilted ? TILTED_PITCH : 0,
+      ...zoom,
+      duration: 400 * graphicsProfile.motionScale,
+    });
+  }, [tilted, graphicsProfile]);
 
   /**
    * Az irány-mód a NÉZETTŐL (2D/3D) FÜGGETLEN kapcsoló.
@@ -537,9 +593,9 @@ export function MapView({
     if (instance === null || !ready.current) return;
     if (!headingUp) {
       bearingRef.current = null;
-      instance.easeTo({ bearing: 0, duration: 400 });
+      instance.easeTo({ bearing: 0, duration: 400 * graphicsProfile.motionScale });
     }
-  }, [headingUp]);
+  }, [headingUp, graphicsProfile]);
 
   useEffect(() => {
     if (!follow) followPaused.current = false;
@@ -632,7 +688,7 @@ export function MapView({
                 zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
                 pitch: tilted ? TILTED_PITCH : 0,
                 bearing: headingUp ? (bearingRef.current ?? target.getBearing()) : 0,
-                duration: RECENTER_DURATION_MS,
+                duration: RECENTER_DURATION_MS * graphicsProfile.motionScale,
               });
             }
           }}
@@ -713,7 +769,12 @@ function fitTrackOnce(
   instance.fitBounds(bounds, { padding: 48, duration: 0, maxZoom: 17 });
 }
 
-function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
+function addLayers(
+  instance: mapboxgl.Map,
+  trailColor: string | null,
+  profile: GraphicsProfile,
+): void {
+  const hexSource = { tolerance: profile.sourceTolerance, maxzoom: profile.sourceMaxZoom } as const;
   /**
    * A FOLTRÉTEG MEGY LEGALULRA — szándékosan ELSŐKÉNT hozzáadva.
    *
@@ -736,7 +797,7 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
          * (védelmi szint, rács), és ha a folt teli erővel alatta maradna, a
          * kettő egymásra rakódva sötét, olvashatatlan pacát adna.
          */
-        'fill-opacity': ['interpolate', ['linear'], ['zoom'], CELL_DETAIL_MIN_ZOOM - 1, 0.34, CELL_DETAIL_MIN_ZOOM + 1, 0.16],
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], profile.cellDetailMinZoom - 1, 0.34, profile.cellDetailMinZoom + 1, 0.16],
       },
     });
     instance.addLayer({
@@ -768,12 +829,12 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
    * értelmessé válik.
    */
   if (!instance.getSource(AREA_SOURCE)) {
-    instance.addSource(AREA_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
+    instance.addSource(AREA_SOURCE, { type: 'geojson', data: emptyCollection(), ...hexSource });
     instance.addLayer({
       id: `${AREA_SOURCE}-fill`,
       type: 'fill',
       source: AREA_SOURCE,
-      minzoom: AREA_DETAIL_MIN_ZOOM,
+      minzoom: profile.areaDetailMinZoom,
       paint: {
         'fill-color': ['get', 'color'],
         // Átúszás, hogy a réteg ne pattanjon be egyik képkockáról a másikra.
@@ -781,9 +842,9 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
           'interpolate',
           ['linear'],
           ['zoom'],
-          AREA_DETAIL_MIN_ZOOM,
+          profile.areaDetailMinZoom,
           0,
-          AREA_DETAIL_MIN_ZOOM + 1,
+          profile.areaDetailMinZoom + 1,
           ['coalesce', ['get', 'opacity'], 0.2],
         ],
       },
@@ -792,7 +853,7 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
       id: `${AREA_SOURCE}-line`,
       type: 'line',
       source: AREA_SOURCE,
-      minzoom: AREA_DETAIL_MIN_ZOOM,
+      minzoom: profile.areaDetailMinZoom,
       layout: { 'line-join': 'round' },
       paint: {
         // A rivális terület kitöltése a tulajdonos választott színe, de a
@@ -813,9 +874,9 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
           'interpolate',
           ['linear'],
           ['zoom'],
-          AREA_DETAIL_MIN_ZOOM,
+          profile.areaDetailMinZoom,
           0,
-          AREA_DETAIL_MIN_ZOOM + 1,
+          profile.areaDetailMinZoom + 1,
           0.9,
         ],
       },
@@ -841,12 +902,13 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
    * sűrűn. Külön forrásban a kettő nem rántja magával egymást.
    */
   if (!instance.getSource(GRID_SOURCE)) {
-    instance.addSource(GRID_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
+    instance.addSource(GRID_SOURCE, { type: 'geojson', data: emptyCollection(), ...hexSource });
     instance.addLayer({
       id: `${GRID_SOURCE}-line`,
       type: 'line',
       source: GRID_SOURCE,
-      minzoom: CELL_DETAIL_MIN_ZOOM,
+      minzoom: profile.cellDetailMinZoom,
+      layout: { visibility: profile.showFreeGrid ? 'visible' : 'none' },
       paint: {
         'line-color': cssColor(ROLE_COLOR.free),
         'line-width': 1.2,
@@ -854,7 +916,7 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
           'interpolate',
           ['linear'],
           ['zoom'],
-          CELL_DETAIL_MIN_ZOOM,
+          profile.cellDetailMinZoom,
           0,
           16.5,
           ROLE_LINE_OPACITY.free,
@@ -864,12 +926,12 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
   }
 
   if (!instance.getSource(CELL_SOURCE)) {
-    instance.addSource(CELL_SOURCE, { type: 'geojson', data: emptyCollection(), ...HEX_SOURCE });
+    instance.addSource(CELL_SOURCE, { type: 'geojson', data: emptyCollection(), ...hexSource });
     instance.addLayer({
       id: `${CELL_SOURCE}-fill`,
       type: 'fill',
       source: CELL_SOURCE,
-      minzoom: CELL_DETAIL_MIN_ZOOM,
+      minzoom: profile.cellDetailMinZoom,
       paint: {
         'fill-color': ['get', 'color'],
         /*
@@ -881,7 +943,7 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
           'interpolate',
           ['linear'],
           ['zoom'],
-          CELL_DETAIL_MIN_ZOOM,
+          profile.cellDetailMinZoom,
           0,
           16.5,
           ['case', ['coalesce', ['get', 'trail'], false], 0.3, 0.08],
@@ -892,16 +954,16 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
       id: `${CELL_SOURCE}-line`,
       type: 'line',
       source: CELL_SOURCE,
-      minzoom: CELL_DETAIL_MIN_ZOOM,
+      minzoom: profile.cellDetailMinZoom,
       paint: {
         'line-color': ['get', 'color'],
         // Vastagabb körvonal a nyomvonalnak — ugyanaz az indok, mint fent.
-        'line-width': ['case', ['coalesce', ['get', 'trail'], false], 2.8, 1.2],
+        'line-width': ['case', ['coalesce', ['get', 'trail'], false], profile.routeWidth * 0.7, 1.2],
         'line-opacity': [
           'interpolate',
           ['linear'],
           ['zoom'],
-          CELL_DETAIL_MIN_ZOOM,
+          profile.cellDetailMinZoom,
           0,
           16.5,
           ['coalesce', ['get', 'lineOpacity'], 0.85],
@@ -912,13 +974,14 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
       id: `${CELL_SOURCE}-defense-label`,
       type: 'symbol',
       source: CELL_SOURCE,
-      minzoom: 15,
+      minzoom: profile.defenseLabelMinZoom,
       layout: {
         'text-field': ['get', 'defenseLabel'],
         'text-size': ['interpolate', ['linear'], ['zoom'], 15, 8, 17.5, 12, 20, 15],
         'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
         'text-allow-overlap': false,
         'text-ignore-placement': false,
+        visibility: profile.showDefenseLabels ? 'visible' : 'none',
       },
       paint: {
         'text-color': ['get', 'labelColor'],
@@ -963,7 +1026,7 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': cssColor('var(--bg-elevated)'),
-        'line-width': 8,
+        'line-width': profile.routeWidth + 4,
         'line-opacity': 0.9,
       },
     });
@@ -972,7 +1035,10 @@ function addLayers(instance: mapboxgl.Map, trailColor: string | null): void {
       type: 'line',
       source: TRACK_SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': trailColor ?? cssColor(ROLE_COLOR.trail), 'line-width': 4 },
+      paint: {
+        'line-color': trailColor ?? cssColor(ROLE_COLOR.trail),
+        'line-width': profile.routeWidth,
+      },
     });
   }
 }
@@ -984,14 +1050,15 @@ function syncData(
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
   trailColor: string | null,
-  blobs: MapViewProps['blobs'],
+  bounds: RenderBounds | null,
+  profile: GraphicsProfile,
 ): void {
-  syncBlobData(instance, blobs, ownerColors);
-  syncGridData(instance, layers);
-  syncAreaData(instance, layers, ownerColors);
-  syncCellData(instance, layers, ownerColors, trailColor);
-  syncTrackData(instance, track);
-  syncGhostData(instance, ghostTrack);
+  syncGridData(instance, layers, bounds, profile);
+  const visibleLayers = filterLayersToBounds(layers, bounds);
+  syncAreaData(instance, visibleLayers, ownerColors, null);
+  syncCellData(instance, visibleLayers, ownerColors, trailColor, null);
+  syncTrackData(instance, track, bounds, profile);
+  syncGhostData(instance, ghostTrack, bounds, profile);
 }
 
 /**
@@ -1009,7 +1076,7 @@ function syncBlobData(
   const source = instance.getSource(BLOB_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (!source) return;
 
-  const features = [];
+  const features: GeoJSON.Feature[] = [];
   for (const blob of blobs ?? []) {
     if (blob.rings.length === 0) continue;
     const color = cellColorHex(ownerColors?.[blob.owner]);
@@ -1030,15 +1097,25 @@ function syncBlobData(
  * kitöltés a gyakorlatban láthatatlan volt, viszont minden hatszöghöz egy
  * felesleges kitöltés-geometriát jelentett).
  */
-function syncGridData(instance: mapboxgl.Map, layers: MapViewProps['layers']): void {
+function syncGridData(
+  instance: mapboxgl.Map,
+  layers: MapViewProps['layers'],
+  bounds: RenderBounds | null,
+  profile: GraphicsProfile,
+): void {
   const source = instance.getSource(GRID_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (!source) return;
 
-  const features = [];
+  const features: GeoJSON.Feature[] = [];
+  if (!profile.showFreeGrid) {
+    source.setData({ type: 'FeatureCollection', features });
+    return;
+  }
   for (const layer of layers ?? []) {
     if (layer.role !== 'free') continue;
     for (const entry of layer.cells) {
       const cell = typeof entry === 'string' ? entry : entry.cell;
+      if (!cellInBounds(cell, bounds)) continue;
       features.push({
         type: 'Feature' as const,
         properties: { cell },
@@ -1053,6 +1130,7 @@ function syncAreaData(
   instance: mapboxgl.Map,
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
+  bounds: RenderBounds | null,
 ): void {
   const areaSource = instance.getSource(AREA_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (!areaSource) return;
@@ -1065,6 +1143,7 @@ function syncAreaData(
     if (!isTerritoryRole(layer.role)) continue;
     for (const entry of layer.cells) {
       const cell = typeof entry === 'string' ? entry : entry.cell;
+      if (!cellInBounds(cell, bounds)) continue;
       const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
       const owner = typeof entry === 'string' ? '' : entry.owner ?? '';
       const key = `${layer.role}:${defense}:${owner}`;
@@ -1118,6 +1197,7 @@ function syncCellData(
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
   trailColor: string | null,
+  bounds: RenderBounds | null,
 ): void {
   const cellSource = instance.getSource(CELL_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (!cellSource) return;
@@ -1128,6 +1208,7 @@ function syncCellData(
     if (layer.role === 'free') continue;
     for (const entry of layer.cells) {
       const cell = typeof entry === 'string' ? entry : entry.cell;
+      if (!cellInBounds(cell, bounds)) continue;
       const defense = clampDefense(typeof entry === 'string' ? 1 : entry.defense ?? 1);
       const owner = typeof entry === 'string' ? '' : (entry.owner ?? '');
       const territory = isTerritoryRole(layer.role);
@@ -1170,42 +1251,48 @@ function syncCellData(
   cellSource.setData({ type: 'FeatureCollection', features });
 }
 
-function syncTrackData(instance: mapboxgl.Map, track: MapViewProps['track']): void {
+function syncTrackData(
+  instance: mapboxgl.Map,
+  track: MapViewProps['track'],
+  bounds: RenderBounds | null,
+  profile: GraphicsProfile,
+): void {
   const trackSource = instance.getSource(TRACK_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (trackSource) {
-    const coordinates = (track ?? []).map((p) => [p.lng, p.lat]);
+    const segments = visibleTrackSegments(track ?? [], bounds, profile.routePointStride);
     trackSource.setData({
       type: 'FeatureCollection',
-      features:
-        coordinates.length >= 2
-          ? [
-              {
-                type: 'Feature',
-                properties: {},
-                geometry: { type: 'LineString', coordinates },
-              },
-            ]
-          : [],
+      features: segments.map((segment) => ({
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: segment.map((point) => [point.lng, point.lat]),
+        },
+      })),
     });
   }
 }
 
-function syncGhostData(instance: mapboxgl.Map, ghostTrack: MapViewProps['ghostTrack']): void {
+function syncGhostData(
+  instance: mapboxgl.Map,
+  ghostTrack: MapViewProps['ghostTrack'],
+  bounds: RenderBounds | null,
+  profile: GraphicsProfile,
+): void {
   const ghostSource = instance.getSource(GHOST_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (ghostSource) {
-    const coordinates = (ghostTrack ?? []).map((p) => [p.lng, p.lat]);
+    const segments = visibleTrackSegments(ghostTrack ?? [], bounds, profile.routePointStride);
     ghostSource.setData({
       type: 'FeatureCollection',
-      features:
-        coordinates.length >= 2
-          ? [
-              {
-                type: 'Feature',
-                properties: {},
-                geometry: { type: 'LineString', coordinates },
-              },
-            ]
-          : [],
+      features: segments.map((segment) => ({
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: segment.map((point) => [point.lng, point.lat]),
+        },
+      })),
     });
   }
 }
@@ -1216,6 +1303,62 @@ function isTerritoryRole(role: HexRole): boolean {
 
 function clampDefense(value: number): 1 | 2 | 3 | 4 | 5 {
   return Math.min(5, Math.max(1, Math.round(value))) as 1 | 2 | 3 | 4 | 5;
+}
+
+/**
+ * A Mapbox csak a forráson belül tud viewport szerint csempézni. Ezért a
+ * drága GeoJSON-építés ELŐTT vágjuk ki a kamerán kívüli cellákat.
+ */
+const CELL_CENTER_CACHE = new Map<CellId, { lat: number; lng: number }>();
+const CELL_CENTER_CACHE_LIMIT = 50_000;
+
+function cellInBounds(cell: CellId, bounds: RenderBounds | null): boolean {
+  if (bounds === null) return true;
+  let center = CELL_CENTER_CACHE.get(cell);
+  if (!center) {
+    const [lat, lng] = cellToLatLng(cell);
+    center = { lat, lng };
+    if (CELL_CENTER_CACHE.size >= CELL_CENTER_CACHE_LIMIT) CELL_CENTER_CACHE.clear();
+    CELL_CENTER_CACHE.set(cell, center);
+  }
+  return pointInBounds(center, bounds);
+}
+
+function filterLayersToBounds(
+  layers: MapViewProps['layers'],
+  bounds: RenderBounds | null,
+): MapViewProps['layers'] {
+  if (bounds === null) return layers;
+  return layers?.map((layer) => ({
+    role: layer.role,
+    cells: [...layer.cells].filter((entry) => {
+      const cell = typeof entry === 'string' ? entry : entry.cell;
+      return cellInBounds(cell, bounds);
+    }),
+  }));
+}
+
+function boundsAreNear(current: RenderBounds | null, next: RenderBounds): boolean {
+  if (current === null) return false;
+  const latTolerance = Math.max(0.00001, (next.north - next.south) * 0.05);
+  const lngTolerance = Math.max(0.00001, (next.east - next.west) * 0.05);
+  return Math.abs(current.south - next.south) <= latTolerance
+    && Math.abs(current.north - next.north) <= latTolerance
+    && Math.abs(current.west - next.west) <= lngTolerance
+    && Math.abs(current.east - next.east) <= lngTolerance;
+}
+
+/** A Low/Medium profil a drága, nem navigációs alaptérkép-rétegeket letiltja. */
+function applyBaseMapQuality(instance: mapboxgl.Map, profile: GraphicsProfile): void {
+  for (const layer of instance.getStyle().layers ?? []) {
+    if (layer.id.startsWith('grundo-')) continue;
+    const hideExtrusion = layer.type === 'fill-extrusion' && !profile.showExtrusions;
+    const minorSymbol = layer.type === 'symbol'
+      && /(^|[-_])(poi|transit|airport|natural-point|settlement-subdivision)([-_]|$)/i.test(layer.id);
+    if (hideExtrusion || (minorSymbol && !profile.showMinorSymbols)) {
+      instance.setLayoutProperty(layer.id, 'visibility', 'none');
+    }
+  }
 }
 
 function cssColor(reference: string): string {
