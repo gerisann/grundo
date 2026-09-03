@@ -510,17 +510,24 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   meghívók" lista ebből megy, collectionGroup-lekérdezés nélkül. Elfogadás/
   elutasítás mindkét oldalról törli. Lásd `server/src/routes/bandas.ts`.
 - `bandas/{id}/feed/{postId}` és `bandas/{id}/wall/{msgId}` *(GRUNDO #30)* →
-  mindkettő `{ authorUid, authorUsername, text, createdAt }`. Csak tagoknak
+  mindkettő `{ authorUid, authorUsername, text, format, createdAt }`; a feed-
+  poszt opcionálisan `imagePath` mezőt is kap. A `format` visszafelé
+  kompatibilisen `plain`, az új formázott posztoknál `markdown-v1`. Csak tagoknak
   olvasható. A hírfolyamra a `settings.postPermission` szerint posztolhat
   (`everyone`/`moderators`/`owner`, a `meetsRolePermission` dönti el), a
   chat falra bárki tag írhat, arra nincs külön beállítás. Nincs
   szerkesztés/törlés/lájk/válasz Phase 2-ben — sima, időrendi lista.
+- A feed-kép a `bandas/{bandaId}/feed/{uid}/{fileName}.jpg` Storage-
+  útvonalon él, legfeljebb 2 MB. Közvetlen Storage-olvasás nincs: a backend
+  csak tagság-ellenőrzés után szolgálja ki, tartós letöltési token nélkül.
 - Phase 3 tagkezelés *(GRUNDO #30)*: a szerver tranzakcióban tartja egyezőn
   a `bandas/{id}/members/{uid}` és `users/{uid}/bandas/{id}` szerepköröket.
   Az alapító moderátort nevezhet ki vagy minősíthet vissza, tagot/moderátort
   rúghat ki, és meglévő tagnak adhatja át a tulajdonjogot; ekkor ő maga
   moderátor marad. A moderátor sima tagot rúghat ki, de moderátort vagy
-  alapítót nem. A share-link mélylink-parsolása külön folytatás.
+  alapítót nem. Az alapító csak a rang átadása után léphet ki; a kilépés
+  mindkét tagsági tükört törli. A share-link mélylink-parsolása külön
+  folytatás.
 
 ### `challenges/{challengeId}`
 ```ts

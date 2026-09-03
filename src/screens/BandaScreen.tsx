@@ -41,6 +41,20 @@ export function BandaScreen() {
   const [members, setMembers] = useState<BandaMember[] | null>(null);
   const [error, setError] = useState('');
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  async function leaveBanda() {
+    if (!id || role === 'owner' || !window.confirm('Biztosan kilépsz ebből a bandából?')) return;
+    setLeaving(true);
+    setError('');
+    try {
+      await api.bandas.leave(id);
+      navigate('/kozosseg/bandak', { replace: true });
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'Most nem sikerült kilépni a bandából.');
+      setLeaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -189,6 +203,12 @@ export function BandaScreen() {
             description="A hírfolyam és a chat fal csak a banda tagjainak látszik — csatlakozz, hogy megnézhesd."
           />
         )}
+
+        {role && role !== 'owner' ? (
+          <Button variant="danger" block loading={leaving} onClick={() => void leaveBanda()}>
+            Kilépés a bandából
+          </Button>
+        ) : null}
       </div>
 
       {inviteSheetOpen && id ? (

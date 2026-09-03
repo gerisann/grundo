@@ -45,7 +45,7 @@ export class PhotoError extends Error {}
  * fordulnak el — ez az egyetlen EXIF-adat, amit MEG AKARUNK tartani, és
  * pontosan azért, mert a képpontokba égetjük bele.
  */
-async function toJpegBlob(file: File, maxEdge = MAX_EDGE): Promise<Blob> {
+export async function compressImageToJpeg(file: File, maxEdge = MAX_EDGE): Promise<Blob> {
   if (!file.type.startsWith('image/')) {
     throw new PhotoError('Csak képet lehet feltölteni.');
   }
@@ -148,7 +148,7 @@ export async function uploadActivityPhotos(
   for (const [index, file] of files.entries()) {
     onProgress?.({ index: index + 1, total: files.length });
 
-    const blob = await toJpegBlob(file);
+    const blob = await compressImageToJpeg(file);
     // Az egyediséghez idő + véletlen: két kép ugyanabban a másodpercben is
     // érkezhet, és a fájlnév ütközése az elsőt némán felülírná.
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
@@ -178,10 +178,40 @@ export async function deleteActivityPhotos(paths: readonly string[]): Promise<vo
 /** Profilkép: fix objektumútvonal, EXIF nélkül, legfeljebb 512 px-en. */
 export async function uploadProfilePhoto(file: File, uid: string): Promise<string> {
   if (!storage) throw new PhotoError('A képfeltöltés nincs beállítva.');
-  const blob = await toJpegBlob(file, 512);
+  const blob = await compressImageToJpeg(file, 512);
   const handle = ref(storage, `avatars/${uid}/profile.jpg`);
   await uploadBytes(handle, blob, { contentType: 'image/jpeg' });
   const url = await getDownloadURL(handle);
   // A fájl neve állandó, ezért a verzióparaméter töri meg a böngésző cache-ét.
   return `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
+}
+
+/** A banda-hírfolyam egyetlen csatolt képének felső korlátja. */
+export const MAX_BANDA_FEED_IMAGE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Banda-posztkép: ugyanúgy EXIF-mentes JPEG, mint az aktivitásfotó, de
+ * legfeljebb 2 MB-os eredeti fájlból és legfeljebb 2 MB-os eredménnyel.
+ */
+export async function uploadBandaFeedImage(file: File, uid: string, bandaId: string): Promise<string> {
+  if (!storage) throw new PhotoError('A képfeltöltés nincs beállítva.');
+  if (file.size > MAX_BANDA_FEED_IMAGE_BYTES) {
+    throw new PhotoError('A kiválasztott kép legfeljebb 2 MB lehet.');
+  }
+
+  const blob = await compressImageToJpeg(file);
+  if (blob.size > MAX_BANDA_FEED_IMAGE_BYTES) {
+    throw new PhotoError('A tömörített kép is nagyobb 2 MB-nál. Válassz kisebb képet.');
+  }
+
+  const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const path = `bandas/${bandaId}/feed/${uid}/${name}`;
+  await uploadBytes(ref(storage, path), blob, { contentType: 'image/jpeg' });
+  return path;
+}
+
+/** Sikertelen posztmentés után ne maradjon árva feltöltés. */
+export async function deleteBandaFeedImage(path: string): Promise<void> {
+  if (!storage) return;
+  await deleteObject(ref(storage, path));
 }

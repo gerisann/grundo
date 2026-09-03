@@ -132,6 +132,14 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   két tagsági tükördokumentuma egyetlen tranzakcióban vált. Így mindig
   pontosan egy `owner` van, miközben az átadó nem veszíti el hirtelen az
   adminisztrációs kapcsolatát a bandával.
+- **Alapító nem hagyhat gazdátlan bandát.** Kilépés előtt kötelező
+  egy meglévő tagnak átadnia az alapítói rangot; ezt a szerver tiltja, nem
+  csak a felület magyarázza. Az átadás után moderátorként a normál kilépési
+  útvonalon távozhat.
+- **A banda-feed képe nem kap tartós Firebase download tokent.** A Storage-
+  objektum közvetlenül nem olvasható; a backend ellenőrzi a tagságot, majd
+  hitelesített bináris válaszként szolgálja ki. Ez megőrzi a privát banda
+  tartalmának határát akkor is, ha valaki megszerzi az objektum útvonalát.
 
 ## Archívum
 

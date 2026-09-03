@@ -1083,6 +1083,8 @@ export interface BandaPost {
   authorUid: string;
   authorUsername: string;
   text: string;
+  format: 'plain' | 'markdown-v1';
+  hasImage: boolean;
   createdAt: number | null;
 }
 
@@ -1246,11 +1248,18 @@ export const api = {
       request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed`),
 
     /** Új poszt a hírfolyamba — a `settings.postPermission` szerint jogosultsághoz kötve. */
-    postToFeed: (bandaId: string, text: string) =>
+    postToFeed: (bandaId: string, text: string, imagePath?: string) =>
       request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed`, {
         method: 'POST',
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, format: 'markdown-v1', imagePath }),
       }),
+
+    /** Tagságvédett posztkép; a hívó Blob URL-t készít belőle. */
+    feedImage: (bandaId: string, postId: string, signal?: AbortSignal) =>
+      requestBlob(
+        `/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/image`,
+        signal,
+      ),
 
     /** A chat fal, a legrégebbivel kezdve. */
     wall: (bandaId: string) =>
@@ -1290,6 +1299,10 @@ export const api = {
         `/api/bandas/${encodeURIComponent(bandaId)}/transfer-ownership`,
         { method: 'POST', body: JSON.stringify({ targetUid }) },
       ),
+
+    /** Saját tagság megszüntetése; az alapítónak előbb át kell adnia a rangot. */
+    leave: (bandaId: string) =>
+      request<{ left: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/leave`, { method: 'POST' }),
   },
 
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */

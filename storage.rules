@@ -50,6 +50,16 @@ service firebase.storage {
       allow delete: if isSelf(uid);
     }
 
+    // ── Banda-hírfolyam képei ─────────────────────────────────────────────────────
+    // A kliens csak a saját uid-szegmense alá tölthet fel. Olvasni a
+    // backend szolgálja ki tagság-ellenőrzés után, tartós download token nélkül.
+    match /bandas/{bandaId}/feed/{uid}/{fileName} {
+      allow read: if false;
+      allow create: if isSelf(uid) && isImage() && request.resource.size <= 2 * 1024 * 1024;
+      allow update: if false;
+      allow delete: if isSelf(uid);
+    }
+
     // ── Generált térkép-előnézetek ────────────────────────────────────────
     // Mindig a LEVÁGOTT nyomvonalból készülnek. Csak a szerver írhatja.
     match /maps/{activityId}/{fileName} {

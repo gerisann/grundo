@@ -31,11 +31,13 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
   let server: Server;
   let base: string;
   let db: FirebaseFirestore.Firestore;
+  let bucket: ReturnType<(typeof import('../lib/firebase'))['storage']['bucket']>;
   let currentUid = OWNER;
 
   beforeAll(async () => {
     const firebase = await import('../lib/firebase');
     db = firebase.db;
+    bucket = firebase.storage.bucket(firebase.FIREBASE_STORAGE_BUCKET);
 
     const { bandasRouter } = await import('./bandas');
     const { HttpError } = await import('../lib/errors');
@@ -348,6 +350,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     const list = await (await call(`/${bandaId}/feed`, OWNER)).json();
     expect(list.items.map((p: { text: string }) => p.text)).toEqual(['Elsőnek szólok.', 'Másodiknak.']);
     expect(list.items[0].authorUsername).toBe('alapito');
+    expect(list.items[0]).toMatchObject({ format: 'plain', hasImage: false });
   });
 
   it('"postPermission: owner" beállításnál a sima tag nem posztolhat a hírfolyamba, a falra viszont igen', async () => {
@@ -537,5 +540,61 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
       body: JSON.stringify({ postPermission: 'owner' }),
     });
     expect(newOwnerAllowed.status).toBe(200);
+  });
+
+  it('az alapító csak rangátadás után léphet ki, ekkor mindkét tükör törlődik', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Kilépési Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+
+    const blocked = await call(`/${bandaId}/leave`, OWNER, { method: 'POST' });
+    expect(blocked.status).toBe(409);
+    expect((await blocked.json()).code).toBe('owner_must_transfer');
+
+    await call(`/${bandaId}/transfer-ownership`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ targetUid: OTHER }),
+    });
+    const left = await call(`/${bandaId}/leave`, OWNER, { method: 'POST' });
+    expect(left.status).toBe(200);
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(OWNER).get()).exists).toBe(false);
+    expect((await db.collection('users').doc(OWNER).collection('bandas').doc(bandaId).get()).exists).toBe(false);
+    expect((await db.collection('bandas').doc(bandaId).get()).data()?.memberCount).toBe(1);
+  });
+
+  it.runIf(Boolean(process.env.FIREBASE_STORAGE_EMULATOR_HOST))('a formázott hírfolyam-poszt képe csak tagnak olvasható', async () => {
+    const created = await (
+      await call('/', OWNER, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Képes Banda', visibility: 'public' }),
+      })
+    ).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    const imagePath = `bandas/${bandaId}/feed/${OWNER}/sample.jpg`;
+    await bucket.file(imagePath).save(Buffer.from([1, 2, 3]), { contentType: 'image/jpeg' });
+
+    const posted = await call(`/${bandaId}/feed`, OWNER, {
+      method: 'POST',
+      body: JSON.stringify({ text: '**Képes poszt**', format: 'markdown-v1', imagePath }),
+    });
+    expect(posted.status).toBe(201);
+    const postId = (await posted.json()).id as string;
+
+    const list = await (await call(`/${bandaId}/feed`, OTHER)).json();
+    expect(list.items[0]).toMatchObject({ format: 'markdown-v1', hasImage: true });
+
+    const memberImage = await call(`/${bandaId}/feed/${postId}/image`, OTHER);
+    expect(memberImage.status).toBe(200);
+    expect(memberImage.headers.get('content-type')).toContain('image/jpeg');
+    expect(new Uint8Array(await memberImage.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+
+    const strangerImage = await call(`/${bandaId}/feed/${postId}/image`, THIRD);
+    expect(strangerImage.status).toBe(403);
   });
 });

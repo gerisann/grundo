@@ -199,6 +199,14 @@ export function BandaSettingsScreen() {
                 ))}
               </div>
             </section>
+
+            <section className="card stack stack--tight">
+              <h2 className="banda-settings__section-title">Kilépés a bandából</h2>
+              <p className="banda-settings__hint">
+                Alapítóként nem léphetsz ki közvetlenül. Előbb add át egy tagnak az alapítói rangot; ezután moderátorként kiléphetsz a banda adatlapjáról.
+              </p>
+              <Button variant="danger" block disabled>Előbb add át az alapítói rangot</Button>
+            </section>
           </>
         ) : null}
       </div>

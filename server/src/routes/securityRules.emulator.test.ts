@@ -102,4 +102,22 @@ describe.skipIf(!EMULATOR)('adatvédelmi szabályok — valódi emulátorokon', 
       code: 'storage/unauthorized',
     });
   });
+
+  it('a banda-posztképet csak a saját uid alá és legfeljebb 2 MB méretben lehet feltölteni', async () => {
+    const aliceUid = aliceAuth.currentUser!.uid;
+    const bobUid = bobAuth.currentUser!.uid;
+    const path = `bandas/banda-rules/feed/${aliceUid}/photo-${suffix}.jpg`;
+    const ownerRef = ref(aliceStorage, path);
+
+    await expect(uploadBytes(ownerRef, new Uint8Array([1, 2, 3]), { contentType: 'image/jpeg' })).resolves.toBeDefined();
+    await expect(getBytes(ownerRef)).rejects.toMatchObject({ code: 'storage/unauthorized' });
+    await expect(
+      uploadBytes(ref(bobStorage, `bandas/banda-rules/feed/${aliceUid}/foreign-${suffix}.jpg`), new Uint8Array([1]), { contentType: 'image/jpeg' }),
+    ).rejects.toMatchObject({ code: 'storage/unauthorized' });
+    await expect(
+      uploadBytes(ref(aliceStorage, `bandas/banda-rules/feed/${aliceUid}/large-${suffix}.jpg`), new Uint8Array(2 * 1024 * 1024 + 1), { contentType: 'image/jpeg' }),
+    ).rejects.toMatchObject({ code: 'storage/unauthorized' });
+
+    expect(bobUid).not.toBe(aliceUid);
+  });
 });

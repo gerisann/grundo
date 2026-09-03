@@ -18,8 +18,8 @@
 
 import { Router, type Response } from 'express';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { COLLECTIONS, db } from '../lib/firebase';
-import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
+import { COLLECTIONS, db, FIREBASE_STORAGE_BUCKET, storage } from '../lib/firebase';
+import { badRequest, conflict, forbidden, HttpError, notFound } from '../lib/errors';
 import {
   DEFAULT_BANDA_SETTINGS,
   canInvite,
@@ -683,6 +683,34 @@ bandasRouter.post('/:id/transfer-ownership', async (req: AuthedRequest, res: Res
   }
 });
 
+bandasRouter.post('/:id/leave', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    await db.runTransaction(async (tx) => {
+      const memberRef = bandaRef.collection('members').doc(uid);
+      const [bandaSnap, memberSnap] = await Promise.all([tx.get(bandaRef), tx.get(memberRef)]);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+      if (!memberSnap.exists) throw notFound('member_not_found', 'Nem vagy tagja ennek a bandának.');
+      if ((memberSnap.data() as { role?: BandaRole }).role === 'owner') {
+        throw conflict(
+          'owner_must_transfer',
+          'Alapítóként csak akkor léphetsz ki, ha előbb átadod valakinek az alapítói rangot.',
+        );
+      }
+
+      tx.delete(memberRef);
+      tx.delete(db.collection(COLLECTIONS.users).doc(uid).collection('bandas').doc(bandaId));
+      tx.update(bandaRef, { memberCount: FieldValue.increment(-1) });
+    });
+
+    res.json({ left: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /* ═══════════════════════════════════════════════════════════════════
    GET /api/bandas/:id/members — teljes tag-lista
    ═══════════════════════════════════════════════════════════════════ */
@@ -769,6 +797,8 @@ function toPostSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
     authorUid: String(data.authorUid ?? ''),
     authorUsername: String(data.authorUsername ?? ''),
     text: String(data.text ?? ''),
+    format: data.format === 'markdown-v1' ? 'markdown-v1' : 'plain',
+    hasImage: typeof data.imagePath === 'string' && data.imagePath.length > 0,
     createdAt: millis(data.createdAt),
   };
 }
@@ -791,6 +821,11 @@ bandasRouter.post('/:id/feed', async (req: AuthedRequest, res: Response, next) =
     const uid = req.uid!;
     const bandaId = String(req.params.id ?? '');
     const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    const format = (req.body as { format?: unknown } | undefined)?.format === 'markdown-v1'
+      ? 'markdown-v1'
+      : 'plain';
+    const imagePathValue = (req.body as { imagePath?: unknown } | undefined)?.imagePath;
+    const imagePath = typeof imagePathValue === 'string' ? imagePathValue : null;
     if (!text) throw badRequest('empty_post', 'Írj valamit a posztba.');
     if (text.length > POST_MAX) throw badRequest('post_too_long', `A poszt legfeljebb ${POST_MAX} karakter.`);
 
@@ -807,11 +842,78 @@ bandasRouter.post('/:id/feed', async (req: AuthedRequest, res: Response, next) =
       throw forbidden('Ebben a bandában nincs jogosultságod posztolni.');
     }
 
+    if (imagePath) {
+      const prefix = `bandas/${bandaId}/feed/${uid}/`;
+      const fileName = imagePath.slice(prefix.length);
+      if (!imagePath.startsWith(prefix) || !/^[A-Za-z0-9._-]+\.jpg$/.test(fileName)) {
+        throw badRequest('invalid_feed_image', 'Érvénytelen posztkép-hivatkozás.');
+      }
+      try {
+        const [metadata] = await storage.bucket(FIREBASE_STORAGE_BUCKET).file(imagePath).getMetadata();
+        if (metadata.contentType !== 'image/jpeg' || Number(metadata.size ?? 0) > 2 * 1024 * 1024) {
+          throw badRequest('invalid_feed_image', 'A posztkép csak JPEG lehet, legfeljebb 2 MB méretben.');
+        }
+      } catch (error) {
+        if (error instanceof HttpError) throw error;
+        throw badRequest('invalid_feed_image', 'A feltöltött posztkép nem található.');
+      }
+    }
+
     const authorUsername = String((userSnap.data() as { username?: string } | undefined)?.username ?? '');
     const postRef = bandaRef.collection('feed').doc();
-    await postRef.set({ authorUid: uid, authorUsername, text, createdAt: FieldValue.serverTimestamp() });
+    await postRef.set({
+      authorUid: uid,
+      authorUsername,
+      text,
+      format,
+      ...(imagePath ? { imagePath } : {}),
+      createdAt: FieldValue.serverTimestamp(),
+    });
 
     res.status(201).json({ id: postRef.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.get('/:id/feed/:postId/image', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const postId = String(req.params.postId ?? '');
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    await loadMemberRole(bandaRef, uid);
+
+    const postSnap = await bandaRef.collection('feed').doc(postId).get();
+    const imagePath = (postSnap.data() as { imagePath?: unknown } | undefined)?.imagePath;
+    if (!postSnap.exists || typeof imagePath !== 'string') {
+      throw notFound('feed_image_missing', 'Nincs ilyen posztkép.');
+    }
+
+    const expectedPrefix = `bandas/${bandaId}/feed/`;
+    if (!imagePath.startsWith(expectedPrefix)) {
+      throw notFound('feed_image_missing', 'Nincs ilyen posztkép.');
+    }
+
+    const file = storage.bucket(FIREBASE_STORAGE_BUCKET).file(imagePath);
+    try {
+      const [metadata] = await file.getMetadata();
+      if (metadata.contentType !== 'image/jpeg') {
+        throw notFound('feed_image_missing', 'Nincs ilyen posztkép.');
+      }
+      const [contents] = await file.download();
+      res.set({
+        'Cache-Control': 'private, max-age=300',
+        'Content-Type': 'image/jpeg',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      res.send(contents);
+    } catch (error) {
+      if (Number((error as { code?: unknown }).code) === 404) {
+        throw notFound('feed_image_missing', 'Nincs ilyen posztkép.');
+      }
+      throw error;
+    }
   } catch (error) {
     next(error);
   }
