@@ -45,7 +45,13 @@ import {
   type PositionActivityState,
   type PositionSource,
 } from '@/tracking/types';
-import { ApiError, api, apiConfigured, type ActivitySummary } from '@/lib/api';
+import {
+  ApiError,
+  api,
+  apiConfigured,
+  type ActivitySummary,
+  type ActivityUploadStatusResult,
+} from '@/lib/api';
 import { GAMEPLAY } from '@/config/gameplay';
 import { requestWakeLock, wakeLockSupported, type WakeLock } from '@/tracking/wakeLock';
 import {
@@ -71,6 +77,16 @@ export type RecorderUploadResult =
 export type RecorderUploader = (input: RecorderUploadInput) => Promise<RecorderUploadResult>;
 
 /**
+ * A hosszú feltöltés állapotának lekérdezése — a saját uploaderhez.
+ *
+ * Enélkül a LAB nem tudja végigjátszani a hosszú mentést: a `processing`
+ * állapotból csak a státuszkérdés vezet ki, azt viszont a production API-n
+ * kérdeznénk, ahol a sandbox aktivitás nem létezik. A LAB így ugyanazt a
+ * várakozás → siker/hiba → újrapróbálás utat futja be, mint az éles app.
+ */
+export type RecorderUploadProbe = (activityId: string) => Promise<ActivityUploadStatusResult>;
+
+/**
  * Injektálható környezet a recorder köré.
  *
  * Normál appban minden mező elhagyható: natív/browser GPS, IndexedDB,
@@ -81,6 +97,8 @@ export type RecorderUploader = (input: RecorderUploadInput) => Promise<RecorderU
 export interface RecorderOptions {
   store?: RunStore;
   uploader?: RecorderUploader;
+  /** Saját uploader mellé a státuszkérdés — lásd `RecorderUploadProbe`. */
+  uploadStatus?: RecorderUploadProbe;
   restoreSavedRun?: boolean;
 }
 
@@ -234,6 +252,15 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const persister = useMemo(() => createRunPersister(runStore), [runStore]);
   const restoreSavedRun = options.restoreSavedRun !== false;
   const uploader = options.uploader;
+  const uploadStatusProbe = options.uploadStatus;
+  /**
+   * Van-e ki megmondja, mi lett a hosszú feldolgozás sorsa.
+   *
+   * Productionben ez mindig a szerver státuszvégpontja; saját uploaderrel
+   * csak akkor, ha a hívó adott hozzá szondát is. Enélkül a `processing`
+   * állapot zsákutca lenne — nincs, aki kivezessen belőle.
+   */
+  const canFollowProcessing = !uploader || Boolean(uploadStatusProbe);
 
   const stateRef = useRef<RecorderState>(createRecorder('run'));
   const [state, setState] = useState<RecorderState>(stateRef.current);
@@ -550,7 +577,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
        * gombot kell nyomnia, hanem megérteni, mi történt.
        */
       const retryable = err instanceof ApiError ? err.status === 0 || err.status >= 500 : true;
-      if (!uploader && retryable) {
+      if (canFollowProcessing && retryable) {
         // A hálózati/5xx hiba nem bizonyítja, hogy a szerver leállt: Cloud Run
         // a megszakadt klienskapcsolat után is folytathatja a feldolgozást.
         // A státuszvégpont dönti el, hogy várni vagy újraküldeni kell.
@@ -563,7 +590,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
         retryable,
       });
     }
-  }, [persister, uploader]);
+  }, [canFollowProcessing, persister, uploader]);
 
   /**
    * Hosszú mentés követése a POST-kapcsolattól függetlenül.
@@ -573,7 +600,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
    * válasz nem indít még egy drága geometriai számítást ugyanarra a körre.
    */
   useEffect(() => {
-    if (upload.status !== 'processing' || state.status !== 'finished' || uploader) return;
+    if (upload.status !== 'processing' || state.status !== 'finished') return;
+    if (!canFollowProcessing) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -585,7 +613,9 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       if (upload.firstCheckDelayMs > 0) await wait(upload.firstCheckDelayMs);
       while (!cancelled) {
         try {
-          const result = await api.activityUploadStatus(state.id);
+          const result = uploadStatusProbe
+            ? await uploadStatusProbe(state.id)
+            : await api.activityUploadStatus(state.id);
           if (cancelled) return;
           if (result.status === 'done') {
             setUpload({ status: 'done', summary: result.summary, duplicate: false });
@@ -621,7 +651,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       cancelled = true;
       if (timer !== null) clearTimeout(timer);
     };
-  }, [persister, state.id, state.status, upload, uploader]);
+  }, [canFollowProcessing, persister, state.id, state.status, upload, uploadStatusProbe]);
 
   /**
    * A BEFEJEZÉS UTÁNI FELTÖLTÉS ITT INDUL, NEM A KÉPERNYŐN.

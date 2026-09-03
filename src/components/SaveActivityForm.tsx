@@ -9,6 +9,7 @@ import {
 } from '@/lib/photos';
 import { api, apiConfigured, type ActivityPhoto } from '@/lib/api';
 import { ActivityPhotoImage } from '@/components/ActivityPhotoImage';
+import { useTrackingEnvironment } from '@/tracking/environment';
 import './saveActivityForm.css';
 
 /**
@@ -42,6 +43,14 @@ export function SaveActivityForm({
 }: SaveActivityFormProps) {
   const navigate = useNavigate();
   const fileInput = useRef<HTMLInputElement | null>(null);
+  /**
+   * A LAB ugyanezt az űrlapot futtatja, csak sandbox mentéssel — így a mentés
+   * lépése is végigjátszható anélkül, hogy éles aktivitást vagy Storage-ot
+   * érintenénk. Productionben mindkét mező hiányzik, és marad az API-út.
+   */
+  const environment = useTrackingEnvironment();
+  const saveOverride = environment.saveActivity;
+  const photosEnabled = environment.photosEnabled !== false;
 
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
@@ -98,7 +107,7 @@ export function SaveActivityForm({
   }
 
   async function save() {
-    if (!apiConfigured) {
+    if (!apiConfigured && !saveOverride) {
       setError('A háttérszolgáltatás nincs beállítva, a mentés nem megy.');
       return;
     }
@@ -117,13 +126,16 @@ export function SaveActivityForm({
       const photos = [...keptPhotos, ...uploaded];
 
       setProgress('Mentés…');
-      await api.updateActivity(activityId, {
-        title,
-        description,
-        photos,
-      });
-
-      await deleteActivityPhotos(removedPaths);
+      if (saveOverride) {
+        await saveOverride(activityId, { title, description, photos });
+      } else {
+        await api.updateActivity(activityId, {
+          title,
+          description,
+          photos,
+        });
+        await deleteActivityPhotos(removedPaths);
+      }
 
       for (const url of previews) URL.revokeObjectURL(url);
       setStatus('done');
@@ -189,7 +201,9 @@ export function SaveActivityForm({
           />
         </label>
 
-        <div className="save__field">
+        {/* LAB-ban nincs képfeltöltés: az VALÓDI Storage-ba írna. Lásd
+            `TrackingEnvironment.photosEnabled`. */}
+        <div className="save__field" hidden={!photosEnabled}>
           <span className="save__label">
             Képek{' '}
             <span className="save__count">{keptPhotos.length + files.length}/{MAX_PHOTOS}</span>

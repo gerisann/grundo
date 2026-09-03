@@ -242,7 +242,10 @@
   border: none;
   display: flex;
   flex-direction: column;
-  padding: calc(var(--safe-top) + var(--sp-4)) var(--sp-4)
+  /* A felső térköz nagyobb, mint az oldalsó: a LAB-jelvény és a rendszer
+     státuszsora is ide esik, és szorosan a számok fölött zsúfoltnak hatott
+     (Geri kérése, 2026-09-03). */
+  padding: calc(var(--safe-top) + var(--sp-6)) var(--sp-4)
     calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-4));
   transition: background-color 300ms ease, color 300ms ease;
 }
@@ -334,17 +337,27 @@
   align-items: center;
 }
 
+/*
+  ⚠️ EGY SORBAN KELL MARADNIA, MINDIG (Geri kérése, 2026-09-03).
+
+  A sebesség a mértékegységgel együtt egy sor („30,4 km/h"), és a szám
+  szélessége a tempóval változik. Tördelhető sorban ettől a panel MAGASSÁGA
+  ugrált menet közben: lassabban elfért egy sorban, gyorsabban kettőbe tört.
+  A `nowrap` ezt megszünteti, a kisebb alapméret pedig helyet ad hozzá — a
+  `tabular-nums` eddig is azt szolgálta, hogy a számjegyek ne ugráljanak.
+*/
 .track__primary-value {
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.05;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .track__panel--open .track__primary-value {
-  font-size: 44px;
+  font-size: 40px;
 }
 
 /* Teljes nézetben a sebesség és a táv EGYMÁS ALATT, még nagyobban — Geri
@@ -357,7 +370,9 @@
 }
 
 .track__panel--full .track__primary-value {
-  font-size: 72px;
+  /* 72-ről csökkentve: ekkora számnál a „km/h" toldat már a legszélesebb
+     tempónál sem fér el, és a `nowrap` túlcsordulást okozna. */
+  font-size: 60px;
 }
 
 .track__primary-label {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui';
 import { Dock } from '@/components/Dock';
@@ -12,9 +12,15 @@ import {
   SimulationPositionSource,
 } from '@/tracking/simulationSource';
 import { TrackingEnvironmentProvider } from '@/tracking/environment';
-import { LabE2eSandbox } from './labE2eSandbox';
+import {
+  DEFAULT_LAB_SAVE_SIMULATION,
+  LabE2eSandbox,
+  type LabSaveMode,
+  type LabSaveSimulation,
+} from './labE2eSandbox';
 import { activateLabTileBridge, releaseLabTileBridge } from './labE2eTileBridge';
 import { labPlaybackRate, loadLabE2eSession, type LabE2eSession } from './labE2eSession';
+import './lab-e2e-tracking.css';
 
 export function LabE2eTrackingScreen() {
   const { sessionId = '' } = useParams();
@@ -121,7 +127,12 @@ function LabE2eTrackingRuntime({
     detail: `${session.scenarioName} · ${session.phaseName} · ${session.playerName} · ${session.playbackRate.toUpperCase()}×`,
     initialPosition: session.route[0] ? { lat: session.route[0].lat, lng: session.route[0].lng } : null,
     sharedPositionEnabled: false,
-  }), [session]);
+    // A mentőlap is a sandboxba ír, különben a production végpont „Nincs
+    // ilyen aktivitás." hibával szállna el. Kép nincs: az valódi Storage.
+    saveActivity: (activityId: string, patch: { title: string; description: string }) =>
+      sandbox.saveActivity(activityId, patch),
+    photosEnabled: false,
+  }), [sandbox, session]);
 
   return (
     <TrackingEnvironmentProvider value={environment}>
@@ -130,6 +141,9 @@ function LabE2eTrackingRuntime({
         options={{
           store,
           uploader: (input) => sandbox.upload(input),
+          // A hosszú mentés `processing` állapotából csak ez vezet ki — lásd
+          // `RecorderOptions.uploadStatus`.
+          uploadStatus: (activityId) => sandbox.uploadStatus(activityId),
           restoreSavedRun: false,
         }}
         cloudSync={false}
@@ -152,57 +166,124 @@ function LabE2eTrackingBody({ session, sandbox }: { session: LabE2eSession; sand
 
   const upload = recorder.upload;
 
+  /**
+   * Az eredménypanel BEZÁRHATÓ — mert takarja a mentőlapot.
+   *
+   * A LAB-ban ugyanaz a mentés-űrlap fut, mint élesben, és azt is ki kell
+   * tudni próbálni ugyanabban a futásban (Geri kérése, 2026-09-03). A számok
+   * nem vesznek el: a bezárt panel helyén egy pirula marad, ami visszanyitja.
+   * Új mentésnél magától megint kinyílik.
+   */
+  const [resultOpen, setResultOpen] = useState(true);
+  useEffect(() => {
+    if (upload.status === 'done') setResultOpen(true);
+  }, [upload.status]);
+
+  /**
+   * A MENTÉS KIMENETELE ELŐRE BEÁLLÍTHATÓ.
+   *
+   * A rögzítés legkockázatosabb lépése a mentés, és pont azt volt eddig a
+   * legnehezebb kipróbálni: a hosszú feldolgozáshoz több órás valódi
+   * aktivitás kellett volna, a hibaághoz szerverhiba. A választó a NÖVEKVŐ
+   * futás közben is átállítható, mert csak a mentés pillanatában olvassuk.
+   */
+  const [saveSim, setSaveSim] = useState<LabSaveSimulation>(DEFAULT_LAB_SAVE_SIMULATION);
+  useEffect(() => {
+    sandbox.setSaveSimulation(saveSim);
+  }, [sandbox, saveSim]);
+
   return (
-    <div style={{ minHeight: '100dvh' }}>
+    <div className="lab-e2e" style={{ minHeight: '100dvh' }}>
       <TrackingScreen />
 
+      {/*
+        A JELVÉNY A BAL FELSŐ SAROKBAN — Geri kérése (2026-09-03).
+
+        Középen a stat panel legfelső sorát takarta, és mivel ezeket a
+        teszteket teljes képernyőn nézzük, pont a sebességet és a megtett
+        távot fedte. A sarokban ugyanúgy látszik, hogy sandboxban vagyunk, de
+        nem takar mérőszámot. A `--safe-top` a bevágásos készülékek miatt kell.
+      */}
       <div
         style={{
           position: 'fixed',
-          top: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
+          top: 'calc(var(--safe-top, 0px) + 8px)',
+          left: 8,
           zIndex: 10020,
           display: 'grid',
-          gap: 2,
-          maxWidth: 'calc(100vw - 24px)',
-          padding: '9px 14px',
-          borderRadius: 14,
+          gap: 1,
+          maxWidth: 'calc(100vw - 16px)',
+          padding: '6px 10px',
+          borderRadius: 10,
           background: 'rgba(15, 10, 28, .92)',
           color: '#fff',
           boxShadow: '0 8px 28px rgba(0,0,0,.28)',
           pointerEvents: 'none',
-          textAlign: 'center',
+          textAlign: 'left',
         }}
       >
-        <strong style={{ fontSize: 12, letterSpacing: '.12em' }}>LAB / SANDBOX</strong>
-        <span style={{ fontSize: 11, opacity: .78 }}>
+        <strong style={{ fontSize: 10, letterSpacing: '.12em' }}>LAB / SANDBOX</strong>
+        <span style={{ fontSize: 10, opacity: .78 }}>
           {session.scenarioName} · {session.phaseName} · {session.playerName} · {session.playbackRate === 'max' ? 'MAX' : `${session.playbackRate}×`}
         </span>
       </div>
 
-      {upload.status === 'done' ? (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 'auto 12px 92px',
-            zIndex: 10030,
-            margin: '0 auto',
-            maxWidth: 520,
-            padding: 18,
-            borderRadius: 18,
-            background: 'var(--bg-elevated, #17141d)',
-            color: 'var(--text-primary, #fff)',
-            boxShadow: '0 18px 60px rgba(0,0,0,.38)',
-            display: 'grid',
-            gap: 12,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.1em', opacity: .7 }}>LAB RESULT</div>
-            <strong style={{ fontSize: 18 }}>Sandbox commit kész</strong>
+      {/* A mentés-szimuláció választója a jelvény alatt — csak a rögzítés
+          alatt és a mentés előtt van értelme, utána már lefutott. */}
+      {upload.status === 'idle' || upload.status === 'sending' ? (
+        <div className="lab-save-sim">
+          <label className="lab-save-sim__label" htmlFor="lab-save-sim">Mentés</label>
+          <select
+            id="lab-save-sim"
+            className="lab-save-sim__select"
+            value={saveSim.mode}
+            onChange={(event) => setSaveSim((current) => ({
+              ...current,
+              mode: event.target.value as LabSaveMode,
+            }))}
+          >
+            <option value="instant">azonnali siker</option>
+            <option value="slow">lassú siker</option>
+            <option value="retryable_error">újrapróbálható hiba</option>
+            <option value="final_error">végleges hiba</option>
+            <option value="network_error">nincs kapcsolat</option>
+          </select>
+          {saveSim.mode === 'slow' || saveSim.mode === 'retryable_error' ? (
+            <select
+              className="lab-save-sim__select"
+              value={saveSim.delayS}
+              aria-label="A feldolgozás hossza"
+              onChange={(event) => setSaveSim((current) => ({
+                ...current,
+                delayS: Number(event.target.value),
+              }))}
+            >
+              <option value={5}>5 mp</option>
+              <option value={12}>12 mp</option>
+              <option value={30}>30 mp</option>
+              <option value={90}>90 mp</option>
+            </select>
+          ) : null}
+        </div>
+      ) : null}
+
+      {upload.status === 'done' && resultOpen ? (
+        <div className="lab-result">
+          <div className="lab-result__head">
+            <div>
+              <div className="lab-result__eyebrow">LAB RESULT</div>
+              <strong style={{ fontSize: 18 }}>Sandbox commit kész</strong>
+            </div>
+            <button
+              type="button"
+              className="lab-result__close"
+              onClick={() => setResultOpen(false)}
+              aria-label="Eredmény bezárása, a mentőlap megnyitása"
+            >
+              ×
+            </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, fontSize: 13 }}>
+          <div className="lab-result__grid">
             <ResultStat label="Táv" value={`${(upload.summary.distanceM / 1000).toFixed(2)} km`} />
             <ResultStat label="Hurkok" value={String(upload.summary.loops)} />
             <ResultStat label="Claim" value={`${upload.summary.claimedCells} cella`} />
@@ -210,7 +291,7 @@ function LabE2eTrackingBody({ session, sandbox }: { session: LabE2eSession; sand
             <ResultStat label="GP" value={String(upload.summary.gp)} />
             <ResultStat label="World" value="sandbox" />
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="lab-result__actions">
             <Button size="sm" onClick={() => navigate('/admin/lab/e2e')}>Másik teszt</Button>
             <Button size="sm" variant="secondary" onClick={() => void recorder.discard()}>Újra ezen a worldön</Button>
             <Button
@@ -225,6 +306,16 @@ function LabE2eTrackingBody({ session, sandbox }: { session: LabE2eSession; sand
             </Button>
           </div>
         </div>
+      ) : null}
+
+      {upload.status === 'done' && !resultOpen ? (
+        <button
+          type="button"
+          className="lab-result-reopen"
+          onClick={() => setResultOpen(true)}
+        >
+          LAB RESULT ↑
+        </button>
       ) : null}
 
       {/* Az App az /admin útvonalon szándékosan nem rendereli a globális Dockot.

@@ -224,6 +224,9 @@ export class SimulationPositionSource implements PositionSource {
   readonly ordered = true;
 
   private stopped = true;
+  private paused = false;
+  private index = 0;
+  private handlers: PositionHandlers | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -239,6 +242,9 @@ export class SimulationPositionSource implements PositionSource {
   ): Promise<void> {
     await this.stop();
     this.stopped = false;
+    this.paused = false;
+    this.index = 0;
+    this.handlers = handlers;
 
     if (this.samples.length === 0) {
       queueMicrotask(() => {
@@ -247,68 +253,105 @@ export class SimulationPositionSource implements PositionSource {
       return;
     }
 
-    // MAX: a telemetry timestampjeit változatlanul hagyjuk, de nem egyetlen
-    // microtaskban toljuk át az egész aktivitást. React a microtaskon belüli
-    // állapotfrissítéseket összecsomagolja; több száz/ezer sample esetén ettől
-    // a LAB úgy nézett ki, mintha semmi sem történt volna. Kis csomagok között
-    // visszaadjuk a vezérlést az event loopnak, így a recorder és a UI is
-    // stabilan előrehalad, miközben a MAX továbbra is közel azonnali marad.
-    if (!Number.isFinite(this.playbackRate) || this.playbackRate <= 0) {
-      let index = 0;
-      const emitChunk = () => {
-        if (this.stopped) return;
+    queueMicrotask(() => this.pump());
+  }
 
-        const end = Math.min(this.samples.length, index + MAX_PLAYBACK_CHUNK);
-        while (index < end) {
-          const sample = this.samples[index];
-          if (!sample) break;
-          handlers.onSample(sample);
-          index += 1;
-        }
+  /**
+   * A SZÜNET VALÓDI SZÜNET — nem csak a kirajzolás áll meg.
+   *
+   * ⚠️ EZ EGY LAB-BELI FÉLREVEZETÉST JAVÍT (Geri, 2026-09-03). Korábban a
+   * lejátszás a szünet alatt is fogyasztotta a mintákat, a rögzítő pedig
+   * eldobta őket — folytatáskor a nyomvonal LÉGVONALBAN kötötte össze a
+   * kimaradt szakaszt. A LAB így pont azt nem tudta megmutatni, amiért
+   * használjuk: hogy egy valódi szünet után hogyan viselkedik a mérés.
+   *
+   * A rögzítő a státuszváltást KÉSLELTETÉS NÉLKÜL szinkronizálja
+   * (`useRecorder`: `last.status !== next.status`), ezért elég erre az egy,
+   * már létező horogra akaszkodni — nem kell új interfész a forrásokhoz.
+   *
+   * A minták saját időbélyegét NEM toljuk el: a szünet a rögzítő
+   * `pausedMs`-ében él, a telemetria pedig ugyanaz marad 1× és MAX
+   * lejátszásnál is.
+   */
+  syncActivity(state: PositionActivityState): void {
+    const shouldPause = state.status === 'paused';
+    if (shouldPause === this.paused) return;
+    this.paused = shouldPause;
 
-        if (index >= this.samples.length) {
-          this.timer = null;
-          this.onComplete?.();
-          return;
-        }
-
-        this.timer = globalThis.setTimeout(() => {
-          this.timer = null;
-          emitChunk();
-        }, 0);
-      };
-
-      queueMicrotask(emitChunk);
+    if (shouldPause) {
+      this.clearTimer();
       return;
     }
-
-    const emit = (index: number) => {
-      if (this.stopped) return;
-      const sample = this.samples[index];
-      if (!sample) {
-        this.onComplete?.();
-        return;
-      }
-
-      handlers.onSample(sample);
-      const next = this.samples[index + 1];
-      if (!next) {
-        this.onComplete?.();
-        return;
-      }
-
-      const delay = Math.max(0, (next.t - sample.t) / this.playbackRate);
-      this.timer = globalThis.setTimeout(() => {
-        this.timer = null;
-        emit(index + 1);
-      }, delay);
-    };
-
-    queueMicrotask(() => emit(0));
+    // Folytatás ugyanonnan, ahol a szünet érte.
+    if (!this.stopped) this.pump();
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.paused = false;
+    this.handlers = null;
+    this.clearTimer();
+  }
+
+  /**
+   * A lejátszás motorja — mindkét ütem ezen megy keresztül.
+   *
+   * MAX (`playbackRate <= 0`): a telemetria időbélyegeit változatlanul
+   * hagyjuk, de nem egyetlen microtaskban toljuk át az egész aktivitást. A
+   * React a microtaskon belüli állapotfrissítéseket összecsomagolja; több
+   * száz/ezer mintánál ettől a LAB úgy nézett ki, mintha semmi nem történne.
+   * Kis csomagok között visszaadjuk a vezérlést az event loopnak.
+   */
+  private pump(): void {
+    if (this.stopped || this.paused) return;
+    const handlers = this.handlers;
+    if (!handlers) return;
+
+    if (!Number.isFinite(this.playbackRate) || this.playbackRate <= 0) {
+      const end = Math.min(this.samples.length, this.index + MAX_PLAYBACK_CHUNK);
+      while (this.index < end) {
+        const sample = this.samples[this.index];
+        if (!sample) break;
+        handlers.onSample(sample);
+        this.index += 1;
+      }
+
+      if (this.index >= this.samples.length) {
+        this.clearTimer();
+        this.onComplete?.();
+        return;
+      }
+
+      this.schedule(0);
+      return;
+    }
+
+    const sample = this.samples[this.index];
+    if (!sample) {
+      this.onComplete?.();
+      return;
+    }
+
+    handlers.onSample(sample);
+    this.index += 1;
+
+    const next = this.samples[this.index];
+    if (!next) {
+      this.onComplete?.();
+      return;
+    }
+
+    this.schedule(Math.max(0, (next.t - sample.t) / this.playbackRate));
+  }
+
+  private schedule(delay: number): void {
+    this.timer = globalThis.setTimeout(() => {
+      this.timer = null;
+      this.pump();
+    }, delay);
+  }
+
+  private clearTimer(): void {
     if (this.timer !== null) {
       globalThis.clearTimeout(this.timer);
       this.timer = null;

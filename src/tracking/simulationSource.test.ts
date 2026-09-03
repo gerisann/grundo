@@ -122,4 +122,96 @@ describe('GPS activity generator', () => {
       vi.useRealTimers();
     }
   });
+
+  /**
+   * ⚠️ EZ EGY LAB-BELI FÉLREVEZETÉST RÖGZÍT (Geri, 2026-09-03).
+   *
+   * A szünet korábban csak a KIRAJZOLÁST állította meg: a lejátszás tovább
+   * fogyasztotta a mintákat, a rögzítő pedig eldobta őket, mert szünetel.
+   * Folytatáskor a nyomvonal légvonalban kötötte össze a kimaradt szakaszt —
+   * a LAB tehát pont azt a helyzetet nem tudta megmutatni, amiért a szünetet
+   * tesztelni akarjuk.
+   */
+  it('szünetben nem fogyaszt mintát, és folytatáskor ugyanonnan megy tovább', async () => {
+    vi.useFakeTimers();
+    try {
+      const result = generateGpsActivity([east(0), east(3000)], CLEAN);
+      const received: typeof result.samples = [];
+      const source = new SimulationPositionSource(result.samples, 1);
+
+      await source.start(
+        { onSample: (sample) => { received.push(sample); }, onError() {} },
+        'ride',
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      const beforePause = received.length;
+      expect(beforePause).toBeGreaterThan(0);
+
+      source.syncActivity({
+        status: 'paused',
+        startedAt: T0,
+        distanceM: 0,
+        pausedMs: 0,
+        pausedAt: T0,
+      });
+
+      // A szünet alatt a falióra telik, a telemetria mégsem fogy.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(received.length).toBe(beforePause);
+
+      source.syncActivity({
+        status: 'recording',
+        startedAt: T0,
+        distanceM: 0,
+        pausedMs: 30_000,
+        pausedAt: null,
+      });
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(received.length).toBeGreaterThan(beforePause);
+
+      // A LÉNYEG: a folytatás a következő mintával megy tovább, nem ugrik —
+      // se kimaradás, se duplikátum nincs a sorozatban.
+      expect(received).toEqual(result.samples.slice(0, received.length));
+
+      await source.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('az ismételt szünet-jelzés nem indít párhuzamos lejátszást', async () => {
+    vi.useFakeTimers();
+    try {
+      const result = generateGpsActivity([east(0), east(3000)], CLEAN);
+      const received: typeof result.samples = [];
+      const source = new SimulationPositionSource(result.samples, 1);
+      const recording = {
+        status: 'recording' as const,
+        startedAt: T0,
+        distanceM: 0,
+        pausedMs: 0,
+        pausedAt: null,
+      };
+
+      await source.start(
+        { onSample: (sample) => { received.push(sample); }, onError() {} },
+        'ride',
+      );
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      // A rögzítő másodpercenként is szinkronizál, nem csak státuszváltáskor.
+      // Ha ezek mindegyike újraindítaná a pumpát, a minták duplán jönnének.
+      source.syncActivity(recording);
+      source.syncActivity(recording);
+      source.syncActivity(recording);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(received).toEqual(result.samples.slice(0, received.length));
+      await source.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -1,0 +1,160 @@
+/*
+ * A LAB E2E rögzítés képernyőjének eltérései a production felülettől.
+ *
+ * A LAB SZÁNDÉKOSAN ugyanazt a `TrackingScreen`-t futtatja, mint az éles app —
+ * ez az egész eszköz értelme. Csak ott térünk el, ahol a LAB körülményei
+ * mások, és minden ilyen eltérésnek indoklása van itt.
+ */
+
+/*
+ * ⚠️ A DOCK A LAB-BAN A MENTŐLAP ALATT IS OTT MARAD.
+ *
+ * Az éles app a mentőlap alatt elrejti a Dockot (`App.tsx`: `pathname ===
+ * '/rogzites' && savePanelOpen`), ezért a `.track--finished .track__overlay`
+ * jogosan adja oda a teljes magasságot az űrlapnak. A LAB viszont a saját
+ * Dockját mindig kirajzolja — ott kell az „Új rögzítés" gomb a következő
+ * futáshoz —, így ugyanaz a szabály a mentőlap alját a Dock MÖGÉ csúsztatta:
+ * a Leírás mező és a Mentés gomb takarásba került (Geri mérése, 2026-09-03).
+ *
+ * Visszaadjuk tehát a Dock helyét, ugyanazzal a képlettel, amit a rögzítés
+ * közbeni állapot használ.
+ */
+.lab-e2e .track--finished .track__overlay {
+  padding-bottom: calc(
+    var(--sp-6) + var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom)
+  );
+}
+
+/* ── Mentés-szimuláció választó ──────────────────────────────────── */
+
+/*
+ * A jelvény alatt, a bal felső sarokban: a mentés kimenetelét a futás
+ * MEGKEZDÉSE UTÁN is át lehessen állítani, mert jellemzően menet közben jut
+ * eszünkbe, hogy „na, most nézzük meg a hibaágat is".
+ */
+.lab-save-sim {
+  position: fixed;
+  top: calc(var(--safe-top, 0px) + 52px);
+  left: 8px;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: rgb(15 10 28 / 0.92);
+  color: #fff;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+}
+
+.lab-save-sim__label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.lab-save-sim__select {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+}
+
+/* A natív legördülő listája a rendszer színeit használja — sötét háttéren
+   a fehér szöveg olvashatatlan lenne bizonyos böngészőkben. */
+.lab-save-sim__select option {
+  color: #111;
+  background: #fff;
+}
+
+/* ── LAB RESULT panel ────────────────────────────────────────────── */
+
+/*
+ * Az eredménypanel a mentőlap ELŐTT ül, tehát takarja. Bezárható, hogy a
+ * mentés is kipróbálható legyen ugyanabban a futásban — a számokat pedig egy
+ * kis pirulával bármikor vissza lehet hozni, hogy ne vesszenek el.
+ */
+.lab-result {
+  position: fixed;
+  inset: auto 12px calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + 8px);
+  z-index: 10030;
+  margin: 0 auto;
+  max-width: 520px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--bg-elevated, #17141d);
+  color: var(--text-primary, #fff);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.38);
+  display: grid;
+  gap: 12px;
+  /* Alacsony képernyőn se nőjön a Dock alá: belül görget. */
+  max-height: 52dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lab-result__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lab-result__eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+
+.lab-result__close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.06);
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lab-result__close:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.lab-result__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  font-size: 13px;
+}
+
+.lab-result__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* A bezárt panel nyoma: egy pirula a Dock fölött, ami visszanyitja. */
+.lab-result-reopen {
+  position: fixed;
+  inset: auto 12px calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + 8px);
+  z-index: 10030;
+  margin: 0 auto;
+  width: fit-content;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(15 10 28 / 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+}

@@ -122,6 +122,24 @@ export function ActivityScreen() {
 
   const pathCells = useMemo(() => {
     if (!activity) return [];
+    /**
+     * ⚠️ CSAK AKKOR SZÁMOLUNK, HA TÉNYLEG KELL — ez 68 MÁSODPERC volt.
+     *
+     * Ez az ág visszaesés a régi aktivitásokhoz, és az eredményét a térkép
+     * EL IS DOBJA, ha a szerver küldött cellákat (lásd lentebb:
+     * `claimedCells.length ? claimedCells : pathCells`). A `useMemo` viszont
+     * a feltételtől függetlenül lefutott, tehát minden megnyitásnál újra
+     * elvégezte a teljes hurokfelismerést a böngészőben.
+     *
+     * MÉRVE éles adaton (2026-09-03, `ebb3c240…`, 143 km, 34 hurok): 68 456
+     * ms egy asztali gépen — a fő szálon, tehát addig az adatlap mozdulatlan.
+     * Telefonon ennél is rosszabb. Ezért panaszkodott Geri, hogy „nagyon
+     * lassan nyílik meg" az oldal.
+     *
+     * A szerver 2026-08-29 óta MINDIG küld cellát, tehát a mai mentéseknél
+     * ez az ág soha nem fut le.
+     */
+    if (claimedCells.length > 0) return [];
     try {
       /*
         VISSZAESÉSI ÁG a 2026-08-29 ELŐTT mentett aktivitásokhoz, amelyeknél a
@@ -146,7 +164,7 @@ export function ActivityScreen() {
     } catch {
       return [...new Set(points.map((point) => latLngToCell(point.lat, point.lng, GAMEPLAY.H3_RESOLUTION)))];
     }
-  }, [activity, points]);
+  }, [activity, claimedCells, points]);
 
   if (loading) {
     return (

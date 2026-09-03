@@ -4,7 +4,13 @@ import { buildActivityGeometry } from '@/game';
 import { layerOf } from '@/game/cells';
 import { distanceM } from '@/game/geo';
 import { blobsFromCells } from '@/game/territoryBlobs';
-import type { ActivitySummary, TerritoryBlobsResult, TilesResult } from '@/lib/api';
+import type {
+  ActivitySummary,
+  ActivityUploadStatusResult,
+  TerritoryBlobsResult,
+  TilesResult,
+} from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import type { RecorderUploadInput, RecorderUploadResult } from '@/hooks/useRecorder';
 import type { CellId, CellOwnership, Layer, OwnershipMap } from '@/types';
 import { applyClaimToWorld } from './labScenarioEngine';
@@ -37,8 +43,52 @@ export interface LabE2eSandboxOptions {
   ownerColors: ReadonlyMap<string, string>;
 }
 
+/**
+ * A MENTÉS SZIMULÁCIÓJA — ez a LAB egyik fő haszna.
+ *
+ * A mentés a rögzítés legkockázatosabb lépése, és éppen azt volt eddig a
+ * legnehezebb kipróbálni: a hosszú feldolgozáshoz több órás valódi
+ * aktivitás kellett, a hibaághoz pedig szerverhiba (Geri kérése,
+ * 2026-09-03 — közvetlenül a `ebb3c240…` beragadt kör után).
+ *
+ * A modell UGYANAZ, mint élesben: a szerver azonnal nyugtáz és a háttérben
+ * dolgozik (`processing`), a kliens pedig a státuszt kérdezgeti, amíg
+ * eredményt nem kap. Ezért van külön `upload` és `uploadStatus`.
+ */
+export type LabSaveMode =
+  /** Azonnali siker — ez a rendes eset. */
+  | 'instant'
+  /** Sikerül, de sokáig tart: a „Nyugodtan bezárhatod" út. */
+  | 'slow'
+  /** Elhasal, de újraküldhető — ezt kapta jamal a 143 km-es körnél. */
+  | 'retryable_error'
+  /** Végleges hiba: az újrapróbálásnak nincs értelme. */
+  | 'final_error'
+  /** A kérés meg sem érkezik (offline): a kliens hálózati hibát lát. */
+  | 'network_error';
+
+export interface LabSaveSimulation {
+  mode: LabSaveMode;
+  /** A `slow` mód feldolgozási ideje másodpercben. */
+  delayS: number;
+}
+
+export const DEFAULT_LAB_SAVE_SIMULATION: LabSaveSimulation = { mode: 'instant', delayS: 12 };
+
+/** A háttérben „futó" feldolgozás állapota — a valódi szerver megfelelője. */
+interface PendingUpload {
+  finishAt: number;
+  outcome:
+    | { kind: 'done'; summary: ActivitySummary }
+    | { kind: 'failed'; message: string; retryable: boolean };
+}
+
 export class LabE2eSandbox {
   private readonly worlds: Record<Layer, OwnershipMap>;
+  private simulation: LabSaveSimulation = DEFAULT_LAB_SAVE_SIMULATION;
+  private pending = new Map<string, PendingUpload>();
+  /** A mentőlapon megadott név/leírás — csak hogy legyen hova elmenteni. */
+  private saved = new Map<string, { title: string; description: string }>();
 
   constructor(private readonly options: LabE2eSandboxOptions) {
     const stored = readSandbox(options.id);
@@ -51,10 +101,94 @@ export class LabE2eSandbox {
   reset(): void {
     this.worlds.foot.clear();
     this.worlds.bike.clear();
+    this.pending.clear();
+    this.saved.clear();
     this.persist();
   }
 
+  setSaveSimulation(simulation: LabSaveSimulation): void {
+    this.simulation = simulation;
+  }
+
+  getSaveSimulation(): LabSaveSimulation {
+    return this.simulation;
+  }
+
+  /**
+   * A leíró mezők mentése — a production `PATCH /api/activities/:id` helyett.
+   *
+   * A sandbox aktivitás csak a böngészőben létezik, ezért az éles végpont
+   * „Nincs ilyen aktivitás." hibával szállt el. A hibaágat itt is ugyanaz a
+   * szimuláció vezérli, hogy a mentőlap hibakezelése is kipróbálható legyen.
+   */
+  async saveActivity(
+    activityId: string,
+    patch: { title: string; description: string },
+  ): Promise<void> {
+    if (this.simulation.mode === 'slow') await delay(this.simulation.delayS * 1000);
+    if (this.simulation.mode === 'retryable_error' || this.simulation.mode === 'final_error') {
+      throw new ApiError(
+        this.simulation.mode === 'final_error' ? 400 : 503,
+        'save_failed',
+        'A LAB szimulált hibát adott a mentésre.',
+      );
+    }
+    if (this.simulation.mode === 'network_error') {
+      throw new ApiError(0, 'network', 'Nincs kapcsolat a szerverrel.');
+    }
+    this.saved.set(activityId, { title: patch.title, description: patch.description });
+  }
+
+  /** A mentőlapon rögzített név/leírás — ellenőrzéshez. */
+  savedActivity(activityId: string): { title: string; description: string } | null {
+    return this.saved.get(activityId) ?? null;
+  }
+
+  /**
+   * A hosszú feldolgozás állapota — a production státuszvégpont megfelelője.
+   *
+   * A `processing` állapotból KIZÁRÓLAG ez vezet ki, ezért a LAB uploader
+   * mellé kötelező átadni a rögzítőnek (`RecorderOptions.uploadStatus`).
+   */
+  async uploadStatus(activityId: string): Promise<ActivityUploadStatusResult> {
+    const job = this.pending.get(activityId);
+    if (!job) return { status: 'missing' };
+    if (Date.now() < job.finishAt) return { status: 'processing' };
+
+    this.pending.delete(activityId);
+    return job.outcome.kind === 'done'
+      ? { status: 'done', summary: job.outcome.summary }
+      : { status: 'failed', message: job.outcome.message, retryable: job.outcome.retryable };
+  }
+
   async upload(input: RecorderUploadInput): Promise<RecorderUploadResult> {
+    /**
+     * A HIBAÁGAK A FOGLALÁS ELŐTT dőlnek el.
+     *
+     * Így egy szimulált hiba után a sandbox világa érintetlen marad, és az
+     * újrapróbálás ugyanabból az állapotból indul — pontosan úgy, ahogy egy
+     * elhasalt szerveroldali tranzakció után is.
+     */
+    if (this.simulation.mode === 'network_error') {
+      throw new ApiError(0, 'network', 'Nincs kapcsolat a szerverrel.');
+    }
+    if (this.simulation.mode === 'final_error') {
+      throw new ApiError(400, 'activity_rejected', 'A LAB szimulált, végleges mentési hibája.');
+    }
+    if (this.simulation.mode === 'retryable_error') {
+      // 5xx: a rögzítő ilyenkor a státuszvégpontot kérdezi, nem ad fel azonnal
+      // — ugyanaz az út, amit jamal köre bejárt.
+      this.pending.set(input.activityId, {
+        finishAt: Date.now() + Math.max(0, this.simulation.delayS) * 1000,
+        outcome: {
+          kind: 'failed',
+          message: 'A mentés feldolgozása megszakadt. Próbáld újra.',
+          retryable: true,
+        },
+      });
+      throw new ApiError(503, 'activity_processing', 'A LAB szimulált, átmeneti mentési hibája.');
+    }
+
     const layer = layerOf(input.type);
     const world = this.worlds[layer];
     const geometry = buildActivityGeometry(input.points);
@@ -82,6 +216,22 @@ export class LabE2eSandbox {
       areaGainedM2: result.areaGainedM2,
       gp: result.gp.total,
     };
+
+    /**
+     * A LASSÚ ÚT: a foglalás ELKÉSZÜLT, csak a válasz várat magára.
+     *
+     * Élesben is ez a sorrend — a szerver a háttérben dolgozik, a kliens
+     * pedig a státuszt kérdezi. A `processing` válasszal a rögzítő megkapja
+     * a „nyugodtan bezárhatod" állapotot, amit így végig lehet játszani.
+     */
+    if (this.simulation.mode === 'slow') {
+      this.pending.set(input.activityId, {
+        finishAt: Date.now() + Math.max(0, this.simulation.delayS) * 1000,
+        outcome: { kind: 'done', summary },
+      });
+      return { processing: true };
+    }
+
     return { summary, duplicate: false };
   }
 
@@ -212,4 +362,8 @@ function traceDistanceM(points: readonly { lat: number; lng: number }[]): number
     total += distanceM(points[index - 1]!, points[index]!);
   }
   return total;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => { globalThis.setTimeout(resolve, Math.max(0, ms)); });
 }
