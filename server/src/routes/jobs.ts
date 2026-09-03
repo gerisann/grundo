@@ -23,6 +23,7 @@ import type { AuthedRequest } from '../../server';
 import { auth as adminAuth } from '../lib/firebase';
 import { badRequest, forbidden, unauthorized } from '../lib/errors';
 import { runDailyRollover } from '../jobs/dailyRollover';
+import { runBandaRollover } from '../jobs/bandaRollover';
 
 export const jobsRouter = Router();
 
@@ -76,6 +77,33 @@ jobsRouter.post('/daily-rollover', async (req: AuthedRequest, res, next) => {
 
     const startedAt = Date.now();
     const summary = await runDailyRollover(new Date(), limit === undefined ? {} : { limit });
+    res.json({ ...summary, durationMs: Date.now() - startedAt });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/jobs/banda-rollover
+ *
+ * Óránként fut (lásd `jobs/bandaRollover.ts`). A `BandaScreen` a
+ * `bandas/{id}.totals` mezőt olvassa, amit ez a job tölt fel.
+ */
+jobsRouter.post('/banda-rollover', async (req: AuthedRequest, res, next) => {
+  try {
+    await authorizeJob(req);
+
+    const limitRaw = req.body?.limit ?? req.query.limit;
+    let limit: number | undefined;
+    if (limitRaw !== undefined && limitRaw !== '') {
+      limit = Number(limitRaw);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
+        throw badRequest('invalid_limit', 'A limit 1 és 5000 közötti egész szám lehet.');
+      }
+    }
+
+    const startedAt = Date.now();
+    const summary = await runBandaRollover(new Date(), limit === undefined ? {} : { limit });
     res.json({ ...summary, durationMs: Date.now() - startedAt });
   } catch (error) {
     next(error);

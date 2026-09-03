@@ -110,6 +110,24 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
 - Cél: a **mindig betöltött** instrukció a projekt `CLAUDE.md`-jére (≈100 sor)
   és a globális `~/.claude/CLAUDE.md`-re (≈50 sor) szorítkozzon.
 
+## Bandák (`#29` menet)
+
+- **Nem Pro-funkció.** A korábbi Klub-spec Pro-gate-jét (`+ Létrehozás [Pro]`)
+  elvetettük — bárki hozhat létre bandát. Geri jóváhagyta 2026-09-03.
+- **A `totals` előszámított, rollup jobból jön, nem élő olvasáskori
+  szumma.** A `BandaScreen` megnyitása ne fizessen egy N-tagos `getAll`-t
+  minden alkalommal. Lásd `server/src/jobs/bandaRollover.ts`.
+- **`users/{uid}/bandas/{bandaId}` tükör-alkollekció** a `bandas/{id}/members`
+  felől, a `following`/`followers` mintájára — a „saját bandáim" lista így
+  egyetlen, saját-magam-alatti olvasás, NEM collectionGroup-lekérdezés (ami
+  külön engedélyezett indexet igényelne). Ne told vissza collectionGroup-ra:
+  az app egyetlen más helyen sem szűr collectionGroup-lekérdezéssel, csak
+  szűretlenül olvas ki mindent (`blocks`, `blockIndex` backfill-szkriptek).
+- **Nincs `joinRequests`.** A régi Klub-séma admin-jóváhagyásos
+  csatlakozási kérést tartalmazott; a Bandáknál publikus csatlakozás
+  azonnali, privátnál kizárólag meghívókóddal/meghívással — sosem a
+  csatlakozni akaró kezdeményez jóváhagyást igénylő kérést.
+
 ## Archívum
 
 A `#12`–`#13` menetek részletes átadói a

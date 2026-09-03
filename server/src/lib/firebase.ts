@@ -71,6 +71,8 @@ export const COLLECTIONS = {
   rateLimits: 'rateLimits',
   /** Előszámolt, összefüggő területfoltok a térkép távoli nézetéhez. */
   territoryBlobs: 'territoryBlobs',
+  bandas: 'bandas',
+  inviteCodes: 'inviteCodes',
 } as const;
 
 /** Az `appConfig` dokumentumainak azonosítói. */

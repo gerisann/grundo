@@ -35,6 +35,7 @@ import { adminRouter } from './src/routes/admin';
 import { rulesRouter } from './src/routes/rules';
 import { usersRouter } from './src/routes/users';
 import { rivalsRouter } from './src/routes/rivals';
+import { bandasRouter } from './src/routes/bandas';
 import { weatherRouter } from './src/routes/weather';
 
 export { db, FIRESTORE_DATABASE_ID };
@@ -199,6 +200,7 @@ app.use('/api/auth', authenticate, authenticatedRateLimit, authRouter);
 app.use('/api/activities', authenticate, authenticatedRateLimit, activitiesRouter);
 app.use('/api/users', authenticate, authenticatedRateLimit, usersRouter);
 app.use('/api/rivals', authenticate, authenticatedRateLimit, rivalsRouter);
+app.use('/api/bandas', authenticate, authenticatedRateLimit, bandasRouter);
 /**
  * Hitelesítés MÖGÖTT, pedig az időjárás nem személyes adat.
  *

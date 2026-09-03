@@ -1014,6 +1014,54 @@ export interface ConnectionList {
 }
 
 /**
+ * Banda — csoport, ahol a tagok területe és pontja összeadódik.
+ *
+ * Phase 1 (GRUNDO #29): nincs még hírfolyam, chat fal és beállítás-mező a
+ * kliens oldalán sem — csak az, amit a mag-CRUD képernyők használnak.
+ */
+export type BandaVisibility = 'public' | 'private';
+export type BandaRole = 'owner' | 'moderator' | 'member';
+
+export interface BandaAreaTotals {
+  foot: number;
+  bike: number;
+}
+
+export interface BandaTotals {
+  areaM2: BandaAreaTotals;
+  areaDayM2: BandaAreaTotals;
+  areaWeekM2: BandaAreaTotals;
+  areaMonthM2: BandaAreaTotals;
+  gpTotal: number;
+  gpWeek: number;
+  gpMonth: number;
+}
+
+export interface Banda {
+  id: string;
+  name: string;
+  description: string | null;
+  photoURL: string | null;
+  city: string | null;
+  visibility: BandaVisibility;
+  ownerId: string;
+  memberCount: number;
+  totals: BandaTotals;
+  createdAt: number | null;
+}
+
+export interface BandaWithRole extends Banda {
+  role: BandaRole;
+}
+
+export interface BandaMember {
+  uid: string;
+  username: string;
+  photoURL: string | null;
+  role: BandaRole;
+}
+
+/**
  * Időjárás-állapotok — pontosan annyi, ahány ikonpárunk van.
  *
  * Mindegyikhez tartozik nappali ÉS éjszakai rajz, ezért minden új állapot két
@@ -1098,6 +1146,42 @@ export const api = {
 
   /** Csak az azonosítók — ebből lesz a név melletti „RIVÁLIS" címke. */
   rivalIds: () => request<{ ids: string[] }>('/api/rivals/ids'),
+
+  bandas: {
+    /** Létrehozás — a válasz meghívókódot is ad, ha a banda privát. */
+    create: (input: { name: string; description?: string; visibility: BandaVisibility; city?: string }) =>
+      request<{ banda: Banda; inviteCode: string | null; role: BandaRole }>('/api/bandas', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    /** A saját bandáim, szerepkörrel. */
+    mine: () => request<{ items: BandaWithRole[] }>('/api/bandas/mine'),
+
+    /** Publikus bandák keresése, névprefix szerint. */
+    search: (q: string) => request<{ items: Banda[] }>(`/api/bandas/search?q=${encodeURIComponent(q)}`),
+
+    /** Publikus bandához azonnali csatlakozás. */
+    join: (bandaId: string) =>
+      request<{ role: BandaRole }>(`/api/bandas/${encodeURIComponent(bandaId)}/join`, { method: 'POST' }),
+
+    /** Privát bandához meghívókóddal. */
+    joinByCode: (code: string) =>
+      request<{ role: BandaRole; bandaId: string; name: string }>('/api/bandas/join-by-code', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      }),
+
+    /** Egy banda részletei — a hívó szerepével és (tagoknál) a meghívókóddal. */
+    detail: (bandaId: string) =>
+      request<{ banda: Banda; role: BandaRole | null; isMember: boolean; inviteCode: string | null }>(
+        `/api/bandas/${encodeURIComponent(bandaId)}`,
+      ),
+
+    /** A teljes tag-lista, szerepkörrel. */
+    members: (bandaId: string) =>
+      request<{ items: BandaMember[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/members`),
+  },
 
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */
   searchUsers: (q: string) =>

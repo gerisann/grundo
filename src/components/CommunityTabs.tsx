@@ -1,10 +1,10 @@
 import { ScrollableTabs } from './ScrollableTabs';
 
-export type CommunityTab = 'discover' | 'clubs' | 'challenges' | 'passport';
+export type CommunityTab = 'discover' | 'bandas' | 'challenges' | 'passport';
 
 const TABS: { id: CommunityTab; label: string; to: string }[] = [
   { id: 'discover', label: 'Felfedezés', to: '/kozosseg' },
-  { id: 'clubs', label: 'Klubok', to: '/kozosseg/klubok' },
+  { id: 'bandas', label: 'Bandák', to: '/kozosseg/bandak' },
   { id: 'challenges', label: 'Kihívások', to: '/kozosseg/kihivasok' },
   { id: 'passport', label: 'Útlevél', to: '/kozosseg/utlevel' },
 ];

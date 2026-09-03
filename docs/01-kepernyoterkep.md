@@ -28,14 +28,14 @@ A képek a `..\` mappában vannak. A rövid azonosító a fájlnév első két s
 | 20 | `770608741_1371` | Aktivitás részletek | Fejléc (dátum, időjárás), STATS rács, eszköznév, like |
 | 21 | `770658175_1627` | Terület › Ranglista | Global/Local, hely, név, területszám, km² |
 | 22 | `770774093_2044` | Feed ⋯ menü | Mute / Unfollow / Block / Report |
-| 23 | `770917916_1380` | Értesítés-beállítások | Klub-események, Live Stats, Emails |
+| 23 | `770917916_1380` | Értesítés-beállítások | Banda-események, Live Stats, Emails |
 | 24 | `771023324_1979` | Aktivitás ⋯ menü | Share / Report Activity |
 | 25 | `771345934_3541` | Előfizetés | Havi aktív, éves váltás, lemondás |
 | 26 | `771707712_2157` | Aktivitás részletek | Elevation grafikon + splits tábla |
 | 27 | `771795202_1362` | Tracking (indítás előtt) | RUN/WALK/RIDE, GPS-jel ±10 m, Saved Routes |
 | 28 | `771801659_1612` | Aktivitás részletek | Teljes splits lista, leggyorsabb kör kiemelve |
 | 29 | `771801659_0860` | Analitika | Kerékpár, 30 nap, totals |
-| 30 | `771843559_1432` | Közösség › Klubok | Keresés, My Clubs, meghívókód, +Create |
+| 30 | `771843559_1432` | Közösség › Bandák | Keresés, saját bandáim, meghívókód, +Create |
 | 31 | `771854802_1087` | Home | Üdvözlő kártya + Following/Local feed-váltó |
 | 32 | `771939145_1823` | Értesítések | Üres állapot |
 | 33 | `772114066_1924` | Profil › ROUTES | Generálás előtti paraméterek |
@@ -112,7 +112,7 @@ Terület
 
 Közösség
 ├── Felfedezés (feed + emberek/klubok keresése)
-├── Klubok ──── Klub részletek ──── Tagok / Feed / Beállítások
+├── Bandák ──── Banda részletek ──── Tagok / Feed / Chat fal / Beállítások
 ├── Kihívások ──── Kihívás részletek
 └── Útlevél (országok)
 

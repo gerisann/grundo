@@ -1,92 +1,111 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-03** · GRUNDO **#28**
+> Frissítve: **2026-09-03** · GRUNDO **#29**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
 
 ## Jelenlegi cél
 
-A Közösség menü életre keltése (docs/02-funkcionalis-spec.md → Közösség).
-A menü eddig egy 10 soros Placeholder volt. A teljes spec négy alrészt ír le
-(Felfedezés, Klubok, Kihívások, Útlevél) — ez a menet a navigációs vázat és a
-Felfedezés alrészt szállította; Klubok/Kihívások/Útlevél külön menetekre
-maradt, mert mindegyik saját Firestore séma- és security rules-döntést
-igényel.
+A Közösség menü „Klubok" alrésze — Geri kérésére átnevezve **„Bandák"**-ra,
+és a spec jóval bővebbre írva: több bandatagság egyszerre, publikus banda
+azonnali csatlakozással, privát banda meghívókóddal/share linkkel/appon
+belüli meghívással, terület+GP összesítés nap/hét/hónap/mindenkori
+bontásban, két váltható feed (hírfolyam + chat fal), alapító/moderátor/tag
+szerepkörök. Ez egy menetbe nem fér bele — ez a menet a **Phase 1**-et
+szállította: adatmodell, Firestore-szabályok, rollup job, és a mag-CRUD.
 
-## Elkészült
+## Elkészült (Phase 1)
 
-1. **Navigációs héj**: a `ScrollableTabs.tsx` generikus, vízszintesen
-   görgethető fülsor komponens a Profil fülsorból kiemelve (a
-   drag-scroll/középre-igazítás logika most egy helyen él). A Közösség 4
-   fülre (Felfedezés · Klubok · Kihívások · Útlevél) épül, saját route-tal
-   mindegyik (`/kozosseg`, `/kozosseg/klubok`, `/kozosseg/kihivasok`,
-   `/kozosseg/utlevel`).
-2. **Felfedezés** (a `/kozosseg` alapértelmezett fülje) valós adattal
-   működik:
-   - **Kereső** — felhasználónév-keresés inline Követés/Kérés küldése
-     gombbal, ami a keresési találat fiók-láthatóságából (publikus/privát) és
-     a már meglévő követési állapotból indul ki. A klub-szűrő UI megvan, de
-     "hamarosan érkezik" üzenetet mutat — klub-adatmodell még nincs.
-   - **Aktivitás-feed nem követett felhasználóktól** — a meglévő
-     világ/helyi (`world`/`local`) lekérdezésre épül, a már követett
-     szerzőket kliensoldalon szűri ki a saját követési lista alapján.
-     ⚠️ A követési lista max 100 elemig töltődik be — 100 fölötti követésszám
-     esetén a szűrés a lista végén pontatlan lehet.
-3. **Szerver**: a `GET /api/users/search` végpont bővült `account` és
-   `followStatus` mezővel (egy batch `where(documentId, in, …)` lekérdezéssel
-   a viewer `following` alkollekcióján — nem N darab olvasás találatonként).
-   Ez visszafelé kompatibilis, a régi `SearchScreen.tsx` is ugyanazt a
-   végpontot hívja, változatlanul.
-4. **Klubok / Kihívások / Útlevél** fülek egyelőre "hamarosan érkezik" kártyát
-   mutatnak (`CommunitySectionScreens.tsx`) — ezek a következő menetek
-   tárgyai, lásd lent.
+1. **Adatmodell**: `bandas/{bandaId}` (a korábbi, kódban sosem implementált
+   `clubs` séma átnevezve és kibővítve) + `bandas/{id}/members/{uid}` +
+   `users/{uid}/bandas/{bandaId}` tükör-alkollekció (a „saját bandáim" lista
+   ebből megy, collectionGroup-lekérdezés nélkül) + `inviteCodes/{code}`.
+   Nincs `joinRequests`: publikus bandánál azonnali csatlakozás, privátnál
+   kizárólag meghívókóddal.
+2. **Rollup job**: `server/src/jobs/bandaRollover.ts` — a `bandas/{id}.totals`
+   mezőt (terület+GP, nap/hét/hónap/mindenkori) előszámítja a tagok jelenlegi
+   mezőiből, a `dailyRollover` mintájára. Trigger: `POST
+   /api/jobs/banda-rollover`, ugyanazzal az `authorizeJob()`-bal, mint a napi
+   forduló. **Cloud Scheduler-bejegyzés még nincs** — csak az endpoint kész.
+3. **API**: `server/src/lib/bandas.ts` (tiszta segédfüggvények) +
+   `server/src/routes/bandas.ts` — létrehozás, `/mine`, `/search`, publikus
+   `/:id/join`, `/join-by-code`, `/:id`, `/:id/members`. Kliens:
+   `src/lib/api.ts` → `api.bandas.*`.
+4. **UI**: `src/screens/CommunityBandasScreen.tsx` (saját bandáim, kóddal
+   csatlakozás, létrehozás, publikus keresés) a `/kozosseg/bandak` route-on
+   (a `CommunityTabs` „Klubok" füle „Bandák"-ra nevezve), és
+   `src/screens/BandaScreen.tsx` a `/bandak/:id` route-on (fejléc, terület+GP
+   bontás, tag-lista szerepkör-jelvénnyel). A hírfolyam/chat fal/beállítások
+   helyén "hamarosan érkezik" kártya.
+5. **Firestore-szabályok**: a `clubs` blokk átnevezve `bandas`-ra,
+   kibővítve a `users/{uid}/bandas` tükör olvasási szabályával.
 
-## Nyitott ügyek
+## Nincs Phase 1-ben (nyitva Phase 2/3-ra)
 
-- **Klubok** (legnagyobb backend munka): teljes CRUD — létrehozás [Pro],
-  meghívókódos csatlakozás, klub-részletek (tagok, feed, ranglista, admin,
-  csatlakozási kérések), szerepek (tulajdonos/admin/tag). Új
-  `server/src/lib/clubs.ts` + route + Firestore séma + security rules +
-  index.
-- **Kihívások**: 5 típus (távolság/terület/lopás/sorozat/felfedezés),
-  admin által létrehozva — ehhez kézi seed vagy minimál admin-felület is
-  kell a teszteléshez.
-- **Útlevél**: 0/242 ország zászlórács, fordított geokódolás az aktivitás
-  nyomvonal első pontjára. ⚠️ Nincs még bekötve reverse-geocoding
-  szolgáltatás a projektbe — ez külön beszerzési/konfigurációs döntés is
-  lehet, nem csak kódmunka.
+- **Appon belüli meghívás** a követett-felhasználó listából (kereséssel
+  szűrve) + **értesítés alapú elfogadás/elutasítás** — a kódbázisban eddig
+  nincs accept/reject notification-minta, ezt itt kell megalapozni
+  (`server/src/lib/notifications.ts` `NotificationType` unionja +
+  `bandas/{id}/invites/{uid}` séma).
+- **Hírfolyam** (`bandas/{id}/feed/{postId}`, posztolási jog a
+  `settings.postPermission` szerint) és **chat fal**
+  (`bandas/{id}/wall/{msgId}`).
+- **Beállítások képernyő** az alapítónak: moderátor-kinevezés, kirúgás,
+  tulajdonos-átruházás, ki hívhat meg / kinek látszik a meghívókód.
+- **Share link** — jelenleg csak a nyers 8 karakteres kód másolható ki, a
+  mélylink-parsolás (`?code=...` az útvonalon) még nincs bekötve.
 
-## Érintett fájlok
+## Döntések ebben a menetben
 
-`src/components/ScrollableTabs.tsx` (új) ·
-`src/components/tabStrip.css` (új) ·
-`src/components/CommunityTabs.tsx` (új) ·
-`src/components/CommunityHeader.tsx` (új) ·
-`src/components/communityHeader.css` (új) ·
-`src/components/ProfileTabs.tsx` (refaktor: `ScrollableTabs`-ra épül) ·
-`src/components/profileTabs.css` (a fül-stílus kikerült `tabStrip.css`-be) ·
-`src/screens/DiscoverScreen.tsx` (új) ·
-`src/screens/discover.css` (új) ·
-`src/screens/CommunitySectionScreens.tsx` (új) ·
-`src/screens/CommunityScreen.tsx` (törölve — a `/kozosseg` route mostantól
-közvetlenül `DiscoverScreen`-t tölt) ·
-`src/App.tsx` (route-ok) ·
-`src/lib/api.ts` (`DiscoverUser` típus, `api.discoverSearch`) ·
-`server/src/routes/users.ts` (`/api/users/search` bővítve) ·
-`docs/ai/CURRENT_STATE.md`
+- **Nem Pro-funkció** a banda-létrehozás (a régi Klub-spec Pro-gate-je
+  törölve).
+- **A `totals` rollup jobból jön**, nem élő olvasáskori szumma.
+- Részletek: `docs/ai/DECISIONS.md` → „Bandák (`#29` menet)".
+
+## Módosított/új fájlok
+
+`server/src/lib/bandas.ts` (új, 171 sor) · `server/src/lib/bandas.test.ts`
+(új, 106 sor) · `server/src/routes/bandas.ts` (új, 409 sor) ·
+`server/src/routes/bandas.emulator.test.ts` (új, 195 sor) ·
+`server/src/jobs/bandaRollover.ts` (új, 72 sor) ·
+`server/src/lib/firebase.ts` (+2: `COLLECTIONS.bandas`/`inviteCodes`) ·
+`server/server.ts` (+2: router mountolás) ·
+`server/src/routes/jobs.ts` (+28: `/banda-rollover` végpont) ·
+`src/screens/CommunityBandasScreen.tsx` (új, 334 sor) ·
+`src/screens/BandaScreen.tsx` (új, 154 sor) ·
+`src/screens/CommunitySectionScreens.tsx` (−11: `CommunityClubsScreen`
+törölve) · `src/components/CommunityTabs.tsx` (átnevezés) ·
+`src/App.tsx` (route-ok) · `src/lib/api.ts` (+84: `Banda*` típusok,
+`api.bandas`) · `src/screens/DiscoverScreen.tsx` (címke-átnevezés) ·
+`firestore.rules` (`clubs`→`bandas`, tükör-szabály) ·
+`firestore.indexes.json` (`clubs`→`bandas` index) ·
+`docs/05-adatmodell.md`, `docs/02-funkcionalis-spec.md`,
+`docs/01-kepernyoterkep.md`, `docs/ai/DECISIONS.md` (spec-átírás).
 
 ## Ellenőrzés
 
 - Kliens `typecheck` ✅, szerver `typecheck` ✅, production `build` ✅.
-- Kliens `npm test` (716 teszt) ✅, szerver `npm test` (210 teszt) ✅.
-- Szerver `users.emulator.test.ts` (20 teszt, Firebase emulátorral) ✅ — a
-  `/api/users/search` bővítés nem tört el semmit.
-- Élő böngészős ellenőrzés helyi emulátorral (seedelt adaton, bejelentkezve):
-  mind a 4 Közösség-fül renderel, a fülváltás/aktív-fül-kiemelés működik, a
-  keresés valós találatot ad RIVÁLIS címkével és helyes Követve/Követés
-  gombbal, a gomb kattintásra ténylegesen követ/leiratkozik (ellenőrizve
-  Firestore felé), a klub-szűrő "hamarosan" üzenetet mutat. A Profil fülsor
-  (a refaktor után) ugyanúgy működik, mint korábban — nincs regresszió.
+- Kliens `npm test` (727 teszt) ✅, szerver `npm test` (221 teszt, ebből 11
+  új a `bandas.test.ts`-ben) ✅.
+- **Emulátoros teszt** (`npm run test:emulator`, mind a 142 teszt ✅) —
+  `bandas.emulator.test.ts` (5 teszt): publikus/privát létrehozás, egyedi
+  meghívókód, publikus csatlakozás + duplikáció-védelem, kóddal
+  csatlakozás érvényes/érvénytelen kóddal, privát banda láthatósága
+  tag/idegen szemszögből.
+- **Élő böngészős ellenőrzés** helyi emulátorral, bejelentkezve
+  (`demo-geri`): banda létrehozása (publikus és privát, meghívókóddal),
+  a „Saját bandáim" lista mindkettőt mutatja szerepkör-jelvénnyel, publikus
+  banda megtalálható a keresésben, a `BandaScreen` megjeleníti a fejlécet,
+  a nulla terület+GP összesítést (rollup még nem futott) és a tag-listát.
+  **Menet közben talált és javított hiba**: a publikus keresés
+  csatlakozás-hibája (pl. „már tag vagy") némán eltűnt, mert a hibaüzenet
+  csak üres találati listánál jelent meg — külön `joinError` állapotra
+  bontva, most mindig látszik.
+- **Amit NEM ellenőriztem**: a rollup job tényleges Cloud Scheduler
+  triggerelése (nincs bekötve), a meghívókód-megosztás mobil share-sheeten,
+  natív (Android/iOS) nézet.
 
 ## Telepítés
 
-Telepítés nem történt ebben a munkamenetben.
+Telepítés nem történt ebben a munkamenetben. A `firestore.rules` és a
+`firestore.indexes.json` módosult — telepítéskor **szabalyok** és
+**indexek** is kellenek (külön-külön), a szokásos frontend+backend mellett.

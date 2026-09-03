@@ -121,11 +121,12 @@
       ]
     },
     {
-      "collectionGroup": "clubs",
+      "//": "Publikus bandák prefix-keresése (GET /api/bandas/search) — `visibility` egyenlőség, `nameLower` szerint tartományos.",
+      "collectionGroup": "bandas",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "visibility", "order": "ASCENDING" },
-        { "fieldPath": "memberCount", "order": "DESCENDING" }
+        { "fieldPath": "nameLower", "order": "ASCENDING" }
       ]
     },
     {

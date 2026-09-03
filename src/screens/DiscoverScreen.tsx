@@ -12,14 +12,14 @@ import '@/components/feed.css';
 import './discover.css';
 
 const DEBOUNCE_MS = 300;
-type SearchKind = 'people' | 'clubs';
+type SearchKind = 'people' | 'bandas';
 type FeedView = 'world' | 'local';
 
 /**
  * Felfedezés (docs/02 → Közösség → Felfedezés).
  *
  * Két rész van egy képernyőn:
- *   1. Kereső — emberek szerint (a klub-szűrő a Klubok fülig üres, ld. lent),
+ *   1. Kereső — emberek szerint (a banda-szűrő a Bandák fülig üres, ld. lent),
  *      inline Követés gombbal.
  *   2. Aktivitás-feed NEM követett felhasználóktól — a meglévő világ/helyi
  *      lekérdezésre épül, a már követett szerzők kliensoldalon szűrve ki.
@@ -102,15 +102,15 @@ function DiscoverSearch() {
         label="Keresés típusa"
         options={[
           { value: 'people', label: 'Emberek' },
-          { value: 'clubs', label: 'Klubok' },
+          { value: 'bandas', label: 'Bandák' },
         ]}
         value={kind}
         onChange={setKind}
         block
       />
 
-      {kind === 'clubs' ? (
-        <p className="search__note">A klubkeresés hamarosan érkezik.</p>
+      {kind === 'bandas' ? (
+        <p className="search__note">A banda-keresés a Bandák fülön elérhető.</p>
       ) : (
         <>
           <div className="search__field" style={{ marginTop: 'var(--sp-3)' }}>

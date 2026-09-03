@@ -29,7 +29,8 @@ import { addNativePushActionListener } from './lib/push';
 const TerritoryScreen = lazy(() => import('./screens/TerritoryScreen').then((m) => ({ default: m.TerritoryScreen })));
 const TrackingScreen = lazy(() => import('./screens/TrackingScreen').then((m) => ({ default: m.TrackingScreen })));
 const DiscoverScreen = lazy(() => import('./screens/DiscoverScreen').then((m) => ({ default: m.DiscoverScreen })));
-const CommunityClubsScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityClubsScreen })));
+const CommunityBandasScreen = lazy(() => import('./screens/CommunityBandasScreen').then((m) => ({ default: m.CommunityBandasScreen })));
+const BandaScreen = lazy(() => import('./screens/BandaScreen').then((m) => ({ default: m.BandaScreen })));
 const CommunityChallengesScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityChallengesScreen })));
 const CommunityPassportScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityPassportScreen })));
 const ProfileScreen = lazy(() => import('./screens/ProfileScreen').then((m) => ({ default: m.ProfileScreen })));
@@ -217,7 +218,8 @@ function Router() {
             <Route path="/terulet" element={<Navigate to="/grund" replace />} />
             <Route path="/rogzites" element={<TrackingScreen />} />
             <Route path="/kozosseg" element={<DiscoverScreen />} />
-            <Route path="/kozosseg/klubok" element={<CommunityClubsScreen />} />
+            <Route path="/kozosseg/bandak" element={<CommunityBandasScreen />} />
+            <Route path="/bandak/:id" element={<BandaScreen />} />
             <Route path="/kozosseg/kihivasok" element={<CommunityChallengesScreen />} />
             <Route path="/kozosseg/utlevel" element={<CommunityPassportScreen />} />
             <Route path="/profil" element={<ProfileScreen />} />

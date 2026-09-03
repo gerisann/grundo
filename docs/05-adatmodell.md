@@ -473,17 +473,39 @@ Tükör-alkollekció, mint a `blocks`/`blockedBy`: lopásonként két dokumentum
 
 A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történetéből a `server/src/scripts/backfillRivals.ts` számolja újra. A szkript alapértelmezésben csak jelentést készít; az érintett tükördokumentumokat teljes aggregátummal írja felül, ezért ismételten is biztonságosan futtatható.
 
-### `clubs/{clubId}`
+### `bandas/{bandaId}` *(GRUNDO #29 — Klub → Banda átnevezés, kibővítve)*
 ```ts
-{ name, description, photoURL, city, countryCode,
-  visibility: 'public'|'private', inviteCode: string,   // 8 karakter
+{ name: string, nameLower: string,    // kereséshez, a usernameLower mintájára
+  description: string|null, photoURL: string|null, city: string|null, countryCode: string|null,
+  visibility: 'public'|'private',
+  inviteCode?: string,                // 8 karakter, csak private esetén
   ownerId: string, memberCount: number,
-  totalKm2: { foot, bike }, totalGp: number,
+  settings: {
+    whoCanInvite: 'everyone'|'moderators'|'owner',
+    inviteCodeVisibleTo: 'everyone'|'moderators'|'owner',
+    postPermission: 'everyone'|'moderators'|'owner',   // Phase 2: hírfolyam
+  },
+  totals: {
+    areaM2: { foot, bike },                              // mindenkori
+    areaDayM2: { foot, bike }, areaWeekM2: { foot, bike }, areaMonthM2: { foot, bike },
+    gpTotal: number, gpWeek: number, gpMonth: number,
+    updatedAt: Timestamp,                                 // a rollup job írja
+  },
   createdAt }
 ```
-- `clubs/{id}/members/{uid}` → `{ role: 'owner'|'admin'|'member', joinedAt }`
-- `clubs/{id}/joinRequests/{uid}` → `{ createdAt, message? }`
-- `inviteCodes/{code}` → `{ clubId }`
+- `bandas/{id}/members/{uid}` → `{ role: 'owner'|'moderator'|'member', joinedAt }`
+- `users/{uid}/bandas/{bandaId}` → `{ role, joinedAt }` — TÜKÖR a `members`
+  felől, a `following`/`followers` mintájára: a „saját bandáim" lista ebből
+  megy, collectionGroup-lekérdezés nélkül. Lásd `server/src/routes/bandas.ts`.
+- `inviteCodes/{code}` → `{ bandaId }`
+- Nincs `joinRequests`: publikus bandánál a csatlakozás azonnali, privátnál
+  kizárólag meghívókóddal — az appon-belüli-meghívás+értesítés (Phase 2)
+  `bandas/{id}/invites/{uid}` alá kerül majd. A `totals`-t egy külön,
+  óránként futó rollup job (`jobs/bandaRollover.ts`) számolja a tagok
+  jelenlegi `territoryM2`/`areaDay`/`areaWeek`/`areaMonth`/`gpTotal`/
+  `gpWeek`/`gpMonth` mezőiből — nem élő olvasáskor.
+- Phase 2/3 bővíti: `bandas/{id}/feed/{postId}` (hírfolyam),
+  `bandas/{id}/wall/{msgId}` (chat fal), `bandas/{id}/invites/{uid}`.
 
 ### `challenges/{challengeId}`
 ```ts

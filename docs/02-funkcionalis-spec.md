@@ -323,13 +323,26 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
 - Kereső: emberek / klubok szűrővel, javaslatok („közös ismerős").
 - Követés gomb inline. Privát fióknál „Kérés küldése".
 
-### Klubok (kép #30)
-- Publikus klubok keresése.
-- **Saját klubjaim** lista (szerep-jelvénnyel: ADMIN/TAG).
-- **Csatlakozás meghívókóddal** (8 karakteres kód, privát klubokhoz).
-- `+ Létrehozás` **[Pro]**: név · leírás · borítókép · publikus/privát · város.
-- Klub-részletek (új képernyő): tagok · klub-feed · klub-ranglista (terület és GP) · beállítások (admin) · csatlakozási kérések kezelése · meghívó kód újragenerálása.
-- Szerepek: tulajdonos > admin > tag. Tulajdonos átruházható.
+### Bandák (kép #30) *(átnevezve „Klub"-ról „Banda"-ra, kibővített spec: GRUNDO #29)*
+- Csoport, ahol a tagok területe és pontja **összeadódik** (nap/hét/hónap/
+  mindenkori bontásban).
+- **Bárki hozhat létre** bandát — nem Pro-funkció (a korábbi Pro-gate ezzel
+  törölve). Egy felhasználó **egyszerre több bandának is tagja lehet**.
+- **Publikus** banda: kereshető, csatlakozás **azonnali**.
+- **Privát** banda: csatlakozás meghívókóddal (8 karakter), share linkkel,
+  vagy appon belüli meghívással a követett-felhasználó listából
+  (kereséssel szűrhető, meghívás gombbal) — a meghívott értesítést kap,
+  amit elfogadhat vagy elutasíthat. *(Az appon belüli meghívás+értesítés
+  Phase 2 tárgya — lásd `docs/ai/CURRENT_STATE.md`.)*
+- Banda-részletek (új képernyő): tagok, terület+GP összesítés bontással,
+  két váltható feed — **hírfolyam** (ki posztolhat: mindenki/moderátorok/
+  csak az alapító, az alapító állítja be) és **nyílt chat fal** —, valamint
+  egy külön beállítások képernyő (fogaskerék, jobb felül) az alapítónak.
+  *(A feed, a chat fal és a beállítások Phase 2/3 tárgya.)*
+- Szerepek: **alapító > moderátor > tag**. Az alapító és a moderátor
+  kirúghat tagot. Az alapító nevezhet ki moderátort, és állítja be, hogy
+  privát bandánál ki hívhat meg mást, és kinek látszik a meghívókód
+  (mindenki / csak moderátorok / csak ő).
 
 ### Kihívások (kép #36)
 - Időszakos, admin által létrehozott feladatok. Típusok:
@@ -497,7 +510,7 @@ profilra, grundra vagy beállítási képernyőre navigálunk.
 | **Streak-emlékeztető** | BE | Este 18:00 helyi idő, ha aznap nincs aktivitás és él a sorozat |
 | Megosztott útvonal | BE | |
 | Cipő futásteljesítmény elérve | BE | |
-| Klub: csatlakozási kérés / jóváhagyás / admin-kinevezés / meghívó | BE | |
+| Banda: meghívás / elfogadás / moderátor-kinevezés / kirúgás | BE | *(Phase 2)* |
 | Kihívás indul / véget ér / helyezés-változás | BE | |
 | **Napi pont-összegzés** | BE | Este: megszerzett GP, tartott terület bónusz |
 
@@ -611,7 +624,6 @@ POI-szimbólumok sem rajzolódnak ki; Medium módban a 3D épületek maradnak ki
 
 **Pro:**
 - ✓ Korlátlan útvonalgenerálás *(Ingyenes: heti 5)*
-- ✓ Klubok létrehozása
 - ✓ Edzéstervek
 - ✓ Szegmensek létrehozása
 - ✓ Korlátlan felszereléskövetés *(Ingyenes: 3 aktív)*

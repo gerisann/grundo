@@ -21,17 +21,6 @@ function Planned({ title, text }: { title: string; text: string }) {
   );
 }
 
-export function CommunityClubsScreen() {
-  return (
-    <Shell active="clubs">
-      <Planned
-        title="A klubok hamarosan érkeznek"
-        text="Publikus klubok keresése, saját klubjaid, meghívókódos csatlakozás és a klub-részletek — tagok, feed, ranglista — itt kapnak majd helyet."
-      />
-    </Shell>
-  );
-}
-
 export function CommunityChallengesScreen() {
   return (
     <Shell active="challenges">

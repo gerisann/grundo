@@ -173,6 +173,15 @@ service cloud.firestore {
         allow read: if isSelf(uid) || isAdmin();
         allow write: if false;
       }
+
+      // Melyik bandákban vagyok tag — a `bandas/{id}/members/{uid}` tükre
+      // (lásd `routes/bandas.ts` fejléce). Csak a tulajdonosnak, csak
+      // olvasásra: a „saját bandáim" lista ebből megy, collectionGroup-
+      // lekérdezés nélkül.
+      match /bandas/{bandaId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
     }
 
     // Felhasználónév-foglalás: csak olvasható (az egyediséget a szerver
@@ -287,23 +296,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // ── clubs ─────────────────────────────────────────────────────────────
+    // ── bandas ────────────────────────────────────────────────────────────
+    // Csoportok, ahol a tagok területe és pontja összeadódik
+    // (docs/05-adatmodell.md → `bandas/{bandaId}`, GRUNDO #29).
 
-    match /clubs/{clubId} {
+    match /bandas/{bandaId} {
       allow get, list: if signedIn()
         && (resource.data.visibility == 'public'
-            || exists(/databases/$(database)/documents/clubs/$(clubId)/members/$(request.auth.uid)));
-      // Létrehozás, szerkesztés, tagfelvétel: szerveroldalon (Pro-ellenőrzés,
-      // meghívókód generálás, tagszámlálók).
+            || exists(/databases/$(database)/documents/bandas/$(bandaId)/members/$(request.auth.uid)));
+      // Létrehozás, csatlakozás, meghívókód-generálás, a rollup-job írása:
+      // mind szerveroldalon (lásd `routes/bandas.ts`, `jobs/bandaRollover.ts`).
       allow write: if false;
 
-      match /members/{uid}      { allow read: if signedIn(); allow write: if false; }
-      match /joinRequests/{uid} {
-        allow read: if isSelf(uid) || isAdmin();
-        allow create: if isSelf(uid);
-        allow delete: if isSelf(uid);
-        allow update: if false;
-      }
+      match /members/{uid} { allow read: if signedIn(); allow write: if false; }
     }
 
     match /inviteCodes/{code} { allow read, write: if false; }  // csak szerver
