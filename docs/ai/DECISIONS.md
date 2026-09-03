@@ -53,6 +53,13 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
 - **A kliens soha nem ír játékadatot**, a Firestore-szabályok ezt
   kikényszerítik.
 
+## Profilpreferenciák
+
+- **Egyetlen mező mentése nem töltheti újra a teljes profilt.** A területszín
+  Firestore-írása után a `ProfileProvider` csak a helyi `cellColor` mezőt
+  módosítja. A `reload()` itt tiltott, mert `loading` állapotba teszi a teljes
+  profilfüggő felületet, és látható oldalfrissülést okoz.
+
 ## Térképi teljesítmény
 
 - **Az elszámolási adat és a render-munkakészlet külön életű.** Hosszú

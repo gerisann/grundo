@@ -30,6 +30,7 @@ export interface ProfileApi {
   profile: Profile | null;
   error: string;
   reload: () => Promise<void>;
+  patchProfile: (patch: Partial<Profile>) => void;
   createProfile: (username: string) => Promise<void>;
 }
 
@@ -101,8 +102,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setStatus('ready');
   }, []);
 
+  const patchProfile = useCallback((patch: Partial<Profile>) => {
+    setProfile((current) => (current === null ? null : { ...current, ...patch }));
+  }, []);
+
   return (
-    <ProfileContext.Provider value={{ status, profile, error, reload: load, createProfile }}>
+    <ProfileContext.Provider
+      value={{ status, profile, error, reload: load, patchProfile, createProfile }}
+    >
       {children}
     </ProfileContext.Provider>
   );

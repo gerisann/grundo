@@ -535,6 +535,12 @@ A GRUNDO-nak **világos és sötét témája** is van, és az **alapértelmezett
 1. **Rögzítés közben nem váltunk témát.** Ha futás közben lemegy a nap, a téma csak a mentés után vált. A térképstílus cseréje félbeszakítaná a megjelenítést és újratöltené a Mapbox stílust — futás közben ez elfogadhatatlan.
 2. **Nincs villanás induláskor.** A téma az első kirajzolás előtt eldől (az `index.html` inline szkriptje), tehát sötét módban sem villan fel egy pillanatra a világos felület.
 
+**Területszín-paletta:** a 16 alapszín négy sorban, soronként négy szabályos,
+egymást nem fedő hexagonként jelenik meg. A 12 prémium szín ugyanezt a
+geometriát használja három 4-es sorban. Színválasztáskor csak a Firestore-
+mentés és a profil helyi `cellColor` mezőjének frissítése fut; a profil és az
+oldal nem töltődik újra.
+
 ### Grafika és kirajzolási távolság *(döntés: 2026-09-03)*
 
 A grafikai beállítás **eszközhöz kötött**, mert ugyanaz a felhasználó eltérő

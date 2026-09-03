@@ -1,96 +1,66 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-03** · GRUNDO **#28** optimalizálási menet
+> Frissítve: **2026-09-03** · GRUNDO **#28**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
 
 ## Jelenlegi cél
 
-Az 5–10+ km-es rögzítéseknél növekvő térképi akadozás megszüntetése Android-
-prioritással, közös iOS/web megoldással. A fix méretű render-munkakészlet, a
-grafikai profilok, valamint a külön 3D látótávolság elkészült; a következő
-kötelező lépés a hosszú, valódi készülékes mérés Androidon és iOS-en.
+A Beállítások → Megjelenés területszín-választójának rendezése és a teljes
+profilfrissítést okozó mentési villanás megszüntetése. Az implementáció és a
+webes vizuális ellenőrzés elkészült; natív készülékes ellenőrzés maradt.
 
 ## Elkészült
 
-1. **Fix méretű térképi munkakészlet** (`src/components/MapView.tsx`,
-   `src/lib/mapRender.ts`). A teljes nyomvonal és a teljes cellageometria
-   továbbra is megmarad az elszámoláshoz, de Mapbox GeoJSON-ba csak a kamera
-   kivágása + 8–30% profilfüggő ráhagyás kerül. Élő rögzítésnél ezt metszi a
-   pozíció körüli beállított sugár. A cellákat a drága H3-poligonépítés előtt
-   vágjuk, a kitöltés és körvonal ugyanazt a már szűrt listát használja.
-2. **Látható útvonalszakaszok és ritkítás.** A kamerahatár két oldalán egy-egy
-   pont megmarad, ezért a vonal nem szakad le a képernyő szélén. Low/Medium
-   módban 4×/2× pont-ritkítás fut csak a renderpéldányon; a rögzített adat nem
-   változik. A 20 000 pontos szintetikus tesztből Low módban 60-nál kevesebb
-   pont kerül a renderkimenetbe.
-3. **Beállítások → Grafika oldal.** Low, Medium, High és Ultra minőség, külön
-   250–2000 m-es render-sugár, valamint új, 250–5000 m között 50 méterenként
-   állítható **Viewing Distance (3D)** érhető el. Mindhárom beállítás
-   eszközön tárolódik. A menü, szöveg, logó és játékszámítás nem változik.
-4. **Méteres 3D látótávolság és fokozatos perem.** A Viewing Distance a döntött
-   kamera zoomját skálázza: kétszeres méterérték pontosan egy zoomszinttel
-   távolabbi nézet. A 3D térkép távoli széle témához illő szürke ködbe olvad;
-   2D-re váltva az alaptérkép eredeti ködbeállítása áll vissza. A render-sugár
-   és a 3D látótávolság egymástól független marad.
-5. **Android-kímélő Low/Medium profil.** Low: nincs térképi átmenet, szabad
-   háttérrács, védelmi címke, 3D épület és kisebb POI; 24 csempés cache és 5 s
-   útvonalfrissítés. Medium: nincs 3D épület, 40 csempés cache, 4 s frissítés.
-   High őrzi a korábbi vizuális alapminőséget; Ultra nagyobb előtöltést,
-   cache-t és MSAA-t enged.
-6. **Dokumentáció:** a funkcionális specifikáció és a tartós renderdöntés
-   mindkét térképi távolság pontos szerepével frissítve.
-7. **Rögzítési térképvezérlők.** A bal oldali hexagongomb fölött egybefüggő
-   `+ / −` zoompár jelent meg, kizárólag a rögzítési oldalon. A gombos zoom
-   megtartja a pozíciókövetést és a következő GPS-frissítéseknél is az egyedi
-   zoomszintet. A kikapcsolt cellaréteget szürke gomb és halványpiros áthúzás
-   jelzi.
+1. **Alapszínrács:** mind a 16 szín szabályos, azonos oldalarányú,
+   egymást nem fedő hexagonban jelenik meg, négy sorban és soronként négy
+   elemmel.
+2. **Prémium rács:** mind a 12 Pro-szín ugyanazt a geometriát használja,
+   három 4-es sorban. A zárolt állapot és az előnézet megmaradt.
+3. **Frissítés nélküli mentés:** a Firestore-írás után nincs `reload()` és
+   nincs teljes profilt érintő `loading` állapot. A `ProfileProvider` csak a
+   helyi `cellColor` mezőt frissíti.
+4. **Gyors egymás utáni választás:** a mentések revíziót kapnak, ezért egy
+   korábban indított, később befejeződő kérés nem írhatja felül a frissebb
+   sikeres helyi állapotot.
+5. **Korábbi térkép-optimalizálás változatlanul kész:** fix render-
+   munkakészlet, Low–Ultra grafikai profil, render-sugár, 3D Viewing Distance,
+   szürke távolsági köd, követést megtartó `+ / −` zoom és egyértelmű
+   cellaréteg-kapcsoló már a `main` ágon van.
 
 ## Ellenőrzések
 
-- Célzott tesztek: **12/12 zöld** (`graphicsSettings.test.ts`,
-  `mapRender.test.ts`), beleértve a látótávolság normalizálását, korlátait és a
-  zoomskálázást.
+- Célzott `cellColors` tesztek: **14/14 zöld**; a 16 alap- és 12 prémiumszín
+  teljes palettája ellenőrzött.
 - Teljes Vitest: **714 zöld, 137 kihagyva** (79 fájl zöld, 13 kihagyva).
 - Gyökér TypeScript: tiszta; `server/` TypeScript: tiszta.
-- Production build: sikeres. A Grafika chunk 3,30 kB (gzip 1,36 kB), a
-  MapView chunk 21,06 kB (gzip 7,20 kB), a hozzá tartozó CSS 3,75 kB
-  (gzip 0,92 kB).
-- Böngészős vizuális QA: a Grafika oldal és a 3D köd világos/sötét témán
-  rendben; a 250 m, 1000 m és 5000 m beállítás skálázza a kamerát; 2D-ben
-  nincs hozzáadott köd. A rögzítési zoompár elhelyezése, +1/−1 működése és a
-  hexagongomb mindkét állapota rendben; gombos zoomnál a követés nem állt le,
-  a Grund oldalon pedig nem jelent meg a vezérlő. A tesztállapot sötét témára,
-  1000 m-re, bekapcsolt cellarétegre és az eredeti zoomra visszaállt.
+- Production build: sikeres. A Megjelenés chunk 6,00 kB (gzip 2,40 kB),
+  CSS-e 1,92 kB (gzip 0,77 kB).
+- Böngészős QA: mobil szélességen, világos és sötét témában a 4×4-es alap és
+  3×4-es prémium kiosztás átfedés nélkül, szabályos hexagonokkal jelent meg;
+  a kijelölt, előnézeti és zárolt állapotok megmaradtak. A teszt végén a
+  sötét téma és az eredeti bézs szín maradt beállítva.
 - `git diff --check`: tiszta.
 
-## Amit készüléken kell mérni
+## Nyitott ellenőrzések
 
-1. Androidon legalább 10–20 km-es rögzítés High, majd Low profillal: FPS/jank,
-   WebView memória, hőmérséklet és akkufogyás; különösen Samsung/Xiaomi
-   készüléken.
-2. Ellenőrizni, hogy gyors kanyar, 2D/3D és menetirány-követés közben nincs
-   üres térképszél a beállított ráhagyással, továbbá a 250 m-es és 5000 m-es
-   3D látótávolság használható marad eltérő képernyőméreteken.
-3. iOS-en ugyanilyen hosszú rögzítés és memóriaellenőrzés; háttérből
-   visszatérés és térképstílus-váltás után a rétegek és a köd maradjanak meg.
-4. Low/Medium profilon vizuálisan ellenőrizni a POI- és 3D-rétegcsökkentést a
-   tényleges éles Mapbox stílusokkal.
-
-⚠️ Natív build és valódi 10+ km-es terepmérés ebben a menetben nem készült;
-platformviselkedésről ezért még nincs készülékes bizonyíték. Natív Java/Swift
-kód nem változott: a közös Capacitor/WebView térképréteg optimalizálása hat
-mindkét platformra.
+1. Bejelentkezett, éles Firebase-kapcsolatú környezetben egy szín mentése és
+   másik képernyőn való azonnali megjelenése. A helyi böngészős munkamenetben
+   nem volt írható bejelentkezett felhasználó, ezért valódi Firestore-írást
+   nem végzett a QA.
+2. Android és iOS készüléken a paletta érintési céljai, kis kijelzős tördelése
+   és gyors egymás utáni választása.
+3. A térképi optimalizálás külön nyitott mérése: 10–20 km-es Android/iOS
+   rögzítés, FPS/jank, WebView-memória, hő és akkufogyasztás.
 
 ## Módosított fájlok
 
 `docs/02-funkcionalis-spec.md` · `docs/ai/DECISIONS.md` ·
-`docs/ai/CURRENT_STATE.md` · `src/components/MapView.tsx` ·
-`src/lib/graphicsSettings.ts` és tesztje · `src/lib/mapRender.ts` és tesztje ·
-`src/screens/settings/GraphicsScreen.tsx` · `src/screens/TrackingScreen.tsx` ·
-`src/components/mapview.css` · `src/styles/tokens.css`
+`docs/ai/CURRENT_STATE.md` · `src/hooks/ProfileProvider.tsx` ·
+`src/screens/settings/AppearanceScreen.tsx` ·
+`src/screens/settings/cellColor.css`
 
-Az optimalizálási implementáció a `main` ágra commitolva és felpusholva. A
-munkafa a menet lezárásakor tiszta.
+Az implementáció a `main` ágra commitolva és felpusholva. A munkafa a menet
+lezárásakor tiszta.
 
 ## Telepítés
 

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type PointerEvent } from 'react';
+import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
@@ -37,8 +37,8 @@ const MODE_HINT: Record<ThemeMode, string> = {
   system: 'A telefonod rendszerbeállítását követi.',
 };
 
-const FREE_ROWS = [1, 2, 3, 4, 3, 2, 1] as const;
-const PRO_ROWS = [3, 4, 3, 2] as const;
+const FREE_ROWS = [4, 4, 4, 4] as const;
+const PRO_ROWS = [4, 4, 4] as const;
 
 function rows<T>(values: readonly T[], sizes: readonly number[]): T[][] {
   const result: T[][] = [];
@@ -52,17 +52,20 @@ function rows<T>(values: readonly T[], sizes: readonly number[]): T[][] {
 
 function CellColorSection() {
   const { user } = useAuth();
-  const { profile, reload } = useProfile();
+  const { profile, patchProfile } = useProfile();
   const isPro = profile?.pro.active === true;
   const stored = isCellColor(profile?.cellColor) ? profile.cellColor : DEFAULT_CELL_COLOR;
   const [selected, setSelected] = useState<CellColor | null>(null);
   const [freePreview, setFreePreview] = useState<CellColor | null>(null);
   const [proPreview, setProPreview] = useState<CellColor | null>(null);
   const [error, setError] = useState('');
+  const saveRevision = useRef(0);
+  const appliedRevision = useRef(0);
   const active = selected ?? stored;
 
   async function choose(color: CellColor, locked: boolean) {
     if (locked || !user || !db || color === active) return;
+    const revision = ++saveRevision.current;
     setSelected(color);
     setError('');
     try {
@@ -71,8 +74,13 @@ function CellColorSection() {
         { cellColor: color, updatedAt: new Date() },
         { merge: true },
       );
-      await reload();
+      if (revision >= appliedRevision.current) {
+        appliedRevision.current = revision;
+        patchProfile({ cellColor: color });
+      }
+      if (revision === saveRevision.current) setSelected(null);
     } catch {
+      if (revision !== saveRevision.current) return;
       setSelected(null);
       setError('Nem sikerült elmenteni a színt. Próbáld meg újra.');
     }
