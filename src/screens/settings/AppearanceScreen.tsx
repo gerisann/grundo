@@ -1,13 +1,13 @@
-import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useRef, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
 import { updateFeedbackSettings } from '@/lib/feedbackSettings';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
+import { CellColorCarousel } from '@/components/CellColorCarousel';
 import { db } from '@/lib/firebase';
 import {
-  CELL_COLORS,
   DEFAULT_CELL_COLOR,
   FREE_CELL_COLOR_KEYS,
   PRO_CELL_COLOR_KEYS,
@@ -37,27 +37,12 @@ const MODE_HINT: Record<ThemeMode, string> = {
   system: 'A telefonod rendszerbeállítását követi.',
 };
 
-const FREE_ROWS = [4, 4, 4, 4] as const;
-const PRO_ROWS = [4, 4, 4] as const;
-
-function rows<T>(values: readonly T[], sizes: readonly number[]): T[][] {
-  const result: T[][] = [];
-  let offset = 0;
-  for (const size of sizes) {
-    result.push(values.slice(offset, offset + size));
-    offset += size;
-  }
-  return result;
-}
-
 function CellColorSection() {
   const { user } = useAuth();
   const { profile, patchProfile } = useProfile();
   const isPro = profile?.pro.active === true;
   const stored = isCellColor(profile?.cellColor) ? profile.cellColor : DEFAULT_CELL_COLOR;
   const [selected, setSelected] = useState<CellColor | null>(null);
-  const [freePreview, setFreePreview] = useState<CellColor | null>(null);
-  const [proPreview, setProPreview] = useState<CellColor | null>(null);
   const [error, setError] = useState('');
   const saveRevision = useRef(0);
   const appliedRevision = useRef(0);
@@ -86,74 +71,16 @@ function CellColorSection() {
     }
   }
 
-  function swatch(
-    color: CellColor,
-    locked: boolean,
-    setPreview: (color: CellColor | null) => void,
-  ) {
-    const { hex, label } = CELL_COLORS[color];
-    const on = color === active;
-    const endPreview = () => setPreview(null);
-    const pointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-      if (event.pointerType !== 'mouse') setPreview(color);
-    };
-
-    return (
-      <button
-        key={color}
-        type="button"
-        className={`ccolor__swatch${on ? ' ccolor__swatch--on' : ''}${locked ? ' ccolor__swatch--locked' : ''}`}
-        aria-pressed={on}
-        aria-disabled={locked}
-        aria-label={locked ? `${label} — Pro-előfizetéssel` : label}
-        title={locked ? `${label} — Pro-előfizetéssel` : label}
-        style={{ '--ccolor': hex } as CSSProperties}
-        onMouseEnter={() => setPreview(color)}
-        onMouseLeave={endPreview}
-        onPointerDown={pointerDown}
-        onPointerUp={endPreview}
-        onPointerCancel={endPreview}
-        onPointerLeave={endPreview}
-        onContextMenu={(event) => event.preventDefault()}
-        onClick={() => void choose(color, locked)}
-      >
-        <span className="ccolor__fill" />
-        {locked ? <span className="ccolor__lock" aria-hidden="true">🔒</span> : null}
-        {on ? <span className="ccolor__check" aria-hidden="true">✓</span> : null}
-      </button>
-    );
-  }
-
-  function honeycomb(
-    colors: readonly CellColor[],
-    shape: readonly number[],
-    preview: CellColor | null,
-    setPreview: (color: CellColor | null) => void,
-    locked: boolean,
-  ) {
-    const style = preview
-      ? ({ '--ccolor-preview': CELL_COLORS[preview].hex } as CSSProperties)
-      : undefined;
-    return (
-      <div
-        className={`ccolor__hive${preview ? ' ccolor__hive--preview' : ''}`}
-        style={style}
-        onMouseLeave={() => setPreview(null)}
-      >
-        {rows(colors, shape).map((row, rowIndex) => (
-          <div className="ccolor__row" key={rowIndex}>
-            {row.map((color) => swatch(color, locked, setPreview))}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   return (
     <>
       <section className="stack stack--tight">
         <div className="label">A területed színe</div>
-        {honeycomb(FREE_CELL_COLOR_KEYS, FREE_ROWS, freePreview, setFreePreview, false)}
+        <CellColorCarousel
+          colors={FREE_CELL_COLOR_KEYS}
+          active={active}
+          locked={false}
+          onChoose={(color) => void choose(color, false)}
+        />
         <p className="field__hint">
           Ebben a színben látszik a területed a térképen — neked és mindenki másnak is.
         </p>
@@ -165,7 +92,12 @@ function CellColorSection() {
           <div className="label">Prémium színek</div>
           <span className="ccolor__badge">PRO</span>
         </div>
-        {honeycomb(PRO_CELL_COLOR_KEYS, PRO_ROWS, proPreview, setProPreview, !isPro)}
+        <CellColorCarousel
+          colors={PRO_CELL_COLOR_KEYS}
+          active={active}
+          locked={!isPro}
+          onChoose={(color) => void choose(color, !isPro)}
+        />
         <p className="field__hint">
           {isPro
             ? 'A Pro-előfizetéseddel ezek is a tieid.'

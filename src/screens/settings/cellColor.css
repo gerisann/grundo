@@ -1,22 +1,42 @@
-/** Cellaszín-választó — hatszög-paletta. */
+/** Infinite, touch-scrollable territory-color carousel. */
 
-.ccolor__hive {
-  --ccolor-width: clamp(52px, 14vw, 64px);
+.ccolor__carousel {
+  --ccolor-width: clamp(104px, 28vw, 128px);
   --ccolor-height: calc(var(--ccolor-width) * 1.1547);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  position: relative;
+  isolation: isolate;
   width: 100%;
-  padding: 6px 0 10px;
+  height: calc(var(--ccolor-height) + 48px);
+  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.ccolor__row {
-  display: grid;
-  grid-template-columns: repeat(4, var(--ccolor-width));
-  gap: 8px;
+.ccolor__viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ccolor__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.ccolor__track {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: max-content;
+  min-height: 100%;
+  padding-block: 24px;
 }
 
 .ccolor__swatch {
@@ -25,15 +45,17 @@
   width: var(--ccolor-width);
   height: var(--ccolor-height);
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 4px;
   border: 0;
   background: var(--ccolor-border);
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   cursor: pointer;
-  padding: 3px;
-  display: grid;
-  place-items: center;
-  transition: transform 120ms ease, filter 120ms ease;
-  touch-action: manipulation;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  transition: transform 140ms ease, filter 140ms ease;
+  touch-action: pan-x;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -41,24 +63,18 @@
   width: 100%;
   height: 100%;
   background: var(--ccolor);
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-  transition: background-color 110ms ease, filter 110ms ease;
-}
-
-/* Egérrel rámutatva / ujjal lenyomva az egész BLOKK felveszi az előnézeti színt. */
-.ccolor__hive--preview .ccolor__fill {
-  background: var(--ccolor-preview);
+  clip-path: inherit;
 }
 
 .ccolor__swatch:hover,
 .ccolor__swatch:focus-visible {
   z-index: 2;
-  transform: translateY(-2px);
+  transform: translateY(-3px);
 }
 
 .ccolor__swatch:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .ccolor__swatch--on {
@@ -72,19 +88,18 @@
   z-index: 3;
   pointer-events: none;
   color: var(--text-inverse);
-  text-shadow: 0 1px 4px var(--shadow);
+  text-shadow: 0 2px 7px var(--shadow);
 }
 
 .ccolor__check {
-  font-size: 19px;
+  font-size: 32px;
   font-weight: 800;
 }
 
 .ccolor__lock {
-  font-size: 15px;
+  font-size: 25px;
 }
 
-/* A Pro minta előnézhető marad, de kattintással nem menthető. */
 .ccolor__swatch--locked {
   cursor: not-allowed;
 }
@@ -93,8 +108,68 @@
   filter: saturate(0.65) brightness(0.78);
 }
 
-.ccolor__hive--preview .ccolor__swatch--locked .ccolor__fill {
-  filter: saturate(0.8) brightness(0.82);
+.ccolor__arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  width: 42px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.24);
+  color: var(--text-primary);
+  transform: translateY(-50%);
+  backdrop-filter: blur(8px);
+}
+
+.ccolor__arrow:active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+}
+
+.ccolor__arrow--left {
+  left: 4px;
+}
+
+.ccolor__arrow--right {
+  right: 4px;
+}
+
+.ccolor__territory {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ccolor__territory-cell {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--cell-width);
+  height: var(--cell-height);
+  background: var(--ccolor);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  opacity: 0;
+  transform: translate(calc(-50% + var(--cell-x)), calc(-50% + var(--cell-y))) scale(0.72);
+  animation: ccolor-territory-fade var(--cell-duration) ease-out var(--cell-delay) both;
+}
+
+@keyframes ccolor-territory-fade {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--cell-x)), calc(-50% + var(--cell-y))) scale(0.72);
+  }
+  14% { opacity: 0.22; }
+  58% { opacity: 0.16; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--cell-x)), calc(-50% + var(--cell-y))) scale(1);
+  }
 }
 
 .ccolor__pro-head {
@@ -114,7 +189,21 @@
 }
 
 @media (max-width: 390px) {
-  .ccolor__hive {
-    --ccolor-width: 50px;
+  .ccolor__carousel {
+    --ccolor-width: 100px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccolor__viewport {
+    scroll-behavior: auto;
+  }
+
+  .ccolor__territory {
+    display: none;
+  }
+
+  .ccolor__swatch {
+    transition: none;
   }
 }
