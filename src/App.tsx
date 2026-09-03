@@ -28,7 +28,10 @@ import { addNativePushActionListener } from './lib/push';
  */
 const TerritoryScreen = lazy(() => import('./screens/TerritoryScreen').then((m) => ({ default: m.TerritoryScreen })));
 const TrackingScreen = lazy(() => import('./screens/TrackingScreen').then((m) => ({ default: m.TrackingScreen })));
-const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((m) => ({ default: m.CommunityScreen })));
+const DiscoverScreen = lazy(() => import('./screens/DiscoverScreen').then((m) => ({ default: m.DiscoverScreen })));
+const CommunityClubsScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityClubsScreen })));
+const CommunityChallengesScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityChallengesScreen })));
+const CommunityPassportScreen = lazy(() => import('./screens/CommunitySectionScreens').then((m) => ({ default: m.CommunityPassportScreen })));
 const ProfileScreen = lazy(() => import('./screens/ProfileScreen').then((m) => ({ default: m.ProfileScreen })));
 const PublicProfileScreen = lazy(() => import('./screens/PublicProfileScreen').then((m) => ({ default: m.PublicProfileScreen })));
 const ActivityScreen = lazy(() => import('./screens/ActivityScreen').then((m) => ({ default: m.ActivityScreen })));
@@ -213,7 +216,10 @@ function Router() {
                 hivatkozások ne törjenek el egy átnevezés miatt. */}
             <Route path="/terulet" element={<Navigate to="/grund" replace />} />
             <Route path="/rogzites" element={<TrackingScreen />} />
-            <Route path="/kozosseg" element={<CommunityScreen />} />
+            <Route path="/kozosseg" element={<DiscoverScreen />} />
+            <Route path="/kozosseg/klubok" element={<CommunityClubsScreen />} />
+            <Route path="/kozosseg/kihivasok" element={<CommunityChallengesScreen />} />
+            <Route path="/kozosseg/utlevel" element={<CommunityPassportScreen />} />
             <Route path="/profil" element={<ProfileScreen />} />
             <Route path="/profil/rivalisok" element={<ProfileRivalsScreen />} />
             <Route path="/profil/statisztikak" element={<ProfileStatsScreen />} />

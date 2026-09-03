@@ -975,6 +975,13 @@ export interface Connection {
   cellColor?: string | null;
 }
 
+/** Egy találat a Felfedezés fülön indított keresésben — a Connection bővítve a Követés gombhoz kellő állapottal. */
+export interface DiscoverUser extends Connection {
+  account: 'public' | 'private';
+  /** `requested` sosem jön a szervertől — a kliens a Követés gomb kattintása után állítja be helyben. */
+  followStatus: FollowStatus;
+}
+
 /**
  * Egy rivális — akitől területet vettél el, vagy aki tőled.
  *
@@ -1095,6 +1102,14 @@ export const api = {
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */
   searchUsers: (q: string) =>
     request<{ items: Connection[] }>(`/api/users/search?q=${encodeURIComponent(q)}`),
+
+  /**
+   * Ugyanaz a végpont, mint `searchUsers`, de a Felfedezés fülön (docs/02 →
+   * Közösség → Felfedezés) kell hozzá a fiók-láthatóság és a követési
+   * állapot is, hogy a Követés gomb rögtön helyes felirattal induljon.
+   */
+  discoverSearch: (q: string) =>
+    request<{ items: DiscoverUser[] }>(`/api/users/search?q=${encodeURIComponent(q)}`),
 
   /** Tiltás — a követés mindkét irányban megszűnik. */
   blockUser: (username: string) =>

@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
 import { COLLECTIONS, auth as adminAuth, db } from '../lib/firebase';
 import { adminNotifyAddress, createMailer, userReportEmail } from '../lib/mailer';
 import { notifyNewFollower } from '../lib/notifications';
@@ -174,15 +174,50 @@ usersRouter.get('/search', async (req: AuthedRequest, res: Response, next) => {
       ...blockedBy.docs.map((doc) => doc.id),
     ]);
 
-    const items: Connection[] = [];
+    const candidates: { uid: string; username: string; photoURL: string | null; account: 'public' | 'private' }[] = [];
     for (const doc of snapshot.docs) {
       if (doc.id === viewerUid || blockedIds.has(doc.id)) continue;
       const data = doc.data() as Record<string, unknown>;
       const username = String(data.username ?? '');
       if (!username) continue;
-      items.push({ uid: doc.id, username, photoURL: (data.photoURL as string | null) ?? null });
-      if (items.length >= limit) break;
+      candidates.push({
+        uid: doc.id,
+        username,
+        photoURL: (data.photoURL as string | null) ?? null,
+        account:
+          (data.privacy as { account?: string } | undefined)?.account === 'private'
+            ? 'private'
+            : 'public',
+      });
+      if (candidates.length >= limit) break;
     }
+
+    /*
+      A Felfedezés fülön (docs/02 → Közösség → Felfedezés) a keresés eredménye
+      inline Követés gombot mutat — ehhez kell tudni, kit követünk már. EGY
+      batch-lekérdezés a viewer `following` alkollekciójából, dokumentum-ID
+      szerint szűrve — nem N darab olvasás találatonként.
+    */
+    const followingIds =
+      candidates.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await own
+                .collection('following')
+                .where(FieldPath.documentId(), 'in', candidates.map((c) => c.uid))
+                .select()
+                .get()
+            ).docs.map((doc) => doc.id),
+          );
+
+    const items = candidates.map((c) => ({
+      uid: c.uid,
+      username: c.username,
+      photoURL: c.photoURL,
+      account: c.account,
+      followStatus: (followingIds.has(c.uid) ? 'following' : 'none') as 'following' | 'none',
+    }));
 
     res.json({ items });
   } catch (error) {

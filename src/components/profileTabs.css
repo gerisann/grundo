@@ -1,44 +1,5 @@
-/* A fülsor KERETES, nem aláhúzott (Geri, 2026-08-26).
-
-   Az aktív fül teljes, lekerekített keretet kap az aláhúzás helyett, és a
-   sor alól eltűnt az 1 px-es elválasztó vonal: két vízszintes vonal egymás
-   alatt (a keret alja és az elválasztó) rácsot rajzolt volna a fejlécbe.
-   A keret MINDEN fülön ott van, csak átlátszóan — különben az aktív fül
-   szélesebb lenne a többinél, és a sor megugrana váltáskor. */
-
-.profile-tabs {
-  display: flex;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-4) var(--sp-2);
-  overflow-x: auto;
-  scrollbar-width: none;
-  touch-action: pan-x;
-  cursor: grab;
-  user-select: none;
-}
-.profile-tabs:active { cursor: grabbing; }
-.profile-tabs::-webkit-scrollbar { display: none; }
-
-.profile-tabs__item {
-  position: relative;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  min-height: 38px;
-  padding: 0 var(--sp-3);
-  border: 1px solid transparent;
-  border-radius: var(--r-pill);
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 15px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.profile-tabs__item--active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
+/* A fülsor maga a megosztott `.tab-strip` (lásd tabStrip.css) — itt csak a
+   fejléc-tok sticky elhelyezése marad, ami Profil-specifikus. */
 
 .profile-header {
   position: sticky;
