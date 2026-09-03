@@ -1,4 +1,9 @@
 const METERS_PER_DEGREE_LATITUDE = 111_320;
+const REFERENCE_LATITUDE = 47.4979;
+const REFERENCE_VIEWING_DISTANCE_M = 1_000;
+const REFERENCE_TILTED_ZOOM = 17.6;
+const MIN_TILTED_ZOOM = 13.5;
+const MAX_TILTED_ZOOM = 20;
 
 export interface RenderBounds {
   south: number;
@@ -10,6 +15,21 @@ export interface RenderBounds {
 export interface RenderPoint {
   lat: number;
   lng: number;
+}
+
+/**
+ * A Web Mercator skálán egy zoomlépés kétszerezi/felezi a fizikai nézetet.
+ * A szélességi korrekció miatt ugyanaz a méterérték Budapesten és északabbra
+ * is közel azonos terepi látótávolságot ad.
+ */
+export function tiltedZoomForViewingDistance(distanceM: number, latitude: number): number {
+  const safeDistance = Math.max(1, distanceM);
+  const latitudeScale = Math.max(0.1, Math.cos(latitude * Math.PI / 180));
+  const referenceScale = Math.cos(REFERENCE_LATITUDE * Math.PI / 180);
+  const zoom = REFERENCE_TILTED_ZOOM
+    - Math.log2(safeDistance / REFERENCE_VIEWING_DISTANCE_M)
+    + Math.log2(latitudeScale / referenceScale);
+  return Math.min(MAX_TILTED_ZOOM, Math.max(MIN_TILTED_ZOOM, zoom));
 }
 
 export function containsBounds(outer: RenderBounds | null, inner: RenderBounds): boolean {

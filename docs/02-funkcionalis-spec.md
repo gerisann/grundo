@@ -538,11 +538,15 @@ A GRUNDO-nak **világos és sötét témája** is van, és az **alapértelmezett
 ### Grafika és kirajzolási távolság *(döntés: 2026-09-03)*
 
 A grafikai beállítás **eszközhöz kötött**, mert ugyanaz a felhasználó eltérő
-teljesítményű telefonokon használhatja az appot. Két vezérlője van:
+teljesítményű telefonokon használhatja az appot. Három vezérlője van:
 
 - **Kirajzolási távolság:** 250–2000 méteres sugár a rögzítés aktuális
   pozíciója körül. A tényleges munkakészlet a kamera látható kivágása és e
   kör metszete, a minőségi profiltól függő 8–30% előtöltési ráhagyással.
+- **Viewing Distance (3D):** 250–5000 méteres, 50 méterenként állítható
+  látótávolság. Kizárólag a döntött 3D nézet kameramagasságát és távoli
+  térképmegjelenítését szabályozza; a határ fokozatosan szürke ködbe olvad,
+  nem éles vágás. A 2D nézetet és a render-munkakészlet sugarát nem módosítja.
 - **Grafikai minőség:** Low / Medium / High *(alapértelmezett)* / Ultra. Csak
   a térkép animációjára, csempegyorsítótárára és részletességére, valamint a
   cella- és útvonalrajzra hat. A menük, szövegek, logó és a játék számítása

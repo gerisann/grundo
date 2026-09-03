@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import mapboxgl from 'mapbox-gl';
+import mapboxgl, { type FogSpecification } from 'mapbox-gl';
 import { cellToBoundary, cellToLatLng } from 'h3-js';
 import type { CellId } from '@/types';
 import { useThemeContext } from '@/hooks/ThemeProvider';
@@ -21,6 +21,7 @@ import {
   containsBounds,
   pointInBounds,
   renderBounds as calculateRenderBounds,
+  tiltedZoomForViewingDistance,
   visibleTrackSegments,
   type RenderBounds,
 } from '@/lib/mapRender';
@@ -114,7 +115,6 @@ const HEADING_UP_KEY = 'grundo.mapHeadingUp';
  * madártávlati pöttyöt nézne, amin nem látszik, melyik utcába kell befordulni.
  */
 const FOLLOW_ZOOM = 16;
-const TILTED_ZOOM = 17.6;
 
 /**
  * A kézi visszaközpontosítás rövid, de jól követhető átmenete. Az automatikus
@@ -220,7 +220,9 @@ export function MapView({
   const liveRef = useRef(live);
   const graphicsProfileRef = useRef(graphicsProfile);
   const renderRadiusRef = useRef(graphicsSettings.renderRadiusM);
+  const viewingDistanceRef = useRef(graphicsSettings.viewingDistanceM);
   const renderBoundsRef = useRef<RenderBounds | null>(null);
+  const baseFogRef = useRef<FogSpecification | null>(null);
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
   layersRef.current = layers;
@@ -232,6 +234,7 @@ export function MapView({
   liveRef.current = live;
   graphicsProfileRef.current = graphicsProfile;
   renderRadiusRef.current = graphicsSettings.renderRadiusM;
+  viewingDistanceRef.current = graphicsSettings.viewingDistanceM;
   const viewportRef = useRef(onViewport);
   viewportRef.current = onViewport;
   const pressRef = useRef(onCellPress);
@@ -241,6 +244,8 @@ export function MapView({
   const followPaused = useRef(false);
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilted, setTilted] = useState(() => readTiltPreference());
+  const tiltedRef = useRef(tilted);
+  tiltedRef.current = tilted;
   const [headingUp, setHeadingUp] = useState(() => readHeadingUpPreference());
   const bearingRef = useRef<number | null>(null);
   const lastTrackSyncAt = useRef(0);
@@ -287,7 +292,9 @@ export function MapView({
       container: container.current,
       style: mapStyleFor(theme),
       center: [19.0402, 47.4979],
-      zoom: 15,
+      zoom: tilted
+        ? tiltedZoomForViewingDistance(viewingDistanceRef.current, 47.4979)
+        : 15,
       attributionControl: true,
       pitchWithRotate: false,
       dragRotate: false,
@@ -308,8 +315,10 @@ export function MapView({
 
     instance.on('load', () => {
       ready.current = true;
+      baseFogRef.current = instance.getFog() ?? null;
       addLayers(instance, trailColorRef.current, graphicsProfileRef.current);
       applyBaseMapQuality(instance, graphicsProfileRef.current);
+      apply3dFog(instance, tiltedRef.current, baseFogRef.current);
       syncBlobData(instance, blobsRef.current, ownerColorsRef.current);
       refreshRenderWindow(instance, true);
       fitTrackOnce(instance, trackRef.current, fitTrackRef.current, fitted);
@@ -382,6 +391,7 @@ export function MapView({
       marker.current = null;
       markerPosition.current = null;
       renderBoundsRef.current = null;
+      baseFogRef.current = null;
       cancelAnimationFrame(markerAnimation.current);
       instance.remove();
       map.current = null;
@@ -393,8 +403,10 @@ export function MapView({
     const instance = map.current;
     if (instance === null || !ready.current) return;
     const restore = () => {
+      baseFogRef.current = instance.getFog() ?? null;
       addLayers(instance, trailColorRef.current, graphicsProfileRef.current);
       applyBaseMapQuality(instance, graphicsProfileRef.current);
+      apply3dFog(instance, tiltedRef.current, baseFogRef.current);
       syncBlobData(instance, blobsRef.current, ownerColorsRef.current);
       refreshRenderWindow(instance, true);
     };
@@ -530,7 +542,9 @@ export function MapView({
       centered.current = true;
       instance.jumpTo({
         center: [position.lng, position.lat],
-        zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
+        zoom: tilted
+          ? tiltedZoomForViewingDistance(graphicsSettings.viewingDistanceM, position.lat)
+          : FOLLOW_ZOOM,
       });
       return;
     }
@@ -565,7 +579,7 @@ export function MapView({
         ...(bearing !== null ? { bearing } : {}),
       });
     }
-  }, [position, follow, headingUp, graphicsProfile]);
+  }, [position, follow, headingUp, graphicsProfile, graphicsSettings.viewingDistanceM, tilted]);
 
   useEffect(() => {
     const instance = map.current;
@@ -573,13 +587,21 @@ export function MapView({
     // A nagyítást csak akkor állítjuk, ha a térkép már a felhasználón áll:
     // felcsatoláskor az alapértelmezett budapesti középpontra ráközelíteni
     // értelmetlen ugrás lenne.
-    const zoom = centered.current ? { zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM } : {};
+    const latitude = positionRef.current?.lat ?? instance.getCenter().lat;
+    const zoom = centered.current
+      ? {
+          zoom: tilted
+            ? tiltedZoomForViewingDistance(graphicsSettings.viewingDistanceM, latitude)
+            : FOLLOW_ZOOM,
+        }
+      : {};
+    apply3dFog(instance, tilted, baseFogRef.current);
     instance.easeTo({
       pitch: tilted ? TILTED_PITCH : 0,
       ...zoom,
       duration: 400 * graphicsProfile.motionScale,
     });
-  }, [tilted, graphicsProfile]);
+  }, [tilted, graphicsProfile, graphicsSettings.viewingDistanceM]);
 
   /**
    * Az irány-mód a NÉZETTŐL (2D/3D) FÜGGETLEN kapcsoló.
@@ -685,7 +707,9 @@ export function MapView({
             if (target && position) {
               target.easeTo({
                 center: [position.lng, position.lat],
-                zoom: tilted ? TILTED_ZOOM : FOLLOW_ZOOM,
+                zoom: tilted
+                  ? tiltedZoomForViewingDistance(graphicsSettings.viewingDistanceM, position.lat)
+                  : FOLLOW_ZOOM,
                 pitch: tilted ? TILTED_PITCH : 0,
                 bearing: headingUp ? (bearingRef.current ?? target.getBearing()) : 0,
                 duration: RECENTER_DURATION_MS * graphicsProfile.motionScale,
@@ -1359,6 +1383,26 @@ function applyBaseMapQuality(instance: mapboxgl.Map, profile: GraphicsProfile): 
       instance.setLayoutProperty(layer.id, 'visibility', 'none');
     }
   }
+}
+
+/** A mélységalapú Mapbox-köd csak a 3D nézet távoli peremén él. */
+function apply3dFog(
+  instance: mapboxgl.Map,
+  tilted: boolean,
+  baseFog: FogSpecification | null,
+): void {
+  if (!tilted) {
+    instance.setFog(baseFog);
+    return;
+  }
+  instance.setFog({
+    range: [0.75, 2.6],
+    color: cssColor('var(--map-fog)'),
+    'high-color': cssColor('var(--map-fog-high)'),
+    'space-color': cssColor('var(--map-fog-space)'),
+    'horizon-blend': 0.18,
+    'star-intensity': 0,
+  });
 }
 
 function cssColor(reference: string): string {

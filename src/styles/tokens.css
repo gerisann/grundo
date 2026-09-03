@@ -136,6 +136,9 @@
   --map-road:       #ffffff;
   --map-road-minor: #f7f7f9;
   --map-label:      #686472;
+  --map-fog:        #b9bdc5;
+  --map-fog-high:   #d4d6dc;
+  --map-fog-space:  #dfe1e6;
 
   /* ── Terület: a sajátod ──────────────────────────────────────── */
   --territory-own:       #7c3aed;
@@ -269,6 +272,9 @@
   --map-road:       #292630;
   --map-road-minor: #1b1921;
   --map-label:      #85808d;
+  --map-fog:        #4b4e57;
+  --map-fog-high:   #363943;
+  --map-fog-space:  #292b33;
 
   /* ── Terület ─────────────────────────────────────────────────── */
   --territory-own:       #8b5cf6;

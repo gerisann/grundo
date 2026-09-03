@@ -6,6 +6,8 @@ export interface GraphicsSettings {
   quality: GraphicsQuality;
   /** A rögzítés alatt kirajzolható tartalom legnagyobb sugara a pozíciótól. */
   renderRadiusM: number;
+  /** A bedöntött kamera hozzávetőleges fizikai látótávolsága. */
+  viewingDistanceM: number;
 }
 
 export interface GraphicsProfile {
@@ -30,10 +32,14 @@ export interface GraphicsProfile {
 export const MIN_RENDER_RADIUS_M = 250;
 export const MAX_RENDER_RADIUS_M = 2_000;
 export const RENDER_RADIUS_STEP_M = 50;
+export const MIN_VIEWING_DISTANCE_M = 250;
+export const MAX_VIEWING_DISTANCE_M = 5_000;
+export const VIEWING_DISTANCE_STEP_M = 50;
 
 export const DEFAULT_GRAPHICS_SETTINGS: GraphicsSettings = {
   quality: 'high',
   renderRadiusM: 750,
+  viewingDistanceM: 1_000,
 };
 
 export const GRAPHICS_PROFILES: Record<GraphicsQuality, GraphicsProfile> = {
@@ -130,7 +136,16 @@ export function normalizeGraphicsSettings(raw: unknown): GraphicsSettings {
       ? value.quality as GraphicsQuality
       : DEFAULT_GRAPHICS_SETTINGS.quality,
     renderRadiusM: clampRadius(value.renderRadiusM),
+    viewingDistanceM: clampViewingDistance(value.viewingDistanceM),
   };
+}
+
+function clampViewingDistance(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_GRAPHICS_SETTINGS.viewingDistanceM;
+  }
+  const clamped = Math.min(MAX_VIEWING_DISTANCE_M, Math.max(MIN_VIEWING_DISTANCE_M, value));
+  return Math.round(clamped / VIEWING_DISTANCE_STEP_M) * VIEWING_DISTANCE_STEP_M;
 }
 
 function read(): GraphicsSettings {

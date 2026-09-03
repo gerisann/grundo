@@ -2,8 +2,11 @@ import { ScreenHeader, SegmentedControl } from '@/components/ui';
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
 import {
   MAX_RENDER_RADIUS_M,
+  MAX_VIEWING_DISTANCE_M,
   MIN_RENDER_RADIUS_M,
+  MIN_VIEWING_DISTANCE_M,
   RENDER_RADIUS_STEP_M,
+  VIEWING_DISTANCE_STEP_M,
   updateGraphicsSettings,
   type GraphicsQuality,
 } from '@/lib/graphicsSettings';
@@ -63,6 +66,29 @@ export function GraphicsScreen() {
           <p className="field__hint">
             Rögzítés közben legfeljebb ekkora sugarú terület készül elő a pozíciód körül.
             A képernyőn kívül kis ráhagyást tartunk, hogy forduláskor már készen álljon a térkép.
+          </p>
+        </section>
+
+        <section className="stack stack--tight">
+          <div className="label">Viewing Distance (3D)</div>
+          <div className="graphics-settings__range">
+            <span aria-hidden="true">−</span>
+            <input
+              type="range"
+              min={MIN_VIEWING_DISTANCE_M}
+              max={MAX_VIEWING_DISTANCE_M}
+              step={VIEWING_DISTANCE_STEP_M}
+              value={settings.viewingDistanceM}
+              aria-label="3D látótávolság"
+              aria-valuetext={`${settings.viewingDistanceM} méter`}
+              onChange={(event) => updateGraphicsSettings({ viewingDistanceM: Number(event.target.value) })}
+            />
+            <span aria-hidden="true">＋</span>
+            <strong className="graphics-settings__value">{formatRadius(settings.viewingDistanceM)}</strong>
+          </div>
+          <p className="field__hint">
+            A bedöntött 3D térkép eddig a távolságig nyílik ki. A távoli széle nem élesen
+            vágódik le: fokozatosan szürke ködbe olvad. A 2D nézetet ez nem módosítja.
           </p>
         </section>
 

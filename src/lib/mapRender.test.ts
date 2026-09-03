@@ -3,6 +3,7 @@ import {
   containsBounds,
   pointInBounds,
   renderBounds,
+  tiltedZoomForViewingDistance,
   visibleTrackSegments,
 } from './mapRender';
 
@@ -62,5 +63,18 @@ describe('visibleTrackSegments', () => {
     );
     const renderedPointCount = segments.reduce((sum, segment) => sum + segment.length, 0);
     expect(renderedPointCount).toBeLessThan(60);
+  });
+});
+
+describe('tiltedZoomForViewingDistance', () => {
+  it('kétszeres látótávolsághoz egy zoomszinttel távolabb lép', () => {
+    const near = tiltedZoomForViewingDistance(1_000, 47.4979);
+    const far = tiltedZoomForViewingDistance(2_000, 47.4979);
+    expect(near - far).toBeCloseTo(1);
+  });
+
+  it('szélsőséges értéknél sem hagyja el a biztonságos zoomtartományt', () => {
+    expect(tiltedZoomForViewingDistance(1, 0)).toBeLessThanOrEqual(20);
+    expect(tiltedZoomForViewingDistance(1_000_000, 0)).toBeGreaterThanOrEqual(13.5);
   });
 });

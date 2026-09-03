@@ -6,8 +6,9 @@
 ## Jelenlegi cél
 
 Az 5–10+ km-es rögzítéseknél növekvő térképi akadozás megszüntetése Android-
-prioritással, közös iOS/web megoldással. A kód és a webes ellenőrzés elkészült;
-a következő kötelező lépés a hosszú, valódi készülékes mérés Androidon és iOS-en.
+prioritással, közös iOS/web megoldással. A fix méretű render-munkakészlet, a
+grafikai profilok, valamint a külön 3D látótávolság elkészült; a következő
+kötelező lépés a hosszú, valódi készülékes mérés Androidon és iOS-en.
 
 ## Elkészült
 
@@ -22,30 +23,35 @@ a következő kötelező lépés a hosszú, valódi készülékes mérés Androi
    módban 4×/2× pont-ritkítás fut csak a renderpéldányon; a rögzített adat nem
    változik. A 20 000 pontos szintetikus tesztből Low módban 60-nál kevesebb
    pont kerül a renderkimenetbe.
-3. **Új Beállítások → Grafika oldal** (`GraphicsScreen.tsx`): Low, Medium,
-   High, Ultra minőség és 250–2000 m-es kirajzolási sugár, eszközön tárolva.
-   A profilok csak a térképi animációt, cella-/útvonalrészletet, GeoJSON-
-   toleranciát, csempe-cache-t és alaptérképi rétegeket változtatják; menüt,
-   szöveget, logót és játékszámítást nem.
-4. **Android-kímélő Low/Medium profil.** Low: nincs térképi átmenet, szabad
+3. **Beállítások → Grafika oldal.** Low, Medium, High és Ultra minőség, külön
+   250–2000 m-es render-sugár, valamint új, 250–5000 m között 50 méterenként
+   állítható **Viewing Distance (3D)** érhető el. Mindhárom beállítás
+   eszközön tárolódik. A menü, szöveg, logó és játékszámítás nem változik.
+4. **Méteres 3D látótávolság és fokozatos perem.** A Viewing Distance a döntött
+   kamera zoomját skálázza: kétszeres méterérték pontosan egy zoomszinttel
+   távolabbi nézet. A 3D térkép távoli széle témához illő szürke ködbe olvad;
+   2D-re váltva az alaptérkép eredeti ködbeállítása áll vissza. A render-sugár
+   és a 3D látótávolság egymástól független marad.
+5. **Android-kímélő Low/Medium profil.** Low: nincs térképi átmenet, szabad
    háttérrács, védelmi címke, 3D épület és kisebb POI; 24 csempés cache és 5 s
    útvonalfrissítés. Medium: nincs 3D épület, 40 csempés cache, 4 s frissítés.
    High őrzi a korábbi vizuális alapminőséget; Ultra nagyobb előtöltést,
    cache-t és MSAA-t enged.
-5. **Dokumentáció:** a funkcionális specifikáció és a tartós renderdöntés
-   frissítve (`docs/02-funkcionalis-spec.md`, `docs/ai/DECISIONS.md`).
+6. **Dokumentáció:** a funkcionális specifikáció és a tartós renderdöntés
+   mindkét térképi távolság pontos szerepével frissítve.
 
 ## Ellenőrzések
 
-- Célzott tesztek: **9/9 zöld** (`graphicsSettings.test.ts`,
-  `mapRender.test.ts`).
-- Teljes Vitest: **711 zöld, 137 kihagyva** (79 fájl zöld, 13 kihagyva).
+- Célzott tesztek: **12/12 zöld** (`graphicsSettings.test.ts`,
+  `mapRender.test.ts`), beleértve a látótávolság normalizálását, korlátait és a
+  zoomskálázást.
+- Teljes Vitest: **714 zöld, 137 kihagyva** (79 fájl zöld, 13 kihagyva).
 - Gyökér TypeScript: tiszta; `server/` TypeScript: tiszta.
-- Production build: sikeres. Az új Grafika chunk 2,45 kB (gzip 1,19 kB), a
-  MapView chunk 19,45 kB (gzip 6,75 kB).
-- Böngészős vizuális QA: Grafika oldal világos és sötét témán rendben; Low–
-  Ultra váltás és csúszka működik; a rögzítési Mapbox nézet konzolhiba nélkül
-  betöltött.
+- Production build: sikeres. A Grafika chunk 3,30 kB (gzip 1,36 kB), a
+  MapView chunk 20,32 kB (gzip 7,03 kB).
+- Böngészős vizuális QA: a Grafika oldal és a 3D köd világos/sötét témán
+  rendben; a 250 m, 1000 m és 5000 m beállítás skálázza a kamerát; 2D-ben
+  nincs hozzáadott köd. A tesztállapot sötét témára és 1000 m-re visszaállt.
 - `git diff --check`: tiszta.
 
 ## Amit készüléken kell mérni
@@ -54,9 +60,10 @@ a következő kötelező lépés a hosszú, valódi készülékes mérés Androi
    WebView memória, hőmérséklet és akkufogyás; különösen Samsung/Xiaomi
    készüléken.
 2. Ellenőrizni, hogy gyors kanyar, 2D/3D és menetirány-követés közben nincs
-   üres térképszél a beállított ráhagyással.
+   üres térképszél a beállított ráhagyással, továbbá a 250 m-es és 5000 m-es
+   3D látótávolság használható marad eltérő képernyőméreteken.
 3. iOS-en ugyanilyen hosszú rögzítés és memóriaellenőrzés; háttérből
-   visszatérés után a térképi rétegek maradjanak meg.
+   visszatérés és térképstílus-váltás után a rétegek és a köd maradjanak meg.
 4. Low/Medium profilon vizuálisan ellenőrizni a POI- és 3D-rétegcsökkentést a
    tényleges éles Mapbox stílusokkal.
 
@@ -68,13 +75,12 @@ mindkét platformra.
 ## Módosított fájlok
 
 `docs/02-funkcionalis-spec.md` · `docs/ai/DECISIONS.md` ·
-`docs/ai/CURRENT_STATE.md` · `src/App.tsx` · `src/components/MapView.tsx` ·
-`src/hooks/useGraphicsSettings.ts` · `src/lib/graphicsSettings.ts` és tesztje ·
-`src/lib/mapRender.ts` és tesztje · `src/screens/settings/SettingsScreen.tsx` ·
-`src/screens/settings/GraphicsScreen.tsx` · `graphics.css`
+`docs/ai/CURRENT_STATE.md` · `src/components/MapView.tsx` ·
+`src/lib/graphicsSettings.ts` és tesztje · `src/lib/mapRender.ts` és tesztje ·
+`src/screens/settings/GraphicsScreen.tsx` · `src/styles/tokens.css`
 
-Az implementáció a `29c7c6f` commitban a `main` ágra felpusholva. A munkafa
-a menet lezárásakor tiszta.
+Az optimalizálási implementáció a `main` ágra commitolva és felpusholva. A
+munkafa a menet lezárásakor tiszta.
 
 ## Telepítés
 

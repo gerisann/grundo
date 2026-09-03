@@ -62,6 +62,12 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   a teljes nyomvonal visszarajzolására egyszerűsíteni: Android WebViewben a
   `GeoJSONSource.setData()` teljes tesszellálást és GPU-feltöltést indít, így
   a költség korábban a megtett távval folyamatosan nőtt.
+- **A render-sugár és a 3D látótávolság két külön beállítás.** A render-sugár
+  a GeoJSON munkakészletet korlátozza; a 250–5000 m-es Viewing Distance a
+  döntött kamera zoomját adja meg. A Mapbox ködtartománya perspektívarelativ,
+  ezért a méteres értéket a kamera zoomjára képezzük, a távoli peremen pedig
+  témaszínű szürke köd ad fokozatos átmenetet. 2D-re váltva mindig az
+  alaptérkép eredeti ködbeállítása áll vissza.
 
 ## Munkamódszer
 
