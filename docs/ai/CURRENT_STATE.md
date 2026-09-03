@@ -1,67 +1,65 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-03** · GRUNDO **#28**
+> Frissítve: **2026-09-03** · GRUNDO **#29**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
 
 ## Jelenlegi cél
 
-A Beállítások → Megjelenés területszín-választójának rendezése és a teljes
-profilfrissítést okozó mentési villanás megszüntetése. Az implementáció és a
-webes vizuális ellenőrzés elkészült; natív készülékes ellenőrzés maradt.
+A Beállítások → Megjelenés területszín-választójának véglegesítése: az összes
+alap- és Pro-szín egyetlen, érintéssel és nyílgombokkal görgethető, végtelenített
+sorban jelenjen meg; a kiválasztott szín középre kerüljön, majd rövid ideig
+összefüggő, azonos színű hexagon-terület fusson végig a képernyő hátterén.
 
 ## Elkészült
 
-1. **Alapszínrács:** mind a 16 szín szabályos, azonos oldalarányú,
-   egymást nem fedő hexagonban jelenik meg, négy sorban és soronként négy
-   elemmel.
-2. **Prémium rács:** mind a 12 Pro-szín ugyanazt a geometriát használja,
-   három 4-es sorban. A zárolt állapot és az előnézet megmaradt.
-3. **Frissítés nélküli mentés:** a Firestore-írás után nincs `reload()` és
-   nincs teljes profilt érintő `loading` állapot. A `ProfileProvider` csak a
-   helyi `cellColor` mezőt frissíti.
-4. **Gyors egymás utáni választás:** a mentések revíziót kapnak, ezért egy
-   korábban indított, később befejeződő kérés nem írhatja felül a frissebb
-   sikeres helyi állapotot.
-5. **Korábbi térkép-optimalizálás változatlanul kész:** fix render-
-   munkakészlet, Low–Ultra grafikai profil, render-sugár, 3D Viewing Distance,
-   szürke távolsági köd, követést megtartó `+ / −` zoom és egyértelmű
-   cellaréteg-kapcsoló már a `main` ágon van.
+1. **Egyetlen közös paletta:** a 16 ingyenes és 12 Pro-szín ugyanabban a
+   vízszintes carouselben van. A Pro-színek nem Pro felhasználónál zároltak.
+2. **Nagy cellák:** a színcellák a korábbi palettához képest körülbelül kétszeres
+   méretűek (`104–128 px`, kis kijelzőn `100 px`).
+3. **Swipe + nyilak:** a sor érintéssel vízszintesen húzható, a scrollbar rejtett,
+   két oldalon külön nyílgomb jelzi és vezérli a görgetést.
+4. **Végtelenített sor:** három ismételt ciklus tartja a görgetést folytonosnak;
+   a scroll pozíció a középső ciklus körül normalizálódik.
+5. **Középre igazítás:** az aktív szín megnyitáskor középre kerül, választáskor
+   a kiválasztott cella középre gördül.
+6. **Terület-animáció:** választás után a középre igazított cella környezetéből
+   összefüggő, azonos színű hexagoncsoport jelenik meg viewport-méretű overlayen.
+   A cellák egyenként, véletlenszerű időzítéssel halványodnak el, minden animáció
+   legkésőbb 5 másodpercen belül befejeződik.
+7. **Reduced motion:** csökkentett animációs rendszerbeállításnál nincs háttér-
+   burst, és a középre igazítás nem használ smooth scrollt.
+8. **Mentési viselkedés változatlan:** a Firestore-írás után nincs teljes profil-
+   vagy oldal-újratöltés; a gyors egymás utáni választások revízióval védettek.
 
 ## Ellenőrzések
 
-- Célzott `cellColors` tesztek: **14/14 zöld**; a 16 alap- és 12 prémiumszín
-  teljes palettája ellenőrzött.
-- Teljes Vitest: **714 zöld, 137 kihagyva** (79 fájl zöld, 13 kihagyva).
-- Gyökér TypeScript: tiszta; `server/` TypeScript: tiszta.
-- Production build: sikeres. A Megjelenés chunk 6,00 kB (gzip 2,40 kB),
-  CSS-e 1,92 kB (gzip 0,77 kB).
-- Böngészős QA: mobil szélességen, világos és sötét témában a 4×4-es alap és
-  3×4-es prémium kiosztás átfedés nélkül, szabályos hexagonokkal jelent meg;
-  a kijelölt, előnézeti és zárolt állapotok megmaradtak. A teszt végén a
-  sötét téma és az eredeti bézs szín maradt beállítva.
-- `git diff --check`: tiszta.
+- A korábban hozzáadott `colorTerritory` tesztek ellenőrzik, hogy a generált
+  cellahalmaz összefüggő és egyedi legyen, illetve hogy minden véletlenített
+  fade legfeljebb 5 másodperc alatt befejeződjön.
+- A módosított `main` forrásfájlokat GitHubon visszaolvastuk, a közös paletta és
+  a Pro-zárolás a várt kódban van.
+- Ebben a munkamenetben **nem állt rendelkezésre futtatható lokális worktree**,
+  ezért teljes `npm test`, TypeScript typecheck és production build nem futott.
+  GitHub CI status check sincs konfigurálva/hozzárendelve ezekhez a commitokhoz.
 
 ## Nyitott ellenőrzések
 
-1. Bejelentkezett, éles Firebase-kapcsolatú környezetben egy szín mentése és
-   másik képernyőn való azonnali megjelenése. A helyi böngészős munkamenetben
-   nem volt írható bejelentkezett felhasználó, ezért valódi Firestore-írást
-   nem végzett a QA.
-2. Android és iOS készüléken a paletta érintési céljai, kis kijelzős tördelése
-   és gyors egymás utáni választása.
-3. A térképi optimalizálás külön nyitott mérése: 10–20 km-es Android/iOS
-   rögzítés, FPS/jank, WebView-memória, hő és akkufogyasztás.
+1. Lokálisan: `npm test`, `npm run typecheck`, majd `npm run build`.
+2. Android/iOS készüléken: swipe, nyílgombok, végtelenítés és a háttér-burst
+   vizuális ellenőrzése kis és nagy kijelzőn.
+3. Bejelentkezett felhasználóval egy ingyenes és egy Pro-szín mentésének
+   ellenőrzése valós Firestore-kapcsolaton.
 
 ## Módosított fájlok
 
-`docs/02-funkcionalis-spec.md` · `docs/ai/DECISIONS.md` ·
-`docs/ai/CURRENT_STATE.md` · `src/hooks/ProfileProvider.tsx` ·
+`src/components/CellColorCarousel.tsx` ·
 `src/screens/settings/AppearanceScreen.tsx` ·
-`src/screens/settings/cellColor.css`
+`src/screens/settings/cellColor.css` ·
+`docs/ai/CURRENT_STATE.md`
 
-Az implementáció a `main` ágra commitolva és felpusholva. A munkafa a menet
-lezárásakor tiszta.
+Az implementáció a `main` ágra felpusholva. Telepítés előtt a lokális build és
+készülékes smoke test javasolt.
 
 ## Telepítés
 
-Frontend-, backend- vagy natív telepítés nem történt.
+Frontend-, backend- vagy natív telepítés nem történt ebben a munkamenetben.
