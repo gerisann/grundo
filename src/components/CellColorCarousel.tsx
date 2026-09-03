@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { CELL_COLORS, type CellColor } from '@/lib/cellColors';
 import { generateColorTerritory, type ColorTerritoryCell } from '@/lib/colorTerritory';
 
 interface CellColorCarouselProps {
   colors: readonly CellColor[];
   active: CellColor;
-  locked: boolean;
+  isLocked?: (color: CellColor) => boolean;
   onChoose: (color: CellColor) => void;
 }
 
@@ -13,13 +14,20 @@ interface Burst {
   id: number;
   color: string;
   cellWidth: number;
+  centerX: number;
+  centerY: number;
   cells: ColorTerritoryCell[];
 }
 
 const COPIES = [0, 1, 2] as const;
 const ITEM_GAP_PX = 16;
 
-export function CellColorCarousel({ colors, active, locked, onChoose }: CellColorCarouselProps) {
+export function CellColorCarousel({
+  colors,
+  active,
+  isLocked = () => false,
+  onChoose,
+}: CellColorCarouselProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const burstDelayRef = useRef<number | null>(null);
   const burstEndRef = useRef<number | null>(null);
@@ -37,23 +45,28 @@ export function CellColorCarousel({ colors, active, locked, onChoose }: CellColo
   }, []);
 
   function select(event: MouseEvent<HTMLButtonElement>, color: CellColor) {
-    if (locked) return;
-    centerElement(viewportRef.current, event.currentTarget, 'smooth');
-    scheduleBurst(color);
+    if (isLocked(color)) return;
+    centerElement(viewportRef.current, event.currentTarget, reducedMotion() ? 'auto' : 'smooth');
+    scheduleBurst(color, event.currentTarget.offsetWidth);
     onChoose(color);
   }
 
-  function scheduleBurst(color: CellColor) {
+  function scheduleBurst(color: CellColor, cellWidth: number) {
     if (burstDelayRef.current !== null) window.clearTimeout(burstDelayRef.current);
     if (burstEndRef.current !== null) window.clearTimeout(burstEndRef.current);
     setBurst(null);
 
-    const delay = reducedMotion() ? 0 : 280;
+    const delay = reducedMotion() ? 0 : 320;
     burstDelayRef.current = window.setTimeout(() => {
+      const viewportBox = viewportRef.current?.getBoundingClientRect();
+      if (!viewportBox) return;
+
       const next: Burst = {
         id: ++burstIdRef.current,
         color: CELL_COLORS[color].hex,
-        cellWidth: viewportRef.current?.querySelector<HTMLElement>('[data-color-swatch]')?.offsetWidth ?? 112,
+        cellWidth,
+        centerX: viewportBox.left + viewportBox.width / 2,
+        centerY: viewportBox.top + viewportBox.height / 2,
         cells: generateColorTerritory(),
       };
       setBurst(next);
@@ -65,12 +78,17 @@ export function CellColorCarousel({ colors, active, locked, onChoose }: CellColo
     const viewport = viewportRef.current;
     const swatch = viewport?.querySelector<HTMLElement>('[data-color-swatch]');
     if (!viewport || !swatch) return;
-    viewport.scrollBy({ left: direction * (swatch.offsetWidth + ITEM_GAP_PX), behavior: 'smooth' });
+    viewport.scrollBy({
+      left: direction * (swatch.offsetWidth + ITEM_GAP_PX),
+      behavior: reducedMotion() ? 'auto' : 'smooth',
+    });
   }
 
   return (
     <div className="ccolor__carousel">
-      {burst ? <TerritoryBurst key={burst.id} burst={burst} /> : null}
+      {burst && typeof document !== 'undefined'
+        ? createPortal(<TerritoryBurst key={burst.id} burst={burst} />, document.body)
+        : null}
       <button
         type="button"
         className="ccolor__arrow ccolor__arrow--left"
@@ -83,6 +101,7 @@ export function CellColorCarousel({ colors, active, locked, onChoose }: CellColo
         ref={viewportRef}
         className="ccolor__viewport"
         onScroll={(event) => normalizeInfiniteScroll(event.currentTarget, colors.length)}
+        aria-label="Területszín-választó"
       >
         <div className="ccolor__track">
           {COPIES.flatMap((copy) => colors.map((color) => (
@@ -91,7 +110,7 @@ export function CellColorCarousel({ colors, active, locked, onChoose }: CellColo
               copy={copy}
               color={color}
               active={color === active}
-              locked={locked}
+              locked={isLocked(color)}
               onClick={select}
             />
           )))}
@@ -134,11 +153,12 @@ function ColorSwatch({
       aria-disabled={locked}
       aria-label={locked ? `${label} — Pro-előfizetéssel` : label}
       title={locked ? `${label} — Pro-előfizetéssel` : label}
+      tabIndex={copy === 1 ? 0 : -1}
       style={{ '--ccolor': hex } as CSSProperties}
       onClick={(event) => onClick(event, color)}
     >
       <span className="ccolor__fill" />
-      {locked ? <span className="ccolor__lock" aria-hidden="true">🔒</span> : null}
+      {locked ? <span className="ccolor__lock" aria-hidden="true">PRO</span> : null}
       {active ? <span className="ccolor__check" aria-hidden="true">✓</span> : null}
     </button>
   );
@@ -156,8 +176,8 @@ function TerritoryBurst({ burst }: { burst: Burst }) {
             '--ccolor': burst.color,
             '--cell-width': `${burst.cellWidth}px`,
             '--cell-height': `${cellHeight}px`,
-            '--cell-x': `${burst.cellWidth * (cell.q + cell.r / 2)}px`,
-            '--cell-y': `${cellHeight * 0.75 * cell.r}px`,
+            '--cell-x': `${burst.centerX + burst.cellWidth * (cell.q + cell.r / 2)}px`,
+            '--cell-y': `${burst.centerY + cellHeight * 0.75 * cell.r}px`,
             '--cell-delay': `${cell.delayMs}ms`,
             '--cell-duration': `${cell.durationMs}ms`,
           } as CSSProperties}
