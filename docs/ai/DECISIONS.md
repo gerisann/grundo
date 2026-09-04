@@ -90,6 +90,33 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   #9). **Ha új élő-preview kód `traceToCellPath`-ot vagy `buildActivityGeometry`-t
   hívna GPS-mintánként, az hiba — a `IncrementalCellPath`/`IncrementalActivityGeometry`
   meglévő cache-einek kell futnia helyette.**
+- **A `visibleTrackSegments()` NEM szűk keresztmetszet — ne írd át
+  inkrementálisra.** A #31 átadója gyanúsítottként jelölte meg (O(n) scan
+  minden throttolt `setData`-nál). Mérve (#32, 12 km / 2397 minta, követő
+  nézet): 200 pontnál 40 µs, 2397 pontnál 32 µs — LAPOS, mert a kimenet
+  sugár-vágott, és a `trackSyncIntervalMs` throttling amúgy is ritkítja. A
+  jelenlegi forma elég; az inkrementálissá tétel csak kockázatot adna.
+- **A rögzítő per-minta tömbmásolása és az IndexedDB-írás sem szűk
+  keresztmetszet.** Az `applySample()` teljes `points` másolása 200→2000
+  pontnál 3 µs → 6 µs. A „minden mintánál ír az IndexedDB-be" állítás pedig
+  téves volt: a `createRunPersister` 2000 ms-os `minIntervalMs`-szel
+  összevonja az írásokat (`tracking/storage.ts`).
+- **A `processActivityGeometry()` költségét a HUROKZÁRÁS hajtja, nem a
+  pontszám.** Mérve (#32, ugyanaz az útvonal): hurok nélkül 0,95 ms, az első
+  hurok után 5,34 ms, 6 huroknál (2536 fal- + 6979 belső cella) 23,16 ms
+  hívásonként — nagyjából 3,3 µs / belső cella, és minden újraszámolásnál a
+  TELJES hurokkészletre lefut, pedig a korábban bezárt hurkok már nem
+  változnak. A `TrackingScreen` preview-ja NEM minden GPS-mintánál fut, hanem
+  új H3 cellánál vagy 25 méterenként (`cellRevision` / `distanceBucket`
+  függőségek) — a terhelés a per-hívás költség ÉS a gyakoriság szorzata.
+- **A főszál-terhelést valódi eszközön a beépített mérő adja, nem érzés.**
+  `lib/perfMeter.ts` + `components/PerfOverlay.tsx` (admin-only, alapból
+  kikapcsolt), a hozzá tartozó, kódban élő teszt-útvonallal
+  (`admin/labPerfScenario.ts`, LAB E2E indító). A LAB-scenariók
+  `localStorage`-ban élnek, tehát eszközhöz kötöttek — telefonon mérni csak
+  beépített útvonallal lehet. **A mérő-útvonal paraméterein ne változtass:**
+  azonos a `tmp/measure-preview-cost.test.ts` mérőpadjával, ettől
+  összehasonlítható az asztali és a telefonos szám.
 
 ## Munkamódszer
 

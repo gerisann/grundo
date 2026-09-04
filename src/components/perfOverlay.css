@@ -1,0 +1,152 @@
+/**
+ * Főszál-mérő (GRUNDO #32) — admin-only diagnosztikai réteg a rögzítő fölött.
+ *
+ * Szándékosan sűrű és monospace: számot kell róla leolvasni terepen, nem
+ * esztétikai elem. A pozíció a biztonságos zóna alatt marad, hogy iPhone-on
+ * se csússzon a bevágás alá.
+ *
+ * A `--perf-overlay-top` alapértéke a képernyő tetejéhez tapasztja. A LAB E2E
+ * sandbox viszont egy 82 px magas, teljes szélességű sávot tesz oda
+ * (`lab-e2e-tracking.css`, z-index 10020) — és a mérés PONT ott zajlik, tehát
+ * ott lejjebb kell csúsznia. A magas z-index ugyanezért kell: enélkül a
+ * sandbox sávja alá kerülne.
+ */
+
+:root {
+  --perf-overlay-top: calc(var(--safe-top) + var(--sp-3));
+}
+
+.lab-e2e {
+  --perf-overlay-top: calc(var(--safe-top) + 92px);
+}
+
+.perf-overlay__pill {
+  position: absolute;
+  top: var(--perf-overlay-top);
+  right: var(--sp-3);
+  z-index: 10030;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: .75;
+}
+
+/* Bekapcsolt mérésnél látszania kell, hogy fut — véletlenül ne maradjon bent. */
+.perf-overlay__pill--live {
+  border-color: var(--warning);
+  color: var(--warning);
+  opacity: 1;
+}
+
+.perf-overlay {
+  position: absolute;
+  top: var(--perf-overlay-top);
+  right: var(--sp-3);
+  z-index: 10030;
+  width: min(260px, calc(100% - var(--sp-5)));
+  padding: var(--sp-3);
+  display: grid;
+  gap: var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: var(--fs-label);
+}
+
+.perf-overlay__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.perf-overlay__head strong {
+  font-size: var(--fs-small);
+}
+
+.perf-overlay__head button {
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--fs-heading);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.perf-overlay__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.perf-overlay__actions button {
+  flex: 1;
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.perf-overlay__actions button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.perf-overlay__actions .perf-overlay__on {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.perf-overlay__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
+
+.perf-overlay__table th,
+.perf-overlay__table td {
+  padding: 2px 0;
+  text-align: right;
+}
+
+.perf-overlay__table thead th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.perf-overlay__table tbody th {
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.perf-overlay__max {
+  color: var(--warning);
+}
+
+.perf-overlay__notes {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.perf-overlay__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}

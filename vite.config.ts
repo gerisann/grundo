@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -31,6 +31,16 @@ const nativeBuild = releaseChannel !== 'web';
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    /**
+     * A `tmp/` SOSEM VERZIÓKÖVETETT munkaterület (lásd `CLAUDE.md`) — mérőpadok
+     * és eldobható próbák helye. A vitest alapértelmezett mintája viszont
+     * felszedte onnan a `*.test.ts` fájlokat, és egy eldobható mérés bukó
+     * tesztként jelent meg a teljes futásban (GRUNDO #32). A scratch mappa
+     * nem befolyásolhatja a `npm run test` eredményét.
+     */
+    exclude: [...configDefaults.exclude, 'tmp/**'],
+  },
   define: {
     __GRUNDO_VERSION__: JSON.stringify(releaseVersion),
     __GRUNDO_REVISION__: JSON.stringify(revision),

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
 import type { LabPhase, LabPlayer } from './labScenarioEngine';
 import { createLabE2eSession, type LabE2ePlaybackRate } from './labE2eSession';
+import { PERF_SCENARIO_ID, PERF_TEST_SCENARIO } from './labPerfScenario';
 
 const SCENARIO_STORAGE_KEY = 'grundo.lab.scenarios.v2';
 
@@ -17,7 +18,12 @@ type SavedScenario = {
 
 export function LabE2eLauncherScreen() {
   const navigate = useNavigate();
-  const scenarios = useMemo(loadScenarios, []);
+  /**
+   * A beépített mérő-scenario MINDIG elöl van, mentés nélkül is (GRUNDO #32).
+   * A mentett scenariók `localStorage`-ban élnek, tehát telefonon üres a
+   * lista — a teljesítménymérést viszont pont ott kell tudni elindítani.
+   */
+  const scenarios = useMemo(() => [PERF_TEST_SCENARIO, ...loadScenarios()], []);
   const [scenarioId, setScenarioId] = useState(scenarios[0]?.id ?? '');
   const scenario = scenarios.find((item) => item.id === scenarioId) ?? scenarios[0] ?? null;
   const [phaseId, setPhaseId] = useState(scenario?.phases[0]?.id ?? '');
@@ -25,7 +31,14 @@ export function LabE2eLauncherScreen() {
   const [playerId, setPlayerId] = useState(phase?.runs[0]?.playerId ?? '');
   const run = phase?.runs.find((item) => item.playerId === playerId) ?? phase?.runs[0] ?? null;
   const player = scenario?.players.find((item) => item.id === run?.playerId) ?? null;
-  const [playbackRate, setPlaybackRate] = useState<LabE2ePlaybackRate>('100');
+  /**
+   * A mérő-scenario ALAPBÓL 1× — gyorsított lejátszásnál a mért
+   * ezredmásodperc ugyanannyi, de percenként sokszor annyi újraszámolás fut,
+   * és a „mennyire terhelt a főszál" kérdésre így hamis képet adna.
+   */
+  const [playbackRate, setPlaybackRate] = useState<LabE2ePlaybackRate>(
+    scenarioId === PERF_SCENARIO_ID ? '1' : '100',
+  );
 
   function selectScenario(id: string) {
     setScenarioId(id);
@@ -33,6 +46,7 @@ export function LabE2eLauncherScreen() {
     const firstPhase = next?.phases[0] ?? null;
     setPhaseId(firstPhase?.id ?? '');
     setPlayerId(firstPhase?.runs[0]?.playerId ?? '');
+    setPlaybackRate(id === PERF_SCENARIO_ID ? '1' : '100');
   }
 
   function selectPhase(id: string) {
@@ -73,61 +87,62 @@ export function LabE2eLauncherScreen() {
           </div>
         </section>
 
-        {scenarios.length === 0 ? (
+        {scenarioId === PERF_SCENARIO_ID ? (
           <section className="admin-card">
-            <strong>Nincs mentett LAB scenario.</strong>
-            <p>Menj vissza a Scenario LAB-ba, állítsd össze a route-ot, majd használd a „Scenario mentése” gombot.</p>
-            <Button onClick={() => navigate('/admin/lab')}>Vissza a LAB-ba</Button>
+            <strong>Teljesítménymérés</strong>
+            <p style={{ lineHeight: 1.5 }}>
+              Indítsd el, majd a rögzítő képernyő jobb felső ⏱ gombjával kapcsold
+              be a főszál-mérőt. A hurok bezárása után figyeld a „· elszámolás"
+              sort — ez az a szám, amit keresünk.
+            </p>
           </section>
-        ) : (
-          <>
-            <Field label="Scenario">
-              <select value={scenario?.id ?? ''} onChange={(event) => selectScenario(event.target.value)}>
-                {scenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </Field>
+        ) : null}
 
-            <Field label="Phase">
-              <select value={phase?.id ?? ''} onChange={(event) => selectPhase(event.target.value)}>
-                {(scenario?.phases ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </Field>
+        <Field label="Scenario">
+          <select value={scenario?.id ?? ''} onChange={(event) => selectScenario(event.target.value)}>
+            {scenarios.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </Field>
 
-            <Field label="Player">
-              <select value={run?.playerId ?? ''} onChange={(event) => setPlayerId(event.target.value)}>
-                {(phase?.runs ?? []).map((item) => {
-                  const name = scenario?.players.find((p) => p.id === item.playerId)?.name ?? item.playerId;
-                  const suffix = item.route.length >= 2 ? `${item.route.length} waypoint` : 'nincs route';
-                  return <option key={item.id} value={item.playerId}>{name} · {suffix}</option>;
-                })}
-              </select>
-            </Field>
+        <Field label="Phase">
+          <select value={phase?.id ?? ''} onChange={(event) => selectPhase(event.target.value)}>
+            {(scenario?.phases ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </Field>
 
-            <SegmentedControl
-              label="Lejátszás"
-              value={playbackRate}
-              onChange={(value) => setPlaybackRate(value as LabE2ePlaybackRate)}
-              options={[
-                { value: '1', label: '1×' },
-                { value: '10', label: '10×' },
-                { value: '100', label: '100×' },
-                { value: 'max', label: 'MAX' },
-              ]}
-              columns={4}
-              block
-            />
+        <Field label="Player">
+          <select value={run?.playerId ?? ''} onChange={(event) => setPlayerId(event.target.value)}>
+            {(phase?.runs ?? []).map((item) => {
+              const name = scenario?.players.find((p) => p.id === item.playerId)?.name ?? item.playerId;
+              const suffix = item.route.length >= 2 ? `${item.route.length} waypoint` : 'nincs route';
+              return <option key={item.id} value={item.playerId}>{name} · {suffix}</option>;
+            })}
+          </select>
+        </Field>
 
-            <section className="admin-card" style={{ display: 'grid', gap: 8 }}>
-              <strong>{player?.name ?? '—'}</strong>
-              <span>{run?.config.activityType ?? '—'} · {run?.route.length ?? 0} waypoint</span>
-              <span>Sandbox: {scenario?.name ?? '—'}</span>
-            </section>
+        <SegmentedControl
+          label="Lejátszás"
+          value={playbackRate}
+          onChange={(value) => setPlaybackRate(value as LabE2ePlaybackRate)}
+          options={[
+            { value: '1', label: '1×' },
+            { value: '10', label: '10×' },
+            { value: '100', label: '100×' },
+            { value: 'max', label: 'MAX' },
+          ]}
+          columns={4}
+          block
+        />
 
-            <Button block disabled={!run || run.route.length < 2} onClick={launch}>
-              Indítás éles UI-ban
-            </Button>
-          </>
-        )}
+        <section className="admin-card" style={{ display: 'grid', gap: 8 }}>
+          <strong>{player?.name ?? '—'}</strong>
+          <span>{run?.config.activityType ?? '—'} · {run?.route.length ?? 0} waypoint</span>
+          <span>Sandbox: {scenario?.name ?? '—'}</span>
+        </section>
+
+        <Button block disabled={!run || run.route.length < 2} onClick={launch}>
+          Indítás éles UI-ban
+        </Button>
       </div>
     </main>
   );

@@ -25,6 +25,9 @@ import { hasCompactInterior, IncrementalActivityGeometry, processActivityGeometr
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import { isNativeApp, isNativeIos } from '@/lib/platform';
+import { measurePerf, notePerf, recordPerf } from '@/lib/perfMeter';
+import { PerfOverlay } from '@/components/PerfOverlay';
+import { useAuth } from '@/hooks/AuthProvider';
 import {
   currentSpeedMps,
   lapDistances,
@@ -87,6 +90,12 @@ export function TrackingScreen() {
   const recorder = useRecorderContext();
   const profile = useProfile().profile;
   const profileUid = profile?.uid ?? '';
+  /**
+   * A főszál-mérő CSAK ADMINNAK jelenik meg (GRUNDO #32). Ugyanaz a
+   * megfontolás, mint a Beállítások admin belépőjénél: ez kényelem, nem
+   * védelem — a mérő semmilyen adatot nem ír és nem olvas a szerverről.
+   */
+  const { role } = useAuth();
   /**
    * A SAJÁT cellaszín KULCSA — a rögzítés képernyő területszíneihez.
    *
@@ -268,8 +277,9 @@ export function TrackingScreen() {
       geometryCache.current.reset();
       geometrySession.current = geometrySessionKey;
     }
+    const previewStartedAt = performance.now();
     try {
-      const geometry = geometryCache.current.update(displayPoints);
+      const geometry = measurePerf('preview.geometry', () => geometryCache.current.update(displayPoints));
       /**
        * Nagy (compact belsejű) huroknál a motor SZÁNDÉKOSAN dob, ha valódi
        * ownershipet kap (`game/index.ts` `processActivityGeometry` őre) — a
@@ -288,7 +298,7 @@ export function TrackingScreen() {
         : new Map(
             (nearby?.cells ?? []).map((cell) => [cell.cell, { owner: cell.owner, defense: cell.defense }]),
           );
-      const result = processActivityGeometry(
+      const result = measurePerf('preview.process', () => processActivityGeometry(
         {
           points: displayPoints,
           type: displayType,
@@ -299,7 +309,7 @@ export function TrackingScreen() {
           gpEarnedToday: 0,
         },
         geometry,
-      );
+      ));
       const own: PreviewCell[] = [];
       const stolen: PreviewCell[] = [];
       const claimable: string[] = [];
@@ -310,20 +320,29 @@ export function TrackingScreen() {
        * végigolvasását jelentené minden új cellánál.
        */
       const snapshotCells = new Map<string, CaptureCell>();
-      for (const [cell, fate] of result.claim?.fates ?? []) {
-        const defense = result.claim?.updates.get(cell)?.defense ?? 1;
-        snapshotCells.set(cell, { fate, defense });
-        if (fate === 'breakthrough') continue;
-        /**
-         * `owner` A SAJÁT UID — enélkül a `MapView` `areaColor()`-a a
-         * szerep-alapú alapszínre esne vissza, és az élő előnézet mezői más
-         * színűek lennének, mint ugyanezek a mezők a mentés után. Geri kérése
-         * (2026-09-01): rögzítés közben is a választott saját szín látszódjon.
-         */
-        const item = { cell, defense, owner: profileUid, preview: true as const };
-        (fate === 'stolen' ? stolen : own).push(item);
-        claimable.push(cell);
-      }
+      measurePerf('preview.fates', () => {
+        for (const [cell, fate] of result.claim?.fates ?? []) {
+          const defense = result.claim?.updates.get(cell)?.defense ?? 1;
+          snapshotCells.set(cell, { fate, defense });
+          if (fate === 'breakthrough') continue;
+          /**
+           * `owner` A SAJÁT UID — enélkül a `MapView` `areaColor()`-a a
+           * szerep-alapú alapszínre esne vissza, és az élő előnézet mezői más
+           * színűek lennének, mint ugyanezek a mezők a mentés után. Geri kérése
+           * (2026-09-01): rögzítés közben is a választott saját szín látszódjon.
+           */
+          const item = { cell, defense, owner: profileUid, preview: true as const };
+          (fate === 'stolen' ? stolen : own).push(item);
+          claimable.push(cell);
+        }
+      });
+
+      recordPerf('preview.total', performance.now() - previewStartedAt);
+      notePerf('points', displayPoints.length);
+      notePerf('cells', geometry.cellPath.length);
+      notePerf('loops', geometry.loops.length);
+      notePerf('fates', snapshotCells.size);
+
       return {
         path: cellPath,
         claimable,
@@ -778,6 +797,8 @@ export function TrackingScreen() {
           plainCells={cells}
         />
       ) : null}
+
+      {role ? <PerfOverlay /> : null}
 
       {/*
         A SZÜNET JELZÉSE A DOKKHOZ KÖLTÖZÖTT (Geri, 2026-08-26). Korábban itt
