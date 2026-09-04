@@ -462,6 +462,14 @@ service cloud.firestore {
     match /rolloverRuns/{runId}  { allow read: if isAdmin(); allow write: if false; }
     match /rateLimits/{counterId} { allow read, write: if false; }
 
+    /**
+     * Terepi főszál-mérések. Kizárólag a backend írja és olvassa
+     * (`/api/admin/perf-snapshots`), a felület onnan kapja — a kliens
+     * közvetlenül nem fér hozzá. A szabály nem változtat a viselkedésen (a
+     * lezáró tiltás amúgy is ez), de itt is látszódjon, hogy szándékos.
+     */
+    match /perfSnapshots/{snapshotId} { allow read, write: if false; }
+
     // ── minden más tiltva ─────────────────────────────────────────────────
 
     match /{document=**} {

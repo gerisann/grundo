@@ -513,4 +513,76 @@ describe.skipIf(!EMULATOR)('Admin API — valódi Firestore ellen', () => {
       expect((await call('/status')).body.canWrite).toBe(true);
     });
   });
+
+  describe('főszál-mérések', () => {
+    const snapshot = (id: string, at: number) => ({
+      id,
+      at,
+      platform: 'ios',
+      userAgent: 'GRUNDO/iPhone',
+      stats: [
+        { key: 'preview.total', count: 40, lastMs: 12, avgMs: 9.5, maxMs: 31, p95Ms: 22, perMinute: 18 },
+      ],
+      notes: [['loops', 8], ['cells', 16898]],
+    });
+
+    beforeEach(async () => {
+      const snap = await db.collection(collections.perfSnapshots!).get();
+      await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
+    });
+
+    it('felveszi a mérést, és vissza is adja', async () => {
+      const posted = await call('/perf-snapshots', {
+        method: 'POST',
+        body: snapshot('meres-1', 1_700_000_000_000),
+      });
+      expect(posted.status).toBe(200);
+
+      const { body } = await call('/perf-snapshots');
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0]).toMatchObject({
+        id: 'meres-1',
+        platform: 'ios',
+        at: 1_700_000_000_000,
+      });
+      expect(body.entries[0].stats[0].maxMs).toBe(31);
+      expect(body.entries[0].notes).toEqual([['loops', 8], ['cells', 16898]]);
+    });
+
+    /**
+     * A terepen elmaradt feltöltést az admin oldal újrapróbálja. Ha ez
+     * duplikálna, egy mérés többször jelenne meg a listában — ezért írja a
+     * végpont a KLIENS azonosítójára a dokumentumot.
+     */
+    it('az ismételt feltöltés nem duplikál', async () => {
+      await call('/perf-snapshots', { method: 'POST', body: snapshot('meres-1', 1) });
+      await call('/perf-snapshots', { method: 'POST', body: snapshot('meres-1', 1) });
+
+      const { body } = await call('/perf-snapshots');
+      expect(body.entries).toHaveLength(1);
+    });
+
+    it('a legfrissebb mérés van elöl', async () => {
+      await call('/perf-snapshots', { method: 'POST', body: snapshot('regi', 1_000) });
+      await call('/perf-snapshots', { method: 'POST', body: snapshot('uj', 2_000) });
+
+      const { body } = await call('/perf-snapshots');
+      expect(body.entries.map((entry: { id: string }) => entry.id)).toEqual(['uj', 'regi']);
+    });
+
+    it('a hibás azonosítót visszautasítja', async () => {
+      const bad = await call('/perf-snapshots', {
+        method: 'POST',
+        body: snapshot('../szokes', 1),
+      });
+      expect(bad.status).toBe(400);
+    });
+
+    it('a readonly admin nem tölthet fel, de olvashat', async () => {
+      currentRole = 'readonly';
+      const write = await call('/perf-snapshots', { method: 'POST', body: snapshot('m', 1) });
+      expect(write.status).toBe(403);
+      expect((await call('/perf-snapshots')).status).toBe(200);
+    });
+  });
 });

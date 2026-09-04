@@ -1,5 +1,6 @@
 import { auth } from './firebase';
 import { appCheckHeader } from './appCheck';
+import type { PerfHistoryEntry } from './perfMeter';
 import type { ActivityType } from '@/types';
 
 /**
@@ -778,6 +779,14 @@ export interface AdminPushTest {
   attempts: AdminPushAttempt[];
   sent: number;
   failed: number;
+}
+
+/**
+ * Egy szerverre feltöltött főszál-mérés. Ugyanaz, mint a helyi
+ * `PerfHistoryEntry`, kiegészítve azzal, mikor érkezett meg.
+ */
+export interface ServerPerfSnapshot extends PerfHistoryEntry {
+  uploadedAt: string | null;
 }
 
 /** A `POST /api/jobs/banda-rollover` válasza — lásd `server/src/jobs/bandaRollover.ts`. */
@@ -1745,6 +1754,20 @@ export const api = {
    * el ID-tokennel, ugyanúgy, mint az ütemező a megosztott titkot.
    */
   adminRunBandaRollover: () => request<BandaRolloverResult>('/api/jobs/banda-rollover', { method: 'POST' }),
+
+  /**
+   * Egy mentett főszál-mérés feltöltése. A dokumentum azonosítója a mérésé,
+   * ezért az ismételt küldés felülír, nem duplikál — a telefon offline is
+   * menthet, és a feltöltés később pótolható.
+   */
+  adminUploadPerfSnapshot: (entry: PerfHistoryEntry) =>
+    request<{ id: string; stats: number }>('/api/admin/perf-snapshots', {
+      method: 'POST',
+      body: JSON.stringify(entry),
+    }),
+
+  adminPerfSnapshots: (limit = 50) =>
+    request<{ entries: ServerPerfSnapshot[] }>(`/api/admin/perf-snapshots?limit=${limit}`),
 
   adminGameplay: () => request<GameplayState>('/api/admin/gameplay'),
 

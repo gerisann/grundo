@@ -73,6 +73,8 @@ export const COLLECTIONS = {
   territoryBlobs: 'territoryBlobs',
   bandas: 'bandas',
   inviteCodes: 'inviteCodes',
+  /** Terepen rögzített főszál-mérések, az admin `PerfOverlay` mentéséből. */
+  perfSnapshots: 'perfSnapshots',
 } as const;
 
 /** Az `appConfig` dokumentumainak azonosítói. */

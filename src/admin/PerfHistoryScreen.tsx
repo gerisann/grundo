@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui';
-import { clearPerfHistory, readPerfHistory, type PerfHistoryEntry } from '@/lib/perfMeter';
+import { api, type ServerPerfSnapshot } from '@/lib/api';
+import {
+  clearPerfHistory,
+  markPerfSnapshotSynced,
+  readPerfHistory,
+  type PerfHistoryEntry,
+} from '@/lib/perfMeter';
 import '@/components/perfOverlay.css';
 
 /** Magyar felirat a mérőkulcsokhoz; ismeretlen kulcs a saját nevén jelenik meg. */
@@ -30,18 +36,71 @@ function shortUserAgent(ua: string): string {
   return ua.length > 70 ? `${ua.slice(0, 70)}…` : ua;
 }
 
+interface Row extends PerfHistoryEntry {
+  /** Megvan-e a szerveren. Ami nincs, az csak ezen az eszközön létezik. */
+  onServer: boolean;
+}
+
 /**
- * A `PerfOverlay`-ban mentett terepi mérések — admin nézet (GRUNDO #35).
+ * A `PerfOverlay`-ban mentett terepi mérések — admin nézet (GRUNDO #35, #36).
  *
- * MIÉRT KÜLÖN OLDAL, NEM RÉSZ AZ ÁTTEKINTŐBEN: a mérés a JÁTÉKOS eszközén
- * történik és a `localStorage`-ba mentődik (lásd `src/lib/perfMeter.ts`),
- * tehát ez a lista csak akkor mutat valamit, ha UGYANAZON az eszközön (és
- * böngészőben) nyitod meg az admint, amelyiken a mérés készült — nincs
- * szerveroldali szinkron. Ez a `docs/ai/CURRENT_STATE.md` #34-es nyitott
- * ügyének (3. pont) a megoldása: eddig a Főszál-mérő csak élőben látszott.
+ * A mérés a JÁTÉKOS eszközén készül, és először mindig a `localStorage`-ba
+ * kerül: rögzítés közben nem lehet a hálózatra bízni. A mentés ezért fel is
+ * tölti a szerverre (`/api/admin/perf-snapshots`), és ez a lista a KETTŐ
+ * uniója. Így egy telefonos mérés a gépen is elemezhető — enélkül a #35-ös
+ * változat csak azon az egy készüléken mutatott bármit, amelyiken a mérés
+ * készült.
+ *
+ * Ha a feltöltés a terepen nem sikerült, a bejegyzés helyben `synced: false`
+ * marad; ez az oldal megnyitáskor újra megpróbálja felküldeni.
  */
 export function PerfHistoryScreen() {
-  const [entries, setEntries] = useState<PerfHistoryEntry[]>(() => readPerfHistory());
+  const [rows, setRows] = useState<Row[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(true);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    const local = readPerfHistory();
+    let server: ServerPerfSnapshot[] = [];
+    try {
+      server = (await api.adminPerfSnapshots()).entries;
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'A szerveroldali lista nem érhető el.');
+    }
+
+    const merged = new Map<string, Row>();
+    for (const entry of server) merged.set(entry.id, { ...entry, onServer: true });
+    for (const entry of local) {
+      if (!merged.has(entry.id)) merged.set(entry.id, { ...entry, onServer: false });
+    }
+
+    setRows([...merged.values()].sort((a, b) => b.at - a.at));
+    setBusy(false);
+  }, []);
+
+  useEffect(() => {
+    /**
+     * Megnyitáskor pótoljuk a terepen elmaradt feltöltéseket. A végpont a
+     * mérés saját azonosítójára ír, tehát az ismételt küldés ártalmatlan.
+     */
+    async function loadAndCatchUp(): Promise<void> {
+      const pending = readPerfHistory().filter((entry) => entry.synced !== true);
+      for (const entry of pending) {
+        try {
+          await api.adminUploadPerfSnapshot(entry);
+          markPerfSnapshotSynced(entry.id);
+        } catch {
+          // Nincs hálózat vagy nincs jogosultság — a helyi másolat megmarad.
+        }
+      }
+      await load();
+    }
+    void loadAndCatchUp();
+  }, [load]);
+
+  const localOnly = rows.filter((row) => !row.onServer).length;
 
   return (
     <div className="admin-page">
@@ -49,24 +108,38 @@ export function PerfHistoryScreen() {
         <div>
           <h1>Teljesítmény</h1>
           <p className="admin-muted">
-            A Főszál-mérőben (rögzítés közben, „⏱" gomb) mentett terepi mérések —
-            csak erről az eszközről.
+            A Főszál-mérőben (rögzítés közben, „⏱" gomb) mentett terepi mérések.
+            A mentés felkerül a szerverre, tehát a telefonos mérés itt, gépen is
+            olvasható.
           </p>
         </div>
-        {entries.length > 0 ? (
+        {readPerfHistory().length > 0 ? (
           <Button
             variant="secondary"
             onClick={() => {
               clearPerfHistory();
-              setEntries([]);
+              void load();
             }}
           >
-            Előzmény törlése
+            Helyi előzmény törlése
           </Button>
         ) : null}
       </header>
 
-      {entries.length === 0 ? (
+      {error ? (
+        <section className="admin-card">
+          <p className="admin-muted">
+            A szerveroldali lista nem érhető el: {error}. Ami látszik, az ennek
+            az eszköznek a helyi előzménye.
+          </p>
+        </section>
+      ) : null}
+
+      {busy ? (
+        <section className="admin-card">
+          <p className="admin-muted">Betöltés…</p>
+        </section>
+      ) : rows.length === 0 ? (
         <section className="admin-card">
           <p className="admin-muted">
             Még nincs mentett mérés. Kapcsold be a Főszál-mérőt a rögzítő
@@ -75,11 +148,12 @@ export function PerfHistoryScreen() {
           </p>
         </section>
       ) : (
-        entries.map((entry) => (
+        rows.map((entry) => (
           <section className="admin-card" key={entry.id}>
             <h2>{new Date(entry.at).toLocaleString('hu-HU')}</h2>
             <p className="admin-muted">
               {entry.platform} · {shortUserAgent(entry.userAgent)}
+              {entry.onServer ? '' : ' · csak ezen az eszközön'}
             </p>
 
             <table className="perf-overlay__table admin-perf-table">
@@ -115,6 +189,13 @@ export function PerfHistoryScreen() {
           </section>
         ))
       )}
+
+      {localOnly > 0 ? (
+        <p className="admin-muted">
+          {localOnly} mérés csak ezen az eszközön van meg — a feltöltés nem
+          sikerült. Az oldal újratöltése újra megpróbálja.
+        </p>
+      ) : null}
     </div>
   );
 }

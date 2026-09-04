@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
 import {
+  markPerfSnapshotSynced,
   perfMeterEnabled,
   readPerfSnapshot,
   resetPerfMeter,
@@ -46,7 +48,7 @@ export function PerfOverlay() {
   const [enabled, setEnabled] = useState(perfMeterEnabled);
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(EMPTY);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'uploaded' | 'localOnly'>('idle');
 
   useEffect(() => {
     if (!enabled || !open) return;
@@ -61,6 +63,24 @@ export function PerfOverlay() {
     setPerfMeterEnabled(next);
     setEnabled(next);
     setSnapshot(EMPTY);
+  }
+
+  /**
+   * A helyi mentés az elsődleges: terepen a hálózat bizonytalan, a mérés
+   * viszont nem ismételhető meg. A feltöltés ezután jön, és ha elbukik, a
+   * bejegyzés `synced: false` marad — az admin oldalról pótolható.
+   */
+  async function saveAndUpload(): Promise<void> {
+    const entry = savePerfSnapshot();
+    if (!entry) return;
+    setSaveState('saving');
+    try {
+      await api.adminUploadPerfSnapshot(entry);
+      markPerfSnapshotSynced(entry.id);
+      setSaveState('uploaded');
+    } catch {
+      setSaveState('localOnly');
+    }
   }
 
   if (!open) {
@@ -103,18 +123,21 @@ export function PerfOverlay() {
         </button>
         <button
           type="button"
-          disabled={!enabled || snapshot.stats.length === 0}
-          onClick={() => {
-            if (savePerfSnapshot()) setSavedAt(Date.now());
-          }}
+          disabled={!enabled || snapshot.stats.length === 0 || saveState === 'saving'}
+          onClick={() => void saveAndUpload()}
         >
-          Mentés
+          {saveState === 'saving' ? 'Mentés…' : 'Mentés'}
         </button>
       </div>
 
-      {savedAt ? (
+      {saveState === 'uploaded' ? (
         <p className="perf-overlay__hint perf-overlay__saved">
-          Mentve — az admin „Teljesítmény" oldalán megtekinthető.
+          Mentve és feltöltve — az admin „Teljesítmény" oldalán megtekinthető.
+        </p>
+      ) : saveState === 'localOnly' ? (
+        <p className="perf-overlay__hint perf-overlay__saved">
+          Helyben mentve, feltöltés nem sikerült — az admin „Teljesítmény"
+          oldalán később pótolható.
         </p>
       ) : null}
 

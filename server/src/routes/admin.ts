@@ -748,3 +748,118 @@ adminRouter.post('/push/test', async (req: AuthedRequest, res, next) => {
     next(error);
   }
 });
+
+/* ══════════════════════════════════════════════════════════════════
+   Főszál-mérések
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * A terepen mentett `PerfOverlay`-mérések gyűjtőhelye.
+ *
+ * MIÉRT SZERVEROLDALON: a mérés `localStorage`-ba mentve azon a telefonon
+ * ragad, amelyiken készült — pont azon, amelyiken a legnehezebb elolvasni.
+ * Egy 10 km-es iOS-mérés után a számokat a gépen kell elemezni, összevetve az
+ * asztali mérőpad eredményével.
+ *
+ * A helyi mentés ettől NEM szűnik meg: futás közben lehet, hogy nincs hálózat,
+ * és a mérés akkor sem veszhet el. A telefon a saját előzményét tartja, a
+ * feltöltés pedig ismételhető — ezért a dokumentum azonosítója a KLIENSÉ, így
+ * az újraküldés ugyanazt a sort írja felül, nem duplikál.
+ */
+const PERF_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const PERF_MAX_STATS = 40;
+const PERF_MAX_NOTES = 40;
+
+function finiteOrZero(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function shortText(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+adminRouter.post('/perf-snapshots', async (req: AuthedRequest, res, next) => {
+  try {
+    requireWrite(req);
+    const body = req.body as Record<string, unknown>;
+    const id = typeof body.id === 'string' ? body.id : '';
+    if (!PERF_ID.test(id)) throw badRequest('invalid_id', 'Érvénytelen mérésazonosító.');
+
+    const rawStats = Array.isArray(body.stats) ? body.stats : [];
+    const rawNotes = Array.isArray(body.notes) ? body.notes : [];
+
+    const stats = rawStats.slice(0, PERF_MAX_STATS).map((entry) => {
+      const stat = (entry ?? {}) as Record<string, unknown>;
+      const perMinute = stat.perMinute;
+      return {
+        key: shortText(stat.key, 80),
+        count: finiteOrZero(stat.count),
+        lastMs: finiteOrZero(stat.lastMs),
+        avgMs: finiteOrZero(stat.avgMs),
+        maxMs: finiteOrZero(stat.maxMs),
+        p95Ms: finiteOrZero(stat.p95Ms),
+        perMinute:
+          typeof perMinute === 'number' && Number.isFinite(perMinute) ? perMinute : null,
+      };
+    });
+
+    /**
+     * ⚠️ A Firestore NEM tárol beágyazott tömböt, a mérő kísérőszámai viszont
+     * `[[kulcs, érték], …]` alakban érkeznek — így írva a végpont 500-zal
+     * bukik (emulátoron mérve). Ezért objektumként tároljuk, és olvasáskor
+     * alakítjuk vissza a kliens párokra.
+     */
+    const notes: Record<string, number> = {};
+    for (const entry of rawNotes.slice(0, PERF_MAX_NOTES)) {
+      if (!Array.isArray(entry)) continue;
+      const key = shortText(entry[0], 80);
+      if (key === '') continue;
+      notes[key] = finiteOrZero(entry[1]);
+    }
+
+    const at = finiteOrZero(body.at);
+    await db.collection(COLLECTIONS.perfSnapshots).doc(id).set({
+      uid: req.uid ?? null,
+      at: at > 0 ? at : Date.now(),
+      platform: shortText(body.platform, 32),
+      userAgent: shortText(body.userAgent, 400),
+      stats,
+      notes,
+      uploadedAt: FieldValue.serverTimestamp(),
+    });
+
+    res.json({ id, stats: stats.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get('/perf-snapshots', async (req, res, next) => {
+  try {
+    const limitRaw = Number(req.query.limit ?? 50);
+    const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 50;
+
+    const snap = await db
+      .collection(COLLECTIONS.perfSnapshots)
+      .orderBy('at', 'desc')
+      .limit(limit)
+      .get();
+
+    res.json({
+      entries: snap.docs.map((doc) => {
+        const data = doc.data() as Record<string, any>;
+        return {
+          id: doc.id,
+          at: data.at ?? 0,
+          platform: data.platform ?? '',
+          userAgent: data.userAgent ?? '',
+          stats: data.stats ?? [],
+          notes: Object.entries((data.notes ?? {}) as Record<string, number>),
+          uploadedAt: data.uploadedAt?.toDate?.().toISOString() ?? null,
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});

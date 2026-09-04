@@ -190,6 +190,12 @@ export interface PerfHistoryEntry {
   userAgent: string;
   stats: PerfStat[];
   notes: [string, number][];
+  /**
+   * Feljutott-e már a szerverre. A mentés a hálózattól FÜGGETLENÜL sikerül —
+   * futás közben a telefonon gyakran nincs kapcsolat, és a mérés akkor sem
+   * veszhet el —, a feltöltés pedig később pótolható az admin felületről.
+   */
+  synced?: boolean;
 }
 
 function readHistoryRaw(): PerfHistoryEntry[] {
@@ -241,6 +247,18 @@ export function savePerfSnapshot(): PerfHistoryEntry | null {
 /** A mentett mérések, legújabb elöl. */
 export function readPerfHistory(): PerfHistoryEntry[] {
   return readHistoryRaw();
+}
+
+/** Sikeres feltöltés után jelöli a helyi bejegyzést, hogy ne kelljen újraküldeni. */
+export function markPerfSnapshotSynced(id: string): void {
+  const entries = readHistoryRaw();
+  let changed = false;
+  const next = entries.map((entry) => {
+    if (entry.id !== id || entry.synced === true) return entry;
+    changed = true;
+    return { ...entry, synced: true };
+  });
+  if (changed) writeHistoryRaw(next);
 }
 
 export function clearPerfHistory(): void {
