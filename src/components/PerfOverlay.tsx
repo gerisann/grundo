@@ -49,6 +49,7 @@ export function PerfOverlay() {
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(EMPTY);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'uploaded' | 'localOnly'>('idle');
+  const [label, setLabel] = useState('');
 
   useEffect(() => {
     if (!enabled || !open) return;
@@ -71,7 +72,7 @@ export function PerfOverlay() {
    * bejegyzés `synced: false` marad — az admin oldalról pótolható.
    */
   async function saveAndUpload(): Promise<void> {
-    const entry = savePerfSnapshot();
+    const entry = savePerfSnapshot(label);
     if (!entry) return;
     setSaveState('saving');
     try {
@@ -102,6 +103,16 @@ export function PerfOverlay() {
         <strong>Főszál-mérő</strong>
         <button type="button" onClick={() => setOpen(false)} aria-label="Bezárás">×</button>
       </header>
+
+      <input
+        className="perf-overlay__label"
+        type="text"
+        value={label}
+        maxLength={60}
+        placeholder="jelölés, pl. háttér / előtér"
+        aria-label="A mérés jelölése"
+        onChange={(event) => setLabel(event.target.value)}
+      />
 
       <div className="perf-overlay__actions">
         <button

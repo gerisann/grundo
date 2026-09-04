@@ -185,6 +185,15 @@ export interface PerfHistoryEntry {
   id: string;
   /** `Date.now()` a mentés pillanatában. */
   at: number;
+  /**
+   * A mérő által adott rövid jelölés, pl. „háttér" / „előtér".
+   *
+   * MIÉRT: két azonos típusú készülék mérése azonos `platform`-mal és szinte
+   * azonos user agenttel érkezik, tehát a listában csak az időbélyeg
+   * különböztetné meg őket — épp az összehasonlító mérésnél veszne el, melyik
+   * melyik.
+   */
+  label?: string;
   /** Capacitor platform (`ios`/`android`/`web`) — natív buildben pontos. */
   platform: string;
   userAgent: string;
@@ -228,12 +237,13 @@ function newHistoryId(): string {
  * Elmenti a JELENLEGI mérést a helyi előzménybe. `null`, ha nincs mit menteni
  * (kikapcsolt mérő, vagy még egyetlen minta sem gyűlt össze).
  */
-export function savePerfSnapshot(): PerfHistoryEntry | null {
+export function savePerfSnapshot(label = ''): PerfHistoryEntry | null {
   const snapshot = readPerfSnapshot();
   if (snapshot.stats.length === 0) return null;
   const entry: PerfHistoryEntry = {
     id: newHistoryId(),
     at: Date.now(),
+    label: label.trim().slice(0, 60),
     platform: Capacitor.getPlatform(),
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
     stats: snapshot.stats,

@@ -81,6 +81,18 @@
   cursor: pointer;
 }
 
+.perf-overlay__label {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--fs-label);
+}
+
 .perf-overlay__actions {
   display: flex;
   gap: var(--sp-2);

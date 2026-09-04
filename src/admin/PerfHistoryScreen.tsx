@@ -150,7 +150,10 @@ export function PerfHistoryScreen() {
       ) : (
         rows.map((entry) => (
           <section className="admin-card" key={entry.id}>
-            <h2>{new Date(entry.at).toLocaleString('hu-HU')}</h2>
+            <h2>
+              {entry.label ? `${entry.label} — ` : ''}
+              {new Date(entry.at).toLocaleString('hu-HU')}
+            </h2>
             <p className="admin-muted">
               {entry.platform} · {shortUserAgent(entry.userAgent)}
               {entry.onServer ? '' : ' · csak ezen az eszközön'}

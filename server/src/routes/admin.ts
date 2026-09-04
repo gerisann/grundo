@@ -821,6 +821,7 @@ adminRouter.post('/perf-snapshots', async (req: AuthedRequest, res, next) => {
     await db.collection(COLLECTIONS.perfSnapshots).doc(id).set({
       uid: req.uid ?? null,
       at: at > 0 ? at : Date.now(),
+      label: shortText(body.label, 60),
       platform: shortText(body.platform, 32),
       userAgent: shortText(body.userAgent, 400),
       stats,
@@ -851,6 +852,7 @@ adminRouter.get('/perf-snapshots', async (req, res, next) => {
         return {
           id: doc.id,
           at: data.at ?? 0,
+          label: data.label ?? '',
           platform: data.platform ?? '',
           userAgent: data.userAgent ?? '',
           stats: data.stats ?? [],
