@@ -13,19 +13,28 @@ Ebben a sorrendben, és **ne olvass be mást**:
    is dolgozik** (Codex, másik beszélgetés).
 3. `git log --oneline -5`.
 
+Nézd meg a `CURRENT_STATE.md` fejlécében az **Utoljára dolgozott** és
+**Átadva** mezőt, és a menet elején mondd is ki egy fél mondatban, ki adta át
+neked a munkát (pl. „Codex (Sol, Erős) adta át"). Ha a mező hiányzik (régebbi
+állapotfájl), ezt is jelezd.
+
 Ezután — még mielőtt bármit megnyitnál vagy írnál — add meg:
 
 - **Menetszám**: a következő `GRUNDO #N`. ⚠️ A sorszám a **beszélgetéseké**,
   nem a munkameneteké: azt kell nézni, hány chat van a Claude Code-ban. Ha az
   állapotfájl mást ír, a beszélgetés száma az igazság.
-- **Modelljavaslat** egy mondatban:
+- **Modelljavaslat** egy mondatban, Claude esetén a **Low / Medium / High /
+  Extra** komplexitás-elnevezésekkel (ez a helyes név, nem „alap"/„emelt"):
 
   | Feladat jellege | Javaslat |
   |---|---|
-  | Felület-építés, tesztírás, rutin átalakítás, dokumentáció | Sonnet, normál |
-  | Meglévő minta kiterjesztése (új végpont a meglévő mintára) | Sonnet, normál |
-  | Spec-ellentmondás, adatmodell-döntés, algoritmus, teljesítmény | Opus, emelt |
-  | Mért anomália (a szám nem stimmel, és nem tudjuk, miért) | Opus, emelt |
+  | Felület-építés, tesztírás, rutin átalakítás, dokumentáció | Sonnet, Medium |
+  | Meglévő minta kiterjesztése (új végpont a meglévő mintára) | Sonnet, Medium |
+  | Spec-ellentmondás, adatmodell-döntés, algoritmus, teljesítmény | Opus, High |
+  | Mért anomália (a szám nem stimmel, és nem tudjuk, miért) | Opus, High |
+
+  (Codex névtáblázata: Luna / Terta / Sol modellek, Alacsony / Közepes / Erős
+  komplexitás — lásd `grundo-handoff`.)
 
 - **Mit javasolsz elvégezni**, legfeljebb 3 tétel az állapotfájl „Nyitott
   ügyek" listájából. Amit a felhasználó kér, az felülír.

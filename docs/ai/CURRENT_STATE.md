@@ -1,8 +1,9 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-04** · GRUNDO **#30**
+> Frissítve: **2026-09-04** · GRUNDO **#31**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
 > Állapot: a munkafa tiszta, a `main` egyezik az `origin/main` ággal.
+> Utoljára dolgozott: **Codex** · Átadva: **Claude (Sonnet, Medium)**
 
 ## Jelenlegi cél
 

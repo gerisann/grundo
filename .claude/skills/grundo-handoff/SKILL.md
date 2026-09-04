@@ -12,6 +12,16 @@ description: GRUNDO menetzárás — CURRENT_STATE.md frissítése, tartós dön
 2. **Írd FELÜL a `docs/ai/CURRENT_STATE.md`-t.** Ne toldd hozzá — a fájl a
    JELENT mutatja, nem a történetet; a történet a git logban van.
 
+   A fejlécbe (a „Frissítve" sor mellé) mindig kerüljön két mező:
+   - **Utoljára dolgozott:** ki/mi végezte az imént lezárt munkát, és milyen
+     modell/komplexitás — pl. „Claude (Sonnet, Medium)" vagy „Codex (Sol,
+     Erős)".
+   - **Átadva:** kinek megy a munka most — „Claude", „ChatGPT" vagy „Codex".
+
+   Lásd a névtáblázatot lent. Mivel a `CURRENT_STATE.md` minden menet végén
+   commitolva van, a `git log -p -- docs/ai/CURRENT_STATE.md` visszamenőleg is
+   megmutatja, melyik kört ki végezte.
+
    ⚠️ **Méretkorlát: normál esetben 50–100 sor.** Ha a fájl efölé nő, az azt
    jelenti, hogy történetet írsz bele. Ilyenkor:
    - ami már megtörtént és le van commitolva → **töröld** (a git őrzi);
@@ -32,6 +42,14 @@ description: GRUNDO menetzárás — CURRENT_STATE.md frissítése, tartós dön
    felsorolásos Description, magyarul. Hosszú üzenetet fájlba írj és
    `git commit -F`-fel adj át. ⚠️ **Push után SZÓLNI KELL, hogy megvolt** —
    Geri a GitHub Desktopban követi a repót. A telepítés külön: `/grundo-deploy`.
+
+## Névtáblázat — modell és komplexitás
+
+| Rendszer | Modellek | Komplexitás-szintek |
+|---|---|---|
+| Claude | Sonnet, Opus | Low, Medium, High, Extra |
+| Codex | Luna, Terta, Sol | Alacsony, Közepes, Erős |
+| ChatGPT | (a felhasználó adja meg) | — |
 
 ## A záró chat-üzenet — csak ennyi
 
