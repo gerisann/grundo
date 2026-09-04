@@ -5,6 +5,34 @@ import type { TracePoint } from '@/types';
 
 const p = (eastM: number, northM: number) => offset(ORIGIN, eastM, northM);
 
+describe('largeGaps — GRUNDO #34: időtudatos teleport-detektálás', () => {
+  const START = Date.UTC(2026, 7, 15, 8, 0, 0);
+  // 1000 m ≈ jóval a MAX_GRID_PATH_CELLS (750 m) küszöb fölött.
+  const far: TracePoint[] = [
+    { ...p(0, 0), t: START, accuracy: 8 },
+    { ...p(1000, 0), t: START, accuracy: 8 }, // ideiglenes t, tesztenként felülírva
+  ];
+
+  it('valódi teleport (nagy táv, elhanyagolható idő) largeGaps-ot ad', () => {
+    const points: TracePoint[] = [far[0]!, { ...far[1]!, t: START + 1_000 }]; // 1000 m / 1 s
+    expect(traceToCellPath(points).largeGaps).toBe(1);
+  });
+
+  it('háttérben szüneteltetett GPS (nagy táv, de arányos eltelt idő) NEM largeGaps', () => {
+    // 1000 m / 600 s ≈ 6 km/h — teljesen reális gyaloglás egy 10 perces
+    // képernyőzár (háttér-throttling) alatt keletkezett hézagra.
+    const points: TracePoint[] = [far[0]!, { ...far[1]!, t: START + 600_000 }];
+    expect(traceToCellPath(points).largeGaps).toBe(0);
+  });
+
+  it('IncrementalCellPath chunk-ok között is megőrzi az időalapú döntést', () => {
+    const incremental = new IncrementalCellPath();
+    incremental.update([far[0]!]);
+    const result = incremental.update([far[0]!, { ...far[1]!, t: START + 600_000 }]);
+    expect(result.largeGaps).toBe(0);
+  });
+});
+
 describe('IncrementalCellPath', () => {
   it('mintánkénti bővítéssel pontosan ugyanazt a láncot adja, mint a kötegelt traceToCellPath', () => {
     const points = buildTrace([p(0, 0), p(0, 400), p(400, 400), p(400, 0), p(0, 0)], { stepM: 5 });

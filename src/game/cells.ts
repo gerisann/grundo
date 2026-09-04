@@ -7,7 +7,17 @@
 
 import { latLngToCell, gridPathCells, gridDistance } from 'h3-js';
 import { GAMEPLAY } from '@/config/gameplay';
+import { distanceM } from '@/game/geo';
 import type { ActivityType, CellId, Layer, TracePoint } from '@/types';
+
+/**
+ * Ekkora sebesség fölött egy hézag AKKOR IS lehetetlen, ha egy autó tenné meg
+ * — tehát semmilyen mozgásformánál nem lehet valós. Ennél lazább, mint a
+ * Trust Score aktivitás-specifikus sebességplafonjai (`score.ts`
+ * `teleportSignal`), mert ez a modul nem ismeri a mozgásformát: itt csak a
+ * "biztosan kitalált" eseteket szűrjük, a pacereálitást a Trust Score nézi.
+ */
+const PHYSICALLY_IMPOSSIBLE_MPS = 250 / 3.6; // 250 km/h
 
 export function layerOf(type: ActivityType): Layer {
   return type === 'ride' ? 'bike' : 'foot';
@@ -32,7 +42,7 @@ export interface CellPathResult {
  */
 export function traceToCellPath(points: readonly TracePoint[]): CellPathResult {
   const path: CellId[] = [];
-  const { droppedPoints, largeGaps } = extendCellPath(path, points);
+  const { droppedPoints, largeGaps } = extendCellPath(path, points, undefined);
   return { path, droppedPoints, largeGaps };
 }
 
@@ -46,10 +56,12 @@ export function traceToCellPath(points: readonly TracePoint[]): CellPathResult {
 function extendCellPath(
   path: CellId[],
   newPoints: readonly TracePoint[],
-): { droppedPoints: number; largeGaps: number } {
+  lastPoint: TracePoint | undefined,
+): { droppedPoints: number; largeGaps: number; lastPoint: TracePoint | undefined } {
   const res = GAMEPLAY.H3_RESOLUTION;
   let droppedPoints = 0;
   let largeGaps = 0;
+  let prevPoint = lastPoint;
 
   for (const p of newPoints) {
     if (p.accuracy !== undefined && p.accuracy > GAMEPLAY.MAX_GPS_ACCURACY_M) {
@@ -62,15 +74,25 @@ function extendCellPath(
 
     if (last === undefined) {
       path.push(cell);
+      prevPoint = p;
       continue;
     }
-    if (last === cell) continue; // ugyanabban a cellában maradtunk
+    if (last === cell) {
+      prevPoint = p;
+      continue; // ugyanabban a cellában maradtunk
+    }
 
     const steps = gridDistance(last, cell);
     if (steps > GAMEPLAY.MAX_GRID_PATH_CELLS) {
-      // Fizikailag valószínűtlen ugrás. Kitöltjük, de megjelöljük — a Trust
-      // Score ezt teleportként fogja értékelni.
-      largeGaps++;
+      // Térben nagy hézag — de ez ÖNMAGÁBAN nem gyanús: háttérbe kerüléskor
+      // (képernyőzár) az OS percekig szüneteltetheti/ritkíthatja a GPS-t
+      // (iOS CoreLocation energiagazdálkodás, Android Doze), és a hézaghoz
+      // tartozó VALÓS eltelt idő alatt simán megtehető ekkora táv gyaloglva
+      // is. Csak akkor számít teleportnak, ha az eltelt időhöz képest is
+      // lehetetlen sebességet jelentene — GRUNDO #34.
+      const gapS = prevPoint ? (p.t - prevPoint.t) / 1000 : 0;
+      const impliedMps = prevPoint && gapS > 0 ? distanceM(prevPoint, p) / gapS : Infinity;
+      if (impliedMps > PHYSICALLY_IMPOSSIBLE_MPS) largeGaps++;
     }
 
     if (steps > 1) {
@@ -80,9 +102,10 @@ function extendCellPath(
     } else {
       path.push(cell);
     }
+    prevPoint = p;
   }
 
-  return { droppedPoints, largeGaps };
+  return { droppedPoints, largeGaps, lastPoint: prevPoint };
 }
 
 /**
@@ -112,12 +135,14 @@ export class IncrementalCellPath {
   private path: CellId[] = [];
   private droppedPoints = 0;
   private largeGaps = 0;
+  private lastPoint: TracePoint | undefined;
 
   reset(): void {
     this.seenPoints = [];
     this.path = [];
     this.droppedPoints = 0;
     this.largeGaps = 0;
+    this.lastPoint = undefined;
   }
 
   update(points: readonly TracePoint[]): CellPathResult {
@@ -126,19 +151,25 @@ export class IncrementalCellPath {
 
     if (!isExtension) {
       const path: CellId[] = [];
-      const { droppedPoints, largeGaps } = extendCellPath(path, points);
+      const { droppedPoints, largeGaps, lastPoint } = extendCellPath(path, points, undefined);
       this.path = path;
       this.droppedPoints = droppedPoints;
       this.largeGaps = largeGaps;
+      this.lastPoint = lastPoint;
     } else if (points.length > previousCount) {
       // MÁSOLAT, nem helyben módosítás: a visszaadott tömb referenciájának
       // változnia kell, különben a hívó `useMemo`-i nem veszik észre a
       // bővülést (a függőségtömb `Object.is` szerint hasonlít).
       const path = [...this.path];
-      const { droppedPoints, largeGaps } = extendCellPath(path, points.slice(previousCount));
+      const { droppedPoints, largeGaps, lastPoint } = extendCellPath(
+        path,
+        points.slice(previousCount),
+        this.lastPoint,
+      );
       this.path = path;
       this.droppedPoints += droppedPoints;
       this.largeGaps += largeGaps;
+      this.lastPoint = lastPoint;
     }
 
     this.seenPoints = points;
