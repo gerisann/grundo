@@ -98,6 +98,10 @@ function unknownAuthor(uid: string): Author {
   return { uid, username: 'ismeretlen', photoURL: null, cellColor: null };
 }
 
+function deletedAuthor(): Author {
+  return { uid: '', username: 'törölt komment vagy tag', photoURL: null, cellColor: null };
+}
+
 /** A user dokumentumból kiolvasott cellaszín-kulcs, ha van. */
 function cellColorOf(data: { cellColor?: unknown } | undefined): string | null {
   return typeof data?.cellColor === 'string' && data.cellColor ? data.cellColor : null;
@@ -1528,10 +1532,12 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
 
     const rows = snapshot.docs.map((doc) => {
       const comment = doc.data() as Record<string, unknown>;
+      const hidden = comment.hiddenAt != null;
       return {
         id: doc.id,
         userId: String(comment.userId ?? ''),
-        text: String(comment.text ?? ''),
+        text: hidden ? 'törölt komment vagy tag' : String(comment.text ?? ''),
+        hidden,
         createdAt: toMillis(comment.createdAt),
         replyToId: (comment.replyToId as string | undefined) ?? null,
         // A megcélzott felhasználónév DENORMALIZÁLVA van a komment dokumentumon
@@ -1541,7 +1547,7 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
       };
     });
 
-    const authorIds = [...new Set(rows.map((row) => row.userId).filter(Boolean))];
+    const authorIds = [...new Set(rows.filter((row) => !row.hidden).map((row) => row.userId).filter(Boolean))];
     const authors = new Map<string, Author>();
     if (authorIds.length > 0) {
       const refs = authorIds.map((id) => db.collection(COLLECTIONS.users).doc(id));
@@ -1561,8 +1567,11 @@ activitiesRouter.get('/:id/comments', async (req: AuthedRequest, res, next) => {
     res.json({
       comments: rows.map(({ userId, ...rest }) => ({
         ...rest,
-        mine: userId === req.uid,
-        author: authors.get(userId) ?? unknownAuthor(userId),
+        replyToUsername: rest.replyToId && rows.some((row) => row.id === rest.replyToId && row.hidden)
+          ? 'törölt komment vagy tag'
+          : rest.replyToUsername,
+        mine: !rest.hidden && userId === req.uid,
+        author: rest.hidden ? deletedAuthor() : authors.get(userId) ?? unknownAuthor(userId),
       })),
     });
   } catch (error) {
@@ -1594,8 +1603,15 @@ activitiesRouter.post('/:id/comments', async (req: AuthedRequest, res, next) => 
     if (replyToId) {
       const target = await activityRef.collection('comments').doc(replyToId).get();
       if (target.exists) {
+        if (target.get('hiddenAt') != null) {
+          replyTo = {
+            userId: '',
+            username: 'törölt komment vagy tag',
+            commentId: commentRef.id,
+          };
+        }
         const targetUserId = String((target.data() as { userId?: string }).userId ?? '');
-        if (targetUserId && targetUserId !== req.uid) {
+        if (!replyTo && targetUserId && targetUserId !== req.uid) {
           const author = await db.collection(COLLECTIONS.users).doc(targetUserId).get();
           replyTo = {
             userId: targetUserId,
@@ -1682,12 +1698,11 @@ activitiesRouter.delete('/:id/comments/:commentId', async (req: AuthedRequest, r
         throw forbidden('Ezt a hozzászólást nem törölheted.');
       }
 
-      tx.delete(commentRef);
-      tx.set(
-        activityRef,
-        { commentCount: Math.max(0, Number(data?.commentCount ?? 0) - 1) },
-        { merge: true },
-      );
+      tx.set(commentRef, {
+        hiddenAt: new Date(),
+        hiddenReason: 'comment_deleted',
+        hiddenBy: req.uid,
+      }, { merge: true });
     });
 
     res.json({ ok: true });

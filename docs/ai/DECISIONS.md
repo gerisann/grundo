@@ -183,10 +183,10 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   külön engedélyezett indexet igényelne). Ne told vissza collectionGroup-ra:
   az app egyetlen más helyen sem szűr collectionGroup-lekérdezéssel, csak
   szűretlenül olvas ki mindent (`blocks`, `blockIndex` backfill-szkriptek).
-- **Nincs `joinRequests`.** A régi Klub-séma admin-jóváhagyásos
-  csatlakozási kérést tartalmazott; a Bandáknál publikus csatlakozás
-  azonnali, privátnál kizárólag meghívókóddal/meghívással — sosem a
-  csatlakozni akaró kezdeményez jóváhagyást igénylő kérést.
+- **Publikus belépés bandánként választható.** Az alapértelmezés visszafelé
+  kompatibilisen `instant`, az alapító azonban `approval` módot választhat;
+  ekkor `joinRequests` alkollekció készül, és alapító vagy moderátor fogadja
+  el. A privát banda belépése továbbra is csak kóddal/meghívással történik.
 - **Tulajdonjog-átruházáskor a korábbi alapító moderátor marad.**
   Az új alapító egy meglévő tag; az `ownerId` és mindkét felhasználó
   két tagsági tükördokumentuma egyetlen tranzakcióban vált. Így mindig
@@ -206,6 +206,12 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   rendezéshez külön `visibility + memberCount`, illetve `visibility +
   createdAt` kompozit index tartozik; a kliens fülváltáskor gyorsítótárazza
   az egyszer már betöltött listát.
+- **Tagsági/moderációs tartalomeltávolítás soft-hide.** Kirúgás, a kilépő
+  kifejezett tartalomtörlési választása és appbannolás esetén az eredeti poszt,
+  komment, falüzenet és aktivitás adatbázisban marad admin-visszakereséshez.
+  A listák a posztokat elrejtik, a kommentazonosítót megőrző helyőrzőt adnak,
+  ezért a válaszszál nem szakad el. Fizikai törlést csak a végleges
+  fióktörlési folyamat végezhet.
 
 ## Területszín-paletta (`#28` menet)
 

@@ -72,15 +72,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
   async function wipe() {
     const bandas = await db.collection('bandas').get();
     for (const doc of bandas.docs) {
-      const members = await doc.ref.collection('members').get();
-      for (const member of members.docs) await member.ref.delete();
-      const invites = await doc.ref.collection('invites').get();
-      for (const invite of invites.docs) await invite.ref.delete();
-      const feed = await doc.ref.collection('feed').get();
-      for (const post of feed.docs) await post.ref.delete();
-      const wall = await doc.ref.collection('wall').get();
-      for (const msg of wall.docs) await msg.ref.delete();
-      await doc.ref.delete();
+      await db.recursiveDelete(doc.ref);
     }
     const codes = await db.collection('inviteCodes').get();
     for (const doc of codes.docs) await doc.ref.delete();
@@ -113,7 +105,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     });
   }
 
-  it('publikus banda létrehozása: a hívó owner lesz, meghívókód nincs', async () => {
+  it('publikus banda létrehozása: a hívó owner lesz és megosztható meghívókódot kap', async () => {
     const res = await call('/', OWNER, {
       method: 'POST',
       body: JSON.stringify({ name: 'Gazdagréti Grundozók', visibility: 'public' }),
@@ -121,7 +113,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.role).toBe('owner');
-    expect(body.inviteCode).toBeNull();
+    expect(body.inviteCode).toHaveLength(8);
     expect(body.banda.memberCount).toBe(1);
 
     const mine = await (await call('/mine', OWNER)).json();
@@ -211,6 +203,36 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(members.items.map((m: { uid: string }) => m.uid).sort()).toEqual([OTHER, OWNER].sort());
     expect(members.items.find((m: { uid: string }) => m.uid === OTHER).stats.run)
       .toMatchObject({ areaDayM2: 1234, gpDay: 56, areaTotalM2: 7890, gpTotal: 321 });
+  });
+
+  it('jóváhagyásos publikus bandánál moderátor bírálhatja el a csatlakozási kérést', async () => {
+    const created = await (await call('/', OWNER, {
+      method: 'POST', body: JSON.stringify({ name: 'Jóváhagyós Banda', visibility: 'public' }),
+    })).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    await call(`/${bandaId}/members/${OTHER}/role`, OWNER, {
+      method: 'PATCH', body: JSON.stringify({ role: 'moderator' }),
+    });
+    await call(`/${bandaId}/settings`, OWNER, {
+      method: 'PATCH', body: JSON.stringify({ publicJoinMode: 'approval' }),
+    });
+
+    const requested = await call(`/${bandaId}/join`, THIRD, { method: 'POST' });
+    expect(await requested.json()).toEqual({ status: 'pending', role: null });
+    const detail = await (await call(`/${bandaId}`, THIRD)).json();
+    expect(detail.joinRequestPending).toBe(true);
+    expect(detail.banda.memberCount).toBe(2);
+
+    const requests = await (await call(`/${bandaId}/join-requests`, OTHER)).json();
+    expect(requests.items).toHaveLength(1);
+    expect(requests.items[0]).toMatchObject({ uid: THIRD, username: 'harmadik' });
+    const approved = await call(`/${bandaId}/join-requests/${THIRD}`, OTHER, {
+      method: 'POST', body: JSON.stringify({ decision: 'approve' }),
+    });
+    expect(await approved.json()).toEqual({ status: 'approved' });
+    expect((await db.collection('bandas').doc(bandaId).collection('members').doc(THIRD).get()).exists).toBe(true);
+    expect((await db.collection('users').doc(THIRD).collection('bandas').doc(bandaId).get()).exists).toBe(true);
   });
 
   it('privát bandához meghívókóddal csatlakozhat, érvénytelen kóddal nem', async () => {
@@ -433,7 +455,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     const replyId = (await reply.json()).id as string;
     expect((await call(`/${bandaId}/wall/${replyId}/like`, OWNER, { method: 'POST' })).status).toBe(200);
     const wall = await (await call(`/${bandaId}/wall`, OTHER)).json();
-    expect(wall.items[1]).toMatchObject({ text: 'Válasz', replyToId: firstId, replyToUsername: 'alapito', likeCount: 1 });
+    expect(wall.items[0]).toMatchObject({ text: 'Válasz', replyToId: firstId, replyToUsername: 'alapito', likeCount: 1 });
   });
 
   it('"postPermission: owner" beállításnál a sima tag nem posztolhat a hírfolyamba, a falra viszont igen', async () => {
@@ -524,6 +546,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
       whoCanInvite: 'moderators',
       inviteCodeVisibleTo: 'owner',
       postPermission: 'owner',
+      publicJoinMode: 'instant',
     });
 
     const memberDetail = await (await call(`/${bandaId}`, OTHER)).json();
@@ -607,6 +630,42 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect((await db.collection('bandas').doc(bandaId).get()).data()?.memberCount).toBe(2);
   });
 
+  it('kirúgáskor a poszt eltűnik, a komment helyőrzőként megmarad és válaszolható', async () => {
+    const created = await (await call('/', OWNER, {
+      method: 'POST', body: JSON.stringify({ name: 'Tartalom Banda', visibility: 'public' }),
+    })).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    const ownPost = await call(`/${bandaId}/feed`, OWNER, { method: 'POST', body: JSON.stringify({ text: 'Alapposzt' }) });
+    const ownPostId = (await ownPost.json()).id as string;
+    const removedPost = await call(`/${bandaId}/feed`, OTHER, { method: 'POST', body: JSON.stringify({ text: 'Eltűnő poszt' }) });
+    const removedPostId = (await removedPost.json()).id as string;
+    const comment = await call(`/${bandaId}/feed/${ownPostId}/comments`, OTHER, {
+      method: 'POST', body: JSON.stringify({ text: 'Megmaradó szál' }),
+    });
+    const commentId = (await comment.json()).id as string;
+
+    expect((await call(`/${bandaId}/members/${OTHER}`, OWNER, { method: 'DELETE' })).status).toBe(200);
+    const feed = await (await call(`/${bandaId}/feed`, OWNER)).json();
+    expect(feed.items.map((item: { id: string }) => item.id)).not.toContain(removedPostId);
+    expect((await db.collection('bandas').doc(bandaId).collection('feed').doc(removedPostId).get()).exists).toBe(true);
+
+    let comments = await (await call(`/${bandaId}/feed/${ownPostId}/comments`, OWNER)).json();
+    expect(comments.items[0]).toMatchObject({
+      id: commentId,
+      hidden: true,
+      authorUid: '',
+      authorUsername: 'törölt komment vagy tag',
+      text: 'törölt komment vagy tag',
+    });
+    const reply = await call(`/${bandaId}/feed/${ownPostId}/comments`, OWNER, {
+      method: 'POST', body: JSON.stringify({ text: 'A szál folytatása', replyToId: commentId }),
+    });
+    expect(reply.status).toBe(201);
+    comments = await (await call(`/${bandaId}/feed/${ownPostId}/comments`, OWNER)).json();
+    expect(comments.items[1]).toMatchObject({ replyToId: commentId, replyToUsername: 'törölt komment vagy tag' });
+  });
+
   it('a tulajdonjog átadása az új alapítót és a régi alapító moderátori szerepét is tükrözi', async () => {
     const created = await (
       await call('/', OWNER, {
@@ -665,6 +724,31 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect((await db.collection('bandas').doc(bandaId).collection('members').doc(OWNER).get()).exists).toBe(false);
     expect((await db.collection('users').doc(OWNER).collection('bandas').doc(bandaId).get()).exists).toBe(false);
     expect((await db.collection('bandas').doc(bandaId).get()).data()?.memberCount).toBe(1);
+  });
+
+  it('kilépéskor a felhasználó döntése szerint marad meg vagy rejtőzik el a tartalma', async () => {
+    const created = await (await call('/', OWNER, {
+      method: 'POST', body: JSON.stringify({ name: 'Kilépő Tartalom', visibility: 'public' }),
+    })).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    const ownerPost = await call(`/${bandaId}/feed`, OWNER, { method: 'POST', body: JSON.stringify({ text: 'Alap' }) });
+    const ownerPostId = (await ownerPost.json()).id as string;
+    await call(`/${bandaId}/feed`, OTHER, { method: 'POST', body: JSON.stringify({ text: 'Maradhat' }) });
+    await call(`/${bandaId}/feed/${ownerPostId}/comments`, OTHER, { method: 'POST', body: JSON.stringify({ text: 'Komment' }) });
+
+    await call(`/${bandaId}/leave`, OTHER, { method: 'POST', body: JSON.stringify({ deleteContent: false }) });
+    let feed = await (await call(`/${bandaId}/feed`, OWNER)).json();
+    expect(feed.items.some((item: { text: string }) => item.text === 'Maradhat')).toBe(true);
+    let comments = await (await call(`/${bandaId}/feed/${ownerPostId}/comments`, OWNER)).json();
+    expect(comments.items[0]).toMatchObject({ text: 'Komment', hidden: false });
+
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    await call(`/${bandaId}/leave`, OTHER, { method: 'POST', body: JSON.stringify({ deleteContent: true }) });
+    feed = await (await call(`/${bandaId}/feed`, OWNER)).json();
+    expect(feed.items.some((item: { text: string }) => item.text === 'Maradhat')).toBe(false);
+    comments = await (await call(`/${bandaId}/feed/${ownerPostId}/comments`, OWNER)).json();
+    expect(comments.items[0]).toMatchObject({ text: 'törölt komment vagy tag', hidden: true });
   });
 
   it.runIf(Boolean(process.env.FIREBASE_STORAGE_EMULATOR_HOST))('a formázott hírfolyam-poszt képe csak tagnak olvasható', async () => {

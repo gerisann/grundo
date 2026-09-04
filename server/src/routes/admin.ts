@@ -17,8 +17,9 @@ import { resolveGameplay, tunableGroups, TUNABLES } from '../../../src/config/tu
 import { distanceM } from '../../../src/game/geo';
 import type { ModifierKind, ModifierScope } from '../../../src/game/modifiers';
 import type { AuthedRequest } from '../../server';
-import { APP_CONFIG_DOCS, COLLECTIONS, db } from '../lib/firebase';
+import { APP_CONFIG_DOCS, COLLECTIONS, auth, db } from '../lib/firebase';
 import { badRequest, forbidden, notFound } from '../lib/errors';
+import { hideUserContentForBan } from '../lib/contentModeration';
 import { getGameplaySnapshot, resetGameplayCache } from '../lib/gameplayConfig';
 import { sendTestPush } from '../lib/notifications';
 import { resetModifierCache } from '../lib/modifiers';
@@ -46,6 +47,12 @@ function requireWrite(req: AuthedRequest): void {
   }
 }
 
+function requireModeration(req: AuthedRequest): void {
+  if (!req.role || !new Set(['owner', 'admin', 'moderator']).has(req.role)) {
+    throw forbidden('A felhasználó bannolása moderátori jogosultságot igényel.');
+  }
+}
+
 /** Naplóbejegyzés minden íráshoz. A napló nélküli admin művelet nem létezik. */
 async function audit(
   req: AuthedRequest,
@@ -66,6 +73,53 @@ async function audit(
     at: FieldValue.serverTimestamp(),
   });
 }
+
+/**
+ * App-bannolás: az Auth-fiók letiltása és minden publikus tartalom soft-hide-ja.
+ * A dokumentumok szándékosan megmaradnak admin-visszakereséshez; fizikai
+ * törlést csak a külön, végleges fióktörlési folyamat végezhet.
+ */
+adminRouter.post('/users/:uid/ban', async (req: AuthedRequest, res, next) => {
+  try {
+    requireModeration(req);
+    const targetUid = String(req.params.uid ?? '');
+    if (!targetUid) throw badRequest('missing_user', 'Nincs megadva felhasználó.');
+    if (targetUid === req.uid) throw badRequest('cannot_ban_self', 'Saját magadat nem bannolhatod.');
+    const reason = String((req.body as { reason?: unknown } | undefined)?.reason ?? '').trim();
+    if (!reason) throw badRequest('missing_reason', 'A bannolás indoklása kötelező.');
+
+    const userRef = db.collection(COLLECTIONS.users).doc(targetUid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) throw notFound('user_not_found', 'Nincs ilyen felhasználó.');
+    const before = (userSnap.data() as { moderation?: unknown }).moderation ?? null;
+
+    await userRef.set({
+      moderation: {
+        status: 'ban_pending',
+        reason,
+        bannedBy: req.uid,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+    }, { merge: true });
+
+    await auth.updateUser(targetUid, { disabled: true });
+    await auth.revokeRefreshTokens(targetUid);
+    const hidden = await hideUserContentForBan(targetUid, req.uid!);
+    const after = {
+      status: 'banned',
+      reason,
+      bannedBy: req.uid,
+      bannedAt: new Date(),
+      hidden,
+    };
+    await userRef.set({ moderation: after }, { merge: true });
+    await audit(req, 'user_ban', 'user', targetUid, before, after);
+
+    res.json({ banned: true, hidden });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Játékkonfiguráció

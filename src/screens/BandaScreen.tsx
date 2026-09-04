@@ -92,6 +92,7 @@ export function BandaScreen() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [joinRequestPending, setJoinRequestPending] = useState(false);
   const [period, setPeriod] = useState<BandaPeriod>(() => readStoredFilter('period'));
   const [sport, setSport] = useState<BandaSport>(() => readStoredFilter('sport'));
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
@@ -117,7 +118,11 @@ export function BandaScreen() {
     setJoining(true);
     setError('');
     try {
-      await api.bandas.join(id);
+      const joined = await api.bandas.join(id);
+      if (joined.status === 'pending') {
+        setJoinRequestPending(true);
+        return;
+      }
       const result = await api.bandas.detail(id);
       setRole(result.role);
       setInviteCode(result.inviteCode);
@@ -155,10 +160,13 @@ export function BandaScreen() {
 
   async function leaveBanda() {
     if (!id || role === 'owner' || !window.confirm('Biztosan kilépsz ebből a bandából?')) return;
+    const deleteContent = window.confirm(
+      'Szeretnéd a bandában írt összes posztodat és kommentedet is eltávolítani?\n\nOK: tartalmak eltávolítása\nMégse: tartalmak megtartása',
+    );
     setLeaving(true);
     setError('');
     try {
-      await api.bandas.leave(id);
+      await api.bandas.leave(id, deleteContent);
       navigate('/kozosseg/bandak', { replace: true });
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'Most nem sikerült kilépni a bandából.');
@@ -179,6 +187,7 @@ export function BandaScreen() {
         setInviteCode(result.inviteCode);
         setSettings(result.settings);
         setNotify(result.notify);
+        setJoinRequestPending(result.joinRequestPending);
       })
       .catch((problem: unknown) => {
         if (!alive) return;
@@ -260,10 +269,12 @@ export function BandaScreen() {
   }
 
   return (
-    <>
+    <div className="banda-detail-page">
+      {banda.coverURL ? <div className="banda-detail__backdrop" style={{ backgroundImage: `url(${banda.coverURL})` }} aria-hidden="true" /> : null}
       <ScreenHeader
         title="BANDÁK"
         backTo="/kozosseg/bandak"
+        className="banda-detail__header"
         action={role && id ? (
           <div className="banda-header__actions">
             <button
@@ -276,7 +287,7 @@ export function BandaScreen() {
             >
               <FontAwesomeIcon icon={notify ? faBell : faBellSlash} />
             </button>
-            {role === 'owner' ? (
+            {role === 'owner' || (role === 'moderator' && settings?.publicJoinMode === 'approval') ? (
               <button
                 type="button"
                 className="screen-header__back"
@@ -290,8 +301,6 @@ export function BandaScreen() {
         ) : undefined}
       />
       <div className="screen-body stack banda-detail">
-        {/* A háttérkép a TÖRZSÖN belül él, különben a fejlécre csúszik. */}
-        {banda.coverURL ? <div className="banda-detail__backdrop" style={{ backgroundImage: `url(${banda.coverURL})` }} aria-hidden="true" /> : null}
         <section className="card stack banda-hero">
           <div className={`banda-hero__cover${banda.coverURL ? '' : ' banda-hero__cover--empty'}`}>
             {banda.coverURL ? <img src={banda.coverURL} alt={`${banda.name} borítóképe`} /> : null}
@@ -308,12 +317,12 @@ export function BandaScreen() {
           {role ? (
             <div className="banda-share">
               {inviteCode ? (
-                <div className="banda-share__code">
+                <button type="button" className={`banda-share__code${copied === 'code' ? ' is-copied' : ''}`} onClick={() => void copyShare('code')}>
                   <strong>{inviteCode}</strong>
-                  <button type="button" onClick={() => void copyShare('code')}>
+                  <span className="banda-share__copy">
                     {copied === 'code' ? 'Másolva' : 'Másolás'}
-                  </button>
-                </div>
+                  </span>
+                </button>
               ) : null}
               <div className="banda-share__actions">
                 {settings && canInvite(role, settings.whoCanInvite) ? (
@@ -326,8 +335,8 @@ export function BandaScreen() {
             </div>
           ) : banda.visibility === 'public' ? (
             <div className="banda-share">
-              <Button block loading={joining} onClick={() => void joinBanda()}>
-                Csatlakozás a bandához
+              <Button block loading={joining} disabled={joinRequestPending} onClick={() => void joinBanda()}>
+                {joinRequestPending ? 'Jóváhagyásra vár' : 'Csatlakozás a bandához'}
               </Button>
             </div>
           ) : null}
@@ -435,7 +444,7 @@ export function BandaScreen() {
           </section>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 

@@ -144,7 +144,7 @@ function BandaPostBoard({ bandaId, kind, canPost, placeholder, emptyText, denied
         <Button size="sm" loading={busy} disabled={!editorHasText} onClick={() => void submit()}>{editing ? 'Mentés' : 'Közzététel'}</Button>
       </> : <>
         {replyingTo ? <div className="banda-composer__context"><span>Válasz neki: <strong>{replyingTo.authorUsername}</strong></span><button type="button" onClick={() => setReplyingTo(null)}>Mégse</button></div> : null}
-        <div className="banda-board__input-row"><textarea ref={textareaRef} className="banda-board__input" placeholder={placeholder} value={text} maxLength={POST_MAX} onChange={(event) => { setText(event.target.value); event.currentTarget.style.height = 'auto'; event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 132)}px`; }} aria-label={placeholder} /><Button size="sm" loading={busy} disabled={!text.trim()} onClick={() => void submit()}>Küldés</Button></div>
+        <div className="banda-board__input-row"><textarea ref={textareaRef} className="banda-board__input" rows={1} wrap="off" placeholder={placeholder} value={text} maxLength={POST_MAX} onChange={(event) => setText(event.target.value.replace(/[\r\n]+/g, ' '))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void submit(); } }} aria-label={placeholder} /><Button size="sm" loading={busy} disabled={!text.trim()} onClick={() => void submit()}>Küldés</Button></div>
       </>}
     </div>
   ) : deniedText ? <p className="search__note banda-board__denied">{deniedText}</p> : null;
@@ -169,11 +169,12 @@ function FeedPostCard({ bandaId, item, own, now, onEdit, onDelete, onChange }: {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<BandaComment[] | null>(null);
   const [comment, setComment] = useState('');
+  const [replyingTo, setReplyingTo] = useState<BandaComment | null>(null);
   const [busy, setBusy] = useState(false);
   async function toggleComments() { const open = !commentsOpen; setCommentsOpen(open); if (open && comments === null) setComments((await api.bandas.feedComments(bandaId, item.id)).items); }
   async function addComment() {
     if (!comment.trim() || busy) return; setBusy(true);
-    try { await api.bandas.addFeedComment(bandaId, item.id, comment.trim()); setComment(''); setComments((await api.bandas.feedComments(bandaId, item.id)).items); onChange({ commentCount: item.commentCount + 1 }); }
+    try { await api.bandas.addFeedComment(bandaId, item.id, comment.trim(), replyingTo?.id); setComment(''); setReplyingTo(null); setComments((await api.bandas.feedComments(bandaId, item.id)).items); onChange({ commentCount: item.commentCount + 1 }); }
     finally { setBusy(false); }
   }
   return <article className="banda-post-card">
@@ -181,7 +182,19 @@ function FeedPostCard({ bandaId, item, own, now, onEdit, onDelete, onChange }: {
     <BandaPostContent text={item.text} format={item.format} />
     {item.hasImage ? <BandaFeedImage bandaId={bandaId} postId={item.id} /> : null}
     <footer className="banda-post__actions"><button type="button" className={item.likedByMe ? 'is-active' : ''} onClick={async () => { const result = await api.bandas.toggleFeedLike(bandaId, item.id); onChange({ likedByMe: result.liked, likeCount: result.likeCount }); }}>♥ <span>{item.likeCount || 'Kedvelés'}</span></button><button type="button" onClick={() => void toggleComments()}><FontAwesomeIcon icon={faComment} /> <span>{item.commentCount || 'Komment'}</span></button></footer>
-    {commentsOpen ? <div className="banda-comments">{comments?.map((entry) => <div key={entry.id} className="banda-comment"><Avatar url={entry.authorPhotoURL} name={entry.authorUsername} size={28} /><div><strong>{entry.authorUsername}</strong><span>{entry.text}</span><time>{formatBandaTimestamp(entry.createdAt, now)}</time></div></div>)}<div className="banda-comments__input"><input value={comment} maxLength={500} placeholder="Írj kommentet…" onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void addComment()} /><Button size="sm" loading={busy} disabled={!comment.trim()} onClick={() => void addComment()}>Küldés</Button></div></div> : null}
+    {commentsOpen ? <div className="banda-comments">
+      {comments?.map((entry) => <div key={entry.id} className={`banda-comment${entry.hidden ? ' banda-comment--hidden' : ''}`}>
+        <Avatar url={entry.authorPhotoURL} name={entry.authorUsername} size={28} />
+        <div>
+          <strong>{entry.authorUsername}</strong>
+          {entry.replyToUsername ? <small className="banda-comment__reply-to"><FontAwesomeIcon icon={faReply} /> Válasz — {entry.replyToUsername}</small> : null}
+          <span>{entry.text}</span>
+          <span className="banda-comment__meta"><time>{formatBandaTimestamp(entry.createdAt, now)}</time><button type="button" onClick={() => setReplyingTo(entry)}>Válasz</button></span>
+        </div>
+      </div>)}
+      {replyingTo ? <div className="banda-composer__context"><span>Válasz — <strong>{replyingTo.authorUsername}</strong></span><button type="button" onClick={() => setReplyingTo(null)}>Mégse</button></div> : null}
+      <div className="banda-comments__input"><input value={comment} maxLength={500} placeholder="Írj kommentet…" onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addComment(); } }} /><Button size="sm" loading={busy} disabled={!comment.trim()} onClick={() => void addComment()}>Küldés</Button></div>
+    </div> : null}
   </article>;
 }
 

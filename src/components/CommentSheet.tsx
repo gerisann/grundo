@@ -127,6 +127,7 @@ export function CommentSheet({
             text: created.text,
             createdAt: created.createdAt,
             mine: true,
+            hidden: false,
             replyToId: created.replyToId,
             replyToUsername: created.replyToUsername,
             /**
@@ -157,11 +158,13 @@ export function CommentSheet({
   async function remove(commentId: string) {
     try {
       await api.deleteComment(activityId, commentId);
-      setComments((current) => {
-        const next = (current ?? []).filter((comment) => comment.id !== commentId);
-        onCountChange?.(next.length);
-        return next;
-      });
+      setComments((current) => (current ?? []).map((comment) => comment.id === commentId ? {
+        ...comment,
+        text: 'törölt komment vagy tag',
+        mine: false,
+        hidden: true,
+        author: { uid: '', username: 'törölt komment vagy tag', photoURL: null, cellColor: null },
+      } : comment));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'A törlés nem sikerült.');
     }
@@ -211,6 +214,7 @@ export function CommentSheet({
                 <button
                   type="button"
                   className="csheet__avatar"
+                  disabled={comment.hidden}
                   onClick={() => {
                     onClose();
                     navigate(`/felhasznalo/${encodeURIComponent(comment.author.username)}`);
@@ -236,6 +240,7 @@ export function CommentSheet({
                     <button
                       type="button"
                       className="csheet__author"
+                      disabled={comment.hidden}
                       onClick={() => {
                         onClose();
                         navigate(`/felhasznalo/${encodeURIComponent(comment.author.username)}`);
@@ -243,7 +248,7 @@ export function CommentSheet({
                     >
                       {comment.author.username}
                     </button>
-                    <RivalBadge uid={comment.author.uid} />
+                    {comment.hidden ? null : <RivalBadge uid={comment.author.uid} />}
                     <span className="csheet__when">{formatRelativeDay(comment.createdAt)}</span>
                   </div>
                   {comment.replyToUsername ? (

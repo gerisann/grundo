@@ -25,6 +25,8 @@
   font-size: var(--fs-small);
 }
 
+.banda-settings__empty { color: var(--text-secondary); font-size: var(--fs-small); }
+
 .banda-settings__file { display: none; }
 .banda-settings__branding { display: grid; gap: var(--sp-4); }
 .banda-settings__profile-image { display: flex; align-items: center; gap: var(--sp-3); }

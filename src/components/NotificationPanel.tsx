@@ -445,6 +445,7 @@ function toneFor(type: NotificationType): string {
     case 'followed_activity':
     case 'new_follower':
     case 'banda_invited':
+    case 'banda_membership':
     case 'banda_post':
     case 'banda_daily':
       return 'social';

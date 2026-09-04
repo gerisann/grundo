@@ -1,117 +1,100 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-04** · GRUNDO **#37**
+> Frissítve: **2026-09-04** · GRUNDO **#38**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: minden commitolva és pusholva.
-> Utoljára dolgozott: **Claude (Opus, High)** · Átadva: **Claude — GRUNDO #38**
+> Állapot: a #38 commitolva és pusholva; élesben még nincs telepítve.
+> Utoljára dolgozott: **Codex (Sol, Erős)** · Átadva: **Codex**
 
 ## Jelenlegi cél
 
-A rögzítés közbeni akadozás megszüntetése. A #36-ban kiadott mérőeszközzel
-Geri két készülékkel terepen mért; ez a menet a mérés kiértékelése és a
-belőle következő javítások. **A munka kódszinten kész, de TELEPÍTETLEN és
-készüléken nincs ellenőrizve** — ehhez új mobilbuild kell.
+A Banda-felület egységesítése és a teljes tagsági életciklus befejezése:
+jóváhagyásos publikus belépés, értesítések, kilépési/kirúgási tartalomkezelés,
+kommentválaszok, valamint az appbannolt felhasználók tartalmának auditálható,
+fizikai törlés nélküli elrejtése. **Kódszinten és lokálisan kész; telepítetlen.**
 
 ## Elkészült
 
-1. **A terepi mérés kiértékelése.** Két 8,6–9,0 km-es kör, ~40 perc, Samsung
-   SM-G780F és iPhone (iOS 18.7). Teljes elemzés:
-   [`archive/2026-09-04-terepi-fosszal-meres.md`](archive/2026-09-04-terepi-fosszal-meres.md).
-   A lényeg: az összköltség elhanyagolható (0,1% kitöltés), a baj egyetlen
-   **859 ms**-os blokk a főszálon, a háttérből visszatéréskor. A költség 80%-a
-   a `preview.geometry`, annak 99,5%-a a hurokkeresés — az elszámolás és a
-   körüljárás együtt csak 2,6–2,8 ms, vagyis **eddig rossz komponenst
-   céloztunk**.
+1. **Banda UI.** A fejléc címe egységesen „Banda beállítások”. A Banda-oldal
+   fejlécének nincs saját háttere, a borítókép elmosott háttere a képernyő
+   tetejétől indul. A teljes meghívókód-doboz másol, siker után zöld állapotot
+   kap. A hírfolyam-komponens nem tapad, az üzenőfali beviteli mező egysoros,
+   a releváns szövegdobozok és kommentlisták scrollbarja rejtett.
 
-2. **Az előnézet levétele a főszálról** (Web Worker). A számítás a
-   `workers/previewWorker.ts`-be került; a cellalánc — a rajzolt nyom és a
-   lépéshang forrása — szándékosan a főszálon maradt. Mérve böngészőben, a
-   valódi terepi nyomvonalon: a főszál a teljes körre **22 ms**-ot fizet
-   (átlag 0,04 ms/frissítés, max 0,2 ms). Az eredmény betűre egyezik a
-   szinkron úttal (518 cella, 10 hurok, GP 180,0 — utóbbi az éles aktivitás
-   mentett GP-jével is stimmel).
+2. **Publikus csatlakozás.** Bandánként `instant` vagy `approval` mód
+   választható, visszafelé kompatibilis `instant` alapértékkel. Jóváhagyásos
+   módban a kérés megmarad a `joinRequests` alkollekcióban; alapító és
+   moderátor elfogadhatja vagy elutasíthatja. Elfogadáskor a két tagsági tükör
+   és a taglétszám tranzakcióban frissül.
 
-3. **A hurokkeresés olcsóbbá tétele.** A durva kitöltés-előkészület memoizálva
-   (`loops.ts` `coarseContextOf`): böngészőben **−55%**, Node-ban −30%, bitre
-   azonos eredménnyel. ⚠️ Ez enyhíti, de nem oldja meg a növekedést — lásd a
-   nyitott ügyek 2. pontját.
+3. **Tagsági értesítések.** A banda tagjai értesítést kapnak belépésről és
+   kilépésről; a kirúgott felhasználó külön értesítést kap. Az új
+   `banda_membership` típus globálisan és bandánként is némítható.
 
-4. **A mérő részletessé tétele.** Láthatóság szerinti bontás, a háttérből
-   VISSZATÉRŐ futások külön, a legdrágább futások teljes körülménnyel
-   (időbélyeg, láthatóság-átmenet, cella-/hurokszám), és percenkénti bontás.
-   Emulátoron végigpróbálva: egy háttérben indult, előtérben befejeződött
-   futás `háttér→előtér` jelöléssel jelenik meg. A 859 ms-hoz hasonló eset
-   mostantól **mérve** lenne, nem következtetve.
+4. **Kilépés, kirúgás és kommentválasz.** Kilépéskor külön választás dönti el,
+   hogy a saját banda-tartalom látható maradjon-e. Kirúgáskor automatikus a
+   soft-hide. A posztok/falüzenetek eltűnnek, a kommentek helyén „törölt
+   komment vagy tag” marad; a dokumentumazonosító és a válaszszál megmarad.
+   A banda hírfolyam-kommentjeire most közvetlenül válaszolni is lehet.
 
-## Módosított fájlok (négy commit: `5fb3454`…`4f0e90c`)
+5. **Appbannolás.** Új, moderátori jogosultságú admin API letiltja az Auth-
+   fiókot, visszavonja a frissítési tokeneket, auditál, és soft-hide-olja a
+   banda-posztokat, falüzeneteket, banda- és aktivitáskommenteket, valamint az
+   aktivitásokat. A korábban törlésre ütemezett aktivitás `purgeAt` mezője is
+   törlődik: fizikai törlést csak a végleges fióktörlés végezhet.
 
-19 fájl, +2553/−238. Ami a folytatáshoz kell:
+6. **Dokumentáció és tesztek.** A funkcionális specifikáció, adatmodell és
+   tartós döntések követik az új viselkedést. Emulátoros regresszióteszt fedi
+   a jóváhagyást, a kilépési választást, a kirúgásos soft-hide-ot, a válaszszál
+   helyőrzőjét és a bannolás adatmegőrzését.
 
-| Fájl | Állapot | Tartalom |
-|---|---|---|
-| `src/lib/previewEngine.ts` (+351) | ÚJ | `PreviewSession` + `planDispatch` — a worker és a szinkron tartalék KÖZÖS magja. |
-| `src/workers/previewWorker.ts` (+78) | ÚJ | A worker belépési pontja. |
-| `src/workers/previewProtocol.ts` (+53) | ÚJ | Üzenettípusok, külön fájlban a modulhatár miatt. |
-| `src/hooks/usePreviewEngine.ts` (+361) | ÚJ | Worker-életciklus, összevonás, szinkron tartalék ág. |
-| `src/lib/perfMeter.ts` (+329/−…) | MÓDOSÍTOTT | A négy új bontás; `perfVisibility()` a hívónak. |
-| `src/game/loops.ts` (+163) | MÓDOSÍTOTT | `coarseContextOf` memoizálás; `ReadonlySet` a kültéren. |
-| `src/screens/TrackingScreen.tsx` (−199) | MÓDOSÍTOTT | A `useMemo` és a két gyorsítótár kikerült. |
-| `server/src/routes/admin.ts` (+103) | MÓDOSÍTOTT | A részletes mérés tárolása, saját plafonokkal. |
-| `src/admin/PerfHistoryScreen.tsx` (+153) | MÓDOSÍTOTT | 4 új szakasz + „Nyers JSON másolása". |
-| `vite.config.ts` (+15) | MÓDOSÍTOTT | `worker.format: 'es'` a `type: 'module'` párjaként. |
+## Módosított fájlok
+
+- Banda backend: `server/src/routes/bandas.ts`, `server/src/lib/bandas.ts`,
+  `server/src/lib/notifications.ts`, `server/src/lib/contentModeration.ts`.
+- Admin és aktivitások: `server/src/routes/admin.ts`,
+  `server/src/routes/activities.ts`.
+- Banda kliens: `src/screens/BandaScreen.tsx`,
+  `src/screens/BandaSettingsScreen.tsx`, `src/components/BandaFeedWall.tsx`
+  és a hozzájuk tartozó CSS.
+- Közös kliens: `src/lib/api.ts`, `src/lib/notificationTypes.ts`,
+  `src/components/NotificationPanel.tsx`, `src/components/CommentSheet.tsx`,
+  `src/components/ui/ScreenHeader.tsx`.
+- Teszt/dokumentáció: `server/src/routes/bandas.emulator.test.ts`,
+  `server/src/lib/contentModeration.emulator.test.ts`, `docs/02-*`, `docs/05-*`,
+  `docs/ai/DECISIONS.md`.
 
 ## Élesben fut / telepítetlen
 
-- **TELEPÍTETLEN, frontend ÉS backend kell** a #37 egésze. Ezen felül a #36-ból
-  is kint van még: `b2e0c98`, `39d821a`, `8d8ff77` (banda-backfill logika,
-  hangjavítás, teljes bandás kör, értesítések).
-- **A worker és a mérő csak ÚJ MOBILBUILDDEL jut el a készülékekre** — a
-  Capacitor a beépített felületet futtatja. iOS és Android build egyaránt kell.
-- **`backfill:banda-stats --apply --allow-production`**: még nem futott.
-- **`grundo-banda-daily` Scheduler-job**: nincs bejegyezve.
+- A #38-hoz **frontend- és backendtelepítés kell**. Szabály- és indexváltozás
+  nincs, adatbázis-migráció nem kell.
+- Az új felület a mobilappba csak új Android/iOS builddel kerül be.
+- A #36–#37 korábbi telepítési tartozása továbbra is él: worker, részletes
+  teljesítménymérés, hangjavítás és a korábbi Bandák-kör.
+- A `backfill:banda-stats --apply --allow-production` még nem futott, a
+  `grundo-banda-daily` Scheduler-job még nincs bejegyezve.
 
 ## Ellenőrzések
 
-- Kliens és szerver `tsc` tiszta. Kliens **792/792**, szerver **229/229** zöld,
-  `npm run build` hibátlan. Emulátoros `admin.emulator.test.ts` **39/39**.
-- **Böngészőben, a valódi terepi nyomvonallal**: a worker elindul, a protokoll
-  végigmegy 580 körbefordulást, az eredmény azonos a szinkron úttal.
-- **Emulátoron, a rögzítő képernyőn**: a worker elindul, az előnézet élőben
-  frissül, a hurkok bezárnak, konzolhiba nincs; a mentés feltölt, és az
-  `/admin/teljesitmeny` a bontásokkal megjeleníti.
-- **NEM ellenőrizve**: (a) **készüléken semmi** — a modul-worker natív
-  webnézetben az egyetlen tényleges kockázat (iOS 15+/Chrome 80+ tudja; ha
-  mégsem, a hook némán a szinkron ágra vált, és a `preview.dispatch` a teljes
-  számítás idejét mutatja 0,0x ms helyett — ebből ismerhető fel); (b) a #36
-  hangjavítása és bandás köre készüléken.
-- ⚠️ **Idegen, NEM ehhez a körhöz tartozó bukás**: az emulátoros
-  `activityMedia.emulator.test.ts` (a #36 is így adta át) és
-  `bandas.emulator.test.ts` — utóbbiban az üzenőfal sorrendje
-  (`wall.items[1]`); a #36 változtatta a fal-sorrendet, és a teszt láthatóan a
-  RÉGI sorrendet rögzíti. Egyik fájlt sem érinti ez a kör.
+- Kliens: **792/792** teszt zöld 15 s tesztlimittel; production build zöld.
+- Szerver: **229/229** nem emulátoros teszt és production build zöld.
+- Emulátor: Banda + tartalommoderáció + aktivitás együtt **51/51** zöld,
+  **1** környezeti teszt kihagyva.
+- Világos és sötét témában böngészőben ellenőrizve a Banda-oldal és a
+  „Banda beállítások” oldal; az eredeti sötét téma visszaállítva.
+- `git diff --check` tiszta. **Készüléken és éles Firebase-adatokon nem volt
+  ellenőrzés**, telepítés nem történt.
 
-## Nyitott ügyek — #38-nak
+## Nyitott ügyek
 
-1. **Telepítés + mobilbuild, majd terepi mérés.** Ez a menet minden eredménye
-   ezen áll vagy bukik. A mérésnél nézni: **`preview.dispatch` ~0** (ha a
-   teljes számítás idejét mutatja, a worker nem indult el); a **„visszatérés"
-   oszlop** (a workerrel ennek nem szabad fagyást okoznia, akármekkora); a
-   **percenkénti bontás** (mennyire nő a költség); és érdemes megismételni
-   ugyanazt a **háttér→előtér váltogatást**, ami a hibát kiváltotta.
-2. **A jelöltek SZÁMÁNAK csökkentése — GERI DÖNTÉSE, nem optimalizálás.**
-   518 cellára 499 jelöltvizsgálat jut, ebből 10 lesz elfogadott hurok; a
-   többi 491 valódi hurok, ami a MÁR MEGSZERZETT területet zárja be újra. A
-   biztonságos szűrőket végigmértem, egyik sem működik (`DECISIONS.md`). Ami
-   maradna: kevesebb jelölt — de az elvehet egy bezárást, amit a szabályok
-   szerint el kellene ismerni. Konkrét kérdés: *ha ugyanazt a kört ötször
-   futod meg, mind az öt bezárás számítson-e?* Ma igen. **Amíg erre nincs
-   válasz, ne nyúlj a detektorhoz.**
-3. A **`bandas.emulator.test.ts`** fal-sorrend bukása (lásd fent).
-4. A hangok és a bandás kör **készülékes ellenőrzése** az új buildekben.
+1. Telepítés után Androidon és iOS-en ellenőrizni a fejléc/borítókép réteget,
+   a hosszú kommentlistákat, a kilépési kétlépcsős kérdést és az értesítéseket.
+2. Az appbannolási backend végpont kész, de a jelenlegi adminfelületnek nincs
+   felhasználókezelő képernyője; ha UI-ból kell indítani, külön adminfeladat.
+3. Lefuttatni a korábbról nyitott banda-statisztika backfillt és felvenni a
+   napi Scheduler-jobot.
 
 ## Modelljavaslat
 
-**Sonnet, Medium** a telepítéshez, a mobilbuildhez és a mérés beolvasásához.
-**Opus, High** csak akkor, ha a 2. pontra megvan Geri döntése — a hurokdetektor
-jelöltszűrése játékszabály-érzékeny terület, ahol egy „optimalizálás" csendben
-elvehet egy bezárást.
+**Codex Sol, Közepes** a telepítéshez és a készülékes ellenőrzéshez. Erős
+fokozat csak az admin felhasználókezelő felület vagy új moderációs szabályok
+tervezéséhez indokolt.

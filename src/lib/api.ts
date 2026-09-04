@@ -414,6 +414,8 @@ export interface ActivityComment {
   createdAt: number;
   /** A sajátom-e — ettől függ, törölhető-e. */
   mine: boolean;
+  /** Soft-delete/moderáció után csak helyőrző jelenik meg, a szál megmarad. */
+  hidden: boolean;
   author: ActivityAuthor;
   /** Melyik kommentre válaszol — `null`, ha ez egy önálló hozzászólás. */
   replyToId: string | null;
@@ -1068,6 +1070,7 @@ export interface BandaSettings {
   whoCanInvite: 'everyone' | 'moderators' | 'owner';
   inviteCodeVisibleTo: 'everyone' | 'moderators' | 'owner';
   postPermission: 'everyone' | 'moderators' | 'owner';
+  publicJoinMode: 'instant' | 'approval';
 }
 
 export type BandaPermission = BandaSettings['whoCanInvite'];
@@ -1158,6 +1161,16 @@ export interface BandaComment {
   authorUsername: string;
   authorPhotoURL: string | null;
   text: string;
+  hidden: boolean;
+  replyToId: string | null;
+  replyToUsername: string | null;
+  createdAt: number | null;
+}
+
+export interface BandaJoinRequest {
+  uid: string;
+  username: string;
+  photoURL: string | null;
   createdAt: number | null;
 }
 
@@ -1273,9 +1286,9 @@ export const api = {
     discover: (sort: 'popular' | 'new', limit = 10) =>
       request<{ items: Banda[] }>(`/api/bandas/discover?sort=${sort}&limit=${Math.min(10, Math.max(1, limit))}`),
 
-    /** Publikus bandához azonnali csatlakozás. */
+    /** Publikus bandához csatlakozás vagy jóváhagyási kérés. */
     join: (bandaId: string) =>
-      request<{ role: BandaRole }>(`/api/bandas/${encodeURIComponent(bandaId)}/join`, { method: 'POST' }),
+      request<{ status: 'joined' | 'pending'; role: BandaRole | null }>(`/api/bandas/${encodeURIComponent(bandaId)}/join`, { method: 'POST' }),
 
     /** Privát bandához meghívókóddal. */
     joinByCode: (code: string) =>
@@ -1292,6 +1305,7 @@ export const api = {
         isMember: boolean;
         inviteCode: string | null;
         settings: BandaSettings;
+        joinRequestPending: boolean;
         /** Kér-e a hívó értesítést erről a bandáról (a fejléc csengője). */
         notify: boolean;
       }>(`/api/bandas/${encodeURIComponent(bandaId)}`),
@@ -1357,9 +1371,9 @@ export const api = {
     feedComments: (bandaId: string, postId: string) =>
       request<{ items: BandaComment[] }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/comments`),
 
-    addFeedComment: (bandaId: string, postId: string, text: string) =>
+    addFeedComment: (bandaId: string, postId: string, text: string, replyToId?: string) =>
       request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/comments`, {
-        method: 'POST', body: JSON.stringify({ text }),
+        method: 'POST', body: JSON.stringify({ text, ...(replyToId ? { replyToId } : {}) }),
       }),
 
     /** Tagságvédett posztkép; a hívó Blob URL-t készít belőle. */
@@ -1404,6 +1418,16 @@ export const api = {
         { method: 'PATCH', body: JSON.stringify({ role }) },
       ),
 
+    /** Alapító/moderátor előtt álló publikus csatlakozási kérelmek. */
+    joinRequests: (bandaId: string) =>
+      request<{ items: BandaJoinRequest[] }>(`/api/bandas/${encodeURIComponent(bandaId)}/join-requests`),
+
+    reviewJoinRequest: (bandaId: string, memberId: string, decision: 'approve' | 'reject') =>
+      request<{ status: 'approved' | 'rejected' }>(
+        `/api/bandas/${encodeURIComponent(bandaId)}/join-requests/${encodeURIComponent(memberId)}`,
+        { method: 'POST', body: JSON.stringify({ decision }) },
+      ),
+
     /** Tag eltávolítása — a szerver a szerephierarchiát is ellenőrzi. */
     removeMember: (bandaId: string, memberId: string) =>
       request<{ removed: true }>(
@@ -1419,8 +1443,10 @@ export const api = {
       ),
 
     /** Saját tagság megszüntetése; az alapítónak előbb át kell adnia a rangot. */
-    leave: (bandaId: string) =>
-      request<{ left: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/leave`, { method: 'POST' }),
+    leave: (bandaId: string, deleteContent: boolean) =>
+      request<{ left: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/leave`, {
+        method: 'POST', body: JSON.stringify({ deleteContent }),
+      }),
   },
 
   /** Felhasználónév-keresés (prefix-illeszkedés) — a fejléc Keresés gombja. */

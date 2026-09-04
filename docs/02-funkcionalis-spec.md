@@ -328,7 +328,8 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   mindenkori bontásban).
 - **Bárki hozhat létre** bandát — nem Pro-funkció (a korábbi Pro-gate ezzel
   törölve). Egy felhasználó **egyszerre több bandának is tagja lehet**.
-- **Publikus** banda: kereshető, csatlakozás **azonnali**.
+- **Publikus** banda: kereshető; az alapító beállítása szerint a csatlakozás
+  **azonnali**, vagy alapítói/moderátori jóváhagyásra vár.
 - A publikus kereső alatt kétfüles böngészőblokk jelenik meg: **Népszerű
   Bandák** (taglétszám szerint csökkenő) és **Új Bandák** (létrehozási idő
   szerint csökkenő). Mindkét fül legfeljebb 10 publikus bandát listáz.
@@ -365,8 +366,8 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   A posztok kártyák, szerkeszthetők és törölhetők, kedvelhetők, valamint
   kommentelhetők. Elsőre legfeljebb 10 poszt látszik, majd újabb tíz tölthető.
 - Az üzenőfalon a saját buborékok jobbra, másoké balra igazodnak; az
-  üzenetekre válaszolni és szívvel reagálni lehet. A beviteli sáv rögzített,
-  de több sornál a mező a meghatározott maximumig megnő.
+  üzenetekre válaszolni és szívvel reagálni lehet. A beviteli mező egysoros,
+  a saját és a kommentlisták scrollbarja vizuálisan rejtett.
 - Minden poszt és üzenőfali üzenet mutatja az idejét: egy percen belül „most”,
   utána perc/óra/nap alapú relatív idő, egyhetes kortól teljes helyi dátum
   (`2026.10.01. 13:23`).
@@ -380,6 +381,11 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   korábbi alapító moderátorként marad a bandában.
 - Az alapító nem léphet ki a bandából, amíg át nem adta egy meglévő
   tagnak az alapítói rangot. Tag és moderátor saját maga kiléphet.
+- Kilépéskor a felhasználó külön dönt arról, hogy a bandában írt posztjai és
+  kommentjei láthatók maradjanak-e. Kirúgáskor a hírfolyam-posztok eltűnnek,
+  a kommentek helyén „törölt komment vagy tag” marad, és a válaszszál tovább
+  folytatható. Ezek soft-hide műveletek: az eredeti dokumentum admin számára
+  visszakereshető, fizikai törlés csak végleges fióktörléskor történik.
 
 ### Kihívások (kép #36)
 - Időszakos, admin által létrehozott feladatok. Típusok:
@@ -548,6 +554,7 @@ profilra, grundra vagy beállítási képernyőre navigálunk.
 | Megosztott útvonal | BE | |
 | Cipő futásteljesítmény elérve | BE | |
 | Banda: meghívás (`banda_invited`) | BE | *(GRUNDO #30)* |
+| Banda: belépés / kilépés / kirúgás (`banda_membership`) | BE | Bandánként a fejléc csengőjével is némítható; a kirúgott felhasználó saját értesítést kap. |
 | Banda: moderátor-kinevezés / kirúgás | BE | *(Phase 3)* |
 | Kihívás indul / véget ér / helyezés-változás | BE | |
 | **Napi pont-összegzés** | BE | Este: megszerzett GP, tartott terület bónusz |

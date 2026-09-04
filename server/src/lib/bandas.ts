@@ -24,18 +24,22 @@ export type BandaRole = 'owner' | 'moderator' | 'member';
 
 /** Ki hívhat meg / ki posztolhat — mindkét beállítás ugyanezt a három fokozatot ismeri. */
 export type RolePermission = 'everyone' | 'moderators' | 'owner';
+export type PublicJoinMode = 'instant' | 'approval';
 
 export interface BandaSettings {
   whoCanInvite: RolePermission;
   inviteCodeVisibleTo: RolePermission;
   /** Ki posztolhat a hírfolyamba — a chat falra bárki tag írhat, arra nincs beállítás. */
   postPermission: RolePermission;
+  /** Publikus bandánál azonnali-e a belépés, vagy moderátori jóváhagyást kér. */
+  publicJoinMode: PublicJoinMode;
 }
 
 export const DEFAULT_BANDA_SETTINGS: BandaSettings = {
   whoCanInvite: 'everyone',
   inviteCodeVisibleTo: 'everyone',
   postPermission: 'everyone',
+  publicJoinMode: 'instant',
 };
 
 /**

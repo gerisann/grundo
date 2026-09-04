@@ -7,13 +7,14 @@ export interface ScreenHeaderProps {
   backTo?: string;
   /** Jobb oldali akció (pl. Mentés, ⋯ menü). */
   action?: ReactNode;
+  className?: string;
 }
 
-export function ScreenHeader({ title, backTo, action }: ScreenHeaderProps) {
+export function ScreenHeader({ title, backTo, action, className }: ScreenHeaderProps) {
   const navigate = useNavigate();
 
   return (
-    <header className="screen-header">
+    <header className={`screen-header${className ? ` ${className}` : ''}`}>
       <button
         type="button"
         className="screen-header__back"

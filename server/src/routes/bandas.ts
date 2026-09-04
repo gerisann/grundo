@@ -35,9 +35,13 @@ import {
 } from '../lib/bandas';
 import {
   notifyBandaInvite,
+  notifyBandaMemberJoined,
+  notifyBandaMemberLeft,
+  notifyBandaMemberRemoved,
   notifyBandaPost,
   notifyBandaWallReaction,
 } from '../lib/notifications';
+import { hideBandaMemberContent } from '../lib/contentModeration';
 import type { AuthedRequest } from '../../server';
 
 export const bandasRouter = Router();
@@ -338,7 +342,7 @@ bandasRouter.get('/discover', async (req: AuthedRequest, res: Response, next) =>
 });
 
 /* ═══════════════════════════════════════════════════════════════════
-   POST /api/bandas/:id/join — publikus bandához azonnali csatlakozás
+   POST /api/bandas/:id/join — publikus csatlakozás vagy jóváhagyási kérés
    ═══════════════════════════════════════════════════════════════════ */
 
 bandasRouter.post('/:id/join', async (req: AuthedRequest, res: Response, next) => {
@@ -347,28 +351,52 @@ bandasRouter.post('/:id/join', async (req: AuthedRequest, res: Response, next) =
     const bandaId = String(req.params.id ?? '');
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
 
-    const role = await db.runTransaction(async (tx) => {
-      const bandaSnap = await tx.get(bandaRef);
+    const result = await db.runTransaction(async (tx) => {
+      const memberRef = bandaRef.collection('members').doc(uid);
+      const requestRef = bandaRef.collection('joinRequests').doc(uid);
+      const userRef = db.collection(COLLECTIONS.users).doc(uid);
+      const [bandaSnap, memberSnap, requestSnap, userSnap] = await Promise.all([
+        tx.get(bandaRef), tx.get(memberRef), tx.get(requestRef), tx.get(userRef),
+      ]);
       if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
       const data = bandaSnap.data() as Record<string, unknown>;
       if (data.visibility !== 'public') {
         throw forbidden('Ez a banda privát — meghívókód kell a csatlakozáshoz.');
       }
 
-      const memberRef = bandaRef.collection('members').doc(uid);
-      const memberSnap = await tx.get(memberRef);
       if (memberSnap.exists) throw conflict('already_member', 'Már tagja vagy ennek a bandának.');
+
+      const settings = {
+        ...DEFAULT_BANDA_SETTINGS,
+        ...((data.settings as Partial<BandaSettings> | undefined) ?? {}),
+      };
+      const name = String(data.name ?? 'Banda');
+      const user = userSnap.data() as { username?: string; photoURL?: string | null } | undefined;
+      const username = String(user?.username ?? 'Valaki');
+      if (settings.publicJoinMode === 'approval') {
+        if (requestSnap.exists) throw conflict('join_request_pending', 'A csatlakozási kérésed már jóváhagyásra vár.');
+        tx.set(requestRef, {
+          username,
+          photoURL: user?.photoURL ?? null,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        return { status: 'pending' as const, role: null, name, username };
+      }
 
       tx.set(memberRef, { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() });
       tx.set(
         db.collection(COLLECTIONS.users).doc(uid).collection('bandas').doc(bandaId),
         { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() },
       );
+      tx.delete(requestRef);
       tx.set(bandaRef, { memberCount: FieldValue.increment(1) }, { merge: true });
-      return 'member' as BandaRole;
+      return { status: 'joined' as const, role: 'member' as BandaRole, name, username };
     });
 
-    res.json({ role });
+    if (result.status === 'joined') {
+      notifyBandaMemberJoined(await notifiableMembers(bandaRef, uid), bandaId, result.name, result.username);
+    }
+    res.json({ status: result.status, role: result.role });
   } catch (error) {
     next(error);
   }
@@ -407,6 +435,9 @@ bandasRouter.post('/join-by-code', async (req: AuthedRequest, res: Response, nex
       return { bandaId, name: String((bandaSnap.data() as { name?: string }).name ?? '') };
     });
 
+    const username = String((await db.collection(COLLECTIONS.users).doc(uid).get()).get('username') ?? 'Valaki');
+    const joinedBandaRef = db.collection(COLLECTIONS.bandas).doc(result.bandaId);
+    notifyBandaMemberJoined(await notifiableMembers(joinedBandaRef, uid), result.bandaId, result.name, username);
     res.json({ role: 'member' as BandaRole, ...result });
   } catch (error) {
     next(error);
@@ -498,7 +529,7 @@ bandasRouter.post('/:id/invite/accept', async (req: AuthedRequest, res: Response
     const inviteRef = bandaRef.collection('invites').doc(uid);
     const mirrorRef = db.collection(COLLECTIONS.users).doc(uid).collection('bandaInvites').doc(bandaId);
 
-    const role = await db.runTransaction(async (tx) => {
+    const result = await db.runTransaction(async (tx) => {
       const inviteSnap = await tx.get(inviteRef);
       if (!inviteSnap.exists) throw notFound('invite_not_found', 'Nincs függő meghívód ehhez a bandához.');
       const bandaSnap = await tx.get(bandaRef);
@@ -512,7 +543,13 @@ bandasRouter.post('/:id/invite/accept', async (req: AuthedRequest, res: Response
 
       // Ha időközben már máshogy (kóddal) csatlakozott, a meghívó törlésén
       // túl nincs több teendő — nincs dupla tagság, nincs dupla számláló.
-      if (memberSnap.exists) return (memberSnap.data() as { role?: BandaRole }).role ?? 'member';
+      if (memberSnap.exists) {
+        return {
+          role: (memberSnap.data() as { role?: BandaRole }).role ?? 'member',
+          joined: false,
+          name: String((bandaSnap.data() as { name?: string }).name ?? 'Banda'),
+        };
+      }
 
       tx.set(memberRef, { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() });
       tx.set(
@@ -520,10 +557,18 @@ bandasRouter.post('/:id/invite/accept', async (req: AuthedRequest, res: Response
         { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() },
       );
       tx.set(bandaRef, { memberCount: FieldValue.increment(1) }, { merge: true });
-      return 'member' as BandaRole;
+      return {
+        role: 'member' as BandaRole,
+        joined: true,
+        name: String((bandaSnap.data() as { name?: string }).name ?? 'Banda'),
+      };
     });
 
-    res.json({ role });
+    if (result.joined) {
+      const username = String((await db.collection(COLLECTIONS.users).doc(uid).get()).get('username') ?? 'Valaki');
+      notifyBandaMemberJoined(await notifiableMembers(bandaRef, uid), bandaId, result.name, username);
+    }
+    res.json({ role: result.role });
   } catch (error) {
     next(error);
   }
@@ -560,9 +605,10 @@ bandasRouter.get('/:id', async (req: AuthedRequest, res: Response, next) => {
     const bandaId = String(req.params.id ?? '');
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
 
-    const [bandaSnap, memberSnap] = await Promise.all([
+    const [bandaSnap, memberSnap, joinRequestSnap] = await Promise.all([
       bandaRef.get(),
       bandaRef.collection('members').doc(uid).get(),
+      bandaRef.collection('joinRequests').doc(uid).get(),
     ]);
     if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
     const data = bandaSnap.data() as Record<string, unknown>;
@@ -594,6 +640,7 @@ bandasRouter.get('/:id', async (req: AuthedRequest, res: Response, next) => {
       role,
       isMember,
       settings,
+      joinRequestPending: !isMember && joinRequestSnap.exists,
       inviteCode: maySeeCode ? inviteCode : null,
       // A csengő állása. Nem tagnál nincs értelme, ezért `false`.
       notify: isMember && (memberSnap.data() as { notify?: boolean }).notify !== false,
@@ -681,14 +728,20 @@ bandasRouter.patch('/:id/settings', async (req: AuthedRequest, res: Response, ne
     const uid = req.uid!;
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
     const body = (req.body as Partial<Record<keyof BandaSettings, unknown>> | undefined) ?? {};
-    const keys: (keyof BandaSettings)[] = ['whoCanInvite', 'inviteCodeVisibleTo', 'postPermission'];
+    const permissionKeys: (keyof Pick<BandaSettings, 'whoCanInvite' | 'inviteCodeVisibleTo' | 'postPermission'>)[] = [
+      'whoCanInvite', 'inviteCodeVisibleTo', 'postPermission',
+    ];
+    const keys: (keyof BandaSettings)[] = [...permissionKeys, 'publicJoinMode'];
     if (!keys.some((key) => body[key] !== undefined)) {
       throw badRequest('empty_settings', 'Válassz legalább egy módosítandó beállítást.');
     }
-    for (const key of keys) {
+    for (const key of permissionKeys) {
       if (body[key] !== undefined && !ROLE_PERMISSIONS.has(String(body[key]))) {
         throw badRequest('invalid_permission', 'Érvénytelen banda-jogosultság.');
       }
+    }
+    if (body.publicJoinMode !== undefined && body.publicJoinMode !== 'instant' && body.publicJoinMode !== 'approval') {
+      throw badRequest('invalid_join_mode', 'A publikus belépés módja csak azonnali vagy jóváhagyásos lehet.');
     }
 
     const settings = await db.runTransaction(async (tx) => {
@@ -700,15 +753,93 @@ bandasRouter.patch('/:id/settings', async (req: AuthedRequest, res: Response, ne
       }
 
       const current = (bandaSnap.data() as { settings?: Partial<BandaSettings> }).settings ?? {};
-      const updated: BandaSettings = { ...DEFAULT_BANDA_SETTINGS, ...current };
-      for (const key of keys) {
-        if (body[key] !== undefined) updated[key] = body[key] as BandaSettings[typeof key];
-      }
+      const updated: BandaSettings = {
+        ...DEFAULT_BANDA_SETTINGS,
+        ...current,
+        ...(body.whoCanInvite !== undefined ? { whoCanInvite: body.whoCanInvite as BandaSettings['whoCanInvite'] } : {}),
+        ...(body.inviteCodeVisibleTo !== undefined ? { inviteCodeVisibleTo: body.inviteCodeVisibleTo as BandaSettings['inviteCodeVisibleTo'] } : {}),
+        ...(body.postPermission !== undefined ? { postPermission: body.postPermission as BandaSettings['postPermission'] } : {}),
+        ...(body.publicJoinMode !== undefined ? { publicJoinMode: body.publicJoinMode as BandaSettings['publicJoinMode'] } : {}),
+      };
       tx.update(bandaRef, { settings: updated });
       return updated;
     });
 
     res.json({ settings });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Függő publikus csatlakozási kérések — alapítónak és moderátornak. */
+bandasRouter.get('/:id/join-requests', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    const role = await loadMemberRole(bandaRef, req.uid!);
+    if (role === 'member') throw forbidden('Csak az alapító vagy egy moderátor láthatja a csatlakozási kéréseket.');
+
+    const snapshot = await bandaRef.collection('joinRequests').orderBy('createdAt', 'asc').limit(MEMBER_LIST_LIMIT).get();
+    res.json({
+      items: snapshot.docs.map((doc) => ({
+        uid: doc.id,
+        username: String(doc.get('username') ?? ''),
+        photoURL: typeof doc.get('photoURL') === 'string' ? doc.get('photoURL') : null,
+        createdAt: millis(doc.get('createdAt')),
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Egy függő kérés jóváhagyása vagy elutasítása — tranzakciósan a tagsággal. */
+bandasRouter.post('/:id/join-requests/:memberId', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const callerUid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const targetUid = String(req.params.memberId ?? '');
+    const decision = (req.body as { decision?: unknown } | undefined)?.decision;
+    if (decision !== 'approve' && decision !== 'reject') {
+      throw badRequest('invalid_decision', 'A döntés jóváhagyás vagy elutasítás lehet.');
+    }
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    const result = await db.runTransaction(async (tx) => {
+      const callerRef = bandaRef.collection('members').doc(callerUid);
+      const targetRef = bandaRef.collection('members').doc(targetUid);
+      const requestRef = bandaRef.collection('joinRequests').doc(targetUid);
+      const [bandaSnap, callerSnap, targetSnap, requestSnap] = await Promise.all([
+        tx.get(bandaRef), tx.get(callerRef), tx.get(targetRef), tx.get(requestRef),
+      ]);
+      if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
+      const callerRole = (callerSnap.data() as { role?: BandaRole } | undefined)?.role;
+      if (callerRole !== 'owner' && callerRole !== 'moderator') {
+        throw forbidden('Csak az alapító vagy egy moderátor bírálhatja el a csatlakozási kérést.');
+      }
+      if (!requestSnap.exists) throw notFound('join_request_not_found', 'Ez a csatlakozási kérés már nem található.');
+
+      tx.delete(requestRef);
+      if (decision === 'reject') {
+        return { status: 'rejected' as const, joined: false, name: String(bandaSnap.get('name') ?? 'Banda') };
+      }
+      if (targetSnap.exists) {
+        return { status: 'approved' as const, joined: false, name: String(bandaSnap.get('name') ?? 'Banda') };
+      }
+
+      tx.set(targetRef, { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() });
+      tx.set(
+        db.collection(COLLECTIONS.users).doc(targetUid).collection('bandas').doc(bandaId),
+        { role: 'member' as BandaRole, joinedAt: FieldValue.serverTimestamp() },
+      );
+      tx.update(bandaRef, { memberCount: FieldValue.increment(1) });
+      return { status: 'approved' as const, joined: true, name: String(bandaSnap.get('name') ?? 'Banda') };
+    });
+
+    if (result.joined) {
+      const username = String((await db.collection(COLLECTIONS.users).doc(targetUid).get()).get('username') ?? 'Valaki');
+      notifyBandaMemberJoined(await notifiableMembers(bandaRef, targetUid), bandaId, result.name, username);
+    }
+    res.json({ status: result.status });
   } catch (error) {
     next(error);
   }
@@ -760,7 +891,7 @@ bandasRouter.delete('/:id/members/:memberId', async (req: AuthedRequest, res: Re
     if (targetUid === uid) throw conflict('cannot_kick_self', 'Saját magadat nem rúghatod ki a bandából.');
 
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
-    await db.runTransaction(async (tx) => {
+    const bandaName = await db.runTransaction(async (tx) => {
       const callerRef = bandaRef.collection('members').doc(uid);
       const targetRef = bandaRef.collection('members').doc(targetUid);
       const [bandaSnap, callerSnap, targetSnap] = await Promise.all([
@@ -783,8 +914,11 @@ bandasRouter.delete('/:id/members/:memberId', async (req: AuthedRequest, res: Re
       tx.delete(targetRef);
       tx.delete(db.collection(COLLECTIONS.users).doc(targetUid).collection('bandas').doc(bandaId));
       tx.update(bandaRef, { memberCount: FieldValue.increment(-1) });
+      return String(bandaSnap.get('name') ?? 'Banda');
     });
 
+    await hideBandaMemberContent(bandaId, targetUid, 'member_removed', uid);
+    notifyBandaMemberRemoved(targetUid, bandaName);
     res.json({ removed: true });
   } catch (error) {
     next(error);
@@ -833,8 +967,9 @@ bandasRouter.post('/:id/leave', async (req: AuthedRequest, res: Response, next) 
   try {
     const uid = req.uid!;
     const bandaId = String(req.params.id ?? '');
+    const deleteContent = (req.body as { deleteContent?: unknown } | undefined)?.deleteContent === true;
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
-    await db.runTransaction(async (tx) => {
+    const bandaName = await db.runTransaction(async (tx) => {
       const memberRef = bandaRef.collection('members').doc(uid);
       const [bandaSnap, memberSnap] = await Promise.all([tx.get(bandaRef), tx.get(memberRef)]);
       if (!bandaSnap.exists) throw notFound('banda_not_found', 'Nincs ilyen banda.');
@@ -849,8 +984,12 @@ bandasRouter.post('/:id/leave', async (req: AuthedRequest, res: Response, next) 
       tx.delete(memberRef);
       tx.delete(db.collection(COLLECTIONS.users).doc(uid).collection('bandas').doc(bandaId));
       tx.update(bandaRef, { memberCount: FieldValue.increment(-1) });
+      return String(bandaSnap.get('name') ?? 'Banda');
     });
 
+    if (deleteContent) await hideBandaMemberContent(bandaId, uid, 'member_left', uid);
+    const username = String((await db.collection(COLLECTIONS.users).doc(uid).get()).get('username') ?? 'Valaki');
+    notifyBandaMemberLeft(await notifiableMembers(bandaRef, uid), bandaId, bandaName, username);
     res.json({ left: true });
   } catch (error) {
     next(error);
@@ -927,6 +1066,7 @@ bandasRouter.get('/:id/members', async (req: AuthedRequest, res: Response, next)
 const POST_MAX = 1000;
 const FEED_PAGE = 10;
 const FEED_PAGE_MAX = 50;
+const FEED_SCAN_MAX = 250;
 const WALL_PAGE = 100;
 const COMMENT_MAX = 500;
 
@@ -1001,8 +1141,9 @@ bandasRouter.get('/:id/feed', async (req: AuthedRequest, res: Response, next) =>
     await loadMemberRole(bandaRef, uid);
 
     const limit = requestedLimit(req.query.limit, FEED_PAGE, FEED_PAGE_MAX);
-    const snapshot = await bandaRef.collection('feed').orderBy('createdAt', 'desc').limit(limit + 1).get();
-    res.json({ items: await postSummaries(snapshot.docs.slice(0, limit), uid), hasMore: snapshot.docs.length > limit });
+    const snapshot = await bandaRef.collection('feed').orderBy('createdAt', 'desc').limit(FEED_SCAN_MAX).get();
+    const visible = snapshot.docs.filter((doc) => doc.get('hiddenAt') == null);
+    res.json({ items: await postSummaries(visible.slice(0, limit), uid), hasMore: visible.length > limit });
   } catch (error) {
     next(error);
   }
@@ -1085,7 +1226,7 @@ bandasRouter.patch('/:id/feed/:postId', async (req: AuthedRequest, res: Response
     if (text.length > POST_MAX) throw badRequest('post_too_long', `A poszt legfeljebb ${POST_MAX} karakter.`);
     const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
     const postSnap = await postRef.get();
-    if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    if (!postSnap.exists || postSnap.get('hiddenAt') != null) throw notFound('post_not_found', 'Nincs ilyen poszt.');
     if (postSnap.get('authorUid') !== uid) throw forbidden('Csak a saját posztodat szerkesztheted.');
     await postRef.update({ text, format: 'markdown-v1', updatedAt: FieldValue.serverTimestamp() });
     res.json({ updated: true });
@@ -1103,11 +1244,11 @@ bandasRouter.delete('/:id/feed/:postId', async (req: AuthedRequest, res: Respons
     const postSnap = await postRef.get();
     if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
     if (postSnap.get('authorUid') !== uid && role !== 'owner') throw forbidden('Ezt a posztot nem törölheted.');
-    const imagePath = postSnap.get('imagePath');
-    await db.recursiveDelete(postRef);
-    if (typeof imagePath === 'string' && imagePath.startsWith(`bandas/${bandaRef.id}/feed/`)) {
-      await storage.bucket(FIREBASE_STORAGE_BUCKET).file(imagePath).delete({ ignoreNotFound: true });
-    }
+    await postRef.update({
+      hiddenAt: FieldValue.serverTimestamp(),
+      hiddenReason: 'post_deleted',
+      hiddenBy: uid,
+    });
     res.json({ deleted: true });
   } catch (error) {
     next(error);
@@ -1123,7 +1264,7 @@ bandasRouter.post('/:id/feed/:postId/like', async (req: AuthedRequest, res: Resp
     const result = await db.runTransaction(async (transaction) => {
       const likeRef = postRef.collection('likes').doc(uid);
       const [postSnap, likeSnap] = await Promise.all([transaction.get(postRef), transaction.get(likeRef)]);
-      if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+      if (!postSnap.exists || postSnap.get('hiddenAt') != null) throw notFound('post_not_found', 'Nincs ilyen poszt.');
       const current = num(postSnap.get('likeCount'));
       if (likeSnap.exists) {
         transaction.delete(likeRef);
@@ -1142,12 +1283,16 @@ bandasRouter.post('/:id/feed/:postId/like', async (req: AuthedRequest, res: Resp
 
 function toCommentSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const data = doc.data() as Record<string, unknown>;
+  const hidden = data.hiddenAt != null;
   return {
     id: doc.id,
-    authorUid: String(data.authorUid ?? ''),
-    authorUsername: String(data.authorUsername ?? ''),
-    authorPhotoURL: typeof data.authorPhotoURL === 'string' ? data.authorPhotoURL : null,
-    text: String(data.text ?? ''),
+    authorUid: hidden ? '' : String(data.authorUid ?? ''),
+    authorUsername: hidden ? 'törölt komment vagy tag' : String(data.authorUsername ?? ''),
+    authorPhotoURL: hidden ? null : typeof data.authorPhotoURL === 'string' ? data.authorPhotoURL : null,
+    text: hidden ? 'törölt komment vagy tag' : String(data.text ?? ''),
+    hidden,
+    replyToId: typeof data.replyToId === 'string' ? data.replyToId : null,
+    replyToUsername: typeof data.replyToUsername === 'string' ? data.replyToUsername : null,
     createdAt: millis(data.createdAt),
   };
 }
@@ -1157,9 +1302,16 @@ bandasRouter.get('/:id/feed/:postId/comments', async (req: AuthedRequest, res: R
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
     await loadMemberRole(bandaRef, req.uid!);
     const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
-    if (!(await postRef.get()).exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    const postSnap = await postRef.get();
+    if (!postSnap.exists || postSnap.get('hiddenAt') != null) throw notFound('post_not_found', 'Nincs ilyen poszt.');
     const snapshot = await postRef.collection('comments').orderBy('createdAt', 'asc').limit(100).get();
-    res.json({ items: snapshot.docs.map(toCommentSummary) });
+    const items = snapshot.docs.map(toCommentSummary);
+    const hiddenIds = new Set(items.filter((item) => item.hidden).map((item) => item.id));
+    res.json({
+      items: items.map((item) => item.replyToId && hiddenIds.has(item.replyToId)
+        ? { ...item, replyToUsername: 'törölt komment vagy tag' }
+        : item),
+    });
   } catch (error) {
     next(error);
   }
@@ -1171,16 +1323,35 @@ bandasRouter.post('/:id/feed/:postId/comments', async (req: AuthedRequest, res: 
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
     await loadMemberRole(bandaRef, uid);
     const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    const replyToIdValue = (req.body as { replyToId?: unknown } | undefined)?.replyToId;
+    const replyToId = typeof replyToIdValue === 'string' && replyToIdValue ? replyToIdValue : null;
     if (!text) throw badRequest('empty_comment', 'Írj valamit a kommentbe.');
     if (text.length > COMMENT_MAX) throw badRequest('comment_too_long', `A komment legfeljebb ${COMMENT_MAX} karakter.`);
     const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
     const userRef = db.collection(COLLECTIONS.users).doc(uid);
-    const [postSnap, userSnap] = await Promise.all([postRef.get(), userRef.get()]);
-    if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    const [postSnap, userSnap, replySnap] = await Promise.all([
+      postRef.get(),
+      userRef.get(),
+      replyToId ? postRef.collection('comments').doc(replyToId).get() : Promise.resolve(null),
+    ]);
+    if (!postSnap.exists || postSnap.get('hiddenAt') != null) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    if (replyToId && !replySnap?.exists) throw badRequest('invalid_reply', 'A megválaszolt komment már nem található.');
     const user = userSnap.data() as { username?: string; photoURL?: string | null } | undefined;
     const commentRef = postRef.collection('comments').doc();
     const batch = db.batch();
-    batch.set(commentRef, { authorUid: uid, authorUsername: String(user?.username ?? ''), authorPhotoURL: user?.photoURL ?? null, text, createdAt: FieldValue.serverTimestamp() });
+    batch.set(commentRef, {
+      authorUid: uid,
+      authorUsername: String(user?.username ?? ''),
+      authorPhotoURL: user?.photoURL ?? null,
+      text,
+      ...(replyToId ? {
+        replyToId,
+        replyToUsername: replySnap?.get('hiddenAt') != null
+          ? 'törölt komment vagy tag'
+          : String(replySnap?.get('authorUsername') ?? ''),
+      } : {}),
+      createdAt: FieldValue.serverTimestamp(),
+    });
     batch.update(postRef, { commentCount: FieldValue.increment(1) });
     await batch.commit();
     res.status(201).json({ id: commentRef.id });
@@ -1199,7 +1370,7 @@ bandasRouter.get('/:id/feed/:postId/image', async (req: AuthedRequest, res: Resp
 
     const postSnap = await bandaRef.collection('feed').doc(postId).get();
     const imagePath = (postSnap.data() as { imagePath?: unknown } | undefined)?.imagePath;
-    if (!postSnap.exists || typeof imagePath !== 'string') {
+    if (!postSnap.exists || postSnap.get('hiddenAt') != null || typeof imagePath !== 'string') {
       throw notFound('feed_image_missing', 'Nincs ilyen posztkép.');
     }
 
@@ -1244,7 +1415,8 @@ bandasRouter.get('/:id/wall', async (req: AuthedRequest, res: Response, next) =>
      * a lista fölött van — így nem kell végiggörgetni a régieket.
      */
     const snapshot = await bandaRef.collection('wall').orderBy('createdAt', 'desc').limit(WALL_PAGE).get();
-    res.json({ items: await postSummaries(snapshot.docs, uid), hasMore: snapshot.docs.length >= WALL_PAGE });
+    const visible = snapshot.docs.filter((doc) => doc.get('hiddenAt') == null);
+    res.json({ items: await postSummaries(visible, uid), hasMore: snapshot.docs.length >= WALL_PAGE });
   } catch (error) {
     next(error);
   }
@@ -1267,7 +1439,7 @@ bandasRouter.post('/:id/wall', async (req: AuthedRequest, res: Response, next) =
       db.collection(COLLECTIONS.users).doc(uid).get(),
       replyToId ? bandaRef.collection('wall').doc(replyToId).get() : Promise.resolve(null),
     ]);
-    if (replyToId && !replySnap?.exists) throw badRequest('invalid_reply', 'A megválaszolt üzenet már nem található.');
+    if (replyToId && (!replySnap?.exists || replySnap.get('hiddenAt') != null)) throw badRequest('invalid_reply', 'A megválaszolt üzenet már nem található.');
 
     const userData = userSnap.data() as { username?: string; photoURL?: string | null } | undefined;
     const authorUsername = String(userData?.username ?? '');
@@ -1310,7 +1482,7 @@ bandasRouter.post('/:id/wall/:messageId/like', async (req: AuthedRequest, res: R
     const result = await db.runTransaction(async (transaction) => {
       const likeRef = messageRef.collection('likes').doc(uid);
       const [messageSnap, likeSnap] = await Promise.all([transaction.get(messageRef), transaction.get(likeRef)]);
-      if (!messageSnap.exists) throw notFound('message_not_found', 'Nincs ilyen üzenet.');
+      if (!messageSnap.exists || messageSnap.get('hiddenAt') != null) throw notFound('message_not_found', 'Nincs ilyen üzenet.');
       const current = num(messageSnap.get('likeCount'));
       const authorUid = String(messageSnap.get('authorUid') ?? '');
       if (likeSnap.exists) {

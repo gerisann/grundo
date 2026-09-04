@@ -506,6 +506,7 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
     whoCanInvite: 'everyone'|'moderators'|'owner',
     inviteCodeVisibleTo: 'everyone'|'moderators'|'owner',
     postPermission: 'everyone'|'moderators'|'owner',   // Phase 2: hírfolyam
+    publicJoinMode: 'instant'|'approval',
   },
   totals: {
     areaM2: { foot, bike },                              // mindenkori
@@ -520,8 +521,10 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   felől, a `following`/`followers` mintájára: a „saját bandáim" lista ebből
   megy, collectionGroup-lekérdezés nélkül. Lásd `server/src/routes/bandas.ts`.
 - `inviteCodes/{code}` → `{ bandaId }`
-- Nincs `joinRequests`: publikus bandánál a csatlakozás azonnali, privátnál
-  kizárólag meghívókóddal vagy appon belüli meghívással. A `totals`-t egy
+- `bandas/{id}/joinRequests/{uid}` → `{ username, photoURL, createdAt }` csak
+  a jóváhagyásos publikus belépésnél. Alapító vagy moderátor fogadhatja el;
+  elfogadáskor a két tagsági tükör tranzakcióban jön létre. Privát bandánál
+  továbbra is kizárólag meghívókód vagy appon belüli meghívás léptet be. A `totals`-t egy
   külön, óránként futó rollup job (`jobs/bandaRollover.ts`) számolja a tagok
   jelenlegi `territoryM2`/`areaDay`/`areaWeek`/`areaMonth`/`gpTotal`/
   `gpWeek`/`gpMonth` mezőiből — nem élő olvasáskor.
@@ -541,11 +544,16 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   falra bárki tag írhat, arra nincs külön beállítás. A feed-poszt emellett
   `commentCount` és szerkesztés után `updatedAt` mezőt kap; a fal válasza
   `replyToId` + `replyToUsername` mezővel hivatkozik az eredeti üzenetre.
+  Soft-hide esetén `hiddenAt`, `hiddenReason`, `hiddenBy` kerül rá; a feed- és
+  fal-lista ezeket nem adja vissza, de az eredeti dokumentum megmarad.
 - `bandas/{id}/feed/{postId}/likes/{uid}` és
   `bandas/{id}/wall/{msgId}/likes/{uid}` → a felhasználónként egyedi reakció;
   a szülő dokumentum `likeCount` számlálója tranzakcióban változik.
 - `bandas/{id}/feed/{postId}/comments/{commentId}` → `{ authorUid,
-  authorUsername, authorPhotoURL, text, createdAt }`; a szülő `commentCount`
+  authorUsername, authorPhotoURL, text, replyToId?, replyToUsername?, createdAt }`;
+  soft-hide után a szerver az eredeti mezők helyett „törölt komment vagy tag”
+  helyőrzőt ad, de a dokumentumazonosító megmarad, ezért tovább válaszolható.
+  A szülő `commentCount`
   mezője ugyanabban a batch-ben nő. A feed legfrissebb elöl, tízesével
   bővíthető; az üzenőfal a legfrissebb 100 elemet időrendben adja vissza.
 - A feed-kép a `bandas/{bandaId}/feed/{uid}/{fileName}.jpg` Storage-
@@ -563,6 +571,10 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   alapítót nem. Az alapító csak a rang átadása után léphet ki; a kilépés
   mindkét tagsági tükröt törli. A share link a meghívókódot
   `/kozosseg/bandak?code=...` paraméterben adja át és előtölti a belépőmezőt.
+- App-bannoláskor a felhasználó aktivitásai a publikus listákból soft-delete
+  állapotba kerülnek végleges törlési idő nélkül; aktivitás- és banda-
+  kommentjei helyőrzővé, banda-posztjai és falüzenetei rejtetté válnak. Az
+  eredeti adatot csak a végleges fióktörlés törölheti fizikailag.
 
 ### `challenges/{challengeId}`
 ```ts

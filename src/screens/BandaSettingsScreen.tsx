@@ -8,8 +8,9 @@ import { uploadBandaBrandImage } from '@/lib/photos';
 import {
   api,
   ApiError,
+  type BandaJoinRequest,
   type BandaMember,
-  type BandaPermission,
+  type BandaRole,
   type BandaSettings,
 } from '@/lib/api';
 import './bandaSettings.css';
@@ -18,6 +19,11 @@ const PERMISSION_OPTIONS = [
   { value: 'everyone', label: 'Mindenki' },
   { value: 'moderators', label: 'Moderátorok' },
   { value: 'owner', label: 'Csak én' },
+] as const;
+
+const JOIN_MODE_OPTIONS = [
+  { value: 'instant', label: 'Azonnali' },
+  { value: 'approval', label: 'Jóváhagyással' },
 ] as const;
 
 export function BandaSettingsScreen() {
@@ -31,10 +37,13 @@ export function BandaSettingsScreen() {
   const [coverURL, setCoverURL] = useState<string | null>(null);
   const [imageBusy, setImageBusy] = useState<'profile' | 'cover' | null>(null);
   const [settings, setSettings] = useState<BandaSettings | null>(null);
+  const [role, setRole] = useState<BandaRole | null>(null);
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [members, setMembers] = useState<BandaMember[]>([]);
+  const [joinRequests, setJoinRequests] = useState<BandaJoinRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [busyAction, setBusyAction] = useState<{ uid: string; kind: 'role' | 'remove' | 'transfer' } | null>(null);
+  const [busyAction, setBusyAction] = useState<{ uid: string; kind: 'role' | 'remove' | 'transfer' | 'request' } | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -43,16 +52,25 @@ export function BandaSettingsScreen() {
     setLoading(true);
     setError('');
     try {
-      const [detail, memberList] = await Promise.all([api.bandas.detail(id), api.bandas.members(id)]);
-      if (detail.role !== 'owner') {
-        setError('Csak a banda alapítója nyithatja meg ezt a képernyőt.');
+      const detail = await api.bandas.detail(id);
+      if (detail.role !== 'owner' && detail.role !== 'moderator') {
+        setError('Csak a banda alapítója vagy egy moderátor nyithatja meg ezt a képernyőt.');
         return;
       }
+      const [memberList, requests] = await Promise.all([
+        api.bandas.members(id),
+        detail.settings.publicJoinMode === 'approval'
+          ? api.bandas.joinRequests(id)
+          : Promise.resolve({ items: [] }),
+      ]);
       setName(detail.banda.name);
       setPhotoURL(detail.banda.photoURL);
       setCoverURL(detail.banda.coverURL);
       setSettings(detail.settings);
+      setRole(detail.role);
+      setVisibility(detail.banda.visibility);
       setMembers(memberList.items);
+      setJoinRequests(requests.items);
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'A banda beállításai most nem tölthetők be.');
     } finally {
@@ -84,9 +102,31 @@ export function BandaSettingsScreen() {
     void load();
   }, [load]);
 
-  function updateSetting(key: keyof BandaSettings, value: BandaPermission) {
+  function updateSetting<K extends keyof BandaSettings>(key: K, value: BandaSettings[K]) {
     setSettings((current) => current ? { ...current, [key]: value } : current);
     setMessage('');
+  }
+
+  async function reviewRequest(request: BandaJoinRequest, decision: 'approve' | 'reject') {
+    if (!id) return;
+    setBusyAction({ uid: request.uid, kind: 'request' });
+    setError('');
+    setMessage('');
+    try {
+      await api.bandas.reviewJoinRequest(id, request.uid, decision);
+      setJoinRequests((current) => current.filter((item) => item.uid !== request.uid));
+      setMessage(decision === 'approve'
+        ? `${request.username} csatlakozását jóváhagytad.`
+        : `${request.username} kérését elutasítottad.`);
+      if (decision === 'approve') {
+        const memberList = await api.bandas.members(id);
+        setMembers(memberList.items);
+      }
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'A csatlakozási kérést most nem sikerült elbírálni.');
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function save() {
@@ -156,9 +196,9 @@ export function BandaSettingsScreen() {
   return (
     <>
       <ScreenHeader
-        title={`${name} beállításai`}
+        title="Banda beállítások"
         backTo={id ? `/bandak/${encodeURIComponent(id)}` : '/kozosseg/bandak'}
-        action={settings ? <Button size="sm" loading={saving} onClick={() => void save()}>Mentés</Button> : undefined}
+        action={settings && role === 'owner' ? <Button size="sm" loading={saving} onClick={() => void save()}>Mentés</Button> : undefined}
       />
       <div className="screen-body stack banda-settings">
         {loading ? <div className="card">Betöltés…</div> : null}
@@ -167,6 +207,42 @@ export function BandaSettingsScreen() {
 
         {settings ? (
           <>
+            {visibility === 'public' && role === 'owner' ? (
+              <section className="card stack">
+                <div>
+                  <h2 className="banda-settings__section-title">Csatlakozás publikus bandához</h2>
+                  <p className="banda-settings__hint">Azonnali belépést vagy alapítói/moderátori jóváhagyást kérhetsz.</p>
+                </div>
+                <SegmentedControl options={JOIN_MODE_OPTIONS} value={settings.publicJoinMode} onChange={(value) => updateSetting('publicJoinMode', value)} label="Publikus csatlakozás módja" block columns={2} />
+              </section>
+            ) : null}
+
+            {settings.publicJoinMode === 'approval' ? (
+              <section className="stack">
+                <div>
+                  <h2 className="banda-settings__section-title">Jóváhagyásra várók</h2>
+                  <p className="banda-settings__hint">Az alapító és a moderátorok is elbírálhatják a kéréseket.</p>
+                </div>
+                {joinRequests.length === 0 ? (
+                  <div className="card banda-settings__empty">Nincs függő csatlakozási kérés.</div>
+                ) : (
+                  <div className="list">
+                    {joinRequests.map((request) => (
+                      <div className="banda-settings__member" key={request.uid}>
+                        <Avatar url={request.photoURL} name={request.username} size={40} />
+                        <span className="banda-settings__member-text"><strong>{request.username}</strong></span>
+                        <span className="banda-settings__member-actions">
+                          <Button size="sm" loading={busyAction?.uid === request.uid && busyAction.kind === 'request'} disabled={busyAction !== null} onClick={() => void reviewRequest(request, 'approve')}>Jóváhagyás</Button>
+                          <Button size="sm" variant="secondary" disabled={busyAction !== null} onClick={() => void reviewRequest(request, 'reject')}>Elutasítás</Button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {role === 'owner' ? <>
             <section className="card stack">
               <div>
                 <h2 className="banda-settings__section-title">Banda képei</h2>
@@ -255,6 +331,7 @@ export function BandaSettingsScreen() {
               </p>
               <Button variant="danger" block disabled>Előbb add át az alapítói rangot</Button>
             </section>
+            </> : null}
           </>
         ) : null}
       </div>

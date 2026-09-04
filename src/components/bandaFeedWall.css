@@ -1,10 +1,11 @@
 .banda-board { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
-.banda-board__composer { position: sticky; top: 54px; z-index: 3; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-default); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface-1) 94%, transparent); box-shadow: var(--shadow-card); backdrop-filter: blur(14px); }
+.banda-board__composer { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-default); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface-1) 94%, transparent); box-shadow: var(--shadow-card); backdrop-filter: blur(14px); }
 /* Az üzenetírás az üzenetek FÖLÖTT van, mint a hírfolyamban — a legfrissebb
    üzenet közvetlenül alatta jelenik meg. */
-.banda-board__composer--wall { top: 54px; }
+.banda-board__composer--wall { position: static; }
 .banda-board__input-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
-.banda-board__input { flex: 1; height: 44px; min-height: 44px; max-height: 132px; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); font: inherit; line-height: 1.35; resize: none; overflow-y: auto; }
+.banda-board__input { flex: 1; height: 44px; min-height: 44px; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); font: inherit; line-height: 1.35; resize: none; overflow: hidden; white-space: nowrap; scrollbar-width: none; }
+.banda-board__input::-webkit-scrollbar { display: none; }
 .banda-board__input::placeholder { color: var(--text-tertiary); }
 .banda-board__input:focus, .banda-editor__surface:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .banda-editor__toolbar { display: flex; gap: var(--sp-1); overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
@@ -26,6 +27,8 @@
 .banda-board__error { color: var(--danger); }
 .banda-board__messages { display: grid; gap: var(--sp-3); min-width: 0; }
 .banda-board--wall .banda-board__messages { max-height: min(62dvh, 620px); overflow-y: auto; padding: var(--sp-1); }
+.banda-board--wall .banda-board__messages, .banda-editor__surface, .banda-editor__toolbar { scrollbar-width: none; }
+.banda-board--wall .banda-board__messages::-webkit-scrollbar, .banda-editor__surface::-webkit-scrollbar, .banda-editor__toolbar::-webkit-scrollbar { display: none; }
 .banda-post-card { display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); background: var(--surface-1); box-shadow: var(--shadow-card); }
 .banda-post__header { display: flex; align-items: center; gap: var(--sp-2); }
 .banda-post__header > div:nth-child(2) { display: grid; min-width: 0; }
@@ -51,6 +54,10 @@
 .banda-comment > div { display: grid; flex: 1; padding: var(--sp-2) var(--sp-3); border-radius: 4px var(--r-md) var(--r-md); background: var(--surface-2); }
 .banda-comment strong { font-size: var(--fs-small); }
 .banda-comment span { overflow-wrap: anywhere; }
+.banda-comment--hidden { opacity: .72; font-style: italic; }
+.banda-comment__reply-to { color: var(--text-tertiary); }
+.banda-comment__meta { display: flex; align-items: center; gap: var(--sp-2); }
+.banda-comment__meta button { border: 0; padding: 0; background: transparent; color: var(--accent); font: inherit; font-size: var(--fs-label); font-weight: 700; }
 .banda-comments__input { display: flex; gap: var(--sp-2); }
 .banda-comments__input input { min-width: 0; flex: 1; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-pill); background: var(--input-bg); color: var(--text-primary); font: inherit; }
 .banda-message { display: flex; align-items: flex-end; gap: var(--sp-2); width: min(86%, 370px); }

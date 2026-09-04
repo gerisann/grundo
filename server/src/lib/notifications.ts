@@ -37,6 +37,7 @@ export type NotificationType =
   | 'territory_stolen'
   | 'territory_defended'
   | 'banda_invited'
+  | 'banda_membership'
   | 'banda_post'
   | 'banda_wall_reaction'
   | 'banda_daily';
@@ -65,6 +66,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; defau
   territory_stolen: { label: 'Elvették a grundod', defaultOn: true },
   territory_defended: { label: 'Sikeresen megvédted a grundod', defaultOn: true },
   banda_invited: { label: 'Banda-meghívó', defaultOn: true },
+  banda_membership: { label: 'Banda-tagsági események', defaultOn: true },
   banda_post: { label: 'Új poszt a bandában', defaultOn: true },
   banda_wall_reaction: { label: 'Válasz vagy szív az üzenőfalon', defaultOn: true },
   banda_daily: { label: 'Napi banda-összesítő', defaultOn: true },
@@ -368,7 +370,7 @@ export async function notifyCommentPosted(input: {
       data: { screen: 'activity', activityId },
     });
   }
-  if (replyTo) {
+  if (replyTo?.userId) {
     void createNotification({
       uid: replyTo.userId,
       type: 'comment_replied',
@@ -499,6 +501,47 @@ export function notifyBandaInvite(targetUid: string, bandaId: string, bandaName:
     title: 'Banda-meghívó',
     body: `${actorUsername} meghívott a(z) „${bandaName}” bandába.`,
     data: { screen: 'banda', bandaId },
+  });
+}
+
+/** A banda tagságát érintő események egy közös, külön kapcsolható típuson. */
+export function notifyBandaMemberJoined(
+  recipients: readonly string[],
+  bandaId: string,
+  bandaName: string,
+  username: string,
+): void {
+  if (recipients.length === 0) return;
+  void createNotificationForMany(recipients, {
+    type: 'banda_membership',
+    title: bandaName,
+    body: `${username} belépett a bandába.`,
+    data: { screen: 'banda', bandaId },
+  });
+}
+
+export function notifyBandaMemberLeft(
+  recipients: readonly string[],
+  bandaId: string,
+  bandaName: string,
+  username: string,
+): void {
+  if (recipients.length === 0) return;
+  void createNotificationForMany(recipients, {
+    type: 'banda_membership',
+    title: bandaName,
+    body: `${username} kilépett a bandából.`,
+    data: { screen: 'banda', bandaId },
+  });
+}
+
+export function notifyBandaMemberRemoved(targetUid: string, bandaName: string): void {
+  void createNotification({
+    uid: targetUid,
+    type: 'banda_membership',
+    title: 'Kirúgtak egy bandából',
+    body: `Eltávolítottak a(z) „${bandaName}” bandából.`,
+    data: { screen: 'bandas' },
   });
 }
 
