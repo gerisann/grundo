@@ -40,6 +40,19 @@ válaszd, ami **hibás feltevés mellett is működik**.
 Ez az 1. pont fordítottja: ott találgattam mérés helyett, itt egy MÁS kérdésre
 adott mérést fogadtam el válasznak arra, amit nem mértem.
 
+⚠️ **UGYANEZ MÁSODSZOR, egy nappal később** (2026-09-04). A hangzavar ellen a
+`pause()` szinkron, a promise bevárása nélkül futott le a `play()` után — abban
+a hitben, hogy a feloldás már magában a `play()` HÍVÁSÁBAN megtörténik. A
+készülék megint mást mondott: iOS-en újra minden hang elnémult, mert a
+megszakított `play()` el sem indítja a lejátszást, az AVAudioSession pedig épp
+a tényleges lejátszástól aktiválódik. A javítás mellé írt regressziós teszt
+ráadásul EZT a hibás viselkedést rögzítette kötelezőként.
+
+Két tanulság: (1) ha egy platform-viselkedésről már egyszer kiderült, hogy az
+API-olvasat nem elég, a második, „most már értem" magyarázat sem az;
+(2) **készüléken nem ellenőrzött javításhoz ne írj olyan tesztet, ami a
+feltevést szentesíti** — a teszt ilyenkor nem véd, hanem bebetonoz.
+
 ## 3. Amikor korlátot vezetsz be, nézd meg a gyakori utat
 
 Egy őrszem, ami a ritka hibát kizárja, könnyen ellehetetleníti a leggyakoribb

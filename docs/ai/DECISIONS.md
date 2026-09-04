@@ -147,6 +147,18 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
 - Cél: a **mindig betöltött** instrukció a projekt `CLAUDE.md`-jére (≈100 sor)
   és a globális `~/.claude/CLAUDE.md`-re (≈50 sor) szorítkozzon.
 
+## Hangok (`#36` menet)
+
+- **A hangzár feloldásához VALÓDI, végigfutó lejátszás kell** — a `play()`
+  puszta meghívása nem elég, és a szinkron `pause()` egyenesen tönkreteszi:
+  iOS-en a megszakított lejátszás nem aktiválja az AVAudioSessiont, és az app
+  teljesen elnémul. Ez már KÉTSZER okozott éles némulást (2026-09-03: a
+  feloldás natív kihagyása; 2026-09-04: a szinkron `pause()`). A hallható
+  zavart nem a lejátszás megszakításával kell kerülni, hanem azzal, hogy a
+  hang **legvégére ugrunk** (`UNLOCK_TAIL_S`) — a lecsengés csendes része.
+  ⚠️ A `volume = 0` iOS-en hatástalan; a `muted = true` pedig vélhetően nem
+  „szenteli fel" az elemet, tehát nem alternatíva.
+
 ## Bandák (`#29` menet)
 
 - **Nem Pro-funkció.** A korábbi Klub-spec Pro-gate-jét (`+ Létrehozás [Pro]`)
