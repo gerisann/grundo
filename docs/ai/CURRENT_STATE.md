@@ -1,9 +1,31 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-04** · GRUNDO **#33**
+> Frissítve: **2026-09-04** · GRUNDO **#34**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: a munkafa **tiszta**, a `main` = `origin/main` (`6d1030b`, pusholva).
-> Utoljára dolgozott: **Claude (Sonnet → Opus, High)** · Átadva: **Claude — GRUNDO #34**
+> Állapot: a munkafa **tiszta**, a `main` = `origin/main` (`5dca09d`, pusholva).
+> Utoljára dolgozott: **Claude (Sonnet 5)** · Átadva: **Claude — GRUNDO #35**
+
+## #34 közben elvégzett, nem tervezett javítás (`5dca09d`)
+
+Geri egy tesztsétán lezárta a telefont (háttérben futott az app), és a
+Trust Score 0%-ot adott a "Teleport / folytonosság" jelre (62, ill. 66/100
+összpontszám). Kód alapján kiderült: a `src/game/cells.ts` `extendCellPath()`
+pusztán a hexrács-térbeli hézag alapján (>40 cella, ~750 m) jelölt teleportot,
+az eltelt VALÓS IDŐ figyelembevétele nélkül — háttérbe kerüléskor (OS GPS-
+throttling, iOS CoreLocation / Android Doze) ez hamis pozitívot ad, mert
+térben nagy, de időben teljesen reális hézagot is teleportnak minősített.
+
+**Javítva:** a hézag csak akkor számít gyanúsnak (`largeGaps`), ha a
+beleértett sebesség (táv/idő) meghalad egy minden mozgásformánál lehetetlen,
+250 km/h-s küszöböt. A geometriai hídalás (cellalánc-kitöltés) változatlan,
+csak a Trust Score-ba beleszámító jel logikája módosult. `IncrementalCellPath`
+chunk-ok között is megőrzi az időalapú döntéshez szükséges utolsó pontot.
+
+- Fájlok: `src/game/cells.ts` (+3 új teszt: `src/game/cells.test.ts`).
+- Ellenőrizve: `src/game/cells.test.ts` 9/9, teljes `src/game` + `server/src/trust`
+  285/285, `tsc --noEmit` tiszta. Éles/telefonos újramérés NEM történt —
+  a következő valódi lezárt képernyős séta mutatja meg, javult-e a pontszám.
+- Ez a `#31–#33`-ból örökölt, alábbi nyitott ügyeket NEM érinti és NEM zárja le.
 
 ## Jelenlegi cél
 
