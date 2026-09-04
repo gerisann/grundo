@@ -294,6 +294,16 @@ export interface UploadActivityInput {
   startedAt: number;
   endedAt: number;
   movingMs: number;
+  /** Diagnosztika — nem befolyásolja a mentés eredményét, lásd `docs/05-adatmodell.md`. */
+  device?: {
+    platform: 'ios' | 'android' | 'web';
+    native: boolean;
+    userAgent: string;
+    appVersion: string;
+    channel: string;
+    revision: string;
+  };
+  lifecycle?: Array<{ kind: 'foreground' | 'background'; at: number }>;
 }
 
 export type ActivityUploadStatusResult =
@@ -732,9 +742,25 @@ export interface DevActivityAudit {
   gps: { sourcePoints: number; cellPath: number; droppedPoints: number; largeGaps: number };
 }
 
+/** Az aktivitást rögzítő eszköz — admin-only diagnosztika. */
+export interface DevActivityDeviceInfo {
+  platform: string;
+  native: boolean;
+  userAgent: string;
+  appVersion: string;
+  channel: string;
+  revision: string;
+}
+
+export interface DevActivityLifecycleEvent {
+  kind: 'foreground' | 'background';
+  at: number;
+}
+
 export interface DevActivityDetail extends DevActivityListItem {
   endedAt: number;
   movingS: number;
+  device: DevActivityDeviceInfo | null;
 }
 
 /* ── Admin ──────────────────────────────────────────────────────────────── */
@@ -1683,6 +1709,7 @@ export const api = {
       trust: DevActivityTrust | null;
       points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
       audit: DevActivityAudit | null;
+      lifecycle: DevActivityLifecycleEvent[];
     }>(`/api/dev/activities/${encodeURIComponent(id)}`),
 
   /**

@@ -232,5 +232,39 @@ Az Android Capacitor originje `https://localhost`. Ez bekerült a Cloud Run
 - Android 13+ alatt külön próbáld a notification permission megtagadását;
   ilyenkor az aktív foreground service legalább a rendszer Active apps
   felületén látszik, a mérés nem veszhet el.
+
+## Reprodukálható terepteszt hamis GPS-szel
+
+A fenti hosszú regresszió (90 perc, 20 km, lezárt kijelzővel) valódi mozgást
+igényel, és a hiba pont a legritkábban látott, több órás/tízkilométeres
+szakaszon jelentkezett korábban (lásd `docs/ai/DECISIONS.md`). Ehelyett a
+**LAB GPX-export** ugyanazt a valódi natív utat futtatja meg (valódi app,
+valódi foreground service, valódi zárolt képernyő), de a GPS-jel forrása
+reprodukálható:
+
+1. `/admin/lab/scenario` → állíts össze egy útvonalat (vagy tölts be egy
+   mentett scenariót) → **„GPX exportálása"** gomb a térkép felett. Ez a
+   `generateGpsActivity` ugyanazon mérési modelljét (zaj, pontosság, drift,
+   jelkimaradás) exportálja GPX-be, amit a LAB böngészős szimulációja is
+   használ.
+2. A telefonon: **Beállítások → Fejlesztői beállítások → Hamis helyadat app**
+   — válassz egy GPX-lejátszásra képes appot (pl. „Fake GPS Location", „GPX
+   Player"), és importáld a letöltött fájlt. **A GRUNDO-t itt NEM kell
+   kiválasztani** — a mock provider az Android helyszolgáltatásán keresztül
+   minden appnak (így a GRUNDO valódi `FusedLocationProviderClient`
+   hívásának is) átlátszóan szállítja a fixeket.
+3. Nyisd meg a **valódi** GRUNDO appot, indíts valódi rögzítést a megfelelő
+   mozgásformával.
+4. Indítsd el a lejátszást a mock appban, majd **fizikailag zárd le** a
+   telefont a route egy tetszőleges pontján; hosszabb szakaszra hagyd
+   lezárva, mint amennyit korábban élőben sikerült tesztelni.
+5. Feloldás után ellenőrizd a nyomvonalat, a távot és az értesítést — pont
+   úgy, mint a fenti checklistában.
+
+**Korlát:** ez a natív rögzítőt és az OS-szintű helyszolgáltatást valódi
+körülmények között teszteli, tehát erősebb bizonyíték, mint bármilyen
+böngészős szimuláció — de a GPS-jel maga szintetikus. A kiadás előtti
+regressziót ez **kiegészíti**, nem helyettesíti: legalább egy valódi,
+kültéri GPS-es hosszú menetet a fentiek szerint el kell végezni.
 - A force stop és az Active apps → Stop felhasználói leállítás; ezek után az
   operációs rendszer szándékosan nem enged automatikus folytatást.

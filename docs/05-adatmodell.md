@@ -167,6 +167,7 @@
 
   trustVerdict: 'trusted'|'pending_review'|'rejected'   // a pontszám maga NEM itt van
   // trust diagnosztika nincs ezen a publikus dokumentumon
+  // eszköz-diagnosztika (device/lifecycle) sincs itt — lásd private/track
 
   createdAt, updatedAt: Timestamp
 
@@ -176,7 +177,20 @@
   deletedBy?: 'owner'|'admin'
 }
 ```
-- `activities/{id}/private/track` → `{ points, bounds }` — **a teljes, levágatlan nyomvonal és befoglaló téglalapja**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni. A publikus `route` és `bounds` kizárólag a privát zónával levágott pontokból készül. Olvasás: **csak a tulajdonos és az admin.**
+- `activities/{id}/private/track` → `{ points, bounds, device?, lifecycle? }` — **a teljes, levágatlan nyomvonal és befoglaló téglalapja**. Külön dokumentumban, mert a Firestore szabályai nem tudnak mezőszinten szűrni. A publikus `route` és `bounds` kizárólag a privát zónával levágott pontokból készül. Olvasás: **csak a tulajdonos és az admin.**
+  - `device?: { platform: 'ios'|'android'|'web', native: boolean, userAgent: string, appVersion: string, channel: string, revision: string }` —
+    diagnosztika: milyen eszközön/oprendszeren/appverzión futott a rögzítés.
+    A `userAgent` eszközazonosításra alkalmas, ezért **szándékosan nem a
+    publikus dokumentumon** van (`#31` menet döntése, lásd `DECISIONS.md`).
+  - `lifecycle?: Array<{ kind: 'foreground'|'background', at: number (epoch ms) }>` —
+    a rögzítés alatti előtér/háttér átmenetek idővonala (`visibilitychange`
+    alapú, csak webes/WebView-kontextusban értelmezhető). Nem bizonyítja
+    közvetlenül a lezárt képernyőt, csak azt, hogy az app mikor nem volt
+    látható — a natív foreground service ettől függetlenül gyűjthetett
+    pontot. Célja: a lezárt képernyős GPS-hibák utólagos diagnózisa
+    (`/admin/aktivitasok`).
+  - Mindkettő **best-effort, sosem kritikus**: hiányukban az admin-panel
+    egyszerűen üres szakaszt mutat, a mentés eredményét nem érintik.
 - Az aktivitásfotó közvetlen Storage-olvasása csak a tulajdonosnak engedett.
   Más néző a hitelesített `GET /api/activities/{id}/photos/{fileName}`
   végponton kapja meg, miután a backend a `grundo-db` adatbázisban ellenőrizte

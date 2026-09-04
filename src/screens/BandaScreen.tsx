@@ -225,7 +225,6 @@ export function BandaScreen() {
         <section className="card stack banda-ranking">
           <div className="banda-ranking__controls">
             <label className="banda-ranking__period">
-              <span className="sr-only">Időszak</span>
               <select value={period} onChange={(event) => setPeriod(event.target.value as BandaPeriod)}>
                 {PERIODS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>

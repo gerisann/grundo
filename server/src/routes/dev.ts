@@ -113,7 +113,8 @@ devRouter.get('/activities/:id', async (req: AuthedRequest, res, next) => {
       ? await db.getAll(...relatedIds.map((id) => db.collection(COLLECTIONS.users).doc(id)))
       : [];
     const usernames = new Map(userDocs.map((doc) => [doc.id, String(doc.data()?.username ?? 'ismeretlen')]));
-    const trackData = track.data() as { points?: unknown } | undefined;
+    const trackData = track.data() as { points?: unknown; lifecycle?: unknown; device?: unknown } | undefined;
+    const deviceData = asRecord(trackData?.device);
 
     res.json({
       activity: {
@@ -134,6 +135,16 @@ devRouter.get('/activities/:id', async (req: AuthedRequest, res, next) => {
         gp: Number(asRecord(data.gp).total ?? summary.gp ?? 0),
         trustVerdict: data.trustVerdict,
         deleted: data.deletedAt != null,
+        device: trackData?.device
+          ? {
+              platform: String(deviceData.platform ?? 'unknown'),
+              native: Boolean(deviceData.native),
+              userAgent: String(deviceData.userAgent ?? ''),
+              appVersion: String(deviceData.appVersion ?? ''),
+              channel: String(deviceData.channel ?? ''),
+              revision: String(deviceData.revision ?? ''),
+            }
+          : null,
       },
       /**
        * A bizalmi pontszám részletei — CSAK ezen az admin útvonalon.
@@ -157,6 +168,7 @@ devRouter.get('/activities/:id', async (req: AuthedRequest, res, next) => {
           })()
         : null,
       points: Array.isArray(trackData?.points) ? trackData.points : [],
+      lifecycle: Array.isArray(trackData?.lifecycle) ? trackData.lifecycle : [],
       audit: auditData
         ? {
             ...auditData,

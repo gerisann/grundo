@@ -60,6 +60,8 @@ import {
   installLifecycleDiagnostics,
   readLastLifecycleEvent,
 } from '@/tracking/lifecycle';
+import { captureDeviceInfo, type RecordingDeviceInfo } from '@/tracking/deviceInfo';
+import { trackLifecycleTimeline, type LifecycleTimelineEvent } from '@/tracking/lifecycleTimeline';
 
 export interface RecorderUploadInput {
   activityId: string;
@@ -68,6 +70,8 @@ export interface RecorderUploadInput {
   startedAt: number;
   endedAt: number;
   movingMs: number;
+  device?: RecordingDeviceInfo;
+  lifecycle?: LifecycleTimelineEvent[];
 }
 
 export type RecorderUploadResult =
@@ -303,6 +307,13 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const lastSyncRef = useRef<{ at: number; status: RecorderStatus } | null>(null);
   const SYNC_MIN_INTERVAL_MS = 1000;
 
+  /**
+   * Az aktuális aktivitás előtér/háttér idővonala — diagnosztikai adat, lásd
+   * `tracking/lifecycleTimeline.ts`. A `begin()` üríti, a mentés olvassa ki.
+   */
+  const lifecycleTimelineRef = useRef<LifecycleTimelineEvent[]>([]);
+  const MAX_LIFECYCLE_EVENTS = 500;
+
   /** Minden állapotváltozás egy helyen fut át: ref, React, megőrzés. */
   const apply = useCallback(
     (change: (current: RecorderState) => RecorderState) => {
@@ -336,6 +347,17 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
 
   useEffect(() => {
     return installLifecycleDiagnostics();
+  }, []);
+
+  useEffect(() => {
+    return trackLifecycleTimeline(
+      () => stateRef.current.status === 'recording' || stateRef.current.status === 'paused',
+      (event) => {
+        const events = lifecycleTimelineRef.current;
+        events.push(event);
+        if (events.length > MAX_LIFECYCLE_EVENTS) events.shift();
+      },
+    );
   }, []);
 
   /* ── A forrás elindítása és leállítása ─────────────────────────── */
@@ -498,6 +520,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       setHasFix(false);
       // Az előző rögzítés utolsó pöttye nem kísérthet az újba.
       setLivePosition(null);
+      lifecycleTimelineRef.current = [];
       // A `?? 'run'` védelem: a gombot a Dock csak választott mozgásforma
       // mellett engedi megnyomni, ez tehát a gyakorlatban sosem sül el —
       // csak arra való, hogy egy hívó véletlenül se indíthasson típus nélkül.
@@ -552,6 +575,8 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
       // A lezárt rögzítésnél az `endedAt` már megvan, tehát a „most"
       // paraméternek nincs szerepe — de a függvény kéri.
       movingMs: movingMsOf(current, current.endedAt ?? Date.now()),
+      device: captureDeviceInfo(),
+      lifecycle: lifecycleTimelineRef.current.slice(),
     };
 
     setUpload({ status: 'sending' });

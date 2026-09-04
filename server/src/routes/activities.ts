@@ -111,6 +111,55 @@ interface UploadBody {
   startedAt?: unknown;
   endedAt?: unknown;
   movingMs?: unknown;
+  device?: unknown;
+  lifecycle?: unknown;
+}
+
+/** Diagnosztikai eszközadat — sosem befolyásolja a mentés eredményét. */
+export interface ActivityDeviceInfo {
+  platform: string;
+  native: boolean;
+  userAgent: string;
+  appVersion: string;
+  channel: string;
+  revision: string;
+}
+
+export interface ActivityLifecycleEvent {
+  kind: 'foreground' | 'background';
+  at: number;
+}
+
+/** Ennyi eseménynél többet nem tárolunk — egy hibás kliens ne dagaszthassa a dokumentumot. */
+const MAX_LIFECYCLE_EVENTS = 500;
+const MAX_DIAGNOSTIC_STRING_LEN = 300;
+
+function parseDeviceInfo(raw: unknown): ActivityDeviceInfo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>;
+  const str = (value: unknown, max = 40) =>
+    typeof value === 'string' ? value.slice(0, max) : '';
+  return {
+    platform: str(d.platform) || 'unknown',
+    native: d.native === true,
+    userAgent: str(d.userAgent, MAX_DIAGNOSTIC_STRING_LEN),
+    appVersion: str(d.appVersion),
+    channel: str(d.channel),
+    revision: str(d.revision),
+  };
+}
+
+function parseLifecycleTimeline(raw: unknown): ActivityLifecycleEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const events: ActivityLifecycleEvent[] = [];
+  for (const item of raw.slice(0, MAX_LIFECYCLE_EVENTS)) {
+    const e = item as Partial<{ kind: unknown; at: unknown }>;
+    if (e.kind !== 'foreground' && e.kind !== 'background') continue;
+    const at = Number(e.at);
+    if (!Number.isFinite(at)) continue;
+    events.push({ kind: e.kind, at });
+  }
+  return events;
 }
 
 /**
@@ -220,6 +269,34 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
     if (committed.duplicate) {
       await completeActivityUpload(activityId, uploadStart.token).catch(() => undefined);
       return res.json({ activityId, summary: committed.summary, duplicate: true });
+    }
+
+    /**
+     * DIAGNOSZTIKA, KÜLÖN ÍRÁSBAN — nem a mentés tranzakciójában.
+     *
+     * Az eszközadat és az előtér/háttér idővonal sosem befolyásolja a
+     * gameplay-t, tehát nem éri meg a fő tranzakció kockázatát (és a
+     * `commitActivity`/`commitChunkedActivity` amúgy is retry-olhat). Ha ez
+     * az írás elhasal, a mentés akkor is sikeres marad — a diagnosztika
+     * hiánya legfeljebb egy üres admin-panelt jelent, nem hibás aktivitást.
+     *
+     * ⚠️ A `private/track` ALÁ MEGY, NEM A NYILVÁNOS DOKUMENTUMBA. A
+     * `userAgent` eszközazonosításra alkalmas adat — a nyilvános
+     * `activities/{id}` dokumentumot bárki olvashatja, aki látja az
+     * aktivitást (`firestore.rules` `visibleToMe()`), a `private/track`
+     * viszont csak a tulajdonos és az admin (`firestore.rules:232-236`).
+     */
+    const device = parseDeviceInfo(body.device);
+    const lifecycle = parseLifecycleTimeline(body.lifecycle);
+    if (device || lifecycle.length > 0) {
+      const trackRef = db.collection(COLLECTIONS.activities).doc(activityId).collection('private').doc('track');
+      await trackRef.set(
+        {
+          ...(device ? { device } : {}),
+          ...(lifecycle.length > 0 ? { lifecycle } : {}),
+        },
+        { merge: true },
+      ).catch(() => undefined);
     }
 
     const stolenFrom = Object.entries(committed.stolenFrom ?? {}).filter(([, count]) => count > 0);

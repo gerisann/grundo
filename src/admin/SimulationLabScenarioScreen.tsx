@@ -35,6 +35,7 @@ import {
   type LabWorldPlayerTotals,
 } from './labHierarchicalWorld';
 import { ScenarioSimulationMap, type LabMapTrack } from './ScenarioSimulationMap';
+import { downloadGpx } from './gpxExport';
 import './simulation-lab.css';
 import './simulation-lab-scenario.css';
 
@@ -705,6 +706,15 @@ export function SimulationLabScenarioScreen() {
             {!rightPanelOpen ? <Button variant="secondary" size="sm" onClick={() => setRightPanelOpen(true)}>‹ Debug</Button> : null}
             <div className="lab-layer-controls"><LayerToggle label="H3 háló" checked={showGrid} onChange={setShowGrid} /><LayerToggle label="Hurkok" checked={showLoops} onChange={setShowLoops} /><LayerToggle label="Foglalás" checked={showClaims} onChange={setShowClaims} /></div>
             <Button variant="secondary" size="sm" disabled={busy || route.length === 0} onClick={() => setRoute((points) => points.slice(0, -1))}>Utolsó törlése</Button><Button variant="secondary" size="sm" disabled={busy || route.length === 0} onClick={() => setRoute([])}>Útvonal törlése</Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={route.length < 2 || generated.samples.length === 0}
+              onClick={() => downloadGpx(generated.samples, scenarioName)}
+              title="Terepteszthez: valódi eszközön, hamis helyadat appal lejátszható GPX"
+            >
+              GPX exportálása
+            </Button>
           </div></div>
           <ScenarioSimulationMap activeRoute={route} activeColor={activeColor} routes={mapRoutes} tracks={visibleTracks} world={displayWorld} ownerColors={ownerColors} result={gameResult} showGrid={showGrid} showLoops={showLoops} showClaims={showClaims} resetToken={runResetToken} editable={!busy} onAppendWaypoint={(point) => setRoute((points) => [...points, point])} onMoveWaypoint={(index, point) => setRoute((points) => points.map((item, i) => i === index ? point : item))} />
         </main>

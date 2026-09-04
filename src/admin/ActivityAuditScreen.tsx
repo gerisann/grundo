@@ -8,6 +8,8 @@ import {
   type DevActivityAudit,
   type DevActivityTrust,
   type DevActivityDetail,
+  type DevActivityDeviceInfo,
+  type DevActivityLifecycleEvent,
   type DevActivityListItem,
   type DevClaimAudit,
 } from '@/lib/api';
@@ -21,6 +23,7 @@ interface LoadedActivity {
   trust: DevActivityTrust | null;
   points: Array<{ lat: number; lng: number; t: number; accuracy?: number; elevation?: number }>;
   audit: DevActivityAudit | null;
+  lifecycle: DevActivityLifecycleEvent[];
 }
 
 /**
@@ -224,9 +227,19 @@ export function ActivityAuditScreen() {
                     {VERDICT_LABEL[detail.activity.trustVerdict] ?? detail.activity.trustVerdict}
                     {detail.trust ? ` · ${detail.trust.score}/100` : ''}
                   </span>
+                  {detail.activity.device ? <span>{deviceLabel(detail.activity.device)}</span> : null}
                   {detail.activity.deleted ? <span className="audit-badge--danger">törölt</span> : null}
                 </div>
               </header>
+
+              {detail.activity.device || detail.lifecycle.length > 0 ? (
+                <DiagnosticsPanel
+                  device={detail.activity.device}
+                  lifecycle={detail.lifecycle}
+                  startedAt={detail.activity.startedAt}
+                  endedAt={detail.activity.endedAt}
+                />
+              ) : null}
 
               {detail.trust ? <TrustPanel trust={detail.trust} /> : null}
 
@@ -381,6 +394,81 @@ function DataRow({ label, value, muted = false }: { label: string; value: string
 
 function EmptyRow({ text }: { text: string }) {
   return <p className="audit-empty">{text}</p>;
+}
+
+function deviceLabel(device: DevActivityDeviceInfo): string {
+  const kind = device.native ? 'natív' : 'web';
+  return `${device.platform} · ${kind}${device.appVersion ? ` · v${device.appVersion}` : ''}`;
+}
+
+function DiagnosticsPanel({
+  device,
+  lifecycle,
+  startedAt,
+  endedAt,
+}: {
+  device: DevActivityDeviceInfo | null;
+  lifecycle: DevActivityLifecycleEvent[];
+  startedAt: number;
+  endedAt: number;
+}) {
+  const intervals = backgroundIntervals(lifecycle, endedAt);
+  return (
+    <section className="audit-grid">
+      <AuditPanel title="Eszköz és környezet">
+        {device ? (
+          <>
+            <DataRow label="Platform" value={device.platform} />
+            <DataRow label="Környezet" value={device.native ? 'natív app' : 'böngésző'} />
+            <DataRow label="App verzió" value={device.appVersion || '—'} />
+            <DataRow label="Kiadási csatorna" value={device.channel || '—'} />
+            <DataRow label="Build" value={device.revision || '—'} />
+            <DataRow label="User agent" value={device.userAgent || '—'} />
+          </>
+        ) : <EmptyRow text="Nincs eszközadat ehhez az aktivitáshoz (korábbi rögzítés)." />}
+      </AuditPanel>
+
+      <AuditPanel title="Előtér / háttér idővonal">
+        {intervals.length > 0 ? intervals.map((interval, index) => (
+          <DataRow
+            key={index}
+            label={`Háttérbe kerülés: ${formatDuration(Math.max(0, Math.round((interval.from - startedAt) / 1000)))}-nál`}
+            value={`${formatDuration(Math.round(interval.durationMs / 1000))} hosszan`}
+          />
+        )) : (
+          <EmptyRow
+            text={lifecycle.length > 0
+              ? 'A rögzítés a mérés végéig előtérben maradt.'
+              : 'Nincs idővonal-adat ehhez az aktivitáshoz (korábbi rögzítés).'}
+          />
+        )}
+      </AuditPanel>
+    </section>
+  );
+}
+
+/** Az esemény-párokból (háttérbe/előtérbe) összefüggő háttér-szakaszokat épít. */
+function backgroundIntervals(
+  events: DevActivityLifecycleEvent[],
+  endedAt: number,
+): Array<{ from: number; durationMs: number }> {
+  const sorted = [...events].sort((a, b) => a.at - b.at);
+  const intervals: Array<{ from: number; durationMs: number }> = [];
+  let openFrom: number | null = null;
+  for (const event of sorted) {
+    if (event.kind === 'background' && openFrom === null) {
+      openFrom = event.at;
+    } else if (event.kind === 'foreground' && openFrom !== null) {
+      intervals.push({ from: openFrom, durationMs: Math.max(0, event.at - openFrom) });
+      openFrom = null;
+    }
+  }
+  // A rögzítés lezárt képernyővel/háttérben ért véget — nem érkezett záró
+  // "foreground" esemény, tehát a szakasz a mérés végéig tart.
+  if (openFrom !== null) {
+    intervals.push({ from: openFrom, durationMs: Math.max(0, endedAt - openFrom) });
+  }
+  return intervals;
 }
 
 function transitionLabel(kind: DevClaimAudit['transitions'][number]['kind']): string {
