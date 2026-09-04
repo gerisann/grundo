@@ -126,3 +126,29 @@ mintha az is mérés lenne. **Egy React-hurok gyakoriságát a függőséglistá
 kell kiolvasni, nem a hívási helyből következtetni** — és amit nem mértél,
 azt mondd ki feltételezésnek.
 
+
+## 12. A diagnosztikai címke nem a valódi ok
+
+A hurokdetektor mind a 499 elutasított jelöltre `interior_too_small`-t írt, és
+ebből azt olvastam ki, hogy „vékony folyosók, üres belsővel" — ezt le is írtam
+a mérési dokumentumba. A kód viszont **két különböző helyen** írja ezt a
+címkét, és a két eset ellentétes: 8 jelöltnek tényleg üres a belseje, 491-nek
+viszont **valódi belseje van** (medián 214 cella), csak minden cellája már
+bekerített. Egy egész optimalizálási irányt (terület-küszöb) erre a téves
+olvasatra terveztem, és a mérés cáfolta.
+
+**Ha egy diagnosztikai mező alapján következtetsz, keresd meg, HÁNY helyen
+írják.** Egy `reason` enum értéke annyit ér, ahány külön ág nem osztozik rajta.
+
+## 13. Az őrző teszt, ami nem tud bukni
+
+Írtam egy tesztet arra, hogy a gyorsítótárazott halmazt másolat nélkül
+továbbadni hibás. A teszt zöld volt — aztán kipróbáltam a hibát is
+BEVEZETNI, és **továbbra is zöld maradt**: a védett kódág (visszaterjesztés)
+csak ritka alakzatra fut le egyáltalán, a teszt fixture-jei sosem érték el.
+
+**Egy garanciateszt értéktelen, amíg nem láttad bukni.** Vezesd be szándékosan
+a hibát, amit megfogni hivatott; ha nem bukik, a teszt nem azt méri, amit
+hiszel. (Ott a megoldás típusszintű lett: a mező `ReadonlySet`, tehát a
+másolat elhagyása fordítási hiba — ez a fordító garanciája, nem a fixture
+szerencséjéé.)

@@ -219,6 +219,47 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   halványulás összege pedig soha nem haladhatja meg az 5 másodpercet. A
   csökkentett mozgást kérő rendszerbeállítás az effektet kikapcsolja.
 
+## Az élő előnézet a főszálon kívül (`#37` menet)
+
+- **A preview-számítás WORKERBEN fut** (`src/workers/previewWorker.ts`), a
+  `usePreviewEngine` hookon át. Terepi mérés (2026-09-04, Samsung SM-G780F): a
+  főszálon egyetlen **859 ms**-os blokk keletkezett a háttérből visszatéréskor,
+  miközben az ÖSSZKÖLTSÉG elhanyagolható volt (0,1% kitöltés). Nem az átlagot
+  kellett javítani, hanem az eloszlást.
+- ⚠️ **A worker felé KÜLÖNBSÉGET küldünk, sosem a teljes pontsort.** A
+  `structuredClone` minden pontot új objektummá másol; az inkrementális
+  gyorsítótár viszont az OBJEKTUM-AZONOSSÁGBÓL ismeri fel a folytatást. Teljes
+  listával minden frissítés a nulláról épülne: mérve **2,6 ms → 1 248 ms**.
+  Őrzi: `previewEngine.test.ts` „nem épül újra" és „ugyanazokat az
+  objektumokat".
+- **A cellalánc (`IncrementalCellPath`) a FŐSZÁLON marad.** Olcsó (a teljes
+  körre 6 ms), és a kirajzolt nyom meg a lépéshang nem várhat egy
+  körbefordulásra. Ne told be a workerbe „a teljesség kedvéért".
+- **Ha a `Worker` nem indul, a hook némán a szinkron ágra vált** — ugyanazzal a
+  kóddal (`lib/previewEngine.ts`). Ez a `PreviewSession` létjogosultsága; ne
+  olvadjon bele a workerbe.
+
+## A hurokkeresés gyorsítótára (`#37` menet)
+
+- **A durva kitöltés-előkészület memoizálva** (`loops.ts` `coarseContextOf`):
+  befoglaló polyfill, durva kitöltés, sáv és sávperem. Mérve: 499 jelöltre
+  mindössze **29 különböző durva fal** jut, mert a jelöltek res12 fala
+  cellánként eltér, két felbontással feljebb viszont a különbség eltűnik.
+  Nyereség: böngészőben **−55%**, bitre azonos eredménnyel.
+- ⚠️ **A gyorsítótárazott kültér-halmaz `ReadonlySet`, és a hívó MÁSOLJA.** A
+  visszaterjesztés (3. lépés) a finom fal alapján tovább nyitja; ha a
+  bejegyzést mutálná, a következő azonos durva falú jelölt kinyitott kültérrel
+  indulna — kisebb belsőt, azaz **kevesebb területet** adna a felhasználónak,
+  csendben. A típus kényszeríti ki; **teszt ezt nem fogja meg** (a
+  visszaterjesztés csak ritka alakzatra fut le).
+- ⚠️ **NINCS biztonságos jelöltszűrő a feltöltés előtt** — végigmérve.
+  Területküszöb: az elutasított jelöltek területe NAGY (medián 50 000 m²).
+  Egyetlen korábbi hurokba tartalmazás: 499-ből 2. Az olcsó ellenőrzések
+  előrehozása: a `sameLoopGeometry` első ága a belsőt nézi. A bekerített cellák
+  UNIÓJÁRA szűrni **nem biztonságos**: több hurok gyűrűt formálhat, aminek a
+  lyuka valódi új terület. A maradék költség a jelöltek SZÁMA — az pedig
+  játékszabály-kérdés, nem optimalizálás.
+
 ## Archívum
 
 A `#12`–`#13` menetek részletes átadói a
@@ -230,3 +271,4 @@ szükség, és akkor is célzottan (`grep`-pel a fejezetcímre).
 |---|---|
 | `archive/2026-08-25-lab-e2e.md` | compact claim primitívek, chunked route, LAB → production tracking UI, gameplay regressziós mátrix |
 | `archive/2026-08-25-reinforcement.md` | a körüljárás bevezetése, a mérések, a nyitott szálszabály és nyomvonal-vékonyítás |
+| `archive/2026-09-04-terepi-fosszal-meres.md` | a két készülékes terepi főszál-mérés teljes kiértékelése, a hurokkeresés fázisbontása, és a NEM működő optimalizálási irányok |
