@@ -584,5 +584,88 @@ describe.skipIf(!EMULATOR)('Admin API — valódi Firestore ellen', () => {
       expect(write.status).toBe(403);
       expect((await call('/perf-snapshots')).status).toBe(200);
     });
+
+    /**
+     * ⚠️ EZ AZ ESET A FIRESTORE MIATT VAN, NEM A LOGIKA MIATT.
+     *
+     * A `notes` mező egyszer már 500-zal buktatta a végpontot, mert a
+     * Firestore NEM tárol beágyazott tömböt (`[[kulcs, érték], …]`). A #37-es
+     * részletes mérés három ÚJ gyűjteményt küld — nevezetes futások,
+     * láthatóság-váltások, percenkénti sorok —, és ezek OBJEKTUMOK tömbjei,
+     * ami megengedett. Ezt viszont emulátoron kell BIZONYÍTANI, nem elhinni:
+     * a hiba különben csak élesben, egy 40 perces terepi mérés feltöltésekor
+     * derülne ki, amikor már nem ismételhető.
+     */
+    it('a részletes bontást is tárolja és visszaadja', async () => {
+      const detailed = {
+        ...snapshot('reszletes', 5_000),
+        stats: [{
+          key: 'preview.total',
+          count: 164, lastMs: 859, avgMs: 16.8, maxMs: 859, p95Ms: 26.7, perMinute: 4.1,
+          totalMs: 2755,
+          visibleCount: 120, visibleTotalMs: 1200, visibleMaxMs: 40,
+          hiddenCount: 44, hiddenTotalMs: 1555, hiddenMaxMs: 859,
+          resumedCount: 1, resumedTotalMs: 859, resumedMaxMs: 859,
+        }],
+        events: [{
+          key: 'preview.total',
+          ms: 859,
+          at: 1_788_539_724_737,
+          sinceStartMs: 2_360_000,
+          startedVisibility: 'hidden',
+          endedVisibility: 'visible',
+          notes: { cells: 518, loops: 10 },
+        }],
+        visibility: [
+          { state: 'hidden', at: 1_788_537_400_000, sinceStartMs: 60_000 },
+          { state: 'visible', at: 1_788_539_724_000, sinceStartMs: 2_359_000 },
+        ],
+        buckets: [
+          { key: 'preview.total', minute: 0, runs: 4, totalMs: 40, maxMs: 18, hiddenRuns: 0 },
+          { key: 'preview.total', minute: 39, runs: 3, totalMs: 880, maxMs: 859, hiddenRuns: 2 },
+        ],
+        startedAt: 1_788_537_340_000,
+        elapsedMs: 2_384_737,
+      };
+
+      const posted = await call('/perf-snapshots', { method: 'POST', body: detailed });
+      expect(posted.status).toBe(200);
+      expect(posted.body).toMatchObject({ events: 1, buckets: 2 });
+
+      const { body } = await call('/perf-snapshots');
+      const entry = body.entries.find((item: { id: string }) => item.id === 'reszletes');
+      expect(entry.stats[0]).toMatchObject({
+        hiddenMaxMs: 859,
+        resumedCount: 1,
+        resumedMaxMs: 859,
+        totalMs: 2755,
+      });
+      expect(entry.events[0]).toMatchObject({
+        ms: 859,
+        startedVisibility: 'hidden',
+        endedVisibility: 'visible',
+      });
+      expect(entry.events[0].notes).toEqual({ cells: 518, loops: 10 });
+      expect(entry.visibility).toHaveLength(2);
+      expect(entry.buckets[1]).toMatchObject({ minute: 39, maxMs: 859, hiddenRuns: 2 });
+      expect(entry.elapsedMs).toBe(2_384_737);
+    });
+
+    /**
+     * A #36 előtt mentett mérésekben nincs bontás. A lista a szerver és a
+     * helyi előzmény UNIÓJA, tehát a két korszak egy képernyőn jelenik meg —
+     * a réginek üres mezőkkel, nem hiányzóval kell visszajönnie, különben a
+     * felület `undefined`-ra futna.
+     */
+    it('a bontás nélküli, régi mérést is visszaadja', async () => {
+      await call('/perf-snapshots', { method: 'POST', body: snapshot('regi-alak', 9_000) });
+
+      const { body } = await call('/perf-snapshots');
+      const entry = body.entries.find((item: { id: string }) => item.id === 'regi-alak');
+      expect(entry.events).toEqual([]);
+      expect(entry.visibility).toEqual([]);
+      expect(entry.buckets).toEqual([]);
+      expect(entry.elapsedMs).toBe(0);
+    });
   });
 });

@@ -14,7 +14,16 @@ import './perfOverlay.css';
 /** Másodpercenként egyszer olvasunk — a rögzítés hurka sosem rajzol emiatt. */
 const REFRESH_MS = 1000;
 
-const EMPTY: PerfSnapshot = { stats: [], notes: [] };
+const EMPTY: PerfSnapshot = {
+  stats: [],
+  notes: [],
+  events: [],
+  visibility: [],
+  buckets: [],
+  startedAt: 0,
+  elapsedMs: 0,
+  visibleNow: true,
+};
 
 /** Magyar felirat a mérőkulcsokhoz; ismeretlen kulcs a saját nevén jelenik meg. */
 const LABELS: Record<string, string> = {
@@ -22,6 +31,7 @@ const LABELS: Record<string, string> = {
   'preview.geometry': '· geometria',
   'preview.process': '· elszámolás',
   'preview.fates': '· cellalista',
+  'preview.dispatch': 'FŐSZÁL (küldés)',
 };
 
 const NOTE_LABELS: Record<string, string> = {
@@ -35,6 +45,12 @@ function fmtMs(ms: number): string {
   if (ms >= 100) return `${Math.round(ms)}`;
   if (ms >= 10) return ms.toFixed(1);
   return ms.toFixed(2);
+}
+
+/** `mm:ss` a mérés indulása óta — az események így olvashatók a menetben. */
+function fmtElapsed(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /**
@@ -83,6 +99,9 @@ export function PerfOverlay() {
       setSaveState('localOnly');
     }
   }
+
+  /** Csak az érdemi futások — lásd a lenti indoklást a listánál. */
+  const notableEvents = snapshot.events.filter((event) => event.ms >= 1);
 
   if (!open) {
     return (
@@ -187,11 +206,70 @@ export function PerfOverlay() {
             {snapshot.notes.map(([key, value]) => (
               <span key={key}>{value} {NOTE_LABELS[key] ?? key}</span>
             ))}
+            <span>{fmtElapsed(snapshot.elapsedMs)} mérve</span>
+            <span>{snapshot.visibleNow ? 'előtérben' : 'HÁTTÉRBEN'}</span>
           </p>
+
+          {/*
+            LÁTHATÓSÁG SZERINTI BONTÁS. A 2026-09-04-i mérésen a 859 ms-os
+            blokkról csak következtetni lehetett, hogy a háttérből
+            visszatéréskor keletkezett; ez a táblázat kimondja.
+          */}
+          <table className="perf-overlay__table">
+            <thead>
+              <tr>
+                <th scope="col">Mit</th>
+                <th scope="col">előtér</th>
+                <th scope="col">háttér</th>
+                <th scope="col">visszatérés</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.stats.map((stat) => (
+                <tr key={stat.key}>
+                  <th scope="row">{LABELS[stat.key] ?? stat.key}</th>
+                  <td>{stat.visibleCount}× / {fmtMs(stat.visibleMaxMs)}</td>
+                  <td>{stat.hiddenCount}× / {fmtMs(stat.hiddenMaxMs)}</td>
+                  <td className="perf-overlay__max">
+                    {stat.resumedCount}× / {fmtMs(stat.resumedMaxMs)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/*
+            A NULLA KÖRÜLI FUTÁSOKAT ITT NEM MUTATJUK. A mérő MINDEN kulcsból
+            megőrzi a nyolc legdrágábbat, és a `preview.dispatch` jellemzően
+            0,0x ms — a rögzítés közbeni kis felületen ez elárasztaná a listát,
+            és pont az érdekes sorok szorulnának ki. A mentett adatban benne
+            marad; az admin oldal a teljes listát mutatja.
+          */}
+          {notableEvents.length > 0 ? (
+            <>
+              <p className="perf-overlay__hint">A legdrágább futások:</p>
+              <ul className="perf-overlay__events">
+                {notableEvents.slice(0, 6).map((event) => (
+                  <li key={`${event.key}-${event.at}`}>
+                    <strong>{fmtMs(event.ms)} ms</strong>
+                    {' '}{LABELS[event.key] ?? event.key}
+                    {' · '}{fmtElapsed(event.sinceStartMs)}
+                    {' · '}
+                    {event.startedVisibility === event.endedVisibility
+                      ? (event.endedVisibility === 'hidden' ? 'háttér' : 'előtér')
+                      : `${event.startedVisibility === 'hidden' ? 'háttér' : 'előtér'}→${event.endedVisibility === 'hidden' ? 'háttér' : 'előtér'}`}
+                    {' · '}{event.notes.cells ?? 0} cella
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+
           <p className="perf-overlay__hint">
             Ezredmásodperc egy újraszámolásra, és hányszor fut percenként. A
             kettő szorzata a lényeg: ha 60 000 ms fölé megy percenként, a
-            főszál folyamatosan foglalt.
+            főszál folyamatosan foglalt. A „visszatérés" oszlop a háttérből
+            előtérbe váltáskor lefutott munkát mutatja — ez volt a fagyás oka.
           </p>
         </>
       )}

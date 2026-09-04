@@ -511,3 +511,38 @@
 .admin-push--bad {
   border-color: var(--danger);
 }
+
+/**
+ * A TEREPI MÉRÉS részletes táblázatai (GRUNDO #37).
+ *
+ * A láthatóság-bontás és a percenkénti sorok szélesebbek, mint a kártya —
+ * telefonon nézve is olvashatónak kell maradniuk, ezért a táblázat maga
+ * görget vízszintesen, nem az oldal.
+ */
+.admin-perf-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/**
+ * ⚠️ A GÖRGETÉS A BURKOLÓÉ, NEM A TÁBLÁZATÉ. Egy `display: block` a `<table>`-n
+ * elveszi a `width: 100%`-ot, a táblázat a tartalmára zsugorodik, és mivel a
+ * cellák vízszintes belső margója nulla (`perfOverlay.css`), az oszlopok
+ * összecsúsznak. Mérve: a #37-es admin nézetben olvashatatlan lett tőle.
+ */
+.admin-perf-table {
+  min-width: 100%;
+}
+
+/* A bontás-táblázatok több és hosszabb oszlopot hoznak, mint a mérő overlay. */
+.admin-perf-table th,
+.admin-perf-table td {
+  padding: 2px 10px 2px 0;
+  white-space: nowrap;
+}
+
+.admin-perf-subhead {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}

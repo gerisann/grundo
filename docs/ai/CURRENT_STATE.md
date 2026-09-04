@@ -2,9 +2,9 @@
 
 > Frissítve: **2026-09-04** · GRUNDO **#37**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: ⚠️ a #37 munkája **COMMITOLATLAN** a munkakönyvtárban (a #36 utolsó
-> commitja `03f6b83`). Kliens `tsc` tiszta, **782/782** teszt zöld, `npm run
-> build` hibátlan.
+> Állapot: minden commitolva, **pusholva NINCS**. Kliens és szerver `tsc`
+> tiszta, kliens **792/792**, szerver **229/229** zöld, `npm run build`
+> hibátlan. Az emulátoros `admin.emulator.test.ts` 39/39 zöld.
 > Utoljára dolgozott: **Claude (Opus, High)**
 
 ## A #37 menet
@@ -17,6 +17,12 @@
    `src/workers/previewWorker.ts`, `src/workers/previewProtocol.ts`,
    `src/hooks/usePreviewEngine.ts`, `src/lib/previewEngine.test.ts` (13 eset).
    A `TrackingScreen` −193 sorral rövidebb.
+3. **A hurokkeresés olcsóbbá tétele** — a durva kitöltés-előkészület
+   memoizálva (`loops.ts` `coarseContextOf`): böngészőben −55%, bitre azonos
+   eredménnyel.
+4. **A mérő részletessé tétele** — láthatóság-bontás, visszatérő futások,
+   nevezetes futások körülménnyel, percenkénti sorok. Enélkül a következő
+   terepi mérés ugyanúgy következtetésre szorulna, mint az első.
 
 ⚠️ **A LÁNC LEGTÖRÉKENYEBB PONTJA**, ha valaki hozzányúl: a worker felé
 KÜLÖNBSÉGET küldünk, nem a teljes pontsort. A `structuredClone` minden pontot
@@ -114,9 +120,9 @@ két készülékkel, és a döntés az ő adatára vár. Helyette négy, menet k
    számokkal: [`meres-2026-09-04-terepi-fosszal.md`](meres-2026-09-04-terepi-fosszal.md).
    Az újrajátszó szkriptek (csak olvasnak): `tmp/replay-field-track.ts`,
    `tmp/replay-field-phases.ts`, `tmp/replay-field-rejections.ts`.
-   ⚠️ **A mérő csak összesítést ment**, ezért a 859 ms-ot csak abból lehetett a
-   háttérváltáshoz kötni, hogy `lastMs === maxMs`. Ha újra mérünk, bontsa a
-   mintákat `document.visibilityState` szerint.
+   ⚠️ **A mérő akkor csak összesítést mentett**, ezért a 859 ms-ot csak abból
+   lehetett a háttérváltáshoz kötni, hogy `lastMs === maxMs`. Ezt a 6. pont
+   azóta megoldotta.
 2. **Az előnézet levétele a főszálról** — ~~**KÉSZ, 2026-09-04**~~, de
    **TELEPÍTETLEN és KÉSZÜLÉKEN NEM ELLENŐRZÖTT**. A számítás a
    `workers/previewWorker.ts`-be került; a `TrackingScreen` a
@@ -161,10 +167,39 @@ két készülékkel, és a döntés az ő adatára vár. Helyette négy, menet k
    hook némán a szinkron ágra vált, és minden a régi módon működik tovább (a
    `preview.dispatch` ilyenkor a teljes számítás idejét mutatja, nem 0,03
    ms-ot; ebből lehet felismerni). ÚJ mobilbuild kell hozzá.
-6. **A mérő bontsa a mintákat láthatóság szerint** (`document.visibilityState`)
-   — enélkül a következő terepi mérés sem tudja majd megmondani, mi történt
-   pontosan a háttér-előtér váltásnál. Kicsi, de a 2. pont bizonyításához kell.
+6. ~~**A mérő bontsa a mintákat láthatóság szerint**~~ — **KÉSZ, 2026-09-04**,
+   telepítetlen. A mérő már NÉGY dolgot rögzít az átlag mellett: láthatóság
+   szerinti bontás, a háttérből VISSZATÉRŐ futások külön, a legdrágább
+   futások teljes körülménnyel (időbélyeg, láthatóság-átmenet, cella- és
+   hurokszám abban a pillanatban), és percenkénti bontás. Emulátoron
+   végigpróbálva: egy háttérben indult, előtérben befejeződött futás
+   `háttér→előtér` jelöléssel, `visszatérés 1× / 88 ms` sorral jelent meg —
+   vagyis a 859 ms-hoz hasonló eset MOST MÁR MÉRVE lenne, nem következtetve.
+   A `PerfOverlay` és a `/admin/teljesitmeny` mutatja, a szerver tárolja; a
+   régi, bontás nélküli mérések változatlanul olvashatók.
 7. A hangok és a bandás kör **készülékes ellenőrzése** az új buildekben.
+
+## Amit a következő terepi mérésnél nézni kell
+
+1. **`preview.dispatch` ~0** (0,0x ms). Ha a teljes számítás idejét mutatja,
+   a modul-worker NEM indult el, és minden a szinkron ágon fut.
+2. **A „visszatérés" oszlop** — ez a háttérből előtérbe váltáskor lefutott
+   munka. A workerrel ennek NEM szabad fagyást okoznia, akármekkora.
+3. **A percenkénti bontás** — ebből látszik, mennyire nő a költség a menet
+   során (asztali újrajátszáson ×5,6 volt 8,6 km alatt).
+4. Ugyanazt a **háttér→előtér váltogatást** érdemes megismételni, ami a
+   2026-09-04-i mérésen a hibát kiváltotta.
+
+## Idegen, NEM ehhez a körhöz tartozó bukások
+
+Az emulátoros futásban (`npm run test:emulator`) **3 eset bukik két olyan
+fájlban, amit ez a kör nem érint**:
+
+- `activityMedia.emulator.test.ts` — már a #36 is ismert bukásként adta át;
+- `bandas.emulator.test.ts` — az üzenőfal sorrendje (`wall.items[1]`); a #36
+  változtatta a fal-sorrendet, és a teszt láthatóan a RÉGI sorrendet rögzíti.
+
+Az `admin.emulator.test.ts` — amit ez a kör bővített — **39/39 zöld**.
 
 ## Modelljavaslat
 

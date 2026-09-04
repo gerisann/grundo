@@ -15,7 +15,11 @@ const LABELS: Record<string, string> = {
   'preview.geometry': '· geometria',
   'preview.process': '· elszámolás',
   'preview.fates': '· cellalista',
+  'preview.dispatch': 'FŐSZÁL (küldés)',
 };
+
+/** A percenkénti bontásból ezt a kulcsot rajzoljuk ki — ez a teljes költség. */
+const BUCKET_KEY = 'preview.total';
 
 const NOTE_LABELS: Record<string, string> = {
   points: 'pont',
@@ -28,6 +32,24 @@ function fmtMs(ms: number): string {
   if (ms >= 100) return `${Math.round(ms)}`;
   if (ms >= 10) return ms.toFixed(1);
   return ms.toFixed(2);
+}
+
+/** `mm:ss` a mérés indulása óta. */
+function fmtElapsed(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function visibilityLabel(state: 'visible' | 'hidden'): string {
+  return state === 'hidden' ? 'háttér' : 'előtér';
+}
+
+/**
+ * A futás láthatóság-átmenete egy szóban. A NYÍL a lényeg: a `háttér→előtér`
+ * az a fajta futás, ami a 2026-09-04-i mérésen 859 ms-ot tett a főszálra.
+ */
+function transitionLabel(from: 'visible' | 'hidden', to: 'visible' | 'hidden'): string {
+  return from === to ? visibilityLabel(to) : `${visibilityLabel(from)}→${visibilityLabel(to)}`;
 }
 
 /** A user agentből csak az OS/eszköz-részt tartjuk meg, kezelhető hosszon. */
@@ -159,7 +181,7 @@ export function PerfHistoryScreen() {
               {entry.onServer ? '' : ' · csak ezen az eszközön'}
             </p>
 
-            <table className="perf-overlay__table admin-perf-table">
+            <div className="admin-perf-scroll"><table className="perf-overlay__table admin-perf-table">
               <thead>
                 <tr>
                   <th scope="col">Mit</th>
@@ -180,15 +202,142 @@ export function PerfHistoryScreen() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
 
             {entry.notes.length > 0 ? (
               <p className="perf-overlay__notes admin-muted">
                 {entry.notes.map(([key, value]) => (
                   <span key={key}>{value} {NOTE_LABELS[key] ?? key}</span>
                 ))}
+                {entry.elapsedMs > 0 ? <span>{fmtElapsed(entry.elapsedMs)} hossz</span> : null}
               </p>
             ) : null}
+
+            {/*
+              LÁTHATÓSÁG SZERINTI BONTÁS. A „visszatérés" oszlop az a fajta
+              futás, ami háttérben indult és előtérben ért véget — a
+              2026-09-04-i mérésen ez volt a 859 ms-os fagyás.
+            */}
+            {entry.stats.some((stat) => stat.hiddenCount > 0 || stat.resumedCount > 0) ? (
+              <div className="admin-perf-scroll"><table className="perf-overlay__table admin-perf-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Mit</th>
+                    <th scope="col">előtér (db / össz / max)</th>
+                    <th scope="col">háttér</th>
+                    <th scope="col">visszatérés</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entry.stats.map((stat) => (
+                    <tr key={stat.key}>
+                      <th scope="row">{LABELS[stat.key] ?? stat.key}</th>
+                      <td>
+                        {stat.visibleCount} / {fmtMs(stat.visibleTotalMs)} / {fmtMs(stat.visibleMaxMs)}
+                      </td>
+                      <td>
+                        {stat.hiddenCount} / {fmtMs(stat.hiddenTotalMs)} / {fmtMs(stat.hiddenMaxMs)}
+                      </td>
+                      <td className="perf-overlay__max">
+                        {stat.resumedCount} / {fmtMs(stat.resumedTotalMs)} / {fmtMs(stat.resumedMaxMs)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            ) : null}
+
+            {entry.events.length > 0 ? (
+              <>
+                <h3 className="admin-perf-subhead">A legdrágább futások</h3>
+                <div className="admin-perf-scroll"><table className="perf-overlay__table admin-perf-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Mit</th>
+                      <th scope="col">ms</th>
+                      <th scope="col">mikor</th>
+                      <th scope="col">állapot</th>
+                      <th scope="col">cella / hurok</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entry.events.slice(0, 16).map((event, index) => (
+                      <tr key={`${event.key}-${event.at}-${index}`}>
+                        <th scope="row">{LABELS[event.key] ?? event.key}</th>
+                        <td className="perf-overlay__max">{fmtMs(event.ms)}</td>
+                        <td>{fmtElapsed(event.sinceStartMs)}</td>
+                        <td>{transitionLabel(event.startedVisibility, event.endedVisibility)}</td>
+                        <td>{event.notes.cells ?? 0} / {event.notes.loops ?? 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></div>
+              </>
+            ) : null}
+
+            {entry.visibility.length > 0 ? (
+              <>
+                <h3 className="admin-perf-subhead">Láthatóság-váltások</h3>
+                <p className="perf-overlay__notes admin-muted">
+                  {entry.visibility.map((mark, index) => (
+                    <span key={`${mark.at}-${index}`}>
+                      {fmtElapsed(mark.sinceStartMs)} {visibilityLabel(mark.state)}
+                    </span>
+                  ))}
+                </p>
+              </>
+            ) : null}
+
+            {/*
+              PERCENKÉNTI BONTÁS — ebből látszik a NÖVEKEDÉS. A 2026-09-04-i
+              mérésnél ezt csak asztali újrajátszásból lehetett kikövetkeztetni
+              (×5,6 volt 8,6 km alatt); most magából a menetből kiolvasható.
+            */}
+            {entry.buckets.some((bucket) => bucket.key === BUCKET_KEY) ? (
+              <>
+                <h3 className="admin-perf-subhead">Percenként ({LABELS[BUCKET_KEY]})</h3>
+                <div className="admin-perf-scroll"><table className="perf-overlay__table admin-perf-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">perc</th>
+                      <th scope="col">futás</th>
+                      <th scope="col">össz. ms</th>
+                      <th scope="col">átl.</th>
+                      <th scope="col">max</th>
+                      <th scope="col">háttérben</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entry.buckets
+                      .filter((bucket) => bucket.key === BUCKET_KEY)
+                      .map((bucket) => (
+                        <tr key={bucket.minute}>
+                          <th scope="row">{bucket.minute}.</th>
+                          <td>{bucket.runs}</td>
+                          <td>{fmtMs(bucket.totalMs)}</td>
+                          <td>{fmtMs(bucket.runs === 0 ? 0 : bucket.totalMs / bucket.runs)}</td>
+                          <td className="perf-overlay__max">{fmtMs(bucket.maxMs)}</td>
+                          <td>{bucket.hiddenRuns}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table></div>
+              </>
+            ) : null}
+
+            {/*
+              NYERS EXPORT. A táblázatok a gyakori kérdésekre válaszolnak; ami
+              ezen túl van, azt a teljes JSON-ból lehet kibányászni — és így
+              nem kell képernyőképet küldözgetni egy 40 perces mérésről.
+            */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                void navigator.clipboard?.writeText(JSON.stringify(entry, null, 2));
+              }}
+            >
+              Nyers JSON másolása
+            </Button>
           </section>
         ))
       )}

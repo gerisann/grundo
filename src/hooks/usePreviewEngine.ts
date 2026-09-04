@@ -8,7 +8,13 @@ import {
   type PreviewOutput,
 } from '@/lib/previewEngine';
 import { EMPTY_CAPTURE_SNAPSHOT } from '@/lib/captureEvents';
-import { measurePerf, notePerf, recordPerf } from '@/lib/perfMeter';
+import {
+  measurePerf,
+  notePerf,
+  perfVisibility,
+  recordPerf,
+  type PerfVisibility,
+} from '@/lib/perfMeter';
 import type { PreviewCommand, PreviewResponse } from '@/workers/previewProtocol';
 import type { ActivityType, OwnershipMap, TracePoint } from '@/types';
 import type { CaptureSnapshot } from '@/lib/captureEvents';
@@ -78,6 +84,11 @@ interface Dispatch {
   /** Érkezett-e újabb adat, amíg a worker dolgozott. */
   dirty: boolean;
   seq: number;
+  /**
+   * Láthatóság az ÉPP FUTÓ kérés elküldésekor. A worker válaszáig eltelhet
+   * egy háttér-előtér váltás — a mérésnek pont ez a különbség kell.
+   */
+  sentVisibility: PerfVisibility;
 }
 
 /**
@@ -93,15 +104,28 @@ const EMPTY_PREVIEW: Omit<PreviewResult, 'path'> = {
   snapshot: EMPTY_CAPTURE_SNAPSHOT,
 };
 
-function recordTimings(output: PreviewOutput): void {
-  recordPerf('preview.geometry', output.timings.geometryMs);
-  recordPerf('preview.process', output.timings.processMs);
-  recordPerf('preview.fates', output.timings.fatesMs);
-  recordPerf('preview.total', output.timings.totalMs);
+/**
+ * A worker fázisidőit a MEGSZOKOTT `preview.*` kulcsokon könyveljük, hogy a
+ * számok összevethetők maradjanak a 2026-09-04-i terepi méréssel.
+ *
+ * A `startedVisibility` a KÜLDÉS pillanatának állapota, nem a mostani: a
+ * munka a workerben futott, és épp az a kérdés, hogy a felület közben
+ * rejtve volt-e. Enélkül a háttérből visszatérő torlódás megint csak
+ * következtetés lenne, nem mérés.
+ *
+ * A kísérőszámok a fázisidők ELŐTT frissülnek, hogy a mérő a mostani
+ * értékeket írja a nevezetes futások mellé.
+ */
+function recordTimings(output: PreviewOutput, startedVisibility: PerfVisibility): void {
   notePerf('points', output.counts.points);
   notePerf('cells', output.counts.cells);
   notePerf('loops', output.counts.loops);
   notePerf('fates', output.counts.fates);
+  const context = { startedVisibility };
+  recordPerf('preview.geometry', output.timings.geometryMs, context);
+  recordPerf('preview.process', output.timings.processMs, context);
+  recordPerf('preview.fates', output.timings.fatesMs, context);
+  recordPerf('preview.total', output.timings.totalMs, context);
 }
 
 /**
@@ -135,6 +159,7 @@ export function usePreviewEngine(input: PreviewEngineInput): PreviewResult {
     busy: false,
     dirty: false,
     seq: 0,
+    sentVisibility: 'visible',
   });
 
   /** A legfrissebb bemenet, hogy a `flush` ne zárt változóból dolgozzon. */
@@ -203,6 +228,7 @@ export function usePreviewEngine(input: PreviewEngineInput): PreviewResult {
         }
         dispatch.seq += 1;
         dispatch.busy = true;
+        dispatch.sentVisibility = perfVisibility();
         worker.postMessage({
           kind: 'run',
           session: current.sessionKey,
@@ -220,8 +246,9 @@ export function usePreviewEngine(input: PreviewEngineInput): PreviewResult {
     if (sendOwnership) fallback.setOwnership(current.ownership);
     if (replace) fallback.replacePoints(delta);
     else fallback.appendPoints(delta);
+    const startedVisibility = perfVisibility();
     const output = fallback.run(request);
-    recordTimings(output);
+    recordTimings(output, startedVisibility);
     setStored({ session: current.sessionKey, output });
   }, []);
 
@@ -234,7 +261,13 @@ export function usePreviewEngine(input: PreviewEngineInput): PreviewResult {
      * alatt ez minden fejlesztői indításkor bekövetkezne (az effekt kétszer
      * fut), élesben pedig worker-hiba utáni újraindításkor.
      */
-    dispatchRef.current = { state: EMPTY_DISPATCH_STATE, busy: false, dirty: false, seq: 0 };
+    dispatchRef.current = {
+      state: EMPTY_DISPATCH_STATE,
+      busy: false,
+      dirty: false,
+      seq: 0,
+      sentVisibility: 'visible',
+    };
 
     const worker = startWorker();
     if (worker === null) {
@@ -260,7 +293,7 @@ export function usePreviewEngine(input: PreviewEngineInput): PreviewResult {
         }
 
         if (message.session === dispatchRef.current.state.session) {
-          recordTimings(message.output);
+          recordTimings(message.output, dispatch.sentVisibility);
           setStored({ session: message.session, output: message.output });
         }
 

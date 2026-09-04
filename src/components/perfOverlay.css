@@ -59,6 +59,17 @@
   color: var(--text-primary);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   font-size: var(--fs-label);
+  /**
+   * ⚠️ MAGASSÁG-KORLÁT, KÜLÖN GÖRGETÉSSEL.
+   *
+   * A #37-es bontással (láthatóság-táblázat + legdrágább futások) a panel
+   * telefonon átnyúlna a képernyő alján, és pont a rögzítés gombjait
+   * takarná — miközben a mérés akkor is fut, ha nem látod. A `dvh` a mobil
+   * böngészősáv miatt kell: `vh`-val a panel a sáv megjelenésekor kilógna.
+   */
+  max-height: calc(100dvh - var(--perf-overlay-top) - var(--sp-5));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .perf-overlay__head {
@@ -165,4 +176,27 @@
 
 .perf-overlay__saved {
   color: var(--success);
+}
+
+/**
+ * A LEGDRÁGÁBB FUTÁSOK listája (GRUNDO #37).
+ *
+ * Egyhasábos, monospace: a lényeg a szám és a láthatóság-átmenet
+ * összeolvasása, nem a tördelés. A lista legfeljebb hat soros, tehát a
+ * felület magassága nem szalad el rögzítés közben.
+ */
+.perf-overlay__events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.perf-overlay__events strong {
+  color: var(--warning);
 }

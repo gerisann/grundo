@@ -769,6 +769,17 @@ adminRouter.post('/push/test', async (req: AuthedRequest, res, next) => {
 const PERF_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const PERF_MAX_STATS = 40;
 const PERF_MAX_NOTES = 40;
+/**
+ * A RÉSZLETES mérés plafonjai (GRUNDO #37).
+ *
+ * A kliens maga is korlátoz (kulcsonként 8 nevezetes futás, 240 láthatóság-
+ * váltás, 480 perc-sor), de a végpont NEM bízhat a kliensben: egy elrontott
+ * vagy szándékosan túltöltött kérés különben Firestore-dokumentum-méret
+ * hibába futna, és a mérés elveszne — pont azé, aki 40 percet biciklizett érte.
+ */
+const PERF_MAX_EVENTS = 64;
+const PERF_MAX_MARKS = 240;
+const PERF_MAX_BUCKETS = 480;
 
 function finiteOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -776,6 +787,25 @@ function finiteOrZero(value: unknown): number {
 
 function shortText(value: unknown, max: number): string {
   return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+function visibilityOf(value: unknown): 'visible' | 'hidden' {
+  return value === 'hidden' ? 'hidden' : 'visible';
+}
+
+/** Kísérőszámok objektumként — lásd a `notes` alatti Firestore-megkötést. */
+function numberMap(value: unknown, max: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof value !== 'object' || value === null) return out;
+  let taken = 0;
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (taken >= max) break;
+    const name = shortText(key, 80);
+    if (name === '') continue;
+    out[name] = finiteOrZero(raw);
+    taken += 1;
+  }
+  return out;
 }
 
 adminRouter.post('/perf-snapshots', async (req: AuthedRequest, res, next) => {
@@ -800,8 +830,63 @@ adminRouter.post('/perf-snapshots', async (req: AuthedRequest, res, next) => {
         p95Ms: finiteOrZero(stat.p95Ms),
         perMinute:
           typeof perMinute === 'number' && Number.isFinite(perMinute) ? perMinute : null,
+        totalMs: finiteOrZero(stat.totalMs),
+        visibleCount: finiteOrZero(stat.visibleCount),
+        visibleTotalMs: finiteOrZero(stat.visibleTotalMs),
+        visibleMaxMs: finiteOrZero(stat.visibleMaxMs),
+        hiddenCount: finiteOrZero(stat.hiddenCount),
+        hiddenTotalMs: finiteOrZero(stat.hiddenTotalMs),
+        hiddenMaxMs: finiteOrZero(stat.hiddenMaxMs),
+        resumedCount: finiteOrZero(stat.resumedCount),
+        resumedTotalMs: finiteOrZero(stat.resumedTotalMs),
+        resumedMaxMs: finiteOrZero(stat.resumedMaxMs),
       };
     });
+
+    /**
+     * A NEVEZETES FUTÁSOK, a láthatóság-váltások és a percenkénti bontás.
+     * Objektumok tömbjei — az a Firestore-nak rendben van; csak a TÖMBÖK
+     * TÖMBJE tilos (lásd a `notes` alatt).
+     */
+    const events = (Array.isArray(body.events) ? body.events : [])
+      .slice(0, PERF_MAX_EVENTS)
+      .map((entry) => {
+        const event = (entry ?? {}) as Record<string, unknown>;
+        return {
+          key: shortText(event.key, 80),
+          ms: finiteOrZero(event.ms),
+          at: finiteOrZero(event.at),
+          sinceStartMs: finiteOrZero(event.sinceStartMs),
+          startedVisibility: visibilityOf(event.startedVisibility),
+          endedVisibility: visibilityOf(event.endedVisibility),
+          notes: numberMap(event.notes, PERF_MAX_NOTES),
+        };
+      });
+
+    const visibility = (Array.isArray(body.visibility) ? body.visibility : [])
+      .slice(0, PERF_MAX_MARKS)
+      .map((entry) => {
+        const mark = (entry ?? {}) as Record<string, unknown>;
+        return {
+          state: visibilityOf(mark.state),
+          at: finiteOrZero(mark.at),
+          sinceStartMs: finiteOrZero(mark.sinceStartMs),
+        };
+      });
+
+    const perfBuckets = (Array.isArray(body.buckets) ? body.buckets : [])
+      .slice(0, PERF_MAX_BUCKETS)
+      .map((entry) => {
+        const bucket = (entry ?? {}) as Record<string, unknown>;
+        return {
+          key: shortText(bucket.key, 80),
+          minute: finiteOrZero(bucket.minute),
+          runs: finiteOrZero(bucket.runs),
+          totalMs: finiteOrZero(bucket.totalMs),
+          maxMs: finiteOrZero(bucket.maxMs),
+          hiddenRuns: finiteOrZero(bucket.hiddenRuns),
+        };
+      });
 
     /**
      * ⚠️ A Firestore NEM tárol beágyazott tömböt, a mérő kísérőszámai viszont
@@ -826,10 +911,15 @@ adminRouter.post('/perf-snapshots', async (req: AuthedRequest, res, next) => {
       userAgent: shortText(body.userAgent, 400),
       stats,
       notes,
+      events,
+      visibility,
+      buckets: perfBuckets,
+      startedAt: finiteOrZero(body.startedAt),
+      elapsedMs: finiteOrZero(body.elapsedMs),
       uploadedAt: FieldValue.serverTimestamp(),
     });
 
-    res.json({ id, stats: stats.length });
+    res.json({ id, stats: stats.length, events: events.length, buckets: perfBuckets.length });
   } catch (error) {
     next(error);
   }
@@ -857,6 +947,17 @@ adminRouter.get('/perf-snapshots', async (req, res, next) => {
           userAgent: data.userAgent ?? '',
           stats: data.stats ?? [],
           notes: Object.entries((data.notes ?? {}) as Record<string, number>),
+          /**
+           * A régebbi, még bontás nélkül feltöltött mérések is olvashatók
+           * maradnak — ott ezek üresek. A `??` NEM lustaság: a
+           * `/admin/teljesitmeny` a szerver és a helyi előzmény UNIÓJA, tehát
+           * a két korszak egy listában jelenik meg.
+           */
+          events: data.events ?? [],
+          visibility: data.visibility ?? [],
+          buckets: data.buckets ?? [],
+          startedAt: data.startedAt ?? 0,
+          elapsedMs: data.elapsedMs ?? 0,
           uploadedAt: data.uploadedAt?.toDate?.().toISOString() ?? null,
         };
       }),
