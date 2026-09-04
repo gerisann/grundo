@@ -518,13 +518,22 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   meghívók" lista ebből megy, collectionGroup-lekérdezés nélkül. Elfogadás/
   elutasítás mindkét oldalról törli. Lásd `server/src/routes/bandas.ts`.
 - `bandas/{id}/feed/{postId}` és `bandas/{id}/wall/{msgId}` *(GRUNDO #30)* →
-  mindkettő `{ authorUid, authorUsername, text, format, createdAt }`; a feed-
+  mindkettő `{ authorUid, authorUsername, authorPhotoURL, text, format,
+  likeCount, createdAt }`; a feed-
   poszt opcionálisan `imagePath` mezőt is kap. A `format` visszafelé
   kompatibilisen `plain`, az új formázott posztoknál `markdown-v1`. Csak tagoknak
   olvasható. A hírfolyamra a `settings.postPermission` szerint posztolhat
   (`everyone`/`moderators`/`owner`, a `meetsRolePermission` dönti el), a
-  chat falra bárki tag írhat, arra nincs külön beállítás. Nincs
-  szerkesztés/törlés/lájk/válasz Phase 2-ben — sima, időrendi lista.
+  falra bárki tag írhat, arra nincs külön beállítás. A feed-poszt emellett
+  `commentCount` és szerkesztés után `updatedAt` mezőt kap; a fal válasza
+  `replyToId` + `replyToUsername` mezővel hivatkozik az eredeti üzenetre.
+- `bandas/{id}/feed/{postId}/likes/{uid}` és
+  `bandas/{id}/wall/{msgId}/likes/{uid}` → a felhasználónként egyedi reakció;
+  a szülő dokumentum `likeCount` számlálója tranzakcióban változik.
+- `bandas/{id}/feed/{postId}/comments/{commentId}` → `{ authorUid,
+  authorUsername, authorPhotoURL, text, createdAt }`; a szülő `commentCount`
+  mezője ugyanabban a batch-ben nő. A feed legfrissebb elöl, tízesével
+  bővíthető; az üzenőfal a legfrissebb 100 elemet időrendben adja vissza.
 - A feed-kép a `bandas/{bandaId}/feed/{uid}/{fileName}.jpg` Storage-
   útvonalon él, legfeljebb 2 MB. Közvetlen Storage-olvasás nincs: a backend
   csak tagság-ellenőrzés után szolgálja ki, tartós letöltési token nélkül.

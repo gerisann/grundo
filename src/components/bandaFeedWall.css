@@ -1,213 +1,66 @@
-.banda-board {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
-  padding: 0;
-  overflow: hidden;
-}
-
-.banda-board__composer {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: grid;
-  gap: var(--sp-2);
-  padding: var(--sp-4) var(--sp-4) 0;
-  background: var(--surface-1);
-}
-
-.banda-board__input-row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--sp-2);
-}
-
-.banda-board__input {
-  flex: 1;
-  height: 44px;
-  min-height: 44px;
-  max-height: 44px;
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--input-border);
-  border-radius: var(--r-md);
-  background: var(--input-bg);
-  color: var(--text-primary);
-  font: inherit;
-  resize: none;
-}
-
-.banda-board__input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.banda-board__input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.banda-board__input--feed {
-  height: 76px;
-  min-height: 76px;
-  max-height: 76px;
-}
-
-.banda-editor__toolbar {
-  display: flex;
-  gap: var(--sp-1);
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
-}
-
-.banda-editor__button {
-  flex: none;
-  min-width: 34px;
-  height: 32px;
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  font-size: var(--fs-small);
-}
-
-.banda-editor__button:hover,
-.banda-editor__button:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.banda-board__file {
-  display: none;
-}
-
-.banda-board__preview {
-  position: relative;
-  width: 96px;
-}
-
-.banda-board__preview img {
-  display: block;
-  width: 96px;
-  height: 72px;
-  object-fit: cover;
-  border-radius: var(--r-sm);
-}
-
-.banda-board__preview button {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-pill);
-  background: var(--bg-elevated);
-  color: var(--danger);
-  box-shadow: var(--shadow-card);
-}
-
-.banda-board__error {
-  margin: 0;
-  padding-inline: var(--sp-4);
-  color: var(--danger);
-}
-
-.banda-board__messages {
-  display: grid;
-  gap: var(--sp-4);
-  max-height: min(60dvh, 560px);
-  overflow-y: auto;
-  padding: 0 var(--sp-4) var(--sp-4);
-}
-
-.banda-post {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-2);
-}
-
-.banda-post__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.banda-post__meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-1);
-}
-
-.banda-post__meta strong {
-  font-size: var(--fs-small);
-}
-
-.banda-post__meta time {
-  flex: none;
-  color: var(--text-tertiary);
-  font-size: var(--fs-label);
-}
-
-.banda-post__plain {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.banda-post__rich {
-  overflow-wrap: anywhere;
-}
-
-.banda-post__rich p,
-.banda-post__rich ul,
-.banda-post__rich ol,
-.banda-post__rich blockquote {
-  margin: 0 0 var(--sp-2);
-}
-
-.banda-post__rich p:last-child,
-.banda-post__rich ul:last-child,
-.banda-post__rich ol:last-child,
-.banda-post__rich blockquote:last-child {
-  margin-bottom: 0;
-}
-
-.banda-post__rich ul,
-.banda-post__rich ol {
-  padding-left: var(--sp-5);
-}
-
-.banda-post__rich blockquote {
-  padding-left: var(--sp-3);
-  border-left: 3px solid var(--accent-border);
-  color: var(--text-secondary);
-}
-
-.banda-post__rich a {
-  text-decoration: underline;
-}
-
-.banda-post__image,
-.banda-post__image-loading {
-  display: block;
-  width: 100%;
-  margin-top: var(--sp-3);
-  border-radius: var(--r-md);
-}
-
-.banda-post__image {
-  max-height: 360px;
-  object-fit: cover;
-}
-
-.banda-post__image-loading {
-  min-height: 96px;
-  padding: var(--sp-4);
-  background: var(--surface-2);
-  color: var(--text-tertiary);
-  font-size: var(--fs-small);
-  text-align: center;
-}
+.banda-board { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.banda-board__composer { position: sticky; top: 54px; z-index: 3; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-default); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface-1) 94%, transparent); box-shadow: var(--shadow-card); backdrop-filter: blur(14px); }
+.banda-board__composer--wall { order: 2; top: auto; bottom: calc(var(--dock-height) + var(--safe-bottom) + var(--sp-2)); }
+.banda-board__input-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
+.banda-board__input { flex: 1; height: 44px; min-height: 44px; max-height: 132px; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); font: inherit; line-height: 1.35; resize: none; overflow-y: auto; }
+.banda-board__input::placeholder { color: var(--text-tertiary); }
+.banda-board__input:focus, .banda-editor__surface:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.banda-editor__toolbar { display: flex; gap: var(--sp-1); overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.banda-editor__button { display: grid; flex: none; place-items: center; width: 36px; height: 34px; padding: 0; border: 1px solid var(--border-default); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; }
+.banda-editor__button:hover, .banda-editor__button:focus-visible { border-color: var(--accent); color: var(--accent); }
+.banda-editor__surface { min-height: 90px; max-height: 300px; overflow-y: auto; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); line-height: 1.5; overflow-wrap: anywhere; }
+.banda-editor__surface:empty::before { content: attr(data-placeholder); color: var(--text-tertiary); pointer-events: none; }
+.banda-editor__surface p, .banda-editor__surface div, .banda-editor__surface blockquote, .banda-editor__surface ul, .banda-editor__surface ol { margin-top: 0; margin-bottom: var(--sp-2); }
+.banda-editor__surface blockquote { padding-left: var(--sp-3); border-left: 3px solid var(--accent-border); color: var(--text-secondary); }
+.banda-image-block { display: flex; align-items: center; min-height: 42px; padding: var(--sp-2); border: 1px dashed var(--border-default); border-radius: var(--r-md); background: var(--surface-2); }
+.banda-image-block input { display: none; }
+.banda-image-block__add { display: flex; align-items: center; gap: var(--sp-2); margin: auto; padding: var(--sp-2); border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 700; cursor: pointer; }
+.banda-board__preview { position: relative; width: 100%; }
+.banda-board__preview img { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: var(--r-sm); }
+.banda-board__preview button { position: absolute; top: var(--sp-2); right: var(--sp-2); display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border-default); border-radius: var(--r-pill); background: var(--bg-elevated); color: var(--danger); box-shadow: var(--shadow-card); }
+.banda-composer__context { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2); border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--text-secondary); font-size: var(--fs-small); }
+.banda-composer__context button { border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 700; }
+.banda-board__denied, .banda-board__error { margin: 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); }
+.banda-board__error { color: var(--danger); }
+.banda-board__messages { display: grid; gap: var(--sp-3); min-width: 0; }
+.banda-board--wall .banda-board__messages { max-height: min(62dvh, 620px); overflow-y: auto; padding: var(--sp-1); }
+.banda-post-card { display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); background: var(--surface-1); box-shadow: var(--shadow-card); }
+.banda-post__header { display: flex; align-items: center; gap: var(--sp-2); }
+.banda-post__header > div:nth-child(2) { display: grid; min-width: 0; }
+.banda-post__header strong { font-size: var(--fs-small); }
+.banda-post__header time, .banda-comment time { color: var(--text-tertiary); font-size: var(--fs-label); }
+.banda-post__manage { display: flex; gap: var(--sp-1); margin-left: auto; }
+.banda-post__manage button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--text-tertiary); }
+.banda-post__plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+.banda-post__rich { overflow-wrap: anywhere; }
+.banda-post__rich p, .banda-post__rich ul, .banda-post__rich ol, .banda-post__rich blockquote { margin: 0 0 var(--sp-2); }
+.banda-post__rich > :last-child { margin-bottom: 0; }
+.banda-post__rich ul, .banda-post__rich ol { padding-left: var(--sp-5); }
+.banda-post__rich blockquote { padding-left: var(--sp-3); border-left: 3px solid var(--accent-border); color: var(--text-secondary); }
+.banda-post__rich a { color: var(--accent); text-decoration: underline; }
+.banda-post__image, .banda-post__image-loading { display: block; width: calc(100% + 2 * var(--sp-4)); margin: 0 calc(-1 * var(--sp-4)); }
+.banda-post__image { max-height: 420px; object-fit: cover; }
+.banda-post__image-loading { min-height: 96px; padding: var(--sp-4); background: var(--surface-2); color: var(--text-tertiary); font-size: var(--fs-small); text-align: center; }
+.banda-post__actions { display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid var(--border-subtle); padding-top: var(--sp-2); }
+.banda-post__actions button { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: 36px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-small); font-weight: 700; }
+.banda-post__actions button.is-active { color: var(--danger); }
+.banda-comments { display: grid; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border-subtle); }
+.banda-comment { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.banda-comment > div { display: grid; flex: 1; padding: var(--sp-2) var(--sp-3); border-radius: 4px var(--r-md) var(--r-md); background: var(--surface-2); }
+.banda-comment strong { font-size: var(--fs-small); }
+.banda-comment span { overflow-wrap: anywhere; }
+.banda-comments__input { display: flex; gap: var(--sp-2); }
+.banda-comments__input input { min-width: 0; flex: 1; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-pill); background: var(--input-bg); color: var(--text-primary); font: inherit; }
+.banda-message { display: flex; align-items: flex-end; gap: var(--sp-2); width: min(86%, 370px); }
+.banda-message--own { margin-left: auto; justify-content: flex-end; }
+.banda-message__column { display: grid; gap: 3px; min-width: 0; }
+.banda-message--own .banda-message__column { justify-items: end; }
+.banda-message__meta { display: flex; gap: var(--sp-2); align-items: baseline; padding-inline: var(--sp-1); }
+.banda-message__meta strong { font-size: var(--fs-small); }
+.banda-message__meta time { color: var(--text-tertiary); font-size: var(--fs-label); }
+.banda-message__bubble { display: grid; gap: var(--sp-1); padding: 10px var(--sp-3); border-radius: 5px var(--r-md) var(--r-md); background: var(--surface-2); overflow-wrap: anywhere; }
+.banda-message--own .banda-message__bubble { border-radius: var(--r-md) 5px var(--r-md) var(--r-md); background: var(--accent); color: var(--accent-on); }
+.banda-message__reply { padding-bottom: var(--sp-1); border-bottom: 1px solid currentColor; opacity: .72; font-size: var(--fs-label); }
+.banda-message__actions { display: flex; gap: var(--sp-2); padding-inline: var(--sp-1); }
+.banda-message__actions button { border: 0; background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--fs-label); }
+.banda-message__actions button.is-active { color: var(--danger); }

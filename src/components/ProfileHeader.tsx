@@ -22,7 +22,7 @@ export function ProfileHeader({ active }: { active: ProfileTab }) {
   );
 }
 
-function GearIcon() {
+export function GearIcon() {
   return (
     <svg
       width="20"

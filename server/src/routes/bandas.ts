@@ -872,17 +872,16 @@ bandasRouter.get('/:id/members', async (req: AuthedRequest, res: Response, next)
    mintájára, `meetsRolePermission`-nel) — a chat falra bárki tag ír,
    arra nincs külön beállítás (`docs/02-funkcionalis-spec.md`).
 
-   A LISTA A LEGRÉGEBBIVEL KEZDŐDIK (mint a hozzászólások,
-   `routes/activities.ts` → `/:id/comments`): egy hírfolyam/chat fal
-   fordított sorrendben olvashatatlan. A lekérdezés a legfrissebb N
-   dokumentumot kéri le (`orderBy('createdAt', 'desc').limit(N)`), és a
-   válaszban FORDÍTVA adja vissza — ez olcsóbb, mint egy második
-   indexelt mező bevezetése csak a sorrendhez.
+   A hírfolyam a legfrissebb poszttal kezdődik és tízesével bővíthető. Az
+   üzenőfal beszélgetés marad: a legfrissebb N üzenetet kérjük le, majd
+   időrendben adjuk vissza, hogy alul folytatódjon.
    ═══════════════════════════════════════════════════════════════════ */
 
 const POST_MAX = 1000;
-const FEED_PAGE = 50;
+const FEED_PAGE = 10;
+const FEED_PAGE_MAX = 50;
 const WALL_PAGE = 100;
+const COMMENT_MAX = 500;
 
 async function loadMemberRole(bandaRef: FirebaseFirestore.DocumentReference, uid: string): Promise<BandaRole> {
   const memberSnap = await bandaRef.collection('members').doc(uid).get();
@@ -896,11 +895,29 @@ function toPostSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
     id: doc.id,
     authorUid: String(data.authorUid ?? ''),
     authorUsername: String(data.authorUsername ?? ''),
+    authorPhotoURL: typeof data.authorPhotoURL === 'string' ? data.authorPhotoURL : null,
     text: String(data.text ?? ''),
     format: data.format === 'markdown-v1' ? 'markdown-v1' : 'plain',
     hasImage: typeof data.imagePath === 'string' && data.imagePath.length > 0,
+    likeCount: num(data.likeCount),
+    commentCount: num(data.commentCount),
+    replyToId: typeof data.replyToId === 'string' ? data.replyToId : null,
+    replyToUsername: typeof data.replyToUsername === 'string' ? data.replyToUsername : null,
+    updatedAt: millis(data.updatedAt),
     createdAt: millis(data.createdAt),
   };
+}
+
+async function postSummaries(docs: FirebaseFirestore.QueryDocumentSnapshot[], uid: string) {
+  return Promise.all(docs.map(async (doc) => ({
+    ...toPostSummary(doc),
+    likedByMe: (await doc.ref.collection('likes').doc(uid).get()).exists,
+  })));
+}
+
+function requestedLimit(value: unknown, fallback: number, maximum: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? Math.min(maximum, Math.max(1, parsed)) : fallback;
 }
 
 bandasRouter.get('/:id/feed', async (req: AuthedRequest, res: Response, next) => {
@@ -909,8 +926,9 @@ bandasRouter.get('/:id/feed', async (req: AuthedRequest, res: Response, next) =>
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
     await loadMemberRole(bandaRef, uid);
 
-    const snapshot = await bandaRef.collection('feed').orderBy('createdAt', 'desc').limit(FEED_PAGE).get();
-    res.json({ items: snapshot.docs.map(toPostSummary).reverse(), hasMore: snapshot.docs.length >= FEED_PAGE });
+    const limit = requestedLimit(req.query.limit, FEED_PAGE, FEED_PAGE_MAX);
+    const snapshot = await bandaRef.collection('feed').orderBy('createdAt', 'desc').limit(limit + 1).get();
+    res.json({ items: await postSummaries(snapshot.docs.slice(0, limit), uid), hasMore: snapshot.docs.length > limit });
   } catch (error) {
     next(error);
   }
@@ -959,18 +977,136 @@ bandasRouter.post('/:id/feed', async (req: AuthedRequest, res: Response, next) =
       }
     }
 
-    const authorUsername = String((userSnap.data() as { username?: string } | undefined)?.username ?? '');
+    const userData = userSnap.data() as { username?: string; photoURL?: string | null } | undefined;
+    const authorUsername = String(userData?.username ?? '');
     const postRef = bandaRef.collection('feed').doc();
     await postRef.set({
       authorUid: uid,
       authorUsername,
+      authorPhotoURL: userData?.photoURL ?? null,
       text,
       format,
+      likeCount: 0,
+      commentCount: 0,
       ...(imagePath ? { imagePath } : {}),
       createdAt: FieldValue.serverTimestamp(),
     });
 
     res.status(201).json({ id: postRef.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.patch('/:id/feed/:postId', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, uid);
+    const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    if (!text) throw badRequest('empty_post', 'Írj valamit a posztba.');
+    if (text.length > POST_MAX) throw badRequest('post_too_long', `A poszt legfeljebb ${POST_MAX} karakter.`);
+    const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
+    const postSnap = await postRef.get();
+    if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    if (postSnap.get('authorUid') !== uid) throw forbidden('Csak a saját posztodat szerkesztheted.');
+    await postRef.update({ text, format: 'markdown-v1', updatedAt: FieldValue.serverTimestamp() });
+    res.json({ updated: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.delete('/:id/feed/:postId', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    const role = await loadMemberRole(bandaRef, uid);
+    const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
+    const postSnap = await postRef.get();
+    if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    if (postSnap.get('authorUid') !== uid && role !== 'owner') throw forbidden('Ezt a posztot nem törölheted.');
+    const imagePath = postSnap.get('imagePath');
+    await db.recursiveDelete(postRef);
+    if (typeof imagePath === 'string' && imagePath.startsWith(`bandas/${bandaRef.id}/feed/`)) {
+      await storage.bucket(FIREBASE_STORAGE_BUCKET).file(imagePath).delete({ ignoreNotFound: true });
+    }
+    res.json({ deleted: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/feed/:postId/like', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, uid);
+    const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
+    const result = await db.runTransaction(async (transaction) => {
+      const likeRef = postRef.collection('likes').doc(uid);
+      const [postSnap, likeSnap] = await Promise.all([transaction.get(postRef), transaction.get(likeRef)]);
+      if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+      const current = num(postSnap.get('likeCount'));
+      if (likeSnap.exists) {
+        transaction.delete(likeRef);
+        transaction.update(postRef, { likeCount: Math.max(0, current - 1) });
+        return { liked: false, likeCount: Math.max(0, current - 1) };
+      }
+      transaction.set(likeRef, { createdAt: FieldValue.serverTimestamp() });
+      transaction.update(postRef, { likeCount: current + 1 });
+      return { liked: true, likeCount: current + 1 };
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+function toCommentSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
+  const data = doc.data() as Record<string, unknown>;
+  return {
+    id: doc.id,
+    authorUid: String(data.authorUid ?? ''),
+    authorUsername: String(data.authorUsername ?? ''),
+    authorPhotoURL: typeof data.authorPhotoURL === 'string' ? data.authorPhotoURL : null,
+    text: String(data.text ?? ''),
+    createdAt: millis(data.createdAt),
+  };
+}
+
+bandasRouter.get('/:id/feed/:postId/comments', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, req.uid!);
+    const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
+    if (!(await postRef.get()).exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    const snapshot = await postRef.collection('comments').orderBy('createdAt', 'asc').limit(100).get();
+    res.json({ items: snapshot.docs.map(toCommentSummary) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/feed/:postId/comments', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, uid);
+    const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    if (!text) throw badRequest('empty_comment', 'Írj valamit a kommentbe.');
+    if (text.length > COMMENT_MAX) throw badRequest('comment_too_long', `A komment legfeljebb ${COMMENT_MAX} karakter.`);
+    const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
+    const userRef = db.collection(COLLECTIONS.users).doc(uid);
+    const [postSnap, userSnap] = await Promise.all([postRef.get(), userRef.get()]);
+    if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    const user = userSnap.data() as { username?: string; photoURL?: string | null } | undefined;
+    const commentRef = postRef.collection('comments').doc();
+    const batch = db.batch();
+    batch.set(commentRef, { authorUid: uid, authorUsername: String(user?.username ?? ''), authorPhotoURL: user?.photoURL ?? null, text, createdAt: FieldValue.serverTimestamp() });
+    batch.update(postRef, { commentCount: FieldValue.increment(1) });
+    await batch.commit();
+    res.status(201).json({ id: commentRef.id });
   } catch (error) {
     next(error);
   }
@@ -1026,7 +1162,7 @@ bandasRouter.get('/:id/wall', async (req: AuthedRequest, res: Response, next) =>
     await loadMemberRole(bandaRef, uid);
 
     const snapshot = await bandaRef.collection('wall').orderBy('createdAt', 'desc').limit(WALL_PAGE).get();
-    res.json({ items: snapshot.docs.map(toPostSummary).reverse(), hasMore: snapshot.docs.length >= WALL_PAGE });
+    res.json({ items: (await postSummaries(snapshot.docs, uid)).reverse(), hasMore: snapshot.docs.length >= WALL_PAGE });
   } catch (error) {
     next(error);
   }
@@ -1037,19 +1173,63 @@ bandasRouter.post('/:id/wall', async (req: AuthedRequest, res: Response, next) =
     const uid = req.uid!;
     const bandaId = String(req.params.id ?? '');
     const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+    const replyToIdValue = (req.body as { replyToId?: unknown } | undefined)?.replyToId;
+    const replyToId = typeof replyToIdValue === 'string' && replyToIdValue ? replyToIdValue : null;
     if (!text) throw badRequest('empty_message', 'Írj valamit az üzenetbe.');
     if (text.length > POST_MAX) throw badRequest('message_too_long', `Az üzenet legfeljebb ${POST_MAX} karakter.`);
 
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
     // Nincs jogosultság-ellenőrzés — a chat falra bárki tag ír.
     await loadMemberRole(bandaRef, uid);
-    const userSnap = await db.collection(COLLECTIONS.users).doc(uid).get();
+    const [userSnap, replySnap] = await Promise.all([
+      db.collection(COLLECTIONS.users).doc(uid).get(),
+      replyToId ? bandaRef.collection('wall').doc(replyToId).get() : Promise.resolve(null),
+    ]);
+    if (replyToId && !replySnap?.exists) throw badRequest('invalid_reply', 'A megválaszolt üzenet már nem található.');
 
-    const authorUsername = String((userSnap.data() as { username?: string } | undefined)?.username ?? '');
+    const userData = userSnap.data() as { username?: string; photoURL?: string | null } | undefined;
+    const authorUsername = String(userData?.username ?? '');
     const messageRef = bandaRef.collection('wall').doc();
-    await messageRef.set({ authorUid: uid, authorUsername, text, createdAt: FieldValue.serverTimestamp() });
+    await messageRef.set({
+      authorUid: uid,
+      authorUsername,
+      authorPhotoURL: userData?.photoURL ?? null,
+      text,
+      likeCount: 0,
+      ...(replyToId ? {
+        replyToId,
+        replyToUsername: String(replySnap?.get('authorUsername') ?? ''),
+      } : {}),
+      createdAt: FieldValue.serverTimestamp(),
+    });
 
     res.status(201).json({ id: messageRef.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.post('/:id/wall/:messageId/like', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    await loadMemberRole(bandaRef, uid);
+    const messageRef = bandaRef.collection('wall').doc(String(req.params.messageId ?? ''));
+    const result = await db.runTransaction(async (transaction) => {
+      const likeRef = messageRef.collection('likes').doc(uid);
+      const [messageSnap, likeSnap] = await Promise.all([transaction.get(messageRef), transaction.get(likeRef)]);
+      if (!messageSnap.exists) throw notFound('message_not_found', 'Nincs ilyen üzenet.');
+      const current = num(messageSnap.get('likeCount'));
+      if (likeSnap.exists) {
+        transaction.delete(likeRef);
+        transaction.update(messageRef, { likeCount: Math.max(0, current - 1) });
+        return { liked: false, likeCount: Math.max(0, current - 1) };
+      }
+      transaction.set(likeRef, { createdAt: FieldValue.serverTimestamp() });
+      transaction.update(messageRef, { likeCount: current + 1 });
+      return { liked: true, likeCount: current + 1 };
+    });
+    res.json(result);
   } catch (error) {
     next(error);
   }

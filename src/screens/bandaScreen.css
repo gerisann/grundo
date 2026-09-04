@@ -1,8 +1,27 @@
-.banda-detail__cover { width: 100%; height: 152px; border-radius: var(--r-md); object-fit: cover; }
-.banda-share { display: grid; gap: var(--sp-2); }
-.banda-share__row { display: flex; align-items: center; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border-subtle); }
-.banda-share__row strong { letter-spacing: .12em; }
-.banda-share__row .btn { margin-left: auto; }
+.banda-detail { position: relative; isolation: isolate; }
+.banda-detail__backdrop { position: absolute; z-index: 0; top: 52px; left: 0; width: 100%; height: min(56vw, 330px); background-position: center top; background-size: cover; filter: blur(30px) brightness(.42) saturate(1.2); opacity: .8; transform: scale(1.12); pointer-events: none; mask-image: linear-gradient(#000 35%, transparent); }
+[data-theme='light'] .banda-detail__backdrop { filter: blur(30px) brightness(1.2) saturate(.85); opacity: .42; }
+.banda-hero { padding: 0; overflow: hidden; box-shadow: var(--shadow-card); }
+.banda-hero__cover { position: relative; height: clamp(150px, 42vw, 220px); overflow: hidden; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 25%, var(--surface-2)), var(--surface-2)); }
+.banda-hero__cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 55%, color-mix(in srgb, var(--bg-primary) 55%, transparent)); pointer-events: none; }
+.banda-hero__cover img { width: 100%; height: 100%; object-fit: cover; }
+.banda-hero__identity { display: flex; align-items: flex-end; gap: var(--sp-3); margin-top: -38px; padding: 0 var(--sp-4); position: relative; z-index: 1; }
+.banda-hero__identity .avatar { flex: none; box-shadow: 0 0 0 4px var(--surface-1), var(--shadow-card); }
+.banda-hero__identity strong { min-width: 0; padding-bottom: 9px; font-size: var(--fs-heading); overflow-wrap: anywhere; }
+.banda-hero__badges { display: flex; gap: var(--sp-2); padding: 0 var(--sp-4); }
+.banda-hero__badges span { padding: 5px 10px; border: 1px solid var(--border-default); border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-secondary); font-size: var(--fs-label); font-weight: 700; }
+.banda-hero__description { margin: 0; padding: 0 var(--sp-4); white-space: pre-wrap; }
+.banda-share { display: grid; gap: var(--sp-3); padding: 0 var(--sp-4) var(--sp-4); }
+.banda-share__code { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--accent-soft); }
+.banda-share__code strong { color: var(--accent); letter-spacing: .16em; font-size: var(--fs-heading); font-variant-numeric: tabular-nums; }
+.banda-share__code button { padding: var(--sp-1) var(--sp-2); border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-small); cursor: pointer; }
+.banda-share__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.banda-share__actions > :only-child { grid-column: 1 / -1; }
+.banda-ranking__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
+.banda-ranking__period select { width: 100%; height: 42px; padding: 0 34px 0 var(--sp-3); border: 1px solid var(--accent-border); border-radius: var(--r-pill); appearance: none; background: var(--accent-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%237c3aed' stroke-width='1.7'/%3E%3C/svg%3E") no-repeat right 13px center; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.banda-ranking__sports { display: flex; padding: 3px; border: 1px solid var(--border-default); border-radius: var(--r-pill); background: var(--surface-2); }
+.banda-ranking__sports button { display: grid; place-items: center; width: 40px; height: 34px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.banda-ranking__sports button.is-active { background: var(--accent); color: var(--accent-on); box-shadow: var(--shadow-card); }
 .banda-ranking__totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
 .banda-ranking__totals > div { display: grid; gap: 4px; padding: var(--sp-3); border-radius: var(--r-md); background: var(--bg-elevated); }
 .banda-ranking__totals span { color: var(--text-secondary); font-size: 12px; }
@@ -21,3 +40,10 @@
 .banda-ranking__list button { display: grid; grid-template-columns: 24px 32px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 0; border: 0; border-bottom: 1px solid var(--border-subtle); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .banda-ranking__list small { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 @media (max-width: 390px) { .banda-ranking__list button { grid-template-columns: 22px 32px minmax(0, 1fr); } .banda-ranking__list small { grid-column: 3; } }
+.banda-members-modal { position: fixed; z-index: 1000; inset: 0; display: grid; align-items: end; padding: var(--sp-4); background: color-mix(in srgb, var(--bg-primary) 68%, transparent); backdrop-filter: blur(4px); }
+.banda-members-modal__panel { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(100%, 520px); max-height: min(78dvh, 680px); margin: 0 auto; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg) var(--r-lg) var(--r-md) var(--r-md); background: var(--surface-1); box-shadow: 0 18px 52px var(--shadow); }
+.banda-members-modal__panel header { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4); border-bottom: 1px solid var(--border-subtle); }
+.banda-members-modal__panel h2 { margin: 0; font-size: var(--fs-heading); }
+.banda-members-modal__panel header button { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border-default); border-radius: 50%; background: var(--surface-2); color: inherit; }
+.banda-members-modal__list { overflow-y: auto; padding: var(--sp-3); }
+@media (min-width: 640px) { .banda-members-modal { align-items: center; } .banda-members-modal__panel { border-radius: var(--r-lg); } }

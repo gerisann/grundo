@@ -1097,9 +1097,25 @@ export interface BandaPost {
   id: string;
   authorUid: string;
   authorUsername: string;
+  authorPhotoURL: string | null;
   text: string;
   format: 'plain' | 'markdown-v1';
   hasImage: boolean;
+  likeCount: number;
+  commentCount: number;
+  likedByMe: boolean;
+  replyToId: string | null;
+  replyToUsername: string | null;
+  updatedAt: number | null;
+  createdAt: number | null;
+}
+
+export interface BandaComment {
+  id: string;
+  authorUid: string;
+  authorUsername: string;
+  authorPhotoURL: string | null;
+  text: string;
   createdAt: number | null;
 }
 
@@ -1262,15 +1278,34 @@ export const api = {
         method: 'POST',
       }),
 
-    /** A hírfolyam, a legrégebbivel kezdve. */
-    feed: (bandaId: string) =>
-      request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed`),
+    /** A hírfolyam, a legfrissebbel kezdve, tízesével bővíthetően. */
+    feed: (bandaId: string, limit = 10) =>
+      request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed?limit=${Math.min(50, Math.max(1, limit))}`),
 
     /** Új poszt a hírfolyamba — a `settings.postPermission` szerint jogosultsághoz kötve. */
     postToFeed: (bandaId: string, text: string, imagePath?: string) =>
       request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed`, {
         method: 'POST',
         body: JSON.stringify({ text, format: 'markdown-v1', imagePath }),
+      }),
+
+    editFeedPost: (bandaId: string, postId: string, text: string) =>
+      request<{ updated: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}`, {
+        method: 'PATCH', body: JSON.stringify({ text }),
+      }),
+
+    deleteFeedPost: (bandaId: string, postId: string) =>
+      request<{ deleted: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}`, { method: 'DELETE' }),
+
+    toggleFeedLike: (bandaId: string, postId: string) =>
+      request<{ liked: boolean; likeCount: number }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/like`, { method: 'POST' }),
+
+    feedComments: (bandaId: string, postId: string) =>
+      request<{ items: BandaComment[] }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/comments`),
+
+    addFeedComment: (bandaId: string, postId: string, text: string) =>
+      request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/comments`, {
+        method: 'POST', body: JSON.stringify({ text }),
       }),
 
     /** Tagságvédett posztkép; a hívó Blob URL-t készít belőle. */
@@ -1285,11 +1320,14 @@ export const api = {
       request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall`),
 
     /** Új üzenet a chat falra — bármelyik tag írhat. */
-    postToWall: (bandaId: string, text: string) =>
+    postToWall: (bandaId: string, text: string, replyToId?: string) =>
       request<{ id: string }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall`, {
         method: 'POST',
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, replyToId }),
       }),
+
+    toggleWallLike: (bandaId: string, messageId: string) =>
+      request<{ liked: boolean; likeCount: number }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall/${encodeURIComponent(messageId)}/like`, { method: 'POST' }),
 
     /** Alapítói jogosultság-beállítások mentése. */
     updateSettings: (bandaId: string, settings: BandaSettings) =>

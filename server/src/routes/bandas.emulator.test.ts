@@ -370,7 +370,7 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(allowed.status).toBe(201);
   });
 
-  it('hírfolyam: idegen nem olvashat, tag posztolhat, a lista a legrégebbivel kezdődik', async () => {
+  it('hírfolyam: idegen nem olvashat, tag posztolhat, a lista a legfrissebbel kezdődik', async () => {
     const created = await (
       await call('/', OWNER, {
         method: 'POST',
@@ -395,9 +395,45 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(second.status).toBe(201);
 
     const list = await (await call(`/${bandaId}/feed`, OWNER)).json();
-    expect(list.items.map((p: { text: string }) => p.text)).toEqual(['Elsőnek szólok.', 'Másodiknak.']);
-    expect(list.items[0].authorUsername).toBe('alapito');
+    expect(list.items.map((p: { text: string }) => p.text)).toEqual(['Másodiknak.', 'Elsőnek szólok.']);
+    expect(list.items[0].authorUsername).toBe('masik');
     expect(list.items[0]).toMatchObject({ format: 'plain', hasImage: false });
+  });
+
+  it('a poszt szerkeszthető, kedvelhető, kommentelhető és törölhető', async () => {
+    const created = await (await call('/', OWNER, { method: 'POST', body: JSON.stringify({ name: 'Interaktív Banda', visibility: 'public' }) })).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    const posted = await call(`/${bandaId}/feed`, OWNER, { method: 'POST', body: JSON.stringify({ text: 'Eredeti' }) });
+    const postId = (await posted.json()).id as string;
+
+    expect((await call(`/${bandaId}/feed/${postId}`, OTHER, { method: 'PATCH', body: JSON.stringify({ text: 'Másé' }) })).status).toBe(403);
+    expect((await call(`/${bandaId}/feed/${postId}`, OWNER, { method: 'PATCH', body: JSON.stringify({ text: '**Javítva**' }) })).status).toBe(200);
+
+    const liked = await call(`/${bandaId}/feed/${postId}/like`, OTHER, { method: 'POST' });
+    expect(await liked.json()).toEqual({ liked: true, likeCount: 1 });
+    const commented = await call(`/${bandaId}/feed/${postId}/comments`, OTHER, { method: 'POST', body: JSON.stringify({ text: 'Szép!' }) });
+    expect(commented.status).toBe(201);
+    const comments = await (await call(`/${bandaId}/feed/${postId}/comments`, OWNER)).json();
+    expect(comments.items[0]).toMatchObject({ authorUid: OTHER, text: 'Szép!' });
+
+    const list = await (await call(`/${bandaId}/feed?limit=10`, OWNER)).json();
+    expect(list.items[0]).toMatchObject({ text: '**Javítva**', likeCount: 1, commentCount: 1, likedByMe: false });
+    expect((await call(`/${bandaId}/feed/${postId}`, OWNER, { method: 'DELETE' })).status).toBe(200);
+    expect((await call(`/${bandaId}/feed/${postId}/comments`, OWNER)).status).toBe(404);
+  });
+
+  it('az üzenőfalon válasz és szívezés is működik', async () => {
+    const created = await (await call('/', OWNER, { method: 'POST', body: JSON.stringify({ name: 'Üzenő Banda', visibility: 'public' }) })).json();
+    const bandaId = created.banda.id as string;
+    await call(`/${bandaId}/join`, OTHER, { method: 'POST' });
+    const first = await call(`/${bandaId}/wall`, OWNER, { method: 'POST', body: JSON.stringify({ text: 'Alapüzenet' }) });
+    const firstId = (await first.json()).id as string;
+    const reply = await call(`/${bandaId}/wall`, OTHER, { method: 'POST', body: JSON.stringify({ text: 'Válasz', replyToId: firstId }) });
+    const replyId = (await reply.json()).id as string;
+    expect((await call(`/${bandaId}/wall/${replyId}/like`, OWNER, { method: 'POST' })).status).toBe(200);
+    const wall = await (await call(`/${bandaId}/wall`, OTHER)).json();
+    expect(wall.items[1]).toMatchObject({ text: 'Válasz', replyToId: firstId, replyToUsername: 'alapito', likeCount: 1 });
   });
 
   it('"postPermission: owner" beállításnál a sima tag nem posztolhat a hírfolyamba, a falra viszont igen', async () => {

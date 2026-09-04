@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPersonBiking, faPersonRunning, faPersonWalking, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { BandaFeedWall } from '@/components/BandaFeedWall';
 import { BandaInviteSheet } from '@/components/BandaInviteSheet';
+import { GearIcon } from '@/components/ProfileHeader';
 import { Button, Chip, EmptyState, List, ListRow, ScreenHeader } from '@/components/ui';
-import { SegmentedControl } from '@/components/ui';
 import {
   api,
   ApiError,
@@ -33,9 +35,9 @@ const PERIODS = [
   { value: 'alltime', label: 'Mindenkori' },
 ] as const;
 const SPORTS = [
-  { value: 'run', label: 'Futás' },
-  { value: 'walk', label: 'Séta' },
-  { value: 'ride', label: 'Bringa' },
+  { value: 'run', label: 'Futás', icon: faPersonRunning },
+  { value: 'walk', label: 'Séta', icon: faPersonWalking },
+  { value: 'ride', label: 'Bringa', icon: faPersonBiking },
 ] as const;
 
 /**
@@ -56,6 +58,7 @@ export function BandaScreen() {
   const [members, setMembers] = useState<BandaMember[] | null>(null);
   const [error, setError] = useState('');
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [period, setPeriod] = useState<BandaPeriod>('day');
   const [sport, setSport] = useState<BandaSport>('run');
@@ -124,10 +127,28 @@ export function BandaScreen() {
     window.setTimeout(() => setCopied(null), 1800);
   }
 
+  async function shareBanda() {
+    if (!id) return;
+    const url = inviteCode
+      ? `${window.location.origin}/kozosseg/bandak?code=${encodeURIComponent(inviteCode)}`
+      : `${window.location.origin}/bandak/${encodeURIComponent(id)}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: banda?.name ?? 'Banda', text: `Csatlakozz a(z) ${banda?.name ?? 'bandánk'} bandához!`, url });
+        return;
+      } catch (problem) {
+        if ((problem as DOMException).name === 'AbortError') return;
+      }
+    }
+    await navigator.clipboard.writeText(url);
+    setCopied('link');
+    window.setTimeout(() => setCopied(null), 1800);
+  }
+
   if (error) {
     return (
       <>
-        <ScreenHeader title="Banda" backTo="/kozosseg/bandak" />
+        <ScreenHeader title="BANDÁK" backTo="/kozosseg/bandak" />
         <div className="screen-body stack">
           <div className="card" role="alert">
             {error}
@@ -140,7 +161,7 @@ export function BandaScreen() {
   if (!banda) {
     return (
       <>
-        <ScreenHeader title="Banda" backTo="/kozosseg/bandak" />
+        <ScreenHeader title="BANDÁK" backTo="/kozosseg/bandak" />
         <div className="screen-body stack">
           <div className="card">Betöltés…</div>
         </div>
@@ -151,7 +172,7 @@ export function BandaScreen() {
   return (
     <>
       <ScreenHeader
-        title={banda.name}
+        title="BANDÁK"
         backTo="/kozosseg/bandak"
         action={role === 'owner' && id ? (
           <button
@@ -160,43 +181,41 @@ export function BandaScreen() {
             aria-label="Banda beállításai"
             onClick={() => navigate(`/bandak/${encodeURIComponent(id)}/beallitasok`)}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.09A1.7 1.7 0 0 0 4.6 8.95a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.95 4.6 1.7 1.7 0 0 0 9.97 3.04V3h4v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8.95a1.7 1.7 0 0 0 1.56 1.03H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
-            </svg>
+            <GearIcon />
           </button>
         ) : undefined}
       />
-      <div className="screen-body stack">
-        <section className="card stack">
-          {banda.coverURL ? <img className="banda-detail__cover" src={banda.coverURL} alt="" /> : null}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-            <Avatar url={banda.photoURL} name={banda.name} size={56} />
-            <div className="stack" style={{ gap: 4 }}>
-              <strong>{banda.name}</strong>
-              <span className="search__note" style={{ margin: 0 }}>
-                {hu.format(banda.memberCount)} tag
-              </span>
-            </div>
-            <Chip variant={banda.visibility === 'private' ? 'default' : 'success'}>
-              {banda.visibility === 'private' ? 'Privát' : 'Publikus'}
-            </Chip>
+      {banda.coverURL ? <div className="banda-detail__backdrop" style={{ backgroundImage: `url(${banda.coverURL})` }} aria-hidden="true" /> : null}
+      <div className="screen-body stack banda-detail">
+        <section className="card stack banda-hero">
+          <div className={`banda-hero__cover${banda.coverURL ? '' : ' banda-hero__cover--empty'}`}>
+            {banda.coverURL ? <img src={banda.coverURL} alt={`${banda.name} borítóképe`} /> : null}
           </div>
-          {banda.description ? <p>{banda.description}</p> : null}
+          <div className="banda-hero__identity">
+            <Avatar url={banda.photoURL} name={banda.name} size={72} />
+            <strong>{banda.name}</strong>
+          </div>
+          <div className="banda-hero__badges">
+            <span>{hu.format(banda.memberCount)} tag</span>
+            <span>{banda.visibility === 'private' ? 'Privát' : 'Publikus'}</span>
+          </div>
+          {banda.description ? <p className="banda-hero__description">{banda.description}</p> : null}
           {role ? (
             <div className="banda-share">
               {inviteCode ? (
-                <div className="banda-share__row">
-                  <span>Meghívókód</span><strong>{inviteCode}</strong>
-                  <Button size="sm" variant="secondary" onClick={() => void copyShare('code')}>
+                <div className="banda-share__code">
+                  <strong>{inviteCode}</strong>
+                  <button type="button" onClick={() => void copyShare('code')}>
                     {copied === 'code' ? 'Másolva' : 'Másolás'}
-                  </Button>
+                  </button>
                 </div>
               ) : null}
-              <div className="banda-share__row">
-                <span>Megosztási link</span>
-                <Button size="sm" variant="secondary" onClick={() => void copyShare('link')}>
-                  {copied === 'link' ? 'Másolva' : 'Link másolása'}
+              <div className="banda-share__actions">
+                {settings && canInvite(role, settings.whoCanInvite) ? (
+                  <Button block variant="secondary" onClick={() => setInviteSheetOpen(true)}>Meghívás</Button>
+                ) : null}
+                <Button block variant="secondary" onClick={() => void shareBanda()}>
+                  {copied === 'link' ? 'Link másolva' : 'Banda megosztása'}
                 </Button>
               </div>
             </div>
@@ -204,8 +223,29 @@ export function BandaScreen() {
         </section>
 
         <section className="card stack banda-ranking">
-          <SegmentedControl options={PERIODS} value={period} onChange={setPeriod} label="Időszak" block columns={4} size="sm" />
-          <SegmentedControl options={SPORTS} value={sport} onChange={setSport} label="Sportág" block columns={3} size="sm" />
+          <div className="banda-ranking__controls">
+            <label className="banda-ranking__period">
+              <span className="sr-only">Időszak</span>
+              <select value={period} onChange={(event) => setPeriod(event.target.value as BandaPeriod)}>
+                {PERIODS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <div className="banda-ranking__sports" role="group" aria-label="Sportág">
+              {SPORTS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={sport === option.value ? 'is-active' : ''}
+                  aria-label={option.label}
+                  aria-pressed={sport === option.value}
+                  title={option.label}
+                  onClick={() => setSport(option.value)}
+                >
+                  <FontAwesomeIcon icon={option.icon} />
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="banda-ranking__totals">
             <div><span>Terület összesen</span><strong>{formatArea(totals.areaM2)}</strong></div>
             <div><span>GP összesen</span><strong>{hu.format(totals.gp)}</strong></div>
@@ -230,21 +270,12 @@ export function BandaScreen() {
         </section>
 
         <section className="stack">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-2)' }}>
-            <h2 className="discover-feed__title" style={{ margin: 0 }}>
-              Tagok
-            </h2>
-            {role && settings && canInvite(role, settings.whoCanInvite) ? (
-              <Button size="sm" variant="secondary" onClick={() => setInviteSheetOpen(true)}>
-                Meghívás
-              </Button>
-            ) : null}
-          </div>
+          <h2 className="discover-feed__title" style={{ margin: 0 }}>Tagok</h2>
           {members === null ? (
             <div className="card">Betöltés…</div>
           ) : (
             <List>
-              {members.map((member) => (
+              {members.slice(0, 10).map((member) => (
                 <ListRow
                   key={member.uid}
                   label={member.username}
@@ -253,6 +284,9 @@ export function BandaScreen() {
               ))}
             </List>
           )}
+          {(members?.length ?? 0) > 10 ? (
+            <Button variant="secondary" block onClick={() => setMembersOpen(true)}>Összes tag</Button>
+          ) : null}
         </section>
 
         {role && settings ? (
@@ -260,7 +294,7 @@ export function BandaScreen() {
         ) : (
           <EmptyState
             title="Csak tagoknak"
-            description="A hírfolyam és a chat fal csak a banda tagjainak látszik — csatlakozz, hogy megnézhesd."
+            description="A hírfolyam és az üzenőfal csak a banda tagjainak látszik — csatlakozz, hogy megnézhesd."
           />
         )}
 
@@ -273,6 +307,23 @@ export function BandaScreen() {
 
       {inviteSheetOpen && id ? (
         <BandaInviteSheet bandaId={id} memberIds={memberIds} onClose={() => setInviteSheetOpen(false)} />
+      ) : null}
+      {membersOpen && members ? (
+        <div className="banda-members-modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setMembersOpen(false)}>
+          <section className="banda-members-modal__panel" role="dialog" aria-modal="true" aria-labelledby="banda-members-title">
+            <header>
+              <h2 id="banda-members-title">Összes tag</h2>
+              <button type="button" aria-label="Bezárás" onClick={() => setMembersOpen(false)}><FontAwesomeIcon icon={faXmark} /></button>
+            </header>
+            <div className="banda-members-modal__list">
+              <List>
+                {members.map((member) => (
+                  <ListRow key={member.uid} label={member.username} value={<Chip variant={member.role === 'owner' ? 'accent' : 'default'}>{ROLE_LABEL[member.role]}</Chip>} />
+                ))}
+              </List>
+            </div>
+          </section>
+        </div>
       ) : null}
     </>
   );

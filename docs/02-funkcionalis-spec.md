@@ -339,7 +339,7 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   elfogadhat vagy elutasíthat *(GRUNDO #30)*.
 - Banda-részletek (új képernyő): tagok, terület+GP összesítés bontással,
   két váltható feed — **hírfolyam** (ki posztolhat: mindenki/moderátorok/
-  csak az alapító, az alapító állítja be) és **nyílt chat fal** *(GRUNDO
+  csak az alapító, az alapító állítja be) és **nyílt üzenőfal** *(GRUNDO
   #30)* —, valamint egy külön beállítások képernyő (fogaskerék, jobb
   felül) az alapítónak. Itt kezelhetők a jogosultságok, a szerepkörök,
   a tagok és a tulajdonjog. *(GRUNDO #30, Phase 3)*
@@ -349,20 +349,29 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   bandatag dobogón, majd a 4–10. helyezett listája. A rangsor elsődlegesen
   az adott sportágban és időszakban aktivitással szerzett terület,
   holtversenynél GP.
-- A Banda fejléc-kártyáján minden tag látja a megosztási linket; a privát
-  banda meghívókódja a beállított szerepkör-jogosultság szerint jelenik meg.
+- A Banda fejléc-kártyáján a borító Facebook-jellegű, és a képernyő tetején
+  nagyított, elmosott, témához igazított háttérként is megjelenik. A taglétszám
+  és a publikus/privát állapot azonos címkestílust kap. A jogosultak a kiemelt
+  meghívókódot másolhatják, követett embert hívhatnak meg, vagy a Banda
+  megosztása gombbal küldhetik tovább a csatlakozási linket.
 - Az alapító a Banda beállításaiban profilképet és széles borítóképet tölthet
   fel. Mindkettő kliensoldalon JPEG-re tömörödik és EXIF-mentes lesz; a
   profilkép legfeljebb 512, a borítókép legfeljebb 1600 képpontos éllel készül.
-- A hírfolyam szerkesztője támogatja a félkövér, dőlt és aláhúzott
-  szöveget, a felsorolást, számozott felsorolást, idézetet és linket. Egy
+- A hírfolyam vizuális (WYSIWYG) szerkesztője támogatja a félkövér, dőlt és
+  aláhúzott szöveget, a felsorolást, számozott felsorolást, idézetet és linket. Egy
   poszthoz egy, tallózással kiválasztott, legfeljebb 2 MB-os kép csatolható;
   a kliens feltöltés előtt átméretezi, JPEG-be tömöríti és eltávolítja
-  az EXIF-adatokat. A hírfolyam és a chat fal beviteli sávja fix, a lista
-  külön görgethető.
-- Minden poszt és chatüzenet mutatja az idejét: egy percen belül „most”,
+  az EXIF-adatokat; a képcsatolás külön blokk. A szerkesztő a tartalommal nő.
+  A posztok kártyák, szerkeszthetők és törölhetők, kedvelhetők, valamint
+  kommentelhetők. Elsőre legfeljebb 10 poszt látszik, majd újabb tíz tölthető.
+- Az üzenőfalon a saját buborékok jobbra, másoké balra igazodnak; az
+  üzenetekre válaszolni és szívvel reagálni lehet. A beviteli sáv rögzített,
+  de több sornál a mező a meghatározott maximumig megnő.
+- Minden poszt és üzenőfali üzenet mutatja az idejét: egy percen belül „most”,
   utána perc/óra/nap alapú relatív idő, egyhetes kortól teljes helyi dátum
   (`2026.10.01. 13:23`).
+- A normál Tagok blokk legfeljebb 10 embert mutat; további tagoknál az
+  „Összes tag” gomb külön, görgethető modalt nyit.
 - Szerepek: **alapító > moderátor > tag**. Az alapító és a moderátor
   kirúghat tagot. Az alapító nevezhet ki moderátort, és állítja be, hogy
   privát bandánál ki hívhat meg mást, és kinek látszik a meghívókód

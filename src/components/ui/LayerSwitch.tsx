@@ -1,3 +1,5 @@
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPersonBiking, faPersonRunning } from '@fortawesome/free-solid-svg-icons';
 import type { Layer } from '@/types';
 import './layerSwitch.css';
 
@@ -35,43 +37,13 @@ export function LayerSwitch({ value, onChange }: LayerSwitchProps) {
           olvasható marad — a kiemelés nem takarja el. */}
       <span className="layersw__thumb" aria-hidden="true" />
       <span className={`layersw__option${isBike ? '' : ' layersw__option--on'}`}>
-        <FootIcon />
+        <FontAwesomeIcon icon={faPersonRunning} aria-hidden="true" />
         Séta/Futás
       </span>
       <span className={`layersw__option${isBike ? ' layersw__option--on' : ''}`}>
-        <BikeIcon />
+        <FontAwesomeIcon icon={faPersonBiking} aria-hidden="true" />
         Bringa
       </span>
     </button>
-  );
-}
-
-const icon = {
-  width: 17,
-  height: 17,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.8,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-};
-
-function FootIcon() {
-  return (
-    <svg {...icon}>
-      <path d="M13 4a3 3 0 0 1 3 3c0 2.5-2 4-2 6v3a3 3 0 0 1-6 0v-2c0-2-2-3.2-2-6a4 4 0 0 1 4-4z" />
-      <path d="M8 19h6" />
-    </svg>
-  );
-}
-
-function BikeIcon() {
-  return (
-    <svg {...icon}>
-      <circle cx="5.5" cy="17" r="3.5" />
-      <circle cx="18.5" cy="17" r="3.5" />
-      <path d="M5.5 17 10 8h5l3.5 9M9 8h5" />
-    </svg>
   );
 }

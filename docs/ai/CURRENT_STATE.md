@@ -1,13 +1,13 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-03** · GRUNDO **#30**
+> Frissítve: **2026-09-04** · GRUNDO **#30**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
 
 ## Jelenlegi cél
 
-A Banda részlet négylapos, sportágankénti TOP10 ranglistája, megosztása,
-profilképe és borítóképe elkészült. A következő feladat az éles migráció és
-telepítés.
+A Banda részlet új borítós felülete, hírfolyam-interakciói és válaszolható
+üzenőfala elkészült. A következő feladat az éles migráció és a teljes csomag
+telepítése.
 
 ## Elkészült
 
@@ -20,12 +20,13 @@ telepítés.
    `BandaScreen`-en, „Meghívóim” szekció a `CommunityBandasScreen`-en.
    Apró UX-javítás is bekerült: a publikus banda-keresésben már-tag
    találatnál „Megnyitás” látszik „Csatlakozás” helyett.
-2. **Hírfolyam és chat fal** (commit `1ca2d3a`): `bandas/{id}/feed/{postId}`
+2. **Hírfolyam és üzenőfal** (alap: commit `1ca2d3a`): `bandas/{id}/feed/{postId}`
    + `bandas/{id}/wall/{msgId}` (`GET`/`POST` mindkettőre), a hírfolyamra a
    `settings.postPermission` szerint posztolhat, a falra bárki tag —
    `BandaFeedWall` (`SegmentedControl` váltó) a `BandaScreen`-en, csak
-   tagoknak. Nincs szerkesztés/törlés/lájk/válasz, nincs lapozás — az
-   utolsó 50 (feed) / 100 (wall) elem egy kérésben.
+   tagoknak. A feed-posztok tízesével tölthetők, vizuálisan szerkeszthetők,
+   törölhetők, kedvelhetők és kommentelhetők; az üzenőfal válaszokat,
+   szíveket és saját/idegen oldali buborékokat támogat.
 3. **Alapítói beállítások és tagkezelés**: külön
    `/bandak/:id/beallitasok` képernyő fogaskerék-belépővel; szerkeszthető
    `whoCanInvite`/`inviteCodeVisibleTo`/`postPermission`; moderátor kinevezés
@@ -33,8 +34,8 @@ telepítés.
    A régi alapító moderátor marad. Minden szerep- és tagságváltás
    tranzakcióban frissíti a banda- és felhasználóoldali tükört. A
    `inviteCodeVisibleTo` most már a részlet-válaszban is érvényesül.
-4. **Hírfolyam/chat finomítások**: fix méretű szerkesztő külön görgethető
-   üzenetlistával; hírfolyamban biztonságosan renderelt félkövér, dőlt,
+4. **Hírfolyam/üzenőfal finomítások**: a tartalommal növő vizuális szerkesztő,
+   külön képblokk és görgethető üzenetlista; biztonságosan renderelt félkövér, dőlt,
    aláhúzott, felsorolás, számozás, idézet és link; egy, legfeljebb 2 MB-os,
    kliensoldalon JPEG-re tömörített kép; védett backend-kiszolgálás; relatív,
    egy hét után teljes dátum a posztokon és chatüzeneteken.
@@ -57,6 +58,12 @@ telepítés.
 9. **Banda profil- és borítókép**: az alapító a beállításokban töltheti fel;
    kliensoldali JPEG-tömörítés és EXIF-törlés, fix Storage-útvonal, alapítói
    szervervalidáció. A borító a banda adatlapjának tetején jelenik meg.
+10. **Banda részlet új UI**: egységes `BANDÁK` fejléc és profil-fogaskerék,
+    Facebook-jellegű borító + elmosott témakövető háttér, címke-stílusú
+    taglétszám/láthatóság, kiemelt kód + Meghívás/Megosztás akciók, egysoros
+    időszak-dropdown és Font Awesome sportikonok, 10 fős taglista külön
+    görgethető összes-tag modallal. A Grund rétegváltója is Font Awesome
+    futás/bringa ikonokat használ.
 
 ## A legutóbbi menet fő módosításai
 
@@ -98,6 +105,9 @@ funkcionális specifikáció, adatmodell és döntésnapló.
   ellenőrizve lett ideiglenes helyi előnézettel.
 - `npx cap sync` Androidon teljes; iOS-en a webmásolás teljes, a Windows alól
   nem létrehozható SPM symlink miatt a pluginfrissítés figyelmeztetést adott.
+- A kibővített Banda API célzott emulátoros tesztje 23/23 ✅ (szerkesztés,
+  törlés, feed- és falreakció, komment, válasz). Kliens 734/734 és szerver
+  225/225 egységteszt, mindkét typecheck és production build ✅.
 
 ## Nyitott ügyek
 
