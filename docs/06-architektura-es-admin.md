@@ -115,6 +115,7 @@ Eredetileg két lehetőséget vázoltam fel (PostGIS vs. Firestore+turf.js) — 
 |---|---|---|
 | `daily-rollover` | **óránként** | azok a felhasználók, akiknél az elmúlt órában fordult **helyi** éjfél: hold-bónusz → sorozat-értékelés → heti/havi ablakzárás. Emellett `Europe/Budapest` 00:05-kor a napi használati aggregátum (`metricsDaily`) |
 | `banda-rollover` | óránként | `bandas/{id}.totals` előszámítása minden bandára (`server/src/jobs/bandaRollover.ts`), hogy a `BandaScreen` egyetlen dokumentumot olvasson N tag helyett |
+| `banda-daily` | naponta, a napi forduló ELŐTT | napi banda-összesítő értesítés a tagoknak (terület + GP), `server/src/jobs/bandaDailyDigest.ts`. ⚠️ A `daily-rollover` a naphatáron nullázza a napi mezőket — utána futva mindenhol nullát jelentene |
 | `trust-sweep` | 5 percenként | lejárt türelmi idejű `pending_review` aktivitások automatikus érvényesítése |
 | `leaderboards` | 10 percenként | globális + lokális ranglisták újraszámolása |
 | `streak-reminder` | óránként | 18:00 helyi idő szerinti emlékeztetők |
@@ -157,6 +158,12 @@ A parancsok EGY SORBAN vannak, sorvégi backslash nélkül. Ez szándékos: a t�
 
 ```
 gcloud scheduler jobs create http grundo-banda-rollover --location=europe-west1 --schedule="0 * * * *" --time-zone="Etc/UTC" --uri="https://grundo-api-irb5rjve6a-ew.a.run.app/api/jobs/banda-rollover" --http-method=POST --headers="X-Job-Token=$(gcloud secrets versions access latest --secret=JOBS_TOKEN)" --attempt-deadline=540s
+```
+
+**A `banda-daily` bekötése.** Ugyanaz a két beengedési út. Az ütem szándékosan 21:00 UTC (23:00 budapesti nyári idő), tehát a helyi éjfél előtt — a `daily-rollover` utáni futás minden bandáról nullát jelentene:
+
+```
+gcloud scheduler jobs create http grundo-banda-daily --location=europe-west1 --schedule="0 21 * * *" --time-zone="Etc/UTC" --uri="https://grundo-api-irb5rjve6a-ew.a.run.app/api/jobs/banda-daily" --http-method=POST --headers="X-Job-Token=$(gcloud secrets versions access latest --secret=JOBS_TOKEN)" --attempt-deadline=540s
 ```
 
 Amíg ez nincs bejegyezve, a `bandas/{id}.totals` sosem frissül magától — kézzel az admin felületről (`owner`/`admin` szerepkör, `POST /api/jobs/banda-rollover`) indítható, de csak erre az egy alkalomra.

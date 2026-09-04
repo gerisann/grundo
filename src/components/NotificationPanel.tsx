@@ -445,7 +445,11 @@ function toneFor(type: NotificationType): string {
     case 'followed_activity':
     case 'new_follower':
     case 'banda_invited':
+    case 'banda_post':
+    case 'banda_daily':
       return 'social';
+    case 'banda_wall_reaction':
+      return 'comment';
     case 'modifier_started':
       return 'modifier';
   }
@@ -471,7 +475,11 @@ function typeIcon(type: NotificationType) {
       return <RunnerIcon />;
     case 'new_follower':
     case 'banda_invited':
+    case 'banda_post':
+    case 'banda_daily':
       return <PersonAddIcon />;
+    case 'banda_wall_reaction':
+      return <ChatIcon />;
     case 'modifier_started':
       return <MegaphoneIcon />;
   }

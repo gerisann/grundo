@@ -36,7 +36,10 @@ export type NotificationType =
   | 'new_follower'
   | 'territory_stolen'
   | 'territory_defended'
-  | 'banda_invited';
+  | 'banda_invited'
+  | 'banda_post'
+  | 'banda_wall_reaction'
+  | 'banda_daily';
 
 /**
  * A katalógus — Geri 9 pontos listájából 10 kapcsoló lett, mert a „GP-vel
@@ -62,6 +65,9 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; defau
   territory_stolen: { label: 'Elvették a grundod', defaultOn: true },
   territory_defended: { label: 'Sikeresen megvédted a grundod', defaultOn: true },
   banda_invited: { label: 'Banda-meghívó', defaultOn: true },
+  banda_post: { label: 'Új poszt a bandában', defaultOn: true },
+  banda_wall_reaction: { label: 'Válasz vagy szív az üzenőfalon', defaultOn: true },
+  banda_daily: { label: 'Napi banda-összesítő', defaultOn: true },
 };
 
 export interface CreateNotificationInput {
@@ -492,6 +498,69 @@ export function notifyBandaInvite(targetUid: string, bandaId: string, bandaName:
     type: 'banda_invited',
     title: 'Banda-meghívó',
     body: `${actorUsername} meghívott a(z) „${bandaName}” bandába.`,
+    data: { screen: 'banda', bandaId },
+  });
+}
+
+/**
+ * BANDA-ÉRTESÍTÉSEK — két kapun mennek át, nem egyen.
+ *
+ * 1. A felhasználó GLOBÁLIS kapcsolója (`users/{uid}/private/settings`), mint
+ *    minden más értesítésnél — ezt a `createNotification` nézi.
+ * 2. A BANDÁRA szóló kapcsoló (`bandas/{id}/members/{uid}.notify`), amit a
+ *    banda fejlécében lévő csengő állít. Egy hangos bandát ki lehessen
+ *    némítani anélkül, hogy a többiről is lemaradna.
+ *
+ * A második szűrést a hívó végzi (`bandas.ts` → `notifiableMembers`), mert
+ * csak ott van kéznél a tagsági lista.
+ */
+export function notifyBandaPost(
+  recipients: readonly string[],
+  bandaId: string,
+  bandaName: string,
+  authorUsername: string,
+): void {
+  if (recipients.length === 0) return;
+  void createNotificationForMany(recipients, {
+    type: 'banda_post',
+    title: bandaName,
+    body: `${authorUsername} új posztot írt a hírfolyamba.`,
+    data: { screen: 'banda', bandaId },
+  });
+}
+
+/** Válasz vagy szív a felhasználó üzenőfali üzenetére. */
+export function notifyBandaWallReaction(
+  targetUid: string,
+  bandaId: string,
+  bandaName: string,
+  actorUsername: string,
+  kind: 'reply' | 'like',
+): void {
+  void createNotification({
+    uid: targetUid,
+    type: 'banda_wall_reaction',
+    title: bandaName,
+    body: kind === 'reply'
+      ? `${actorUsername} válaszolt az üzenetedre.`
+      : `${actorUsername} beszívezte az üzenetedet.`,
+    data: { screen: 'banda', bandaId },
+  });
+}
+
+/** Napi banda-összesítő: a banda aznapi területe és GP-je. */
+export function notifyBandaDaily(
+  recipients: readonly string[],
+  bandaId: string,
+  bandaName: string,
+  areaM2: number,
+  gp: number,
+): void {
+  if (recipients.length === 0) return;
+  void createNotificationForMany(recipients, {
+    type: 'banda_daily',
+    title: `${bandaName} — mai mérleg`,
+    body: `${formatArea(areaM2)} terület és ${gp} GP gyűlt össze ma.`,
     data: { screen: 'banda', bandaId },
   });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPersonBiking, faPersonRunning, faPersonWalking, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faBell, faBellSlash, faPersonBiking, faPersonRunning, faPersonWalking, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { BandaFeedWall } from '@/components/BandaFeedWall';
@@ -95,6 +95,8 @@ export function BandaScreen() {
   const [period, setPeriod] = useState<BandaPeriod>(() => readStoredFilter('period'));
   const [sport, setSport] = useState<BandaSport>(() => readStoredFilter('sport'));
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+  const [notify, setNotify] = useState(false);
+  const [notifyBusy, setNotifyBusy] = useState(false);
 
   function choosePeriod(next: BandaPeriod) {
     setPeriod(next);
@@ -121,12 +123,33 @@ export function BandaScreen() {
       setInviteCode(result.inviteCode);
       setSettings(result.settings);
       setBanda(result.banda);
+      setNotify(result.notify);
       const memberList = await api.bandas.members(id);
       setMembers(memberList.items);
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'A csatlakozás most nem sikerült.');
     } finally {
       setJoining(false);
+    }
+  }
+
+  /**
+   * A banda csengője — bandánkénti némítás. A Beállítások → Értesítések
+   * globális kapcsolóit nem érinti: egy hangos banda elhallgattatása nem
+   * némíthatja el a többit.
+   */
+  async function toggleNotify() {
+    if (!id || notifyBusy) return;
+    const next = !notify;
+    setNotifyBusy(true);
+    setNotify(next);
+    try {
+      await api.bandas.setNotifications(id, next);
+    } catch (problem) {
+      setNotify(!next);
+      setError(problem instanceof ApiError ? problem.message : 'Az értesítés most nem állítható át.');
+    } finally {
+      setNotifyBusy(false);
     }
   }
 
@@ -155,6 +178,7 @@ export function BandaScreen() {
         setRole(result.role);
         setInviteCode(result.inviteCode);
         setSettings(result.settings);
+        setNotify(result.notify);
       })
       .catch((problem: unknown) => {
         if (!alive) return;
@@ -240,15 +264,29 @@ export function BandaScreen() {
       <ScreenHeader
         title="BANDÁK"
         backTo="/kozosseg/bandak"
-        action={role === 'owner' && id ? (
-          <button
-            type="button"
-            className="screen-header__back"
-            aria-label="Banda beállításai"
-            onClick={() => navigate(`/bandak/${encodeURIComponent(id)}/beallitasok`)}
-          >
-            <GearIcon />
-          </button>
+        action={role && id ? (
+          <div className="banda-header__actions">
+            <button
+              type="button"
+              className={`screen-header__back${notify ? ' is-active' : ''}`}
+              aria-label={notify ? 'Banda-értesítések kikapcsolása' : 'Banda-értesítések bekapcsolása'}
+              aria-pressed={notify}
+              disabled={notifyBusy}
+              onClick={() => void toggleNotify()}
+            >
+              <FontAwesomeIcon icon={notify ? faBell : faBellSlash} />
+            </button>
+            {role === 'owner' ? (
+              <button
+                type="button"
+                className="screen-header__back"
+                aria-label="Banda beállításai"
+                onClick={() => navigate(`/bandak/${encodeURIComponent(id)}/beallitasok`)}
+              >
+                <GearIcon />
+              </button>
+            ) : null}
+          </div>
         ) : undefined}
       />
       <div className="screen-body stack banda-detail">

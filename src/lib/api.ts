@@ -1292,7 +1292,19 @@ export const api = {
         isMember: boolean;
         inviteCode: string | null;
         settings: BandaSettings;
+        /** Kér-e a hívó értesítést erről a bandáról (a fejléc csengője). */
+        notify: boolean;
       }>(`/api/bandas/${encodeURIComponent(bandaId)}`),
+
+    /**
+     * A banda csengője. Bandánkénti némítás — a Beállítások → Értesítések
+     * globális kapcsolóit nem érinti.
+     */
+    setNotifications: (bandaId: string, enabled: boolean) =>
+      request<{ notify: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/notifications`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      }),
 
     /** A teljes tag-lista, szerepkörrel. */
     members: (bandaId: string) =>

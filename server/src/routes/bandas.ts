@@ -33,7 +33,11 @@ import {
   type BandaSettings,
   type BandaVisibility,
 } from '../lib/bandas';
-import { notifyBandaInvite } from '../lib/notifications';
+import {
+  notifyBandaInvite,
+  notifyBandaPost,
+  notifyBandaWallReaction,
+} from '../lib/notifications';
 import type { AuthedRequest } from '../../server';
 
 export const bandasRouter = Router();
@@ -591,7 +595,36 @@ bandasRouter.get('/:id', async (req: AuthedRequest, res: Response, next) => {
       isMember,
       settings,
       inviteCode: maySeeCode ? inviteCode : null,
+      // A csengő állása. Nem tagnál nincs értelme, ezért `false`.
+      notify: isMember && (memberSnap.data() as { notify?: boolean }).notify !== false,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   PATCH /api/bandas/:id/notifications — a banda csengője
+
+   Bandánkénti némítás: a tag saját `members/{uid}.notify` mezőjét állítja.
+   A GLOBÁLIS értesítés-kapcsolók (Beállítások → Értesítések) ettől
+   függetlenek — egy hangos banda kikapcsolása nem némíthatja el a többit.
+   ═══════════════════════════════════════════════════════════════════ */
+
+bandasRouter.patch('/:id/notifications', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaId = String(req.params.id ?? '');
+    const enabled = (req.body as { enabled?: unknown } | undefined)?.enabled;
+    if (typeof enabled !== 'boolean') {
+      throw badRequest('invalid_enabled', 'Az `enabled` mező kötelező, igaz/hamis értékkel.');
+    }
+
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
+    await loadMemberRole(bandaRef, uid);
+    await bandaRef.collection('members').doc(uid).set({ notify: enabled }, { merge: true });
+
+    res.json({ notify: enabled });
   } catch (error) {
     next(error);
   }
@@ -903,6 +936,33 @@ async function loadMemberRole(bandaRef: FirebaseFirestore.DocumentReference, uid
   return (memberSnap.data() as { role?: BandaRole }).role ?? 'member';
 }
 
+/**
+ * Kiknek mehet értesítés EBBŐL a bandából.
+ *
+ * A `notify` hiánya BEKAPCSOLTAT jelent — ugyanaz a döntés, mint a globális
+ * kapcsolóknál: egy alapból néma bandában senki nem találná meg a
+ * bekapcsolót. A `skipUid` a saját cselekvésé: a posztolónak nem kell
+ * értesítés a saját posztjáról.
+ */
+async function notifiableMembers(
+  bandaRef: FirebaseFirestore.DocumentReference,
+  skipUid: string,
+): Promise<string[]> {
+  const snapshot = await bandaRef.collection('members').select('notify').get();
+  return snapshot.docs
+    .filter((doc) => doc.id !== skipUid && (doc.data() as { notify?: boolean }).notify !== false)
+    .map((doc) => doc.id);
+}
+
+/** Kér-e a tag értesítést erről a bandáról? */
+async function wantsBandaNotifications(
+  bandaRef: FirebaseFirestore.DocumentReference,
+  uid: string,
+): Promise<boolean> {
+  const snap = await bandaRef.collection('members').doc(uid).get();
+  return snap.exists && (snap.data() as { notify?: boolean }).notify !== false;
+}
+
 function toPostSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const data = doc.data() as Record<string, unknown>;
   return {
@@ -1005,6 +1065,9 @@ bandasRouter.post('/:id/feed', async (req: AuthedRequest, res: Response, next) =
       ...(imagePath ? { imagePath } : {}),
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    const bandaName = String((bandaSnap.data() as { name?: string }).name ?? 'Banda');
+    notifyBandaPost(await notifiableMembers(bandaRef, uid), bandaId, bandaName, authorUsername);
 
     res.status(201).json({ id: postRef.id });
   } catch (error) {
@@ -1222,6 +1285,16 @@ bandasRouter.post('/:id/wall', async (req: AuthedRequest, res: Response, next) =
       createdAt: FieldValue.serverTimestamp(),
     });
 
+    /**
+     * Válasznál a MEGVÁLASZOLT üzenet szerzője kap értesítést — de csak ha
+     * nem ő maga válaszolt, és ha ebből a bandából kér értesítést.
+     */
+    const replyTargetUid = String(replySnap?.get('authorUid') ?? '');
+    if (replyTargetUid && replyTargetUid !== uid && await wantsBandaNotifications(bandaRef, replyTargetUid)) {
+      const bandaName = String((await bandaRef.get()).get('name') ?? 'Banda');
+      notifyBandaWallReaction(replyTargetUid, bandaId, bandaName, authorUsername, 'reply');
+    }
+
     res.status(201).json({ id: messageRef.id });
   } catch (error) {
     next(error);
@@ -1239,16 +1312,36 @@ bandasRouter.post('/:id/wall/:messageId/like', async (req: AuthedRequest, res: R
       const [messageSnap, likeSnap] = await Promise.all([transaction.get(messageRef), transaction.get(likeRef)]);
       if (!messageSnap.exists) throw notFound('message_not_found', 'Nincs ilyen üzenet.');
       const current = num(messageSnap.get('likeCount'));
+      const authorUid = String(messageSnap.get('authorUid') ?? '');
       if (likeSnap.exists) {
         transaction.delete(likeRef);
         transaction.update(messageRef, { likeCount: Math.max(0, current - 1) });
-        return { liked: false, likeCount: Math.max(0, current - 1) };
+        return { liked: false, likeCount: Math.max(0, current - 1), authorUid };
       }
       transaction.set(likeRef, { createdAt: FieldValue.serverTimestamp() });
       transaction.update(messageRef, { likeCount: current + 1 });
-      return { liked: true, likeCount: current + 1 };
+      return { liked: true, likeCount: current + 1, authorUid };
     });
-    res.json(result);
+
+    // Csak a szív TEVÉSE értesít, a levétele nem — a visszavont reakció nem hír.
+    if (result.liked && result.authorUid && result.authorUid !== uid) {
+      const [bandaSnap, wanted] = await Promise.all([
+        bandaRef.get(),
+        wantsBandaNotifications(bandaRef, result.authorUid),
+      ]);
+      if (wanted) {
+        const actor = String((await db.collection(COLLECTIONS.users).doc(uid).get()).get('username') ?? '');
+        notifyBandaWallReaction(
+          result.authorUid,
+          bandaRef.id,
+          String(bandaSnap.get('name') ?? 'Banda'),
+          actor,
+          'like',
+        );
+      }
+    }
+
+    res.json({ liked: result.liked, likeCount: result.likeCount });
   } catch (error) {
     next(error);
   }

@@ -22,7 +22,10 @@ export type NotificationType =
   | 'new_follower'
   | 'territory_stolen'
   | 'territory_defended'
-  | 'banda_invited';
+  | 'banda_invited'
+  | 'banda_post'
+  | 'banda_wall_reaction'
+  | 'banda_daily';
 
 export interface NotificationTypeInfo {
   label: string;
@@ -43,6 +46,9 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeInfo> 
   territory_stolen: { label: 'Elvették a grundod', fallbackScreen: '/grund' },
   territory_defended: { label: 'Sikeresen megvédted a grundod', fallbackScreen: '/grund' },
   banda_invited: { label: 'Banda-meghívó', fallbackScreen: '/kozosseg/bandak' },
+  banda_post: { label: 'Új poszt a bandában', fallbackScreen: '/kozosseg/bandak' },
+  banda_wall_reaction: { label: 'Válasz vagy szív az üzenőfalon', fallbackScreen: '/kozosseg/bandak' },
+  banda_daily: { label: 'Napi banda-összesítő', fallbackScreen: '/kozosseg/bandak' },
 } as const;
 
 /** A sorrend, ahogy a Beállítások képernyőn a kapcsolók megjelennek. */
@@ -59,6 +65,9 @@ export const NOTIFICATION_TYPE_ORDER: readonly NotificationType[] = [
   'followed_activity',
   'modifier_started',
   'banda_invited',
+  'banda_post',
+  'banda_wall_reaction',
+  'banda_daily',
 ];
 
 export interface StoredNotification {

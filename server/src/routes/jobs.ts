@@ -23,6 +23,7 @@ import type { AuthedRequest } from '../../server';
 import { auth as adminAuth } from '../lib/firebase';
 import { badRequest, forbidden, unauthorized } from '../lib/errors';
 import { runDailyRollover } from '../jobs/dailyRollover';
+import { runBandaDailyDigest } from '../jobs/bandaDailyDigest';
 import { runBandaRollover } from '../jobs/bandaRollover';
 
 export const jobsRouter = Router();
@@ -77,6 +78,23 @@ jobsRouter.post('/daily-rollover', async (req: AuthedRequest, res, next) => {
 
     const startedAt = Date.now();
     const summary = await runDailyRollover(new Date(), limit === undefined ? {} : { limit });
+    res.json({ ...summary, durationMs: Date.now() - startedAt });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/jobs/banda-daily
+ *
+ * Naponta egyszer, a napi forduló ELŐTT — utána a napi mezők már nullák.
+ * Lásd `jobs/bandaDailyDigest.ts`.
+ */
+jobsRouter.post('/banda-daily', async (req: AuthedRequest, res, next) => {
+  try {
+    await authorizeJob(req);
+    const startedAt = Date.now();
+    const summary = await runBandaDailyDigest();
     res.json({ ...summary, durationMs: Date.now() - startedAt });
   } catch (error) {
     next(error);
