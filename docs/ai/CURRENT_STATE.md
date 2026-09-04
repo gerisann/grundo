@@ -1,89 +1,93 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-04** · GRUNDO **#31**
+> Frissítve: **2026-09-04** · GRUNDO **#32**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: a munkafa tiszta lesz e commit után, a `main` egyezik az `origin/main` ággal.
-> Utoljára dolgozott: **Claude (Sonnet, Medium)** · Átadva: **Claude (Opus, High) — GRUNDO #32**
+> Állapot: a munkafa **tiszta**, a `main` egyezik az `origin/main` ággal.
+> Utoljára dolgozott: **Claude (Opus, High)** · Átadva: **Claude — GRUNDO #33**
 
 ## Jelenlegi cél
 
-Geri jelezte: egy 10 km-es városi Android-rögzítés érezhetően belassította a
-TELJES appot (animáció, kirajzolás, minden), nem csak a térképet. Az Explore
-ügynök megtalálta és e menet megjavította az egyik konkrét gyökérokot; **#32
-feladata a maradék két, kisebb hatású forrás felmérése és — szükség esetén —
-javítása, majd VALÓDI Android-eszközös igazolás.**
+A 10 km-es városi rögzítésnél tapasztalt teljes app-lassulás gyökéroka
+**megvan és meg van mérve**, de a javítás még NINCS meg. A #33 feladata:
+**Geri telefonos mérési számainak kiértékelése, majd a
+`processActivityGeometry()` hurok-elszámolásának inkrementálissá tétele az
+élő preview-hoz.**
 
 ## Elkészült
 
-- **Munkafolyamat:** a `CURRENT_STATE.md` fejlécében mostantól kötelező az
-  „Utoljára dolgozott" / „Átadva" mező; a `grundo-handoff`/`grundo-session-start`
-  skillek névtáblázatot kaptak (Claude: Sonnet/Opus + Low/Medium/High/Extra;
-  Codex: Luna/Terta/Sol + Alacsony/Közepes/Erős).
-- **GPX-terepteszt export:** `/admin/lab/scenario` „GPX exportálása" gombja +
-  recept (`docs/08-android-codemagic.md`) — valódi eszközön, hamis helyadat
-  appal reprodukálható a lezárt képernyős GPS-teszt.
-- **Aktivitás-diagnosztika:** eszköz/OS/app-verzió + előtér-háttér idővonal
-  rögzítése mentéskor, kizárólag a privát `private/track` dokumentumban (a
-  `userAgent` azonosításra alkalmas, ezért NEM a nyilvános dokumentumon).
-  Admin panel: `/admin/aktivitasok`.
-- **Teljesítmény-gyökérok #1 (megjavítva):** `IncrementalActivityGeometry.update()`
-  (`src/game/index.ts`) minden GPS-mintánál a TELJES nyomvonalat újraszámolta
-  (`traceToCellPath`) és a teljes korábbi cellaláncot végigolvasta (`isPrefix`)
-  — ez a GRUNDO #21 energiaelemzés által már egyszer megoldott hiba
-  megismétlődése volt, csak egy szinttel feljebb (GP/claim preview). Mostantól
-  a meglévő `IncrementalCellPath`-ra épül, O(1) folytatás-felismeréssel.
+- **A #31 három gyanúsítottja lemérve** (mérőpadok: `tmp/measure-preview-cost.test.ts`,
+  `tmp/measure-loop-claim-cost.test.ts`; 12 km / 2397 minta):
+  - `IncrementalActivityGeometry.update()` — 2 µs → 0 µs, **lapos. A #31 fix működik.**
+  - `visibleTrackSegments()` — 40 µs → 32 µs, **lapos. Nem szűk keresztmetszet.**
+  - `applySample()` — 3 µs → 6 µs. **Nem szűk keresztmetszet.** A #31 átadója
+    tévesen írta, hogy minden mintánál IndexedDB-írás történik: a
+    `createRunPersister` 2000 ms-onként ír.
+- **A VALÓDI gyökérok: `processActivityGeometry()`, és a HUROKZÁRÁS hajtja,
+  nem a pontszám.** Hurok nélkül 0,95 ms; 1 huroknál 5,34 ms; 6 huroknál
+  (2536 fal- + 6979 belső cella) **23,16 ms hívásonként** — kb. 3,3 µs/belső
+  cella, és minden újraszámolásnál a TELJES hurokkészletre lefut, pedig a
+  korábban bezárt hurkok már nem változnak. (A preview nem minden GPS-mintánál
+  fut, hanem új H3 cellánál vagy 25 méterenként — `cellRevision` /
+  `distanceBucket`.)
+- **Mérőfelület valódi eszközre** (`5d469fb`): `lib/perfMeter.ts` +
+  admin-only `components/PerfOverlay.tsx` a rögzítő képernyőn, plusz kódban
+  élő teszt-útvonal a LAB E2E indítójában (`admin/labPerfScenario.ts`) — a
+  mentett scenariók `localStorage`-ban élnek, telefonon nem érhetők el.
+- **Mellékesen javítva:** a `tmp/` scratch mappa kizárva a tesztkészletből
+  (`vite.config.ts`) — eddig bármely ottani `*.test.ts` elronthatta az
+  `npm run test`-et.
 
-## Módosított fájlok (e menet, még nem pusholva)
+## Módosított fájlok (`5d469fb`, pusholva)
 
 | Fájl | Állapot | +/− | Tartalom |
 |---|---|---:|---|
-| `src/game/index.ts` | MÓDOSÍTOTT | +40/−15 | `IncrementalActivityGeometry` valódi inkrementálissá tétele. |
-
-(A korábbi 2 commit — workflow + GPX/diagnosztika — már push-olva: `42b8109`, `9b1d37d`.)
+| `src/lib/perfMeter.ts` | ÚJ | +165 | Mérőóra ringpufferrel: átlag, p95, teljes max, gyakoriság. |
+| `src/components/PerfOverlay.tsx` | ÚJ | +149 | Admin-only kijelzés, alapból ⏱ pöttyre csukva. |
+| `src/components/perfOverlay.css` | ÚJ | +152 | Tokenalapú stílus; a LAB sávja miatt lejjebb csúszik. |
+| `src/lib/perfMeter.test.ts` | ÚJ | +102 | 9 teszt a ring/ablak/p95 aritmetikára. |
+| `src/admin/labPerfScenario.ts` | ÚJ | +103 | Beépített ~6/12 km-es városi mérő-útvonal. |
+| `src/admin/LabE2eLauncherScreen.tsx` | MÓDOSÍTOTT | +70/−55 | Beépített scenario a lista élén, 1× alapértelmezett lejátszás. |
+| `src/screens/TrackingScreen.tsx` | MÓDOSÍTOTT | +38/−17 | A preview-lánc négy szakasza külön mérve. |
+| `docs/ai/DECISIONS.md` | MÓDOSÍTOTT | +27/−0 | A mért eredmények tartós rögzítése. |
+| `vite.config.ts` | MÓDOSÍTOTT | +11/−1 | `tmp/**` kizárva a tesztkészletből. |
 
 ## Élesben fut / telepítetlen
 
-- A workflow- és diagnosztika-commitok push-olva, **nincs deploy** hozzájuk
-  (kliens-oldali/admin-only kód, backend route-bővítés — a következő
-  frontend+backend telepítéssel mehet, önmagában nem sürgős).
-- A teljesítmény-javítás e menet végén commitolva/pusholva lesz, de **natív
-  build még nem készült belőle** — Android APK-ban élesben nem volt tesztelve.
+- **Codemagicben FUT egy iOS és egy Android build** az `5d469fb` commitból
+  (Geri indította a menet végén). A mérőfelület ezekben utazik.
+- **Telepítetlen: backend és frontend.** Geri intézi. A `szabalyok` és az
+  `indexek` NEM érintettek (utoljára 09-03-án, a Banda-körben változtak) —
+  hogy azok ki lettek-e akkor telepítve, innen nem ellenőrizhető.
+- A perf-mérőhöz egyik deploy sem kell: teljesen kliensoldali, a natív build
+  a repóból csomagolja.
 
 ## Ellenőrzések
 
-- Kliens typecheck ✅. Kliens egységtesztek: **738/738** ✅ (nincs regresszió).
-- **NEM ellenőrizve:** a fix tényleges hatása valódi Android-eszközön/hosszú
-  (10 km+) rögzítésnél — csak unit teszttel és típusellenőrzéssel igazolt,
-  profilozás (DevTools/Android Studio profiler) nem történt.
-- **NEM készült célzott regressziós teszt** arra, hogy az `IncrementalActivityGeometry`
-  ténylegesen O(1)/hívás költséggel fut hosszú nyomvonalon (a meglévő
-  `src/game/incrementalGeometry.test.ts` az eredmény-egyezést nézi, a
-  hívásköltséget nem méri).
-- Szerver oldalt e menetben nem érintettük (a diagnosztika-commit szerver
-  tesztjei a `9b1d37d`-nél már lefutottak: 225/225 ✅).
+- Kliens **747/747** zöld (738 volt + 9 új `perfMeter` teszt). Mindkét
+  typecheck tiszta. `npm run build` rendben. Világos és sötét téma helyes.
+- **Emulátoros felületen ellenőrizve** (LAB E2E, 10× lejátszás): a hurok
+  bezárásakor a kijelzésen az „· elszámolás" 0,22 ms → 3,15 ms-ra, a „Teljes
+  preview" 0,25 → 4,13 ms-ra (max 14,7) ugrott — a mérő megfogja a jelenséget.
+- **NEM ellenőrizve:** bármi valódi iOS/Android eszközön. A mérő iOS-en még
+  soha nem futott. Szerver oldalt ez a menet nem érintette.
 
-## Nyitott ügyek — #32-nek (Opus, High)
+## Nyitott ügyek — #33-nak
 
-1. **Profilozd a mostani fixet.** Mérd meg ténylegesen (pl. Android Studio
-   profiler vagy a LAB GPX-exporttal reprodukált hosszú, sűrű városi kör),
-   hogy az `IncrementalActivityGeometry` javítása után eltűnik-e a lassulás.
-2. **Másodlagos forrás:** `src/lib/mapRender.ts` `visibleTrackSegments()` a
-   teljes nyomvonalat végigscanneli minden throttolt `setData`-hívásnál
-   (O(n) bemenet, bár a kimenet már sugár-vágott). Érdemes-e inkrementálisra
-   váltani, vagy a jelenlegi throttling (`trackSyncIntervalMs`) elég?
-3. **Harmadlagos forrás:** `src/tracking/recorder.ts` minden elfogadott
-   mintánál másolja a teljes `points` tömböt (`[...state.points, point]`), és
-   `useRecorder.ts` minden mintánál ír az IndexedDB-be (`persister.save`).
-   Lineáris, nem kvadratikus — érdemes-e mégis kötegelni/ritkítani hosszú
-   (1+ órás) aktivitásoknál?
-4. Régebbi, Banda-menetekből még nyitva: Banda profil-/borítókép éles
+1. **Kérd el Geri telefonos számait** (LAB E2E → beépített mérő-útvonal, 1×,
+   a hurok bezárása utáni értékek). Asztali referencia ugyanezen az
+   útvonalon: elszámolás **3,15 ms** átlag 3 huroknál.
+2. **Ha a szám igazolja: tedd inkrementálissá a hurok-elszámolást** az élő
+   preview-hoz — a már bezárt hurkok claim-eredményét gyorsítótárazni,
+   mintánként csak az ÚJ hurkot feldolgozni; a `fates`-ciklust
+   (`TrackingScreen`) szintén csak az új cellákra. ⚠️ A `src/game/` KÖZÖS a
+   szerverrel: a batch szerveroldali út viselkedése nem változhat, csak új,
+   opcionális inkrementális belépési pont jöhet mellé.
+3. **Nyitva a #31 óta, Gerinek/külön menetnek:** Banda profil-/borítókép éles
    feltöltés visszaigazolása, `backfill:banda-stats` produkciós futtatása,
-   `bandaRollover` Cloud Scheduler bekötése — ezek Gerinek/külön menetnek
-   valók, nem blokkolják a teljesítmény-munkát.
+   `bandaRollover` Cloud Scheduler bekötése.
 
 ## Modelljavaslat
 
-**Opus, High.** Gyökérok-elemzés és mért teljesítmény-anomália — a
-`grundo-session-start` saját táblázata is ezt javasolja. Geri kifejezetten
-emiatt zárta le ezt a menetet Sonnet Medium-on, és nyit új beszélgetést
-Opus High-on (#32) a folytatásra.
+**Opus, High** — a 2. pont algoritmus-átalakítás a közös játékmotorban,
+teljesítménnyel és helyességi kockázattal. Ha csak a számok kiértékelése
+történik és a javítás külön menetre marad, arra a **Sonnet, Medium** is elég.

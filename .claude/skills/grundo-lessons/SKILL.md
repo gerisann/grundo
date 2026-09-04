@@ -90,3 +90,26 @@ ugyanezt a hibát ismételte meg: a saját doksi-kommentje azt állította, „c
 keress rá MINDEN hívási helyére** (`grep`), ne csak arra, ahol a tünetet
 észlelted — és ne higgy egy „inkrementális"-nak nevezett osztály kommentjének
 a kód elolvasása nélkül.
+
+## 10. Az átadót is ellenőrizni kell, mielőtt a listája alapján dolgozol
+
+A #31 átadója három teljesítmény-gyanúsítottat sorolt fel. Mérve (#32) kettő
+ártatlan volt, az egyik leírás pedig egyszerűen TÉVES: „a `useRecorder.ts`
+minden mintánál ír az IndexedDB-be" — közben a `createRunPersister` 2000 ms-os
+`minIntervalMs`-szel összevonja az írásokat, ez a saját fejléc-kommentjében is
+ott áll. Ha a listát végigjavítom, két felesleges átalakítást írtam volna a
+kockázatos rétegbe, a valódi ok mellett (`processActivityGeometry`) pedig
+elmegyek. **Az átadó nyitott ügyei hipotézisek, nem tények — mérd le őket,
+mielőtt bármelyiket javítod.**
+
+## 11. Feltételezést tényként közöltem a saját mérésem mellett
+
+Ugyanabban a menetben, a mért számok mellé odaírtam, hogy az élő preview
+„minden elfogadott GPS-mintánál újrafut" — anélkül, hogy megnéztem volna a
+`useMemo` függőségeit. Valójában `cellRevision` (új H3 cella) és
+`distanceBucket` (25 m) vezérli, tehát ritkábban fut. A hiba a mérés
+HITELÉT rontja: a helyes számok mellett egy ellenőrizetlen állítás úgy hat,
+mintha az is mérés lenne. **Egy React-hurok gyakoriságát a függőséglistából
+kell kiolvasni, nem a hívási helyből következtetni** — és amit nem mértél,
+azt mondd ki feltételezésnek.
+
