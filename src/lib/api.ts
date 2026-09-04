@@ -780,6 +780,13 @@ export interface AdminPushTest {
   failed: number;
 }
 
+/** A `POST /api/jobs/banda-rollover` válasza — lásd `server/src/jobs/bandaRollover.ts`. */
+export interface BandaRolloverResult {
+  bandasProcessed: number;
+  errors: number;
+  durationMs: number;
+}
+
 export interface AdminStatus {
   role: string | null;
   /**
@@ -1730,6 +1737,14 @@ export const api = {
    * miért nem érkezik meg (lásd `server/src/routes/admin.ts` → `/push/test`).
    */
   adminTestPush: () => request<AdminPushTest>('/api/admin/push/test', { method: 'POST' }),
+
+  /**
+   * A `bandas/{id}.totals` előszámítását kézzel indítja — addig kell, amíg
+   * nincs bekötve a Cloud Scheduler (`docs/06-architektura-es-admin.md` →
+   * `jobs` → `banda-rollover`). A végpont `owner`/`admin` szerepkört fogad
+   * el ID-tokennel, ugyanúgy, mint az ütemező a megosztott titkot.
+   */
+  adminRunBandaRollover: () => request<BandaRolloverResult>('/api/jobs/banda-rollover', { method: 'POST' }),
 
   adminGameplay: () => request<GameplayState>('/api/admin/gameplay'),
 

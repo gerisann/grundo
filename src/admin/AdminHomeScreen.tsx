@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui';
-import { api, type AdminMetrics, type AdminPushTest, type AdminStatus } from '@/lib/api';
+import {
+  api,
+  type AdminMetrics,
+  type AdminPushTest,
+  type AdminStatus,
+  type BandaRolloverResult,
+} from '@/lib/api';
 import { formatArea, formatDistance } from '@/lib/format';
 import { GAMEPLAY } from '@/config/gameplay';
 
@@ -22,6 +28,9 @@ export function AdminHomeScreen() {
   const [pushTest, setPushTest] = useState<AdminPushTest | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [bandaRollover, setBandaRollover] = useState<BandaRolloverResult | null>(null);
+  const [bandaRolloverBusy, setBandaRolloverBusy] = useState(false);
+  const [bandaRolloverError, setBandaRolloverError] = useState<string | null>(null);
 
   useEffect(() => {
     api.adminStatus().then(setStatus).catch(() => setStatus(null));
@@ -40,6 +49,21 @@ export function AdminHomeScreen() {
       setPushError(error instanceof Error ? error.message : 'A teszt-értesítés küldése nem sikerült.');
     } finally {
       setPushBusy(false);
+    }
+  }
+
+  async function runBandaRollover() {
+    setBandaRolloverBusy(true);
+    setBandaRolloverError(null);
+    setBandaRollover(null);
+    try {
+      setBandaRollover(await api.adminRunBandaRollover());
+    } catch (error) {
+      setBandaRolloverError(
+        error instanceof Error ? error.message : 'A banda-összesítés futtatása nem sikerült.',
+      );
+    } finally {
+      setBandaRolloverBusy(false);
     }
   }
 
@@ -172,6 +196,28 @@ export function AdminHomeScreen() {
               </li>
             ))}
           </ul>
+        ) : null}
+      </section>
+
+      <section className="admin-card">
+        <h2>Banda-összesítés</h2>
+        <p className="admin-muted">
+          A `bandas/{'{id}'}.totals` mezőt egyelőre nem tölti automatikusan
+          semmi — a Cloud Scheduler bejegyzése még hiányzik (lásd
+          `docs/06-architektura-es-admin.md` → `jobs` → `banda-rollover`).
+          Amíg ez nincs bekötve, itt indítható kézzel.
+        </p>
+        <div className="admin-push-actions">
+          <Button variant="secondary" onClick={() => void runBandaRollover()} disabled={bandaRolloverBusy}>
+            {bandaRolloverBusy ? 'Fut…' : 'Banda-összesítés futtatása'}
+          </Button>
+        </div>
+        {bandaRolloverError ? <p className="admin-push-error">{bandaRolloverError}</p> : null}
+        {bandaRollover ? (
+          <p className="admin-muted">
+            {bandaRollover.bandasProcessed} banda feldolgozva, {bandaRollover.errors} hiba,{' '}
+            {bandaRollover.durationMs} ms alatt.
+          </p>
         ) : null}
       </section>
 

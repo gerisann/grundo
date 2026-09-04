@@ -114,6 +114,7 @@ Eredetileg két lehetőséget vázoltam fel (PostGIS vs. Firestore+turf.js) — 
 | Job | Ütem | Feladat |
 |---|---|---|
 | `daily-rollover` | **óránként** | azok a felhasználók, akiknél az elmúlt órában fordult **helyi** éjfél: hold-bónusz → sorozat-értékelés → heti/havi ablakzárás. Emellett `Europe/Budapest` 00:05-kor a napi használati aggregátum (`metricsDaily`) |
+| `banda-rollover` | óránként | `bandas/{id}.totals` előszámítása minden bandára (`server/src/jobs/bandaRollover.ts`), hogy a `BandaScreen` egyetlen dokumentumot olvasson N tag helyett |
 | `trust-sweep` | 5 percenként | lejárt türelmi idejű `pending_review` aktivitások automatikus érvényesítése |
 | `leaderboards` | 10 percenként | globális + lokális ranglisták újraszámolása |
 | `streak-reminder` | óránként | 18:00 helyi idő szerinti emlékeztetők |
@@ -151,6 +152,14 @@ gcloud scheduler jobs create http grundo-daily-rollover --location=europe-west1 
 A parancsok EGY SORBAN vannak, sorvégi backslash nélkül. Ez szándékos: a többsoros, escape-elt alak egyszer már szétvágta a `cloudbuild.yaml`-t (2026-08-19), és a build a megjegyzés miatt hasalt el, nem a konfiguráció miatt.
 
 ⚠️ **A meglévő felhasználókat egyszer be kell jegyezni.** A job a `users.rollover.nextDueAt` mezőre keres; akinél ez nincs meg, azt a lekérdezés sosem hozná vissza, és Firestore-ban hiányzó mezőre nem lehet keresni. Az új fiókoknál a `newUserDoc` kitölti; a régiekhez a `server/`-ből: `npm.cmd run rollover:seed -- --apply`.
+
+**A `banda-rollover` bekötése (GRUNDO #35 óta hiányzik — az endpoint és a job kész, csak az ütemező-bejegyzés nem).** A hívási pont `POST /api/jobs/banda-rollover`, ugyanazzal a két beengedési úttal (`X-Job-Token` vagy `owner`/`admin` ID-token), tehát ha a `daily-rollover` titka már be van üzemelve, újra nem kell — csak a bejegyzés:
+
+```
+gcloud scheduler jobs create http grundo-banda-rollover --location=europe-west1 --schedule="0 * * * *" --time-zone="Etc/UTC" --uri="https://grundo-api-irb5rjve6a-ew.a.run.app/api/jobs/banda-rollover" --http-method=POST --headers="X-Job-Token=$(gcloud secrets versions access latest --secret=JOBS_TOKEN)" --attempt-deadline=540s
+```
+
+Amíg ez nincs bejegyezve, a `bandas/{id}.totals` sosem frissül magától — kézzel az admin felületről (`owner`/`admin` szerepkör, `POST /api/jobs/banda-rollover`) indítható, de csak erre az egy alkalomra.
 
 ### A Mapbox token — Secret Managerben (2026-08-29 óta)
 

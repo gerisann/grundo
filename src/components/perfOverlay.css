@@ -150,3 +150,7 @@
   color: var(--text-secondary);
   line-height: 1.4;
 }
+
+.perf-overlay__saved {
+  color: var(--success);
+}

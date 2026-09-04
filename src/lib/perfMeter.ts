@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 /**
  * Mérőóra a rögzítés közbeni főszál-terheléshez.
  *
@@ -20,6 +22,10 @@
 const WINDOW_SIZE = 120;
 
 const ENABLED_KEY = 'grundo.perf.meter.v1';
+const HISTORY_KEY = 'grundo.perf.meter.history.v1';
+
+/** Ennyi mentett mérést őrzünk meg — a régebbi lekerül, ha betelik. */
+const HISTORY_LIMIT = 30;
 
 interface Ring {
   /** Körkörös puffer; `count` alatt csak az első `count` elem érvényes. */
@@ -162,4 +168,85 @@ export function resetPerfMeter(): void {
   rings.clear();
   notes.clear();
   since = 0;
+}
+
+/**
+ * Egy mentett mérés — a `readPerfSnapshot()` eredménye, kiegészítve azzal,
+ * HOL és MIKOR készült.
+ *
+ * MIÉRT KELL: az élő kijelzés (`PerfOverlay`) eltűnik a képernyő bezárásával,
+ * tehát terepteszt után semmi sem marad belőle — Geri jelezte, hogy csak a
+ * pillanatnyi számot látja, elemzésre nem tudja visszakeresni. A `platform`
+ * azért kell, mert asztali és telefonos mérés között nagyságrendi a
+ * különbség (lásd `docs/ai/CURRENT_STATE.md` #33 táblázata) — mentés nélkül
+ * ez összekeveredne.
+ */
+export interface PerfHistoryEntry {
+  id: string;
+  /** `Date.now()` a mentés pillanatában. */
+  at: number;
+  /** Capacitor platform (`ios`/`android`/`web`) — natív buildben pontos. */
+  platform: string;
+  userAgent: string;
+  stats: PerfStat[];
+  notes: [string, number][];
+}
+
+function readHistoryRaw(): PerfHistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as PerfHistoryEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeHistoryRaw(entries: PerfHistoryEntry[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
+  } catch {
+    // Tele a tárhely vagy privát mód — a mentés elmarad, a mérés attól még megy.
+  }
+}
+
+function newHistoryId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Elmenti a JELENLEGI mérést a helyi előzménybe. `null`, ha nincs mit menteni
+ * (kikapcsolt mérő, vagy még egyetlen minta sem gyűlt össze).
+ */
+export function savePerfSnapshot(): PerfHistoryEntry | null {
+  const snapshot = readPerfSnapshot();
+  if (snapshot.stats.length === 0) return null;
+  const entry: PerfHistoryEntry = {
+    id: newHistoryId(),
+    at: Date.now(),
+    platform: Capacitor.getPlatform(),
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    stats: snapshot.stats,
+    notes: snapshot.notes,
+  };
+  const next = [entry, ...readHistoryRaw()].slice(0, HISTORY_LIMIT);
+  writeHistoryRaw(next);
+  return entry;
+}
+
+/** A mentett mérések, legújabb elöl. */
+export function readPerfHistory(): PerfHistoryEntry[] {
+  return readHistoryRaw();
+}
+
+export function clearPerfHistory(): void {
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+  } catch {
+    // Nincs mit tenni — lásd `writeHistoryRaw`.
+  }
 }

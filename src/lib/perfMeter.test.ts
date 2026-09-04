@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  clearPerfHistory,
   measurePerf,
   notePerf,
   perfMeterEnabled,
+  readPerfHistory,
   readPerfSnapshot,
   recordPerf,
   resetPerfMeter,
+  savePerfSnapshot,
   setPerfMeterEnabled,
 } from './perfMeter';
 
@@ -13,10 +16,25 @@ function statOf(key: string) {
   return readPerfSnapshot().stats.find((item) => item.key === key) ?? null;
 }
 
+// A vitest itt `node` környezetben fut, tehát nincs böngésző `localStorage` —
+// a savePerfSnapshot/readPerfHistory ezt igényli (lásd `src/lib/push.test.ts`
+// ugyanezt a mintát).
+const storageValues = new Map<string, string>();
+
 describe('perfMeter', () => {
   beforeEach(() => {
+    storageValues.clear();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storageValues.get(key) ?? null,
+        setItem: (key: string, value: string) => storageValues.set(key, value),
+        removeItem: (key: string) => storageValues.delete(key),
+      },
+    });
     setPerfMeterEnabled(false);
     resetPerfMeter();
+    clearPerfHistory();
   });
 
   it('kikapcsolva semmit nem gyűjt', () => {
@@ -98,5 +116,48 @@ describe('perfMeter', () => {
     notePerf('cells', 250);
 
     expect(readPerfSnapshot().notes).toEqual([['cells', 250]]);
+  });
+
+  describe('előzmény (savePerfSnapshot / readPerfHistory)', () => {
+    it('mérés nélkül nincs mit menteni', () => {
+      setPerfMeterEnabled(true);
+      expect(savePerfSnapshot()).toBeNull();
+      expect(readPerfHistory()).toHaveLength(0);
+    });
+
+    it('elmenti a pillanatnyi mérést, legújabb elöl', () => {
+      setPerfMeterEnabled(true);
+      recordPerf('a', 10);
+      const first = savePerfSnapshot();
+      recordPerf('a', 20);
+      const second = savePerfSnapshot();
+
+      expect(first).not.toBeNull();
+      expect(second).not.toBeNull();
+      const history = readPerfHistory();
+      expect(history).toHaveLength(2);
+      expect(history[0]?.id).toBe(second?.id);
+      expect(history[0]?.stats.find((stat) => stat.key === 'a')?.count).toBe(2);
+      expect(history[1]?.stats.find((stat) => stat.key === 'a')?.count).toBe(1);
+    });
+
+    it('a törlés üríti az előzményt', () => {
+      setPerfMeterEnabled(true);
+      recordPerf('a', 10);
+      savePerfSnapshot();
+      expect(readPerfHistory()).toHaveLength(1);
+
+      clearPerfHistory();
+      expect(readPerfHistory()).toHaveLength(0);
+    });
+
+    it('a mentett bejegyzés hordozza a mentés pillanatát és a platformot', () => {
+      setPerfMeterEnabled(true);
+      recordPerf('a', 10);
+      const entry = savePerfSnapshot();
+
+      expect(entry?.at).toBeGreaterThan(0);
+      expect(typeof entry?.platform).toBe('string');
+    });
   });
 });

@@ -3,6 +3,7 @@ import {
   perfMeterEnabled,
   readPerfSnapshot,
   resetPerfMeter,
+  savePerfSnapshot,
   setPerfMeterEnabled,
   type PerfSnapshot,
 } from '@/lib/perfMeter';
@@ -45,6 +46,7 @@ export function PerfOverlay() {
   const [enabled, setEnabled] = useState(perfMeterEnabled);
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(EMPTY);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !open) return;
@@ -99,7 +101,22 @@ export function PerfOverlay() {
         >
           Nullázás
         </button>
+        <button
+          type="button"
+          disabled={!enabled || snapshot.stats.length === 0}
+          onClick={() => {
+            if (savePerfSnapshot()) setSavedAt(Date.now());
+          }}
+        >
+          Mentés
+        </button>
       </div>
+
+      {savedAt ? (
+        <p className="perf-overlay__hint perf-overlay__saved">
+          Mentve — az admin „Teljesítmény" oldalán megtekinthető.
+        </p>
+      ) : null}
 
       {!enabled ? (
         <p className="perf-overlay__hint">

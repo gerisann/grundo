@@ -9,6 +9,7 @@ import { ReplayScreen } from './ReplayScreen';
 import { SimulationLabScreen } from './SimulationLabScreen';
 import { LabE2eLauncherScreen } from './LabE2eLauncherScreen';
 import { LabE2eTrackingScreen } from './LabE2eTrackingScreen';
+import { PerfHistoryScreen } from './PerfHistoryScreen';
 
 export default function AdminArea() {
   return (
@@ -25,6 +26,7 @@ export default function AdminArea() {
         <Route path="aktivitasok" element={<ActivityAuditScreen />} />
         <Route path="visszajatszas" element={<ReplayScreen />} />
         <Route path="lab" element={<SimulationLabScreen />} />
+        <Route path="teljesitmeny" element={<PerfHistoryScreen />} />
         <Route path="lab/e2e" element={<LabE2eLauncherScreen />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
