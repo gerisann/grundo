@@ -7,9 +7,11 @@
  * le kell futnia; a részletes indoklás a `sound.ts` `unlockSounds()` fejlécében
  * van.
  *
- * A második eset a hallható farok: iOS-en a `volume = 0` hatástalan, ezért a
- * `pause()`-nak SZINKRON módon kell lefutnia a `play()` után, nem csak a
- * promise beérkezésekor.
+ * ⚠️ A MÁSODIK NÉMULÁS (2026-09-04) ennek a tesztnek a korábbi változatát is
+ * érinti: az a SZINKRON `pause()`-t követelte meg — épp azt, ami iOS-en
+ * megszakítja a lejátszást, mielőtt elindulna, és ezzel másodszor is elnémítja
+ * az appot. A feloldáshoz VALÓDI, végigfutó lejátszás kell; a hallható zavart
+ * a hang legvégére ugrás kerüli el.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,16 +24,24 @@ vi.mock('./platform', () => ({
   isNativeAndroid: () => false,
 }));
 
+/** Ismert időtartam — feloldáskor ide, a hang legvégére kell ugrani. */
+const CLIP_SECONDS = 2;
+
 class FakeAudio {
   static instances: FakeAudio[] = [];
+  /** `NaN`, ha a metaadat még nincs betöltve — a példányok ezt kapják. */
+  static duration = CLIP_SECONDS;
 
   currentTime = 0;
   paused = true;
   preload = '';
   volume = 1;
   playCount = 0;
+  readonly duration = FakeAudio.duration;
   /** Igaz, ha a `pause()` már azelőtt lefutott, hogy a promise beérkezett. */
   pausedSynchronously = false;
+  /** Ahol a lejátszás ténylegesen elindult. */
+  startedAt: number | null = null;
   private settled = false;
 
   constructor(readonly src: string) {
@@ -43,6 +53,7 @@ class FakeAudio {
   play(): Promise<void> {
     this.paused = false;
     this.playCount += 1;
+    this.startedAt = this.currentTime;
     return Promise.resolve().then(() => {
       this.settled = true;
     });
@@ -85,21 +96,67 @@ describe('unlockSounds', () => {
     }
   });
 
-  it('azonnal, szinkron módon megállítja az elemeket', async () => {
+  /**
+   * ⚠️ EZ A TESZT EGY MÁSODIK ÉLES NÉMULÁS EMLÉKE. A szinkron `pause()`
+   * megszakítja a `play()`-t, mielőtt az elindulna — iOS-en emiatt a rendszer
+   * hangútvonala nem aktiválódik, és minden hang néma marad.
+   */
+  it('a lejátszást hagyja elindulni, nem szakítja meg szinkron módon', async () => {
     platform.native = true;
     vi.stubGlobal('Audio', FakeAudio);
     const { unlockSounds } = await import('./sound');
 
     unlockSounds();
 
-    /**
-     * iOS-en a `volume = 0` hatástalan, ezért a hallható farok hosszát KIZÁRÓLAG
-     * az dönti el, milyen gyorsan jön a `pause()`. A promise-ra várva egy teljes
-     * hangeffekt szólalna meg — elemenként, egyszerre 51-szer.
-     */
     for (const element of FakeAudio.instances) {
-      expect(element.pausedSynchronously).toBe(true);
+      expect(element.pausedSynchronously).toBe(false);
+    }
+  });
+
+  it('a hang legvégére ugrik, hogy a feloldás ne legyen hallható', async () => {
+    platform.native = true;
+    vi.stubGlobal('Audio', FakeAudio);
+    const { unlockSounds } = await import('./sound');
+
+    unlockSounds();
+
+    for (const element of FakeAudio.instances) {
+      expect(element.startedAt).toBeGreaterThan(CLIP_SECONDS - 0.2);
+      expect(element.startedAt).toBeLessThan(CLIP_SECONDS);
+    }
+  });
+
+  /**
+   * Ismeretlen időtartamnál (a metaadat még nem töltődött be) a teljes hang
+   * szólal meg. Hangosabb, de MŰKÖDIK — a némaság sosem opció.
+   */
+  it('ismeretlen hosszúságnál elölről játszik, de akkor is felold', async () => {
+    platform.native = true;
+    FakeAudio.duration = Number.NaN;
+    vi.stubGlobal('Audio', FakeAudio);
+    const { unlockSounds } = await import('./sound');
+
+    unlockSounds();
+
+    for (const element of FakeAudio.instances) {
+      expect(element.playCount).toBe(1);
+      expect(element.startedAt).toBe(0);
+    }
+    FakeAudio.duration = CLIP_SECONDS;
+  });
+
+  it('a feloldás után minden elem meg van állítva és nullázva', async () => {
+    platform.native = true;
+    vi.stubGlobal('Audio', FakeAudio);
+    const { unlockSounds } = await import('./sound');
+
+    unlockSounds();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    for (const element of FakeAudio.instances) {
       expect(element.paused).toBe(true);
+      expect(element.currentTime).toBe(0);
     }
   });
 });

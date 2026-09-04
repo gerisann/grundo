@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 export interface ListRowProps {
   label: string;
   description?: string;
+  /** Bal oldali elem a szöveg ELŐTT, pl. profilkép. */
+  leading?: ReactNode;
   /** Jobb oldali érték, pl. „95 kg" vagy „Automatikus". */
   value?: ReactNode;
   onClick?: () => void;
@@ -12,9 +14,10 @@ export interface ListRowProps {
 }
 
 /** Beállítás-sor. Kattinthatóként gomb, egyébként sima sor. */
-export function ListRow({ label, description, value, onClick, chevron, disabled }: ListRowProps) {
+export function ListRow({ label, description, leading, value, onClick, chevron, disabled }: ListRowProps) {
   const content = (
     <>
+      {leading ? <span className="row__leading">{leading}</span> : null}
       <span className="row__text">
         <span className="row__label">{label}</span>
         {description ? <span className="row__desc">{description}</span> : null}

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export type ChipVariant = 'default' | 'accent' | 'territory' | 'success';
+export type ChipVariant = 'default' | 'accent' | 'gold' | 'territory' | 'success';
 
 export interface ChipProps {
   variant?: ChipVariant;

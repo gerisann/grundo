@@ -178,10 +178,13 @@ bandasRouter.post('/', async (req: AuthedRequest, res: Response, next) => {
       now,
     );
 
-    let inviteCode: string | null = null;
-    if (visibility === 'private') {
-      inviteCode = await reserveInviteCode(bandaRef.id);
-    }
+    /**
+     * MINDEN banda kap kódot, a publikus is. Korábban csak a privát kapott —
+     * a publikus banda oldalán ezért nem volt mit megosztani, pedig a kód a
+     * legegyszerűbb meghívási mód: elmondható szóban, és a Bandák oldalon
+     * beírva azonnal csatlakoztat.
+     */
+    const inviteCode = await reserveInviteCode(bandaRef.id);
 
     const batch = db.batch();
     batch.set(bandaRef, inviteCode ? { ...doc, inviteCode } : doc);
@@ -368,7 +371,7 @@ bandasRouter.post('/:id/join', async (req: AuthedRequest, res: Response, next) =
 });
 
 /* ═══════════════════════════════════════════════════════════════════
-   POST /api/bandas/join-by-code — privát bandához meghívókóddal
+   POST /api/bandas/join-by-code — csatlakozás meghívókóddal (publikushoz is)
    ═══════════════════════════════════════════════════════════════════ */
 
 bandasRouter.post('/join-by-code', async (req: AuthedRequest, res: Response, next) => {
@@ -569,14 +572,25 @@ bandasRouter.get('/:id', async (req: AuthedRequest, res: Response, next) => {
     const storedSettings = (data.settings as Partial<BandaSettings> | undefined) ?? {};
     const settings: BandaSettings = { ...DEFAULT_BANDA_SETTINGS, ...storedSettings };
 
+    /**
+     * A kód PÓTLÁSA olvasáskor. A publikus bandák a bevezetéskor nem kaptak
+     * kódot, tehát a régiek most sem tudnának megosztani — külön migráció
+     * helyett az első arra jogosult megnyitás létrehozza. Idempotens: ha már
+     * van kód, nem nyúlunk hozzá.
+     */
+    let inviteCode = (data.inviteCode as string | undefined) ?? null;
+    const maySeeCode = role !== null && canInvite(role, settings.inviteCodeVisibleTo);
+    if (inviteCode === null && maySeeCode) {
+      inviteCode = await reserveInviteCode(bandaId);
+      await bandaRef.set({ inviteCode }, { merge: true });
+    }
+
     res.json({
       banda: toSummary(bandaId, data),
       role,
       isMember,
       settings,
-      inviteCode: role && canInvite(role, settings.inviteCodeVisibleTo)
-        ? ((data.inviteCode as string | undefined) ?? null)
-        : null,
+      inviteCode: maySeeCode ? inviteCode : null,
     });
   } catch (error) {
     next(error);
@@ -1161,8 +1175,13 @@ bandasRouter.get('/:id/wall', async (req: AuthedRequest, res: Response, next) =>
     const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
     await loadMemberRole(bandaRef, uid);
 
+    /**
+     * LEGÚJABB ELÖL. Korábban chat-sorrendben (legrégebbi elöl) ment vissza a
+     * lista; az üzenőfalon viszont a friss üzenet a lényeg, és az üzenetírás is
+     * a lista fölött van — így nem kell végiggörgetni a régieket.
+     */
     const snapshot = await bandaRef.collection('wall').orderBy('createdAt', 'desc').limit(WALL_PAGE).get();
-    res.json({ items: (await postSummaries(snapshot.docs, uid)).reverse(), hasMore: snapshot.docs.length >= WALL_PAGE });
+    res.json({ items: await postSummaries(snapshot.docs, uid), hasMore: snapshot.docs.length >= WALL_PAGE });
   } catch (error) {
     next(error);
   }

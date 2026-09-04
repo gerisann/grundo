@@ -13,8 +13,8 @@
 .banda-hero__description { margin: 0; padding: 0 var(--sp-4); white-space: pre-wrap; }
 .banda-share { display: grid; gap: var(--sp-3); padding: 0 var(--sp-4) var(--sp-4); }
 .banda-share__code { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--accent-soft); }
-.banda-share__code strong { color: var(--accent); letter-spacing: .16em; font-size: var(--fs-heading); font-variant-numeric: tabular-nums; }
-.banda-share__code button { padding: var(--sp-1) var(--sp-2); border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-small); cursor: pointer; }
+.banda-share__code strong { color: var(--accent); letter-spacing: .16em; font-size: clamp(22px, 6.5vw, 30px); font-weight: 800; font-variant-numeric: tabular-nums; }
+.banda-share__code button { flex: none; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--accent-border); border-radius: var(--r-pill); background: var(--surface-1); color: var(--accent); font: inherit; font-size: var(--fs-small); font-weight: 700; cursor: pointer; }
 .banda-share__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
 .banda-share__actions > :only-child { grid-column: 1 / -1; }
 .banda-ranking__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }

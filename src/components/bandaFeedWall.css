@@ -1,6 +1,8 @@
 .banda-board { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 .banda-board__composer { position: sticky; top: 54px; z-index: 3; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-default); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface-1) 94%, transparent); box-shadow: var(--shadow-card); backdrop-filter: blur(14px); }
-.banda-board__composer--wall { order: 2; top: auto; bottom: calc(var(--dock-height) + var(--safe-bottom) + var(--sp-2)); }
+/* Az üzenetírás az üzenetek FÖLÖTT van, mint a hírfolyamban — a legfrissebb
+   üzenet közvetlenül alatta jelenik meg. */
+.banda-board__composer--wall { top: 54px; }
 .banda-board__input-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
 .banda-board__input { flex: 1; height: 44px; min-height: 44px; max-height: 132px; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); font: inherit; line-height: 1.35; resize: none; overflow-y: auto; }
 .banda-board__input::placeholder { color: var(--text-tertiary); }

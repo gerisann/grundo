@@ -94,6 +94,12 @@ export function screenFor(notification: StoredNotification): string {
     return `/aktivitas/${activityId}`;
   }
   if (username) return `/felhasznalo/${encodeURIComponent(username)}`;
+  /**
+   * A MEGHÍVÓ a Bandák oldalra visz, nem a banda oldalára: elfogadni és
+   * elutasítani csak ott lehet (`CommunityBandasScreen` → „Meghívóim"). A
+   * banda oldala privát bandánál ráadásul még tiltott is a meghívottnak.
+   */
+  if (notification.type === 'banda_invited') return '/kozosseg/bandak';
   if (bandaId) return `/bandak/${encodeURIComponent(bandaId)}`;
   return info.fallbackScreen;
 }

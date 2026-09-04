@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
-import { Button, Chip, ScreenHeader, SegmentedControl } from '@/components/ui';
+import { BandaRoleChip } from '@/components/BandaRoleChip';
+import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
 import { uploadBandaBrandImage } from '@/lib/photos';
 import {
@@ -18,12 +19,6 @@ const PERMISSION_OPTIONS = [
   { value: 'moderators', label: 'Moderátorok' },
   { value: 'owner', label: 'Csak én' },
 ] as const;
-
-const ROLE_LABEL = {
-  owner: 'Alapító',
-  moderator: 'Moderátor',
-  member: 'Tag',
-} as const;
 
 export function BandaSettingsScreen() {
   const { id } = useParams<{ id: string }>();
@@ -223,7 +218,7 @@ export function BandaSettingsScreen() {
                     <Avatar url={member.photoURL} name={member.username} size={40} />
                     <span className="banda-settings__member-text">
                       <strong>{member.username}</strong>
-                      <Chip variant={member.role === 'owner' ? 'accent' : 'default'}>{ROLE_LABEL[member.role]}</Chip>
+                      <BandaRoleChip role={member.role} />
                     </span>
                     {member.role !== 'owner' ? (
                       <span className="banda-settings__member-actions">

@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CommunityHeader } from '@/components/CommunityHeader';
 import { Avatar } from '@/components/ActivityCard';
-import { Button, Chip, EmptyState, List, ListRow, TextField, SegmentedControl } from '@/components/ui';
+import { BandaRoleChip } from '@/components/BandaRoleChip';
+import { Button, EmptyState, List, ListRow, TextField, SegmentedControl } from '@/components/ui';
 import {
   api,
   ApiError,
   type Banda,
   type BandaInvite,
-  type BandaRole,
   type BandaVisibility,
   type BandaWithRole,
 } from '@/lib/api';
@@ -16,12 +16,6 @@ import '@/screens/search.css';
 import '@/screens/discover.css';
 
 const DEBOUNCE_MS = 300;
-
-const ROLE_LABEL: Record<BandaRole, string> = {
-  owner: 'Alapító',
-  moderator: 'Moderátor',
-  member: 'Tag',
-};
 
 /**
  * Bandák (docs/02 → Közösség → Bandák, GRUNDO #29).
@@ -111,7 +105,7 @@ function DiscoverBandas() {
               key={banda.id}
               label={banda.name}
               description={`${banda.memberCount} tag${banda.city ? ` · ${banda.city}` : ''}`}
-              value={<Avatar url={banda.photoURL} name={banda.name} size={40} />}
+              leading={<Avatar url={banda.photoURL} name={banda.name} size={40} />}
               chevron
               onClick={() => navigate(`/bandak/${banda.id}`)}
             />
@@ -251,7 +245,8 @@ function MyBandas() {
               key={banda.id}
               label={banda.name}
               description={`${banda.memberCount} tag · ${banda.visibility === 'private' ? 'privát' : 'publikus'}`}
-              value={<Chip variant={banda.role === 'owner' ? 'accent' : 'default'}>{ROLE_LABEL[banda.role]}</Chip>}
+              leading={<Avatar url={banda.photoURL} name={banda.name} size={40} />}
+              value={<BandaRoleChip role={banda.role} />}
               chevron
               onClick={() => navigate(`/bandak/${banda.id}`)}
             />

@@ -41,7 +41,7 @@ const SearchScreen = lazy(() => import('./screens/SearchScreen').then((m) => ({ 
 const MissionsScreen = lazy(() => import('./screens/MissionsScreen').then((m) => ({ default: m.MissionsScreen })));
 const ProfileRivalsScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileRivalsScreen })));
 const ProfileStatsScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileStatsScreen })));
-const ProfileClansScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileClansScreen })));
+const ProfileBandasScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileBandasScreen })));
 const ProfileBadgesScreen = lazy(() => import('./screens/ProfileSectionScreens').then((m) => ({ default: m.ProfileBadgesScreen })));
 const SettingsScreen = lazy(() => import('./screens/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })));
 const AppearanceScreen = lazy(() => import('./screens/settings/AppearanceScreen').then((m) => ({ default: m.AppearanceScreen })));
@@ -227,7 +227,7 @@ function Router() {
             <Route path="/profil" element={<ProfileScreen />} />
             <Route path="/profil/rivalisok" element={<ProfileRivalsScreen />} />
             <Route path="/profil/statisztikak" element={<ProfileStatsScreen />} />
-            <Route path="/profil/klanok" element={<ProfileClansScreen />} />
+            <Route path="/profil/bandak" element={<ProfileBandasScreen />} />
             <Route path="/profil/badgek" element={<ProfileBadgesScreen />} />
             <Route path="/profil/badges" element={<Navigate to="/profil/badgek" replace />} />
             {/* Más felhasználó profilja. A `/profil` a sajátom, ez bárki másé. */}

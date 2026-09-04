@@ -260,13 +260,23 @@ export function primeSounds(): void {
  * amit Geri az app indítása utáni ELSŐ Play-koppintáskor hall, pontosan
  * egyszer (az `unlocked` jelző modul-szintű, új WebView → új JS-környezet).
  *
- * Amit ellene tehetünk a feloldás megtörése NÉLKÜL: a `pause()` AZONNAL,
- * szinkron módon fut le a `play()` után (lásd `unlockElement`), nem csak a
- * promise beérkezésekor — így a hallható farok a töredékére rövidül. A
- * `muted = true` KÍSÉRTŐ, de veszélyes: a WebKit a némított lejátszást eleve
+ * ⚠️ A SZINKRON `pause()` MÁSODSZOR IS ELNÉMÍTOTTA AZ APPOT (2026-09-04). A
+ * hangzavar ellen a `pause()` közvetlenül, a promise bevárása nélkül futott le
+ * a `play()` után — abban a hitben, hogy a feloldás már magában a `play()`
+ * hívásban megtörténik. A készülék megint mást mondott: iOS-en így MINDEN hang
+ * elnémult. A megszakított `play()` ugyanis el sem indítja a lejátszást, a
+ * rendszer hangútvonala (AVAudioSession) pedig épp a TÉNYLEGES lejátszástól
+ * aktiválódik — nincs mit „felszentelni", ha semmi nem szólalt meg.
+ *
+ * A LECKE UGYANAZ, KÉTSZER: a feloldáshoz VALÓDI, végigfutó lejátszás kell.
+ * Ezért a `pause()` visszakerült a promise-ba, a hangzavart pedig másképp
+ * kerüljük el — a lejátszás a hang UTOLSÓ néhány ezredmásodpercére ugrik
+ * (`UNLOCK_TAIL_S`), ami a lecsengés csendes vége. A lejátszás így valódi és
+ * végig is fut, hallani viszont nincs mit.
+ *
+ * A `muted = true` KÍSÉRTŐ, de veszélyes: a WebKit a némított lejátszást eleve
  * korlátozás nélkül engedi, tehát vélhetően NEM „szentelné fel" az elemet a
  * későbbi hangos lejátszáshoz — vagyis ugyanabba a néma hibába futnánk bele.
- * Ezt csak KÉSZÜLÉKEN szabad kipróbálni, egy dedikált buildben.
  */
 export function unlockSounds(): void {
   if (unlocked) return;
@@ -284,14 +294,29 @@ export function unlockSounds(): void {
 }
 
 /**
- * Egyetlen elem feloldása — hangosan indítva, de AZONNAL megállítva.
+ * A feloldáskor a hang UTOLSÓ ennyi másodperce szólal meg.
  *
- * ⚠️ A `pause()` SZINKRON, közvetlenül a `play()` után. A gesztus-kapu a
- * `play()` hívásában oldódik fel (a WebKit ott törli a korlátozást az elemről),
- * tehát az azonnali megállítás NEM rontja el a feloldást — viszont iOS-en, ahol
- * a `volume = 0` hatástalan, ez a különbség egy teljes hangeffekt és egy alig
- * hallható kattanás között. Korábban a megállítás CSAK a `play()` promise-ában
- * futott le, ami iOS-en a tényleges lejátszás megindulása után érkezik.
+ * Nem finomhangolás, hanem a néma feloldás ára: iOS-en a `volume = 0`
+ * hatástalan, a lejátszás megszakítása viszont magát a feloldást teszi tönkre
+ * (lásd `unlockSounds` fejléce). Marad a harmadik út: a lejátszás valódi és
+ * végigfut, csak épp a lecsengés csendes végén. Ennél rövidebb szakasznál a
+ * dekóder néha meg sem szólal, hosszabbnál a koppanás már hallható.
+ */
+const UNLOCK_TAIL_S = 0.05;
+
+/**
+ * Egyetlen elem feloldása — VALÓDI, végigfutó lejátszással.
+ *
+ * ⚠️ A `pause()` CSAK a promise beérkezése után jöhet. A szinkron megállítás
+ * megszakítja a `play()`-t, mielőtt az elindulna; iOS-en emiatt a rendszer
+ * hangútvonala nem aktiválódik, és MINDEN hang néma marad — ez 2026-09-04-en
+ * élesben megtörtént.
+ *
+ * A hallható zavart a `currentTime` ugratása kerüli el: a hang legvége szólal
+ * meg, ami a lecsengés csendes része. Ha az időtartam még nem ismert (a
+ * metaadat nem töltődött be), marad a teljes lejátszás — hangosabb, de működik;
+ * a némaság sosem opció. A `primeSounds()` épp ezért fut jóval a feloldás előtt
+ * (`TrackingScreen`), hogy a metaadat addigra meglegyen.
  *
  * A `volume = 0` maradhat: weben ez teszi a feloldást tökéletesen némává,
  * iOS-en pedig egyszerűen hatástalan, ártani nem árt.
@@ -305,10 +330,11 @@ function unlockElement(element: HTMLAudioElement): void {
     element.volume = restore;
   };
   try {
+    const duration = element.duration;
+    if (Number.isFinite(duration) && duration > UNLOCK_TAIL_S) {
+      element.currentTime = duration - UNLOCK_TAIL_S;
+    }
     const started = element.play();
-    // A hallható farok levágása — lásd a fenti magyarázatot.
-    element.pause();
-    // A megszakított `play()` `AbortError`-ral utasít vissza; ez VÁRT, nem hiba.
     if (started && typeof started.then === 'function') started.then(settle, settle);
     else settle();
   } catch {

@@ -291,6 +291,11 @@ export function pathFromPushData(data: Record<string, unknown>): string {
 
   if (activityId) return `/aktivitas/${encodeURIComponent(activityId)}`;
   if (username) return `/felhasznalo/${encodeURIComponent(username)}`;
+  /**
+   * A MEGHÍVÓ a Bandák oldalra visz: elfogadni és elutasítani ott lehet, és
+   * privát bandánál a banda oldala a meghívottnak még tiltott is.
+   */
+  if (type === 'banda_invited') return '/kozosseg/bandak';
   if (bandaId) return `/bandak/${encodeURIComponent(bandaId)}`;
 
   const byScreen: Record<string, string> = {

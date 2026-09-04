@@ -5,8 +5,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { BandaFeedWall } from '@/components/BandaFeedWall';
 import { BandaInviteSheet } from '@/components/BandaInviteSheet';
+import { BandaRoleChip } from '@/components/BandaRoleChip';
 import { GearIcon } from '@/components/ProfileHeader';
-import { Button, Chip, EmptyState, List, ListRow, ScreenHeader } from '@/components/ui';
+import { Button, EmptyState, List, ListRow, ScreenHeader } from '@/components/ui';
 import {
   api,
   ApiError,
@@ -21,12 +22,6 @@ import {
 import { formatArea } from '@/lib/format';
 import './bandaScreen.css';
 
-const ROLE_LABEL: Record<BandaRole, string> = {
-  owner: 'Alapító',
-  moderator: 'Moderátor',
-  member: 'Tag',
-};
-
 const hu = new Intl.NumberFormat('hu-HU');
 const PERIODS = [
   { value: 'day', label: 'Mai' },
@@ -39,6 +34,42 @@ const SPORTS = [
   { value: 'walk', label: 'Séta', icon: faPersonWalking },
   { value: 'ride', label: 'Bringa', icon: faPersonBiking },
 ] as const;
+
+/**
+ * A toplista szűrői megjegyzik az utolsó választást.
+ *
+ * Nézetenként külön kulcs, `localStorage`-ban: ez a felhasználó szokása,
+ * nem játékadat — a szerverre nem tartozik, és eszközönként eltérhet.
+ */
+const FILTER_KEYS = {
+  period: 'grundo.banda.period.v1',
+  sport: 'grundo.banda.sport.v1',
+} as const;
+
+const FILTER_DEFAULTS = { period: 'day', sport: 'run' } as const;
+
+function readStoredFilter<K extends keyof typeof FILTER_KEYS>(
+  kind: K,
+): K extends 'period' ? BandaPeriod : BandaSport {
+  const allowed: readonly string[] = kind === 'period'
+    ? PERIODS.map((option) => option.value)
+    : SPORTS.map((option) => option.value);
+  try {
+    const stored = localStorage.getItem(FILTER_KEYS[kind]);
+    if (stored !== null && allowed.includes(stored)) return stored as never;
+  } catch {
+    // Privát mód vagy letiltott tárhely: marad az alapértelmezés.
+  }
+  return FILTER_DEFAULTS[kind] as never;
+}
+
+function storeFilter(kind: keyof typeof FILTER_KEYS, value: string): void {
+  try {
+    localStorage.setItem(FILTER_KEYS[kind], value);
+  } catch {
+    // A megjegyzés kényelem, nem feltétel.
+  }
+}
 
 /**
  * Egy banda részletei (GRUNDO #29 Phase 1 → #30 Phase 2 folytatás).
@@ -60,9 +91,44 @@ export function BandaScreen() {
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [period, setPeriod] = useState<BandaPeriod>('day');
-  const [sport, setSport] = useState<BandaSport>('run');
+  const [joining, setJoining] = useState(false);
+  const [period, setPeriod] = useState<BandaPeriod>(() => readStoredFilter('period'));
+  const [sport, setSport] = useState<BandaSport>(() => readStoredFilter('sport'));
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+
+  function choosePeriod(next: BandaPeriod) {
+    setPeriod(next);
+    storeFilter('period', next);
+  }
+
+  function chooseSport(next: BandaSport) {
+    setSport(next);
+    storeFilter('sport', next);
+  }
+
+  /**
+   * Publikus bandához a banda oldaláról is lehet csatlakozni — eddig ehhez
+   * vissza kellett menni a keresőbe, pedig a döntés épp itt születik meg.
+   */
+  async function joinBanda() {
+    if (!id || joining) return;
+    setJoining(true);
+    setError('');
+    try {
+      await api.bandas.join(id);
+      const result = await api.bandas.detail(id);
+      setRole(result.role);
+      setInviteCode(result.inviteCode);
+      setSettings(result.settings);
+      setBanda(result.banda);
+      const memberList = await api.bandas.members(id);
+      setMembers(memberList.items);
+    } catch (problem) {
+      setError(problem instanceof ApiError ? problem.message : 'A csatlakozás most nem sikerült.');
+    } finally {
+      setJoining(false);
+    }
+  }
 
   async function leaveBanda() {
     if (!id || role === 'owner' || !window.confirm('Biztosan kilépsz ebből a bandából?')) return;
@@ -185,8 +251,9 @@ export function BandaScreen() {
           </button>
         ) : undefined}
       />
-      {banda.coverURL ? <div className="banda-detail__backdrop" style={{ backgroundImage: `url(${banda.coverURL})` }} aria-hidden="true" /> : null}
       <div className="screen-body stack banda-detail">
+        {/* A háttérkép a TÖRZSÖN belül él, különben a fejlécre csúszik. */}
+        {banda.coverURL ? <div className="banda-detail__backdrop" style={{ backgroundImage: `url(${banda.coverURL})` }} aria-hidden="true" /> : null}
         <section className="card stack banda-hero">
           <div className={`banda-hero__cover${banda.coverURL ? '' : ' banda-hero__cover--empty'}`}>
             {banda.coverURL ? <img src={banda.coverURL} alt={`${banda.name} borítóképe`} /> : null}
@@ -219,13 +286,19 @@ export function BandaScreen() {
                 </Button>
               </div>
             </div>
+          ) : banda.visibility === 'public' ? (
+            <div className="banda-share">
+              <Button block loading={joining} onClick={() => void joinBanda()}>
+                Csatlakozás a bandához
+              </Button>
+            </div>
           ) : null}
         </section>
 
         <section className="card stack banda-ranking">
           <div className="banda-ranking__controls">
             <label className="banda-ranking__period">
-              <select value={period} onChange={(event) => setPeriod(event.target.value as BandaPeriod)}>
+              <select value={period} onChange={(event) => choosePeriod(event.target.value as BandaPeriod)}>
                 {PERIODS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
@@ -238,7 +311,7 @@ export function BandaScreen() {
                   aria-label={option.label}
                   aria-pressed={sport === option.value}
                   title={option.label}
-                  onClick={() => setSport(option.value)}
+                  onClick={() => chooseSport(option.value)}
                 >
                   <FontAwesomeIcon icon={option.icon} />
                 </button>
@@ -278,7 +351,7 @@ export function BandaScreen() {
                 <ListRow
                   key={member.uid}
                   label={member.username}
-                  value={<Chip variant={member.role === 'owner' ? 'accent' : 'default'}>{ROLE_LABEL[member.role]}</Chip>}
+                  value={<BandaRoleChip role={member.role} />}
                 />
               ))}
             </List>
@@ -317,7 +390,7 @@ export function BandaScreen() {
             <div className="banda-members-modal__list">
               <List>
                 {members.map((member) => (
-                  <ListRow key={member.uid} label={member.username} value={<Chip variant={member.role === 'owner' ? 'accent' : 'default'}>{ROLE_LABEL[member.role]}</Chip>} />
+                  <ListRow key={member.uid} label={member.username} value={<BandaRoleChip role={member.role} />} />
                 ))}
               </List>
             </div>
