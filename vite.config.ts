@@ -51,6 +51,21 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  /**
+   * AZ ELŐNÉZET-WORKER FORMÁTUMA.
+   *
+   * A `hooks/usePreviewEngine.ts` a workert `{ type: 'module' }`-lal indítja;
+   * ennek a párja itt az `es` formátum. Az alapértelmezett `iife` mellett a
+   * build és a futásidejű típus szétcsúszna. A kettőnek EGYÜTT kell mozognia.
+   *
+   * ⚠️ A worker SAJÁT csomagot kap, tehát a h3-js (208 kB) másodszor is bekerül
+   * a `dist`-be. Ez tudatos ár: a 2026-09-04-i terepi mérésen a főszálon egy
+   * 859 ms-os blokk volt (`docs/ai/meres-2026-09-04-terepi-fosszal.md`), és a
+   * worker pont ezt szünteti meg. A worker csak a rögzítés képernyőn töltődik.
+   */
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 5173,
     host: true,

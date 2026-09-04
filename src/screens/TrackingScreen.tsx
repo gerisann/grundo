@@ -12,8 +12,8 @@ import { useSharedPosition } from '@/hooks/useSharedPosition';
 import { useClaimProgress } from '@/hooks/useClaimProgress';
 import { useCaptureFeedback } from '@/hooks/useCaptureFeedback';
 import { useCellStepSound } from '@/hooks/useCellStepSound';
+import { usePreviewEngine } from '@/hooks/usePreviewEngine';
 import { TerritoryToast } from '@/components/TerritoryToast';
-import { EMPTY_CAPTURE_SNAPSHOT, type CaptureCell, type CaptureSnapshot } from '@/lib/captureEvents';
 import { cellColorHexOrNull } from '@/lib/cellColors';
 import { primeSounds } from '@/lib/sound';
 import type { RecorderApi } from '@/hooks/useRecorder';
@@ -21,13 +21,10 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { IncrementalCellPath, layerOf } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
-import { hasCompactInterior, IncrementalActivityGeometry } from '@/game';
-import { IncrementalActivityClaims } from '@/game/incrementalClaims';
 import type { OwnershipMap } from '@/types';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import { isNativeApp, isNativeIos } from '@/lib/platform';
-import { measurePerf, notePerf, recordPerf } from '@/lib/perfMeter';
 import { PerfOverlay } from '@/components/PerfOverlay';
 import { useAuth } from '@/hooks/AuthProvider';
 import {
@@ -53,36 +50,6 @@ import './tracking.css';
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
-
-/**
- * Nagy (compact belsejű) huroknál a motor csak ÜRES birtokviszonyt fogad el.
- * Modulszintű állandó, mert az elszámolás-gyorsítótár a Map azonosságát nézi:
- * egy hívásonként újragyártott üres Map minden alkalommal tévesztés lenne.
- */
-const EMPTY_OWNERSHIP: OwnershipMap = new Map();
-
-/**
- * Egy előnézeti mező úgy, ahogy a `MapView` várja.
- *
- * Az `owner` NEM elhagyható: abból derül ki a térképnek, hogy a felhasználó
- * választott cellaszínével rajzolja, ne a szerep alapszínével.
- */
-interface PreviewCell {
-  cell: string;
-  defense: number;
-  owner: string;
-  preview: true;
-}
-
-interface PreviewResult {
-  path: string[];
-  claimable: string[];
-  own: PreviewCell[];
-  stolen: PreviewCell[];
-  gp: number;
-  /** A foglalás-visszajelzés bemenete — lásd `lib/captureEvents.ts`. */
-  snapshot: CaptureSnapshot;
-}
 
 /**
  * Rögzítés.
@@ -190,7 +157,6 @@ export function TrackingScreen() {
     setGhostRoute({ polyline: mission.polyline, kind: mission.kind });
     setSavedRoutesOpen(false);
   }
-  const distanceBucket = Math.floor(displayDistanceM / 25);
 
   // Az eltelt idő magától nem változik — az állapot csak mintaérkezéskor
   // frissül, márpedig állva percekig nem jön minta. Saját ütem kell hozzá.
@@ -202,15 +168,8 @@ export function TrackingScreen() {
   }, [state.status, remoteState?.status]);
 
   /**
-   * A drága foglalási előnézetet nem minden GPS-mintára, hanem minden ÚJ
-   * H3-cellára frissítjük. A korábbi öt GPS-pontos köteg bringánál 20–40
-   * méteres látható lemaradást okozott, majd egyszerre „behozta” a cellákat.
-   * Így ugyanabban a cellában továbbra sincs fölösleges flood fill, de a
-   * térképi fal legfeljebb egyetlen cellával maradhat le.
-   */
-
-  /**
-   * Melyik rögzítéshez tartozik a gyorsítótár (mindkettő lent).
+   * Melyik rögzítéshez tartozik a gyorsítótár (lent a cellalánc, a
+   * hurokgeometria pedig a `usePreviewEngine` workerében).
    *
    * Az `update()` magától újraépít, ha az új nyomvonal nem a régi folytatása —
    * DE ha valaki ugyanarról a pontról indít új futást, az első cellák
@@ -237,7 +196,6 @@ export function TrackingScreen() {
     }
     return cellPathCache.current.update(displayPoints).path;
   }, [displayPoints, geometrySessionKey]);
-  const cellRevision = `${cellPath.length}:${cellPath.at(-1) ?? ''}`;
 
   const [nearby, setNearby] = useState<TilesResult | null>(null);
   const [nearbyBlobs, setNearbyBlobs] = useState<TerritoryBlobsResult | null>(null);
@@ -248,32 +206,6 @@ export function TrackingScreen() {
     east: number;
     zoom: number;
   } | null>(null);
-
-  /**
-   * A hurokgeometria gyorsítótára — ugyanaz, amit a Simulation LAB használ.
-   *
-   * A nyomvonal rögzítés közben csak FOLYTATÓDIK, ezért felesleges minden
-   * frissítésnél az egész addigi aktivitást újraszámolni. Mérve, városi
-   * útvonalon: a teljes újraszámolás 4 km-en 139 ms, 11 km-en 197 ms, 20 km-en
-   * 337 ms volt, és ennek a java (128 / 164 / 289 ms) maga a geometria.
-   * Inkrementálisan ugyanez frissítésenként átlag 29 ms, legrosszabb 64 ms.
-   *
-   * Route reset vagy visszamenőleges eltérés esetén az osztály magától
-   * újraépít, tehát a helyes eredmény nem függ ettől a gyorsítótártól.
-   */
-  const geometryCache = useRef(new IncrementalActivityGeometry());
-  const geometrySession = useRef('');
-
-  /**
-   * Az ELSZÁMOLÁS gyorsítótára — a geometria mellé.
-   *
-   * A geometriai cache csak a hurkok megtalálását teszi inkrementálissá; a
-   * `processActivityGeometry` utána minden frissítésnél újrakönyvelte a
-   * TELJES hurokkészletet. Mérve (GRUNDO #33, 24 km, 9 hurok): 40 ms
-   * hívásonként, a főszálon. Két bezárás között viszont az eredmény nem
-   * változik — az `IncrementalActivityClaims` ezt ellenőrzi és újrahasználja.
-   */
-  const claimsCache = useRef(new IncrementalActivityClaims());
 
   /**
    * A KÖRNYÉK BIRTOKVISZONYA CELLÁNKÉNT — az élő előnézethez és a valós idejű
@@ -297,115 +229,24 @@ export function TrackingScreen() {
    * A motort a térkép legutóbbi birtok-pillanatképével futtatjuk. A végleges
    * eredmény továbbra is szerveroldali, de így menet közben már külön látszik
    * az új, az elrabolt és a megerősített mező, a várható védelmi szinttel.
+   *
+   * A SZÁMÍTÁS NEM ITT FUT: a `usePreviewEngine` egy workerbe küldi
+   * (`workers/previewWorker.ts`). A 2026-09-04-i terepi mérésen ez a lánc a
+   * háttérből visszatéréskor egyetlen **859 ms**-os blokkot tett a főszálra
+   * (`docs/ai/meres-2026-09-04-terepi-fosszal.md`). A `cellPath` — a
+   * kirajzolt nyom és a lépéshang forrása — szándékosan a főszálon maradt:
+   * olcsó, és nem várhat egy körbefordulásra.
    */
-  const preview = useMemo<PreviewResult>(() => {
-    if (displayPoints.length < 2) {
-      return {
-        path: [],
-        claimable: [],
-        own: [],
-        stolen: [],
-        gp: 0,
-        snapshot: EMPTY_CAPTURE_SNAPSHOT,
-      };
-    }
-    if (geometrySession.current !== geometrySessionKey) {
-      geometryCache.current.reset();
-      claimsCache.current.reset();
-      geometrySession.current = geometrySessionKey;
-    }
-    const previewStartedAt = performance.now();
-    try {
-      const geometry = measurePerf('preview.geometry', () => geometryCache.current.update(displayPoints));
-      /**
-       * Nagy (compact belsejű) huroknál a motor SZÁNDÉKOSAN dob, ha valódi
-       * ownershipet kap (`game/index.ts` `processActivityGeometry` őre) — a
-       * valódi elszámolás a szerver blokkos útján történik, itt csak előnézet
-       * kell. Enélkül egy nagy bringakör, ami meglévő birtok mellett halad el
-       * (szinte mindig, hiszen a `nearby` majdnem sosem üres), a `catch`-ig
-       * futott, és a preview NULLA claimet/GP-t mutatott — miközben a
-       * feltöltés után a terület ténylegesen bekerült (HANDOFF #20 nyitott
-       * ügye). Üres ownershippel hívva a compact ág ugyanazt az „üres világ"
-       * elszámolást adja, mint a LAB — a GP-becslés pontos, csak a lopott/
-       * visszafoglalt cellák MEGKÜLÖNBÖZTETÉSE vész el élő nézetben.
-       */
-      const hasCompactLoop = geometry.loops.some(hasCompactInterior);
-      const ownership = hasCompactLoop ? EMPTY_OWNERSHIP : nearbyOwnership;
-      const result = measurePerf('preview.process', () => claimsCache.current.update(
-        {
-          points: displayPoints,
-          type: displayType,
-          distanceKm: displayDistanceM / 1000,
-          actorId: profileUid || 'preview',
-          ownership,
-          streakDays: 0,
-          gpEarnedToday: 0,
-        },
-        geometry,
-      ));
-      const own: PreviewCell[] = [];
-      const stolen: PreviewCell[] = [];
-      const claimable: string[] = [];
-      /**
-       * A cellánkénti pillanatkép a foglalás-visszajelzéshez
-       * (`lib/captureEvents.ts`). UGYANEBBŐL a ciklusból épül, mert pontosan
-       * ugyanaz az adat kell hozzá — egy külön bejárás csak a lista kétszeri
-       * végigolvasását jelentené minden új cellánál.
-       */
-      const snapshotCells = new Map<string, CaptureCell>();
-      measurePerf('preview.fates', () => {
-        for (const [cell, fate] of result.claim?.fates ?? []) {
-          const defense = result.claim?.updates.get(cell)?.defense ?? 1;
-          snapshotCells.set(cell, { fate, defense });
-          if (fate === 'breakthrough') continue;
-          /**
-           * `owner` A SAJÁT UID — enélkül a `MapView` `areaColor()`-a a
-           * szerep-alapú alapszínre esne vissza, és az élő előnézet mezői más
-           * színűek lennének, mint ugyanezek a mezők a mentés után. Geri kérése
-           * (2026-09-01): rögzítés közben is a választott saját szín látszódjon.
-           */
-          const item = { cell, defense, owner: profileUid, preview: true as const };
-          (fate === 'stolen' ? stolen : own).push(item);
-          claimable.push(cell);
-        }
-      });
-
-      recordPerf('preview.total', performance.now() - previewStartedAt);
-      notePerf('points', displayPoints.length);
-      notePerf('cells', geometry.cellPath.length);
-      notePerf('loops', geometry.loops.length);
-      notePerf('fates', snapshotCells.size);
-
-      return {
-        path: cellPath,
-        claimable,
-        own,
-        stolen,
-        gp: result.gp.total,
-        snapshot: {
-          loopCount: geometry.loops.length,
-          cells: snapshotCells,
-          /* A motor ÖSSZESÍTÉSE, nem a cellatérkép mérete — nagy, tömör
-             huroknál a kettő szándékosan eltér (lásd `captureEvents.ts`). */
-          gainedCells: (result.claim?.counts.free ?? 0) + (result.claim?.counts.stolen ?? 0),
-          gainedAreaM2: result.claim?.gainedM2 ?? 0,
-        },
-      };
-    } catch {
-      // A motor túl nagy hurokra kivételt dob (GPS-ugrás). A nyom attól még
-      // rajzolható — az előnézet hiánya nem indok arra, hogy a térkép is
-      // kiessen.
-      return {
-        path: cellPath,
-        claimable: [],
-        own: [],
-        stolen: [],
-        gp: 0,
-        snapshot: EMPTY_CAPTURE_SNAPSHOT,
-      };
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cellRevision, distanceBucket, state.status, geometrySessionKey, displayType, nearby, profileUid]);
+  const preview = usePreviewEngine({
+    points: displayPoints,
+    cellPath,
+    ownership: nearbyOwnership,
+    type: displayType,
+    distanceM: displayDistanceM,
+    actorId: profileUid,
+    sessionKey: geometrySessionKey,
+    status: state.status,
+  });
 
   const cells = preview.path;
 
