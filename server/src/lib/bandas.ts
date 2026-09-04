@@ -173,6 +173,85 @@ function sumArea(members: readonly BandaMemberAggregate[], key: 'territoryM2' | 
   return { foot, bike };
 }
 
+/** A sportágankénti ranglista mindenkori mezői egy felhasználóra. */
+export interface BandaLifetimeStats {
+  areaTotalM2: number;
+  gpTotal: number;
+}
+
+/** Amit egy aktivitás-dokumentumból az összesítéshez felhasználunk. */
+export interface BandaActivityRecord {
+  userId?: unknown;
+  type?: unknown;
+  areaGainedM2?: unknown;
+  gp?: unknown;
+}
+
+export const BANDA_SPORTS = ['run', 'walk', 'ride'] as const;
+export type BandaSport = typeof BANDA_SPORTS[number];
+
+function isSport(value: unknown): value is BandaSport {
+  return value === 'run' || value === 'walk' || value === 'ride';
+}
+
+/**
+ * Az aktivitás GP-je. Az `activityCommit` a teljes bontást tárolja
+ * (`gp: result.gp`), a felhasználó `gpTotal`-ját viszont a `gp.total` növeli —
+ * tehát az összesítésnek is azt kell néznie. A puszta szám a régebbi
+ * dokumentumok miatt van megengedve.
+ */
+function activityGp(value: unknown): number {
+  if (typeof value === 'number') return num(value);
+  if (value !== null && typeof value === 'object') return num((value as { total?: unknown }).total);
+  return 0;
+}
+
+/**
+ * A sportágankénti MINDENKORI számlálók újraszámolása az aktivitás-
+ * előtörténetből, felhasználónként.
+ *
+ * ── MIÉRT LEHET EZT UTÓLAG MEGTENNI ──────────────────────────────────────
+ *
+ * A `bandaStats` bevezetésekor úgy tűnt, hogy a történelmi adat elveszett: a
+ * felhasználón tárolt terület `foot`/`bike` RÉTEG szerint áll, abból a futás
+ * és a séta valóban nem választható szét. Az aktivitás-dokumentum viszont
+ * megőrzi a `type`-ot, az `areaGainedM2`-t és a `gp`-t — a bontás tehát nem
+ * hiányzik, csak egy szinttel lejjebb van.
+ *
+ * ⚠️ A TÖRÖLT AKTIVITÁS IS SZÁMÍT. A törlés puha (`deletedAt`), és kizárólag
+ * az aktivitás- meg a távolságszámlálót csökkenti — a területet és a GP-t nem
+ * (`routes/activities.ts` → `DELETE /:id`). Ha itt kiszűrnénk őket, a
+ * visszaszámolt érték kevesebb lenne, mint amit a felhasználó ténylegesen
+ * begyűjtött.
+ */
+export function aggregateBandaStatsFromActivities(
+  activities: Iterable<BandaActivityRecord>,
+): Map<string, Record<BandaSport, BandaLifetimeStats>> {
+  const byUser = new Map<string, Record<BandaSport, BandaLifetimeStats>>();
+
+  for (const activity of activities) {
+    const userId = activity.userId;
+    if (typeof userId !== 'string' || userId === '') continue;
+    if (!isSport(activity.type)) continue;
+
+    let stats = byUser.get(userId);
+    if (!stats) {
+      stats = {
+        run: { areaTotalM2: 0, gpTotal: 0 },
+        walk: { areaTotalM2: 0, gpTotal: 0 },
+        ride: { areaTotalM2: 0, gpTotal: 0 },
+      };
+      byUser.set(userId, stats);
+    }
+
+    const sport = stats[activity.type];
+    sport.areaTotalM2 += num(activity.areaGainedM2);
+    sport.gpTotal += activityGp(activity.gp);
+  }
+
+  return byUser;
+}
+
 /**
  * A banda-összesítés — tiszta függvény, hogy a rollup job unit-tesztelhető
  * legyen Firestore nélkül is.

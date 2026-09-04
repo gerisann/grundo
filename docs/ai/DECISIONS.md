@@ -151,6 +151,17 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
 
 - **Nem Pro-funkció.** A korábbi Klub-spec Pro-gate-jét (`+ Létrehozás [Pro]`)
   elvetettük — bárki hozhat létre bandát. Geri jóváhagyta 2026-09-03.
+- **A sportágankénti `bandaStats` VISSZASZÁMOLHATÓ az aktivitás-
+  előtörténetből** (mérve, #36). A bevezetéskor az ellenkezőjét feltételeztük,
+  és a backfill csak nullákkal hozta létre a mezőt — a ranglista emiatt élesben
+  minden tagnál 0 km²-t és 0 GP-t mutatott, miközben a felhasználóknak több
+  km²-ük volt. A feltevés a rossz szinten nézte az adatot: a felhasználón
+  tárolt terület `foot`/`bike` réteg szerint áll (abból futás/séta valóban nem
+  bontható), az AKTIVITÁS-dokumentum viszont megőrzi a `type`-ot, az
+  `areaGainedM2`-t és a `gp`-t. ⚠️ Az összesítésbe a **törölt aktivitás is
+  beleszámít**: a törlés csak az aktivitás- és a távolságszámlálót csökkenti.
+  Csak a mindenkori mezőket szabad visszaírni — a napi/heti/havi ablakokat a
+  napi forduló nullázza, ott a visszamenőleges pontosságnak nincs értelme.
 - **A `totals` előszámított, rollup jobból jön, nem élő olvasáskori
   szumma.** A `BandaScreen` megnyitása ne fizessen egy N-tagos `getAll`-t
   minden alkalommal. Lásd `server/src/jobs/bandaRollover.ts`.

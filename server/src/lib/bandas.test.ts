@@ -3,6 +3,7 @@ import {
   BANDA_NAME_MAX,
   BANDA_NAME_MIN,
   INVITE_CODE_LENGTH,
+  aggregateBandaStatsFromActivities,
   canInvite,
   generateInviteCode,
   normalizeBandaName,
@@ -126,5 +127,52 @@ describe('canInvite', () => {
   it('"owner"-nál senki más', () => {
     expect(canInvite('moderator', 'owner')).toBe(false);
     expect(canInvite('member', 'owner')).toBe(false);
+  });
+});
+
+describe('aggregateBandaStatsFromActivities', () => {
+  it('sportáganként külön összegez, felhasználónként', () => {
+    const stats = aggregateBandaStatsFromActivities([
+      { userId: 'a', type: 'run', areaGainedM2: 100, gp: { total: 10 } },
+      { userId: 'a', type: 'run', areaGainedM2: 50, gp: { total: 5 } },
+      { userId: 'a', type: 'ride', areaGainedM2: 400, gp: { total: 8 } },
+      { userId: 'b', type: 'walk', areaGainedM2: 25, gp: { total: 3 } },
+    ]);
+
+    expect(stats.get('a')).toEqual({
+      run: { areaTotalM2: 150, gpTotal: 15 },
+      walk: { areaTotalM2: 0, gpTotal: 0 },
+      ride: { areaTotalM2: 400, gpTotal: 8 },
+    });
+    expect(stats.get('b')?.walk).toEqual({ areaTotalM2: 25, gpTotal: 3 });
+  });
+
+  /**
+   * A törlés nem veszi vissza a területet és a GP-t, csak az aktivitás- és
+   * távolságszámlálót — a visszaszámolásnak ezért velük együtt kell egyeznie
+   * az élő értékkel.
+   */
+  it('a törölt aktivitást is beszámítja', () => {
+    const stats = aggregateBandaStatsFromActivities([
+      { userId: 'a', type: 'run', areaGainedM2: 100, gp: { total: 10 } },
+      { userId: 'a', type: 'run', areaGainedM2: 70, gp: { total: 7 }, deletedAt: new Date() } as never,
+    ]);
+    expect(stats.get('a')?.run).toEqual({ areaTotalM2: 170, gpTotal: 17 });
+  });
+
+  it('a hiányos vagy ismeretlen típusú sort kihagyja', () => {
+    const stats = aggregateBandaStatsFromActivities([
+      { userId: 'a', type: 'swim', areaGainedM2: 100, gp: { total: 10 } },
+      { type: 'run', areaGainedM2: 100, gp: { total: 10 } },
+      { userId: 'a', type: 'run', areaGainedM2: 'sok', gp: null },
+    ]);
+    expect(stats.get('a')?.run).toEqual({ areaTotalM2: 0, gpTotal: 0 });
+  });
+
+  it('a régi, puszta számként tárolt GP-t is érti', () => {
+    const stats = aggregateBandaStatsFromActivities([
+      { userId: 'a', type: 'ride', areaGainedM2: 10, gp: 42 },
+    ]);
+    expect(stats.get('a')?.ride.gpTotal).toBe(42);
   });
 });
