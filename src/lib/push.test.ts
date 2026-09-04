@@ -80,6 +80,7 @@ describe('push eszközkapcsoló', () => {
       '/aktivitas/a%2Fb',
     );
     expect(pathFromPushData({ screen: 'banda', bandaId: 'b1' })).toBe('/bandak/b1');
+    expect(pathFromPushData({ screen: 'bandas', type: 'banda_invited' })).toBe('/kozosseg/bandak');
   });
 
   it('natív iOS-en FCM tokent kér és a leiratkozást tartósan megőrzi', async () => {

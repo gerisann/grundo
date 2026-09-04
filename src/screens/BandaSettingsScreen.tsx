@@ -26,6 +26,21 @@ const JOIN_MODE_OPTIONS = [
   { value: 'approval', label: 'Jóváhagyással' },
 ] as const;
 
+const DEFAULT_SETTINGS: BandaSettings = {
+  whoCanInvite: 'everyone',
+  inviteCodeVisibleTo: 'everyone',
+  postPermission: 'everyone',
+  publicJoinMode: 'instant',
+};
+
+function normalizeSettings(settings: Partial<BandaSettings>): BandaSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    publicJoinMode: settings.publicJoinMode === 'approval' ? 'approval' : 'instant',
+  };
+}
+
 export function BandaSettingsScreen() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -37,6 +52,7 @@ export function BandaSettingsScreen() {
   const [coverURL, setCoverURL] = useState<string | null>(null);
   const [imageBusy, setImageBusy] = useState<'profile' | 'cover' | null>(null);
   const [settings, setSettings] = useState<BandaSettings | null>(null);
+  const [savedJoinMode, setSavedJoinMode] = useState<BandaSettings['publicJoinMode'] | null>(null);
   const [role, setRole] = useState<BandaRole | null>(null);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [members, setMembers] = useState<BandaMember[]>([]);
@@ -57,16 +73,18 @@ export function BandaSettingsScreen() {
         setError('Csak a banda alapítója vagy egy moderátor nyithatja meg ezt a képernyőt.');
         return;
       }
+      const normalizedSettings = normalizeSettings(detail.settings);
       const [memberList, requests] = await Promise.all([
         api.bandas.members(id),
-        detail.settings.publicJoinMode === 'approval'
+        normalizedSettings.publicJoinMode === 'approval'
           ? api.bandas.joinRequests(id)
           : Promise.resolve({ items: [] }),
       ]);
       setName(detail.banda.name);
       setPhotoURL(detail.banda.photoURL);
       setCoverURL(detail.banda.coverURL);
-      setSettings(detail.settings);
+      setSettings(normalizedSettings);
+      setSavedJoinMode(normalizedSettings.publicJoinMode);
       setRole(detail.role);
       setVisibility(detail.banda.visibility);
       setMembers(memberList.items);
@@ -136,7 +154,9 @@ export function BandaSettingsScreen() {
     setMessage('');
     try {
       const result = await api.bandas.updateSettings(id, settings);
-      setSettings(result.settings);
+      const normalizedSettings = normalizeSettings(result.settings);
+      setSettings(normalizedSettings);
+      setSavedJoinMode(normalizedSettings.publicJoinMode);
       setMessage('A banda beállításai elmentve.');
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : 'A beállításokat most nem sikerült menteni.');
@@ -214,6 +234,10 @@ export function BandaSettingsScreen() {
                   <p className="banda-settings__hint">Azonnali belépést vagy alapítói/moderátori jóváhagyást kérhetsz.</p>
                 </div>
                 <SegmentedControl options={JOIN_MODE_OPTIONS} value={settings.publicJoinMode} onChange={(value) => updateSetting('publicJoinMode', value)} label="Publikus csatlakozás módja" block columns={2} />
+                <p className={`banda-settings__selection${settings.publicJoinMode === savedJoinMode ? ' is-saved' : ''}`} aria-live="polite">
+                  {settings.publicJoinMode === savedJoinMode ? 'Aktív beállítás: ' : 'Kiválasztva, még nincs mentve: '}
+                  <strong>{settings.publicJoinMode === 'approval' ? 'Jóváhagyással' : 'Azonnali'}</strong>
+                </p>
               </section>
             ) : null}
 

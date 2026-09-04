@@ -394,7 +394,7 @@ bandasRouter.post('/:id/join', async (req: AuthedRequest, res: Response, next) =
     });
 
     if (result.status === 'joined') {
-      notifyBandaMemberJoined(await notifiableMembers(bandaRef, uid), bandaId, result.name, result.username);
+      notifyBandaMemberJoined(await notifiableBandaLeaders(bandaRef, uid), bandaId, result.name, result.username);
     }
     res.json({ status: result.status, role: result.role });
   } catch (error) {
@@ -437,7 +437,7 @@ bandasRouter.post('/join-by-code', async (req: AuthedRequest, res: Response, nex
 
     const username = String((await db.collection(COLLECTIONS.users).doc(uid).get()).get('username') ?? 'Valaki');
     const joinedBandaRef = db.collection(COLLECTIONS.bandas).doc(result.bandaId);
-    notifyBandaMemberJoined(await notifiableMembers(joinedBandaRef, uid), result.bandaId, result.name, username);
+    notifyBandaMemberJoined(await notifiableBandaLeaders(joinedBandaRef, uid), result.bandaId, result.name, username);
     res.json({ role: 'member' as BandaRole, ...result });
   } catch (error) {
     next(error);
@@ -506,7 +506,7 @@ bandasRouter.post('/:id/invite', async (req: AuthedRequest, res: Response, next)
     });
     await batch.commit();
 
-    notifyBandaInvite(targetUid, bandaId, bandaName, callerUsername);
+    notifyBandaInvite(targetUid, bandaName, callerUsername);
 
     res.status(201).json({ invited: true });
   } catch (error) {
@@ -566,7 +566,7 @@ bandasRouter.post('/:id/invite/accept', async (req: AuthedRequest, res: Response
 
     if (result.joined) {
       const username = String((await db.collection(COLLECTIONS.users).doc(uid).get()).get('username') ?? 'Valaki');
-      notifyBandaMemberJoined(await notifiableMembers(bandaRef, uid), bandaId, result.name, username);
+      notifyBandaMemberJoined(await notifiableBandaLeaders(bandaRef, uid), bandaId, result.name, username);
     }
     res.json({ role: result.role });
   } catch (error) {
@@ -837,7 +837,7 @@ bandasRouter.post('/:id/join-requests/:memberId', async (req: AuthedRequest, res
 
     if (result.joined) {
       const username = String((await db.collection(COLLECTIONS.users).doc(targetUid).get()).get('username') ?? 'Valaki');
-      notifyBandaMemberJoined(await notifiableMembers(bandaRef, targetUid), bandaId, result.name, username);
+      notifyBandaMemberJoined(await notifiableBandaLeaders(bandaRef, targetUid), bandaId, result.name, username);
     }
     res.json({ status: result.status });
   } catch (error) {
@@ -917,9 +917,9 @@ bandasRouter.delete('/:id/members/:memberId', async (req: AuthedRequest, res: Re
       return String(bandaSnap.get('name') ?? 'Banda');
     });
 
-    await hideBandaMemberContent(bandaId, targetUid, 'member_removed', uid);
+    const hiddenContent = await hideBandaMemberContent(bandaId, targetUid, 'member_removed', uid);
     notifyBandaMemberRemoved(targetUid, bandaName);
-    res.json({ removed: true });
+    res.json({ removed: true, hiddenContent });
   } catch (error) {
     next(error);
   }
@@ -1094,6 +1094,22 @@ async function notifiableMembers(
     .map((doc) => doc.id);
 }
 
+/** Belépésről csak a banda vezetői kapnak jelzést, a belépő és a sima tagok nem. */
+async function notifiableBandaLeaders(
+  bandaRef: FirebaseFirestore.DocumentReference,
+  skipUid: string,
+): Promise<string[]> {
+  const snapshot = await bandaRef.collection('members').select('role', 'notify').get();
+  return snapshot.docs
+    .filter((doc) => {
+      const data = doc.data() as { role?: BandaRole; notify?: boolean };
+      return doc.id !== skipUid
+        && (data.role === 'owner' || data.role === 'moderator')
+        && data.notify !== false;
+    })
+    .map((doc) => doc.id);
+}
+
 /** Kér-e a tag értesítést erről a bandáról? */
 async function wantsBandaNotifications(
   bandaRef: FirebaseFirestore.DocumentReference,
@@ -1243,7 +1259,7 @@ bandasRouter.delete('/:id/feed/:postId', async (req: AuthedRequest, res: Respons
     const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
     const postSnap = await postRef.get();
     if (!postSnap.exists) throw notFound('post_not_found', 'Nincs ilyen poszt.');
-    if (postSnap.get('authorUid') !== uid && role !== 'owner') throw forbidden('Ezt a posztot nem törölheted.');
+    if (postSnap.get('authorUid') !== uid && role === 'member') throw forbidden('Ezt a posztot nem törölheted.');
     await postRef.update({
       hiddenAt: FieldValue.serverTimestamp(),
       hiddenReason: 'post_deleted',
@@ -1281,15 +1297,22 @@ bandasRouter.post('/:id/feed/:postId/like', async (req: AuthedRequest, res: Resp
   }
 });
 
+function hiddenBandaCommentLabel(data: Record<string, unknown>): string {
+  return data.hiddenReason === 'member_left' || data.hiddenReason === 'member_removed'
+    ? 'kilépett, vagy kirúgott felhasználó'
+    : 'törölt komment vagy tag';
+}
+
 function toCommentSummary(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const data = doc.data() as Record<string, unknown>;
   const hidden = data.hiddenAt != null;
+  const hiddenLabel = hiddenBandaCommentLabel(data);
   return {
     id: doc.id,
     authorUid: hidden ? '' : String(data.authorUid ?? ''),
-    authorUsername: hidden ? 'törölt komment vagy tag' : String(data.authorUsername ?? ''),
+    authorUsername: hidden ? hiddenLabel : String(data.authorUsername ?? ''),
     authorPhotoURL: hidden ? null : typeof data.authorPhotoURL === 'string' ? data.authorPhotoURL : null,
-    text: hidden ? 'törölt komment vagy tag' : String(data.text ?? ''),
+    text: hidden ? hiddenLabel : String(data.text ?? ''),
     hidden,
     replyToId: typeof data.replyToId === 'string' ? data.replyToId : null,
     replyToUsername: typeof data.replyToUsername === 'string' ? data.replyToUsername : null,
@@ -1306,10 +1329,10 @@ bandasRouter.get('/:id/feed/:postId/comments', async (req: AuthedRequest, res: R
     if (!postSnap.exists || postSnap.get('hiddenAt') != null) throw notFound('post_not_found', 'Nincs ilyen poszt.');
     const snapshot = await postRef.collection('comments').orderBy('createdAt', 'asc').limit(100).get();
     const items = snapshot.docs.map(toCommentSummary);
-    const hiddenIds = new Set(items.filter((item) => item.hidden).map((item) => item.id));
+    const hiddenLabels = new Map(items.filter((item) => item.hidden).map((item) => [item.id, item.authorUsername]));
     res.json({
-      items: items.map((item) => item.replyToId && hiddenIds.has(item.replyToId)
-        ? { ...item, replyToUsername: 'törölt komment vagy tag' }
+      items: items.map((item) => item.replyToId && hiddenLabels.has(item.replyToId)
+        ? { ...item, replyToUsername: hiddenLabels.get(item.replyToId) }
         : item),
     });
   } catch (error) {
@@ -1347,7 +1370,7 @@ bandasRouter.post('/:id/feed/:postId/comments', async (req: AuthedRequest, res: 
       ...(replyToId ? {
         replyToId,
         replyToUsername: replySnap?.get('hiddenAt') != null
-          ? 'törölt komment vagy tag'
+          ? hiddenBandaCommentLabel((replySnap?.data() ?? {}) as Record<string, unknown>)
           : String(replySnap?.get('authorUsername') ?? ''),
       } : {}),
       createdAt: FieldValue.serverTimestamp(),
@@ -1355,6 +1378,34 @@ bandasRouter.post('/:id/feed/:postId/comments', async (req: AuthedRequest, res: 
     batch.update(postRef, { commentCount: FieldValue.increment(1) });
     await batch.commit();
     res.status(201).json({ id: commentRef.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+bandasRouter.delete('/:id/feed/:postId/comments/:commentId', async (req: AuthedRequest, res: Response, next) => {
+  try {
+    const uid = req.uid!;
+    const bandaRef = db.collection(COLLECTIONS.bandas).doc(String(req.params.id ?? ''));
+    const role = await loadMemberRole(bandaRef, uid);
+    const postRef = bandaRef.collection('feed').doc(String(req.params.postId ?? ''));
+    const commentRef = postRef.collection('comments').doc(String(req.params.commentId ?? ''));
+    const [postSnap, commentSnap] = await Promise.all([postRef.get(), commentRef.get()]);
+    if (!postSnap.exists || postSnap.get('hiddenAt') != null) {
+      throw notFound('post_not_found', 'Nincs ilyen poszt.');
+    }
+    if (!commentSnap.exists || commentSnap.get('hiddenAt') != null) {
+      throw notFound('comment_not_found', 'Nincs ilyen komment.');
+    }
+    if (commentSnap.get('authorUid') !== uid && role === 'member') {
+      throw forbidden('Ezt a kommentet nem törölheted.');
+    }
+    await commentRef.update({
+      hiddenAt: FieldValue.serverTimestamp(),
+      hiddenReason: 'comment_deleted',
+      hiddenBy: uid,
+    });
+    res.json({ deleted: true });
   } catch (error) {
     next(error);
   }

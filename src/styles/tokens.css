@@ -29,6 +29,7 @@
 
   /* ═══ Állapot (téma-független) ════════════════════════════════════ */
   --success: #22c55e;
+  --success-on: #052e16;
   --warning: #f59e0b;
   --danger:  #ef4444;
   --info:    #3b82f6;

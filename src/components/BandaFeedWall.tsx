@@ -12,17 +12,25 @@ import './bandaFeedWall.css';
 
 const POST_MAX = 1000;
 
-export function BandaFeedWall({ bandaId, canPostFeed }: { bandaId: string; canPostFeed: boolean }) {
+export function BandaFeedWall({
+  bandaId,
+  canPostFeed,
+  canModerate,
+}: {
+  bandaId: string;
+  canPostFeed: boolean;
+  canModerate: boolean;
+}) {
   const [tab, setTab] = useState<'feed' | 'wall'>('feed');
   return (
     <section className="stack">
       <SegmentedControl label="Hírfolyam vagy üzenőfal" options={[{ value: 'feed', label: 'Hírfolyam' }, { value: 'wall', label: 'Üzenőfal' }]} value={tab} onChange={setTab} block />
-      <BandaPostBoard key={tab} bandaId={bandaId} kind={tab} canPost={tab === 'wall' || canPostFeed} placeholder={tab === 'feed' ? 'Mi újság a bandában?' : 'Üzenet az üzenőfalra'} emptyText={tab === 'feed' ? 'Még nincs poszt a hírfolyamban.' : 'Még nincs üzenet az üzenőfalon.'} deniedText="Ebben a bandában a beállítás szerint most nem te posztolhatsz a hírfolyamba." />
+      <BandaPostBoard key={tab} bandaId={bandaId} kind={tab} canPost={tab === 'wall' || canPostFeed} canModerate={canModerate} placeholder={tab === 'feed' ? 'Mi újság a bandában?' : 'Üzenet az üzenőfalra'} emptyText={tab === 'feed' ? 'Még nincs poszt a hírfolyamban.' : 'Még nincs üzenet az üzenőfalon.'} deniedText="Ebben a bandában a beállítás szerint most nem te posztolhatsz a hírfolyamba." />
     </section>
   );
 }
 
-function BandaPostBoard({ bandaId, kind, canPost, placeholder, emptyText, deniedText }: { bandaId: string; kind: 'feed' | 'wall'; canPost: boolean; placeholder: string; emptyText: string; deniedText: string }) {
+function BandaPostBoard({ bandaId, kind, canPost, canModerate, placeholder, emptyText, deniedText }: { bandaId: string; kind: 'feed' | 'wall'; canPost: boolean; canModerate: boolean; placeholder: string; emptyText: string; deniedText: string }) {
   const { user } = useAuth();
   const { profile } = useProfile();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -154,7 +162,7 @@ function BandaPostBoard({ bandaId, kind, canPost, placeholder, emptyText, denied
     {error ? <p className="search__note banda-board__error" role="alert">{error}</p> : null}
     <div className="banda-board__messages">
       {items === null ? <p className="search__note">Betöltés…</p> : items.length === 0 ? <p className="search__note">{emptyText}</p> : items.map((item) => kind === 'feed' ?
-        <FeedPostCard key={item.id} bandaId={bandaId} item={item} own={item.authorUid === profile?.uid} now={now} onEdit={() => editPost(item)} onDelete={() => void deletePost(item)} onChange={(change) => updateItem(item.id, change)} /> :
+        <FeedPostCard key={item.id} bandaId={bandaId} item={item} own={item.authorUid === profile?.uid} currentUid={profile?.uid ?? ''} canModerate={canModerate} now={now} onEdit={() => editPost(item)} onDelete={() => void deletePost(item)} onError={setError} onChange={(change) => updateItem(item.id, change)} /> :
         <WallMessage key={item.id} bandaId={bandaId} item={item} own={item.authorUid === profile?.uid} now={now} onReply={() => { setReplyingTo(item); textareaRef.current?.focus(); }} onChange={(change) => updateItem(item.id, change)} />)}
       {kind === 'feed' && hasMore ? <Button variant="secondary" block onClick={() => { const next = visibleLimit + 10; setVisibleLimit(next); void load(next).then(setItems); }}>További 10 poszt</Button> : null}
     </div>
@@ -165,20 +173,34 @@ function EditorButton({ label, command, value, children }: { label: string; comm
   return <button type="button" className="banda-editor__button" aria-label={label} title={label} onMouseDown={(event) => { event.preventDefault(); document.execCommand(command, false, value); }}>{children}</button>;
 }
 
-function FeedPostCard({ bandaId, item, own, now, onEdit, onDelete, onChange }: { bandaId: string; item: BandaPost; own: boolean; now: number; onEdit: () => void; onDelete: () => void; onChange: (change: Partial<BandaPost>) => void }) {
+function FeedPostCard({ bandaId, item, own, currentUid, canModerate, now, onEdit, onDelete, onError, onChange }: { bandaId: string; item: BandaPost; own: boolean; currentUid: string; canModerate: boolean; now: number; onEdit: () => void; onDelete: () => void; onError: (message: string) => void; onChange: (change: Partial<BandaPost>) => void }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<BandaComment[] | null>(null);
   const [comment, setComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<BandaComment | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   async function toggleComments() { const open = !commentsOpen; setCommentsOpen(open); if (open && comments === null) setComments((await api.bandas.feedComments(bandaId, item.id)).items); }
   async function addComment() {
     if (!comment.trim() || busy) return; setBusy(true);
     try { await api.bandas.addFeedComment(bandaId, item.id, comment.trim(), replyingTo?.id); setComment(''); setReplyingTo(null); setComments((await api.bandas.feedComments(bandaId, item.id)).items); onChange({ commentCount: item.commentCount + 1 }); }
     finally { setBusy(false); }
   }
+  async function deleteComment(entry: BandaComment) {
+    if (deletingCommentId || !window.confirm('Biztosan törlöd ezt a kommentet?')) return;
+    setDeletingCommentId(entry.id);
+    try {
+      await api.bandas.deleteFeedComment(bandaId, item.id, entry.id);
+      setComments((await api.bandas.feedComments(bandaId, item.id)).items);
+      if (replyingTo?.id === entry.id) setReplyingTo(null);
+    } catch (problem) {
+      onError(problem instanceof ApiError ? problem.message : 'A kommentet most nem sikerült törölni.');
+    } finally {
+      setDeletingCommentId(null);
+    }
+  }
   return <article className="banda-post-card">
-    <header className="banda-post__header"><Avatar url={item.authorPhotoURL} name={item.authorUsername || '?'} size={38} /><div><strong>{own ? 'Te' : item.authorUsername}</strong><time dateTime={item.createdAt ? new Date(item.createdAt).toISOString() : undefined}>{formatBandaTimestamp(item.createdAt, now)}{item.updatedAt ? ' · szerkesztve' : ''}</time></div>{own ? <div className="banda-post__manage"><button type="button" aria-label="Szerkesztés" onClick={onEdit}><FontAwesomeIcon icon={faPen} /></button><button type="button" aria-label="Törlés" onClick={onDelete}><FontAwesomeIcon icon={faTrash} /></button></div> : null}</header>
+    <header className="banda-post__header"><Avatar url={item.authorPhotoURL} name={item.authorUsername || '?'} size={38} /><div><strong>{own ? 'Te' : item.authorUsername}</strong><time dateTime={item.createdAt ? new Date(item.createdAt).toISOString() : undefined}>{formatBandaTimestamp(item.createdAt, now)}{item.updatedAt ? ' · szerkesztve' : ''}</time></div>{own || canModerate ? <div className="banda-post__manage">{own ? <button type="button" aria-label="Szerkesztés" onClick={onEdit}><FontAwesomeIcon icon={faPen} /></button> : null}<button type="button" aria-label="Poszt törlése" onClick={onDelete}><FontAwesomeIcon icon={faTrash} /></button></div> : null}</header>
     <BandaPostContent text={item.text} format={item.format} />
     {item.hasImage ? <BandaFeedImage bandaId={bandaId} postId={item.id} /> : null}
     <footer className="banda-post__actions"><button type="button" className={item.likedByMe ? 'is-active' : ''} onClick={async () => { const result = await api.bandas.toggleFeedLike(bandaId, item.id); onChange({ likedByMe: result.liked, likeCount: result.likeCount }); }}>♥ <span>{item.likeCount || 'Kedvelés'}</span></button><button type="button" onClick={() => void toggleComments()}><FontAwesomeIcon icon={faComment} /> <span>{item.commentCount || 'Komment'}</span></button></footer>
@@ -189,7 +211,7 @@ function FeedPostCard({ bandaId, item, own, now, onEdit, onDelete, onChange }: {
           <strong>{entry.authorUsername}</strong>
           {entry.replyToUsername ? <small className="banda-comment__reply-to"><FontAwesomeIcon icon={faReply} /> Válasz — {entry.replyToUsername}</small> : null}
           <span>{entry.text}</span>
-          <span className="banda-comment__meta"><time>{formatBandaTimestamp(entry.createdAt, now)}</time><button type="button" onClick={() => setReplyingTo(entry)}>Válasz</button></span>
+          <span className="banda-comment__meta"><time>{formatBandaTimestamp(entry.createdAt, now)}</time><button type="button" onClick={() => setReplyingTo(entry)}>Válasz</button>{!entry.hidden && (canModerate || entry.authorUid === currentUid) ? <button type="button" className="banda-comment__delete" aria-label="Komment törlése" disabled={deletingCommentId !== null} onClick={() => void deleteComment(entry)}><FontAwesomeIcon icon={faTrash} /></button> : null}</span>
         </div>
       </div>)}
       {replyingTo ? <div className="banda-composer__context"><span>Válasz — <strong>{replyingTo.authorUsername}</strong></span><button type="button" onClick={() => setReplyingTo(null)}>Mégse</button></div> : null}

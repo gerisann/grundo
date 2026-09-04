@@ -551,8 +551,10 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
   a szülő dokumentum `likeCount` számlálója tranzakcióban változik.
 - `bandas/{id}/feed/{postId}/comments/{commentId}` → `{ authorUid,
   authorUsername, authorPhotoURL, text, replyToId?, replyToUsername?, createdAt }`;
-  soft-hide után a szerver az eredeti mezők helyett „törölt komment vagy tag”
-  helyőrzőt ad, de a dokumentumazonosító megmarad, ezért tovább válaszolható.
+  tagsági soft-hide után a szerver az eredeti mezők helyett „kilépett, vagy
+  kirúgott felhasználó” helyőrzőt ad; kézi törlésnél vagy appbannolásnál a
+  helyőrző „törölt komment vagy tag”. A dokumentumazonosító megmarad, ezért
+  tovább válaszolható.
   A szülő `commentCount`
   mezője ugyanabban a batch-ben nő. A feed legfrissebb elöl, tízesével
   bővíthető; az üzenőfal a legfrissebb 100 elemet időrendben adja vissza.

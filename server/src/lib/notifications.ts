@@ -494,13 +494,13 @@ export function notifyNewFollower(
 }
 
 /** Appon belüli meghívás egy privát vagy publikus bandába, a követett-lista felől. */
-export function notifyBandaInvite(targetUid: string, bandaId: string, bandaName: string, actorUsername: string): void {
+export function notifyBandaInvite(targetUid: string, bandaName: string, actorUsername: string): void {
   void createNotification({
     uid: targetUid,
     type: 'banda_invited',
     title: 'Banda-meghívó',
     body: `${actorUsername} meghívott a(z) „${bandaName}” bandába.`,
-    data: { screen: 'banda', bandaId },
+    data: { screen: 'bandas' },
   });
 }
 

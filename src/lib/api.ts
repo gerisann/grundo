@@ -1376,6 +1376,11 @@ export const api = {
         method: 'POST', body: JSON.stringify({ text, ...(replyToId ? { replyToId } : {}) }),
       }),
 
+    deleteFeedComment: (bandaId: string, postId: string, commentId: string) =>
+      request<{ deleted: true }>(`/api/bandas/${encodeURIComponent(bandaId)}/feed/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`, {
+        method: 'DELETE',
+      }),
+
     /** Tagságvédett posztkép; a hívó Blob URL-t készít belőle. */
     feedImage: (bandaId: string, postId: string, signal?: AbortSignal) =>
       requestBlob(
@@ -1430,7 +1435,7 @@ export const api = {
 
     /** Tag eltávolítása — a szerver a szerephierarchiát is ellenőrzi. */
     removeMember: (bandaId: string, memberId: string) =>
-      request<{ removed: true }>(
+      request<{ removed: true; hiddenContent: { bandaPosts: number; bandaWallMessages: number; bandaComments: number } }>(
         `/api/bandas/${encodeURIComponent(bandaId)}/members/${encodeURIComponent(memberId)}`,
         { method: 'DELETE' },
       ),

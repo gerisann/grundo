@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBell, faBellSlash, faPersonBiking, faPersonRunning, faPersonWalking, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faBell, faBellSlash, faCheck, faCopy, faPersonBiking, faPersonRunning, faPersonWalking, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '@/components/ActivityCard';
 import { BandaFeedWall } from '@/components/BandaFeedWall';
@@ -317,12 +317,20 @@ export function BandaScreen() {
           {role ? (
             <div className="banda-share">
               {inviteCode ? (
-                <button type="button" className={`banda-share__code${copied === 'code' ? ' is-copied' : ''}`} onClick={() => void copyShare('code')}>
-                  <strong>{inviteCode}</strong>
-                  <span className="banda-share__copy">
-                    {copied === 'code' ? 'Másolva' : 'Másolás'}
-                  </span>
-                </button>
+                <div className="banda-share__invite-code">
+                  <span className="banda-share__label">Meghívókód</span>
+                  <button
+                    type="button"
+                    className={`banda-share__code${copied === 'code' ? ' is-copied' : ''}`}
+                    aria-label={copied === 'code' ? `${inviteCode}, kód kimásolva` : `${inviteCode}, kód másolása`}
+                    onClick={() => void copyShare('code')}
+                  >
+                    <strong>{inviteCode}</strong>
+                    <span className="banda-share__copy" aria-hidden="true">
+                      <FontAwesomeIcon icon={copied === 'code' ? faCheck : faCopy} />
+                    </span>
+                  </button>
+                </div>
               ) : null}
               <div className="banda-share__actions">
                 {settings && canInvite(role, settings.whoCanInvite) ? (
@@ -409,7 +417,11 @@ export function BandaScreen() {
         </section>
 
         {role && settings ? (
-          <BandaFeedWall bandaId={id ?? ''} canPostFeed={canInvite(role, settings.postPermission)} />
+          <BandaFeedWall
+            bandaId={id ?? ''}
+            canPostFeed={canInvite(role, settings.postPermission)}
+            canModerate={role === 'owner' || role === 'moderator'}
+          />
         ) : (
           <EmptyState
             title="Csak tagoknak"

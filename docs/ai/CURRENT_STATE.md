@@ -1,40 +1,40 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-04** · GRUNDO **#38**
+> Frissítve: **2026-09-04** · GRUNDO **#39**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: a #38 commitolva és pusholva; élesben még nincs telepítve.
+> Állapot: a #39 commitolva és pusholva; élesben még nincs telepítve.
 > Utoljára dolgozott: **Codex (Sol, Erős)** · Átadva: **Codex**
 
 ## Jelenlegi cél
 
-A Banda-felület egységesítése és a teljes tagsági életciklus befejezése:
-jóváhagyásos publikus belépés, értesítések, kilépési/kirúgási tartalomkezelés,
-kommentválaszok, valamint az appbannolt felhasználók tartalmának auditálható,
-fizikai törlés nélküli elrejtése. **Kódszinten és lokálisan kész; telepítetlen.**
+A Banda-felület és a tagsági életciklus lezárása: moderáció, célzott
+értesítések, jóváhagyásos belépés, stabil kirúgási tartalomrejtés és mobilos
+szélességjavítás. **Kódszinten és lokálisan kész; telepítetlen.**
 
 ## Elkészült
 
-1. **Banda UI.** A fejléc címe egységesen „Banda beállítások”. A Banda-oldal
-   fejlécének nincs saját háttere, a borítókép elmosott háttere a képernyő
-   tetejétől indul. A teljes meghívókód-doboz másol, siker után zöld állapotot
-   kap. A hírfolyam-komponens nem tapad, az üzenőfali beviteli mező egysoros,
-   a releváns szövegdobozok és kommentlisták scrollbarja rejtett.
+1. **Banda UI.** A fejléc címe egységesen „Banda beállítások”; a Banda-fejléc
+   háttere eltűnt, a borítókép háttere a képernyő tetejétől indul. A meghívókód
+   középre igazított, a jobb szélen másolás ikon van, siker után pipa és zöld
+   kód/doboz jelenik meg. Kapott halk „Meghívókód” címkét, a leírás pedig alsó
+   elválasztót. Az iOS-es vízszintes túlcsordulást szélességkorlátok fogják meg.
+   A hírfolyam-író nem sticky, az üzenőfali mező egysoros, a scrollbarok rejtettek.
 
 2. **Publikus csatlakozás.** Bandánként `instant` vagy `approval` mód
-   választható, visszafelé kompatibilis `instant` alapértékkel. Jóváhagyásos
-   módban a kérés megmarad a `joinRequests` alkollekcióban; alapító és
-   moderátor elfogadhatja vagy elutasíthatja. Elfogadáskor a két tagsági tükör
-   és a taglétszám tranzakcióban frissül.
+   választható. A beállítóoldal visszafelé kompatibilis `instant` alapértéket,
+   jól látható aktív állapotot és külön „még nincs mentve” jelzést ad.
+   Jóváhagyásos módban alapító és moderátor kezelheti a kérelmeket.
 
-3. **Tagsági értesítések.** A banda tagjai értesítést kapnak belépésről és
-   kilépésről; a kirúgott felhasználó külön értesítést kap. Az új
-   `banda_membership` típus globálisan és bandánként is némítható.
+3. **Tagsági értesítések.** Új belépőről csak az alapító és a moderátorok
+   kapnak értesítést; a kirúgott felhasználó külön jelzést kap. A banda-meghívó
+   a Közösség / Bandák fülre visz. A `banda_membership` típus ikont is kapott.
 
-4. **Kilépés, kirúgás és kommentválasz.** Kilépéskor külön választás dönti el,
-   hogy a saját banda-tartalom látható maradjon-e. Kirúgáskor automatikus a
-   soft-hide. A posztok/falüzenetek eltűnnek, a kommentek helyén „törölt
-   komment vagy tag” marad; a dokumentumazonosító és a válaszszál megmarad.
-   A banda hírfolyam-kommentjeire most közvetlenül válaszolni is lehet.
+4. **Moderáció és tagsági tartalom.** Alapító és moderátor más tag posztját és
+   kommentjét is soft-hide-olhatja. Kirúgáskor a posztok biztosan eltűnnek a
+   feedből: a művelet már nem függ collection-group kommentindextől, és a
+   rejtett darabszámokat visszaadja. A komment helyőrzője „kilépett, vagy
+   kirúgott felhasználó”, a válaszszál megmarad. Kilépéskor a user dönthet a
+   saját tartalom elrejtéséről.
 
 5. **Appbannolás.** Új, moderátori jogosultságú admin API letiltja az Auth-
    fiókot, visszavonja a frissítési tokeneket, auditál, és soft-hide-olja a
@@ -42,10 +42,10 @@ fizikai törlés nélküli elrejtése. **Kódszinten és lokálisan kész; telep
    aktivitásokat. A korábban törlésre ütemezett aktivitás `purgeAt` mezője is
    törlődik: fizikai törlést csak a végleges fióktörlés végezhet.
 
-6. **Dokumentáció és tesztek.** A funkcionális specifikáció, adatmodell és
-   tartós döntések követik az új viselkedést. Emulátoros regresszióteszt fedi
-   a jóváhagyást, a kilépési választást, a kirúgásos soft-hide-ot, a válaszszál
-   helyőrzőjét és a bannolás adatmegőrzését.
+6. **Dokumentáció és tesztek.** A specifikáció és adatmodell követi az új
+   értesítési és helyőrző-viselkedést. Emulátoros regresszióteszt ellenőrzi a
+   moderátori törlést, a célzott értesítéseket és a kirúgáskor ténylegesen
+   elrejtett poszt/komment darabszámát.
 
 ## Módosított fájlok
 
@@ -65,7 +65,7 @@ fizikai törlés nélküli elrejtése. **Kódszinten és lokálisan kész; telep
 
 ## Élesben fut / telepítetlen
 
-- A #38-hoz **frontend- és backendtelepítés kell**. Szabály- és indexváltozás
+- A #39-hez **frontend- és backendtelepítés kell**. Szabály- és indexváltozás
   nincs, adatbázis-migráció nem kell.
 - Az új felület a mobilappba csak új Android/iOS builddel kerül be.
 - A #36–#37 korábbi telepítési tartozása továbbra is él: worker, részletes
@@ -77,10 +77,10 @@ fizikai törlés nélküli elrejtése. **Kódszinten és lokálisan kész; telep
 
 - Kliens: **792/792** teszt zöld 15 s tesztlimittel; production build zöld.
 - Szerver: **229/229** nem emulátoros teszt és production build zöld.
-- Emulátor: Banda + tartalommoderáció + aktivitás együtt **51/51** zöld,
-  **1** környezeti teszt kihagyva.
-- Világos és sötét témában böngészőben ellenőrizve a Banda-oldal és a
-  „Banda beállítások” oldal; az eredeti sötét téma visszaállítva.
+- Célzott kliens: push + banda-tartalom **7/7** zöld.
+- Banda emulátor: **27/27** zöld, **1** storage-környezeti teszt kihagyva.
+- Böngészőben ellenőrizve a sötét témájú meghívókód alap- és zöld/pipa
+  állapota, középre igazítása, címkéje és a leírás elválasztója.
 - `git diff --check` tiszta. **Készüléken és éles Firebase-adatokon nem volt
   ellenőrzés**, telepítés nem történt.
 

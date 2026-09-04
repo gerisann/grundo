@@ -383,7 +383,7 @@ A legrészletesebben dokumentált felület (képek #10, #20, #26, #28, #42, #39)
   tagnak az alapítói rangot. Tag és moderátor saját maga kiléphet.
 - Kilépéskor a felhasználó külön dönt arról, hogy a bandában írt posztjai és
   kommentjei láthatók maradjanak-e. Kirúgáskor a hírfolyam-posztok eltűnnek,
-  a kommentek helyén „törölt komment vagy tag” marad, és a válaszszál tovább
+  a kommentek helyén „kilépett, vagy kirúgott felhasználó” marad, és a válaszszál tovább
   folytatható. Ezek soft-hide műveletek: az eredeti dokumentum admin számára
   visszakereshető, fizikai törlés csak végleges fióktörléskor történik.
 
@@ -554,7 +554,7 @@ profilra, grundra vagy beállítási képernyőre navigálunk.
 | Megosztott útvonal | BE | |
 | Cipő futásteljesítmény elérve | BE | |
 | Banda: meghívás (`banda_invited`) | BE | *(GRUNDO #30)* |
-| Banda: belépés / kilépés / kirúgás (`banda_membership`) | BE | Bandánként a fejléc csengőjével is némítható; a kirúgott felhasználó saját értesítést kap. |
+| Banda: belépés / kilépés / kirúgás (`banda_membership`) | BE | Belépésről az alapító és a moderátorok, kirúgásról az érintett kap értesítést; bandánként némítható. |
 | Banda: moderátor-kinevezés / kirúgás | BE | *(Phase 3)* |
 | Kihívás indul / véget ér / helyezés-változás | BE | |
 | **Napi pont-összegzés** | BE | Este: megszerzett GP, tartott terület bónusz |

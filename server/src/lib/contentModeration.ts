@@ -51,19 +51,28 @@ export async function hideBandaMemberContent(
   hiddenBy: string,
 ): Promise<HiddenContentCounts> {
   const bandaRef = db.collection(COLLECTIONS.bandas).doc(bandaId);
-  const [feed, wall, allComments] = await Promise.all([
-    bandaRef.collection('feed').where('authorUid', '==', uid).get(),
+  const [feed, wall] = await Promise.all([
+    bandaRef.collection('feed').get(),
     bandaRef.collection('wall').where('authorUid', '==', uid).get(),
-    db.collectionGroup('comments').where('authorUid', '==', uid).get(),
   ]);
-  const prefix = `${bandaRef.path}/feed/`;
-  const comments = allComments.docs.filter((doc) => doc.ref.path.startsWith(prefix));
+  const authoredPosts = feed.docs.filter((doc) => doc.get('authorUid') === uid);
 
-  const [bandaPosts, bandaWallMessages, bandaComments] = await Promise.all([
-    hideDocuments(feed.docs, reason, hiddenBy),
+  // A posztok eltávolítása nem függhet egy collection-group kommentindextől:
+  // élesben annak hiánya az egész Promise.all-t megszakította, miután a tagság
+  // már törlődött. Előbb garantáltan elrejtjük a posztokat, majd a banda saját
+  // posztjai alatt, normál collection querykkel keressük meg a kommenteket.
+  const [bandaPosts, bandaWallMessages] = await Promise.all([
+    hideDocuments(authoredPosts, reason, hiddenBy),
     hideDocuments(wall.docs, reason, hiddenBy),
-    hideDocuments(comments, reason, hiddenBy),
   ]);
+  const commentSnapshots = await Promise.all(
+    feed.docs.map((post) => post.ref.collection('comments').where('authorUid', '==', uid).get()),
+  );
+  const bandaComments = await hideDocuments(
+    commentSnapshots.flatMap((snapshot) => snapshot.docs),
+    reason,
+    hiddenBy,
+  );
   return { ...emptyCounts(), bandaPosts, bandaWallMessages, bandaComments };
 }
 

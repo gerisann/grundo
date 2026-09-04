@@ -1,5 +1,5 @@
-.banda-detail-page { position: relative; min-height: 100%; isolation: isolate; }
-.banda-detail { position: relative; z-index: 1; }
+.banda-detail-page { position: relative; width: 100%; max-width: 100%; min-width: 0; min-height: 100%; overflow-x: clip; isolation: isolate; }
+.banda-detail { position: relative; z-index: 1; width: 100%; max-width: 100%; min-width: 0; }
 .banda-detail__header { background: transparent; }
 .banda-detail__backdrop { position: absolute; z-index: 0; top: 0; left: 0; width: 100%; height: min(72vw, 390px); background-position: center top; background-size: cover; filter: blur(5px) brightness(.42) saturate(1.2); opacity: .8; transform: scale(1.12); pointer-events: none; mask-image: linear-gradient(#000 35%, transparent); }
 [data-theme='light'] .banda-detail__backdrop { filter: blur(30px) brightness(1.2) saturate(.85); opacity: .42; }
@@ -14,12 +14,16 @@
 .banda-hero__identity strong { min-width: 0; padding-bottom: 9px; font-size: var(--fs-heading); overflow-wrap: anywhere; }
 .banda-hero__badges { display: flex; gap: var(--sp-2); padding: 0 var(--sp-4); }
 .banda-hero__badges span { padding: 5px 10px; border: 1px solid var(--border-default); border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-secondary); font-size: var(--fs-label); font-weight: 700; }
-.banda-hero__description { margin: 0; padding: 0 var(--sp-4); white-space: pre-wrap; }
+.banda-hero__description { margin: 0 var(--sp-4); padding: 0 0 var(--sp-3); border-bottom: 1px solid var(--border-default); white-space: pre-wrap; }
 .banda-share { display: grid; gap: var(--sp-3); padding: 0 var(--sp-4) var(--sp-4); }
-.banda-share__code { display: flex; width: 100%; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--accent-soft); color: inherit; font: inherit; cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease; }
+.banda-share__invite-code { display: grid; gap: var(--sp-2); }
+.banda-share__label { color: var(--text-secondary); font-size: var(--fs-small); font-weight: 600; }
+.banda-share__code { position: relative; display: grid; width: 100%; min-width: 0; place-items: center; padding: var(--sp-3) 56px; border: 1px solid var(--accent-border); border-radius: var(--r-md); background: var(--accent-soft); color: inherit; font: inherit; cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease; }
 .banda-share__code.is-copied { border-color: var(--success); background: color-mix(in srgb, var(--success) 22%, var(--surface-1)); }
-.banda-share__code strong { color: var(--accent); letter-spacing: .16em; font-size: clamp(22px, 6.5vw, 30px); font-weight: 800; font-variant-numeric: tabular-nums; }
-.banda-share__copy { flex: none; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--accent-border); border-radius: var(--r-pill); background: var(--surface-1); color: var(--accent); font-size: var(--fs-small); font-weight: 700; }
+.banda-share__code.is-copied strong { color: var(--success); }
+.banda-share__code.is-copied .banda-share__copy { border-color: var(--success); background: var(--success); color: var(--success-on); }
+.banda-share__code strong { min-width: 0; color: var(--accent); letter-spacing: .16em; font-size: clamp(22px, 6.5vw, 30px); font-weight: 800; font-variant-numeric: tabular-nums; }
+.banda-share__copy { position: absolute; right: var(--sp-3); display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--accent-border); border-radius: 50%; background: var(--surface-1); color: var(--accent); font-size: var(--fs-body); }
 .banda-share__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
 .banda-share__actions > :only-child { grid-column: 1 / -1; }
 .banda-ranking__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }

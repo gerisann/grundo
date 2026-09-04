@@ -4,7 +4,7 @@
    üzenet közvetlenül alatta jelenik meg. */
 .banda-board__composer--wall { position: static; }
 .banda-board__input-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
-.banda-board__input { flex: 1; height: 44px; min-height: 44px; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); font: inherit; line-height: 1.35; resize: none; overflow: hidden; white-space: nowrap; scrollbar-width: none; }
+.banda-board__input { flex: 1; width: 100%; min-width: 0; max-width: 100%; height: 44px; min-height: 44px; padding: var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-md); background: var(--input-bg); color: var(--text-primary); font: inherit; line-height: 1.35; resize: none; overflow: hidden; white-space: nowrap; scrollbar-width: none; }
 .banda-board__input::-webkit-scrollbar { display: none; }
 .banda-board__input::placeholder { color: var(--text-tertiary); }
 .banda-board__input:focus, .banda-editor__surface:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -58,6 +58,7 @@
 .banda-comment__reply-to { color: var(--text-tertiary); }
 .banda-comment__meta { display: flex; align-items: center; gap: var(--sp-2); }
 .banda-comment__meta button { border: 0; padding: 0; background: transparent; color: var(--accent); font: inherit; font-size: var(--fs-label); font-weight: 700; }
+.banda-comment__meta .banda-comment__delete { margin-left: auto; color: var(--danger); }
 .banda-comments__input { display: flex; gap: var(--sp-2); }
 .banda-comments__input input { min-width: 0; flex: 1; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--input-border); border-radius: var(--r-pill); background: var(--input-bg); color: var(--text-primary); font: inherit; }
 .banda-message { display: flex; align-items: flex-end; gap: var(--sp-2); width: min(86%, 370px); }
