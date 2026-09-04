@@ -92,9 +92,12 @@ Fázisbontás a valódi nyomvonalon (579 pontonkénti hívás összesítve):
 
 Minden elutasított jelölt előtt lefut a `pruneDeadEnds` + `buildLoopInterior`
 feltöltés egy **átlagosan 167 cellás falra** — és a fal a *megmetszés utáni*
-méret, tehát ezek nem zsákutcák, hanem valódi, hosszú, vékony folyosók: a
-korábban bejárt utca mellett visszafelé haladva minden új cella új, egyre
-messzebbre visszanyúló jelöltet szül, aminek a belseje üres.
+méret, tehát ezek nem zsákutcák.
+
+⚠️ **Itt először azt írtam, hogy „vékony folyosók, üres belsővel". EZ TÉVES
+VOLT** — a lenti utólagos mérés megcáfolta: 499-ből 491 jelöltnek VALÓDI
+belseje van (medián 214 cella), csak minden cellája már bekerített. Lásd
+lent, „Az elutasítás valódi oka".
 
 Ez magyarázza a költség **növekedését is** — átlag hívásonként a nyom
 ötödeire bontva (Android nyom): 0,82 → 1,22 → 2,50 → 3,76 → **4,62 ms**,
@@ -152,8 +155,10 @@ szorzóval.
    szerveroldali (`DECISIONS.md`, „A kliens activity/claim számítása előnézet").
 2. **Az olcsóbbá tétel másodlagos, de nem elhagyható** — a per-hívás költség a
    menet során ×5,6-ra nőtt 8,6 km alatt. Egy 25 km-es kör ennek a többszöröse
-   lesz, workerrel is (akkumulátor, késleltetés). A célpont **nem** a körüljárás,
-   hanem az `interior_too_small` jelöltek korai kiszűrése a feltöltés ELŐTT.
+   lesz, workerrel is (akkumulátor, késleltetés). A célpont **nem** a körüljárás.
+   (⚠️ Itt eredetileg „az `interior_too_small` jelöltek korai kiszűrése" állt.
+   A lenti utólagos mérés szerint ilyen szűrő NINCS biztonságosan — helyette a
+   durva előkészület memoizálása lett a megoldás, −55%.)
 3. **A 3. nyitott ügy („körbe-körbe futásnál a cache sosem talál") téves
    diagnózis volt.** A gyorsítótár talál (5. pont); ami az ismételt bejárásnál
    drágul, az a jelöltkeresés (3. pont).
@@ -165,3 +170,62 @@ háttérváltáshoz kötni, hogy `lastMs === maxMs`. **Ha újra mérünk, a mér
 bontsa a mintákat láthatósági állapot szerint** (`document.visibilityState`),
 és tartson meg egy rövid idősort a legdrágább N futásról időbélyeggel.
 Enélkül minden háttér-előtér kérdés következtetés marad, nem mérés.
+
+---
+
+# Utólag: a hurokkeresés bontása (ugyanaznap)
+
+A worker után megmértem, mi teszi ki a hurokkeresés 1 293 ms-át, hogy a
+„tegyük olcsóbbá" pontnak legyen célja. Szkriptek: `tmp/measure-candidate-cost.ts`,
+`tmp/measure-adaptive-internals.ts`.
+
+## Az elutasítás valódi oka — NEM az, amit a diagnosztika mutat
+
+A `rejected` lista mind az 499 jelöltre `interior_too_small`-t ír, de a kód
+KÉT helyen írja ezt, és a kettő teljesen mást jelent:
+
+| ág | db | feltöltés |
+|---|---|---|
+| a belső tényleg üres | 8 | 2 ms |
+| **valódi belső, de MINDEN cellája már bekerített** (`addsNewGround`) | **491** | **1 075 ms** |
+
+A jelöltek belseje mediánban **214 cella**. Ezek tehát valódi hurkok, amik a
+már megszerzett területet zárják be újra — a szabályok dolgoznak rendesen.
+
+## Ami a feltöltésen belül van
+
+| fázis | ms | % | mitől függ |
+|---|---|---|---|
+| durva fal képzése | 46 | 6,8% | a res12 faltól |
+| durva régió polyfill | 147 | 21,9% | **a durva faltól** |
+| durva kitöltés | 12 | 1,8% | **a durva faltól** |
+| sáv építése | 37 | 5,5% | **a durva faltól** |
+| finom magkeresés | 220 | 32,9% | **a durva faltól** |
+| finom árasztás | 208 | 31,1% | a res12 faltól |
+
+**499 jelölt, de mindössze 29 különböző durva fal** — a jelöltek res12 fala
+cellánként eltér, két felbontással feljebb viszont a különbség eltűnik.
+Innen jön a `coarseContextOf` memoizálás: −55% böngészőben, −30% Node-ban,
+bitre azonos eredménnyel.
+
+## Amit végigmértem és NEM működik
+
+- **Területküszöb** (shoelace a cellaközéppontokon): az elutasított jelöltek
+  területe NAGY (medián 50 000 m², max 120 568 m²), a legkisebb ELFOGADOTT
+  hurok 932 m². Nincs szétválasztó küszöb.
+- **Tartalmazás egyetlen korábbi hurokban**: 499-ből 2-t fog meg. A fal
+  mediánban 13 cellával lóg ki a legjobban fedő hurok régiójából — nem
+  jitter, hanem az, hogy a fal TÖBB hurok régióján ér át.
+- **Az olcsó ellenőrzések előrehozása** a feltöltés elé: a `sameLoopGeometry`
+  első ága a belsőt hasonlítja, tehát a sorrend nem cserélhető fel
+  jelentésváltozás nélkül.
+- **A bekerített cellák UNIÓJÁRA szűrni**: a fal 98%-a benne van, de ez
+  **nem biztonságos** — több hurok gyűrűt formálhat, aminek a lyuka valódi új
+  terület, és azt csendben elvennénk a felhasználótól.
+
+## Ami maradt
+
+A jelöltek SZÁMA (499 jelölt 518 cellára, azaz ~1 minden új cellára). Ezt
+csökkenteni már játékszabály-döntés, nem optimalizálás — a `DECISIONS.md`
+kifejezetten tiltja az index-alapú heurisztikák visszahozatalát, mert azok a
+bejárás irányától függtek.

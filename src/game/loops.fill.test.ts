@@ -114,3 +114,62 @@ describe('floodFillInterior — a pontos és az adaptív menet ugyanazt adja', (
     );
   });
 });
+
+/**
+ * A DURVA ELŐKÉSZÜLET GYORSÍTÓTÁRA (2026-09-04, GRUNDO #37).
+ *
+ * Az adaptív menet durva része — befoglaló polyfill, durva kitöltés, sáv,
+ * sávperem — a DURVA fal tiszta függvénye, és a hurokdetektor egymást követő
+ * jelöltjeinek durva fala szinte mindig azonos (mérve: 499 jelölt, 29
+ * különböző durva fal). Ezért gyorsítótárazzuk.
+ *
+ * KÉT KONKRÉT VESZÉLYE VAN, és mindkettőt CSENDBEN rossz területként adná ki:
+ *
+ *  1. A halmaz BEJÁRÁSI SORRENDJE hívásonként más — ha a kulcs erre érzékeny,
+ *     a gyorsítótár sosem talál (csak lassabb lesz, de az is baj);
+ *  2. A visszaterjesztés (3. lépés) MUTÁLNÁ a durva kültér halmazát, és a
+ *     következő, azonos durva falú jelölt kinyitott kültérrel indulna.
+ *
+ * ⚠️ A MÁSODIKAT EZEK A TESZTEK NEM FOGJÁK MEG, és ezt ki kell mondani: a
+ * visszaterjesztés csak ritka alakzatra (öbölbe vezető szűk folyosó) fut le
+ * egyáltalán, a lenti téglalapokon egyszer sem — kipróbálva, a másolat
+ * elhagyásával is mind a 14 eset zöld marad. Ezért a védelem ott TÍPUSSZINTŰ:
+ * a `CoarseContext.outside` `ReadonlySet`, tehát a másolat elhagyása
+ * fordítási hiba (`loops.ts`). Az alábbiak a kulcsot és a megosztást őrzik.
+ */
+describe('az adaptív kitöltés durva gyorsítótára', () => {
+  it('ugyanazt adja a fal MÁS BEJÁRÁSI SORRENDJE mellett is', () => {
+    const wall = rectangleWall(600, 600);
+    const first = sorted(floodFillInteriorAdaptive(wall));
+    const reversed = new Set([...wall].reverse());
+    expect(sorted(floodFillInteriorAdaptive(reversed))).toEqual(first);
+  });
+
+  it('azonos durva lábnyomú, eltérő finom falakra mind a pontos menetet adja', () => {
+    /**
+     * Azonos durva lábnyom, eltérő finom fal — pontosan az az eset, amit a
+     * detektor gyárt, és amin egy megosztott (nem másolt) kültér elhasalna.
+     * Mindegyikre a PONTOS menet a referencia.
+     */
+    const walls = [560, 570, 580, 590, 600].map((size) => rectangleWall(size, 600));
+
+    for (const wall of walls) {
+      expect(sorted(floodFillInteriorAdaptive(wall))).toEqual(sorted(floodFillInteriorExact(wall)));
+    }
+
+    // Másodszor is, immár melegen: a gyorsítótár nem változtathat az eredményen.
+    for (const wall of walls) {
+      expect(sorted(floodFillInteriorAdaptive(wall))).toEqual(sorted(floodFillInteriorExact(wall)));
+    }
+  });
+
+  it('a nyolcas hurok mindkét lapját ugyanúgy adja vissza gyorsítótárral', () => {
+    const { path } = traceToCellPath(figureEight());
+    const loops = detectLoopsDetailed(path).loops;
+    expect(loops.length).toBeGreaterThan(0);
+    for (const loop of loops) {
+      const wall = pruneDeadEnds(loop.wall);
+      expect(sorted(floodFillInteriorAdaptive(wall))).toEqual(sorted(floodFillInteriorExact(wall)));
+    }
+  });
+});

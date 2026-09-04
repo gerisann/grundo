@@ -123,20 +123,34 @@ két készülékkel, és a döntés az ő adatára vár. Helyette négy, menet k
    `usePreviewEngine` hookon át eteti, KÜLÖNBSÉG-alapú protokollal. A
    cellalánc (a rajzolt nyom és a lépéshang) szándékosan a főszálon maradt.
    Mérve böngészőben, a valódi terepi nyomvonalon (580 pont):
-   **a főszál összesen 18 ms**-ot fizet a teljes körre (átlag 0,03 ms /
-   frissítés, max 0,6 ms), a számítás pedig a workerben 2 841 ms — vagyis
+   **a főszál összesen 22 ms**-ot fizet a teljes körre (átlag 0,04 ms /
+   frissítés, max 0,2 ms), a számítás pedig a workerben 1 282 ms — vagyis
    pontosan az a munka, ami eddig a főszálat fagyasztotta. Az eredmény
    betűre egyezik a szinkron úttal (518 cella, 10 hurok, GP 180,0 — ez utóbbi
-   az éles aktivitás mentett GP-jével is stimmel).
-3. **A hurokkeresés olcsóbbá tétele** — **Opus, High**, még NEM indult. A
-   worker megszünteti a fagyást, de nem a növekedést: a hívásonkénti költség
-   8,6 km alatt ×5,6-ra nőtt, és egy 25 km-es kör ennek a többszöröse lesz. A
-   célpont **NEM a körüljárás** (telefonon a teljes `preview.process` csak
-   2,6–2,8 ms), hanem az `interior_too_small` jelöltek korai kiszűrése a
-   `buildLoopInterior` feltöltés ELŐTT (`src/game/loopDetection.ts`,
-   `IncrementalLoopDetector.append`): 10 elfogadott hurokra 499–547
-   elutasított jelölt jut, átlagosan 167 cellás fallal — 247–293× hiábavaló
-   feltöltés.
+   az éles aktivitás mentett GP-jével is stimmel). A mérőpad újrafuttatható:
+   `tmp/preview-probe.html` a `npm run dev` alatt.
+3. **A hurokkeresés olcsóbbá tétele** — **RÉSZBEN KÉSZ, 2026-09-04**,
+   TELEPÍTETLEN. A durva kitöltés-előkészület memoizálva
+   (`loops.ts` `coarseContextOf`). Mérve a valódi terepi nyomvonalon:
+   böngészőben a teljes körre **2 841 → 1 282 ms (−55%)**, a leghosszabb
+   egyetlen futás **74 → 23,5 ms**; Node-ban a hurokkeresés
+   **1 293 → 908 ms (−30%)**. Az eredmény BITRE azonos: mindkét nyomvonalon
+   ugyanaz a 10 hurok, ugyanazok a falak és belsők.
+   ⚠️ **A célt ez NEM oldja meg, csak enyhíti.** A maradék költség 491 olyan
+   jelölt, ami VALÓDI hurok valódi belsővel (medián 214 cella), csak minden
+   cellája MÁR BEKERÍTETT — vagyis a szabályok dolgoznak rendesen, nem
+   pazarlás. Amit végigmértem és NEM működik: területküszöb (az elutasított
+   jelöltek területe NAGY, medián 50 000 m²), egyetlen korábbi hurokba
+   tartalmazás (499-ből 2-t fog meg, mert a fal több hurok régióján átér),
+   az olcsó ellenőrzések előrehozása (a `sameLoopGeometry` első ága a belsőt
+   nézi). A bekerített cellák UNIÓJA 98%-ban lefedi a falat, de arra szűrni
+   **nem biztonságos**: több hurok gyűrűt formálhat, aminek a lyuka valódi új
+   terület. **Innen a következő lépés a jelöltek SZÁMÁNAK csökkentése, ami
+   már játékszabály-döntés** (`DECISIONS.md` tiltja az index-alapú
+   heurisztikák visszahozatalát) — Geri döntése kell hozzá, nem
+   optimalizálás. A mérőszkriptek: `tmp/measure-candidate-cost.ts`,
+   `tmp/measure-adaptive-internals.ts`, `tmp/measure-containment-filter.ts`,
+   `tmp/measure-wall-overlap.ts`.
 4. ~~**Körbe-körbe futásnál a cache sosem talál**~~ — **TÉVES DIAGNÓZIS**, a
    mérés cáfolta: a gyorsítótár végig működött (egy hideg teljes újraépítés
    asztalon 1 248–1 389 ms lenne, a mért csúcs 859 ms). Ami az ismételt

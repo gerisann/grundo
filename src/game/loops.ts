@@ -447,6 +447,132 @@ const MAX_CLAIM_CELLS = 2_200_000;
  * észrevétlen maradna, és az öböl tévesen a felhasználóé lenne. Ritka alakzat,
  * de csendben rossz területet adna.
  */
+/**
+ * AZ ADAPTÍV KITÖLTÉS DURVA ELŐKÉSZÜLETE — a DURVA fal tiszta függvénye.
+ *
+ * ── MIÉRT ÉRDEMES GYORSÍTÓTÁRAZNI ────────────────────────────────────────
+ *
+ * A hurokdetektor minden új cellánál új jelöltet vizsgál, és a jelöltek fala
+ * cellánként alig tér el — két felbontással feljebb (res10) viszont a
+ * KÜLÖNBSÉG EL IS TŰNIK. Mérve a 2026-09-04-i terepi nyomvonalon
+ * (`docs/ai/meres-2026-09-04-terepi-fosszal.md`, `tmp/measure-adaptive-internals.ts`):
+ * **499 jelölt, de mindössze 29 különböző durva fal.** A durva előkészület
+ * — befoglaló polyfill, durva kitöltés, sáv, sávperem — a kitöltés idejének
+ * 62%-a volt, és ezt 499-szer fizettük 29 helyett.
+ *
+ * ── MIÉRT NEM KÖZELÍTÉS ──────────────────────────────────────────────────
+ *
+ * Mind a négy eredmény a durva fal DETERMINISZTIKUS függvénye, felbontással
+ * együtt. Nincs elavulás, nincs tűrés: ugyanarra a bemenetre bitre ugyanaz
+ * jön vissza, mint számolással. A `loops.fill.test.ts` a pontos és az adaptív
+ * menet egyezését amúgy is méri, tehát egy elrontott gyorsítótár ott bukik.
+ *
+ * ⚠️ A `outside` MÁSOLATKÉNT adandó tovább — a hívó a visszaterjesztésnél
+ * mutálja. A `region` és a `band` csak olvasásra megy.
+ */
+interface CoarseContext {
+  region: ReadonlySet<CellId>;
+  /**
+   * A durva menet UTÁNI kültér, a finom fal ismerete nélkül.
+   *
+   * ⚠️ `ReadonlySet` SZÁNDÉKOSAN. A hívó a visszaterjesztésnél (3. lépés) a
+   * FINOM fal alapján tovább nyitja a kültért — ha ezt a halmazt mutálná, a
+   * bejegyzés beszennyeződne, és a következő, ugyanilyen durva falú jelölt
+   * hibásan nagy kültérrel indulna: kisebb belsőt, azaz KEVESEBB TERÜLETET
+   * adna a felhasználónak, csendben. A típus kényszeríti ki a másolatot —
+   * ezt ugyanis egy teszt nem fogná meg megbízhatóan: a visszaterjesztés csak
+   * ritka alakzatra (öbölbe vezető szűk folyosó) fut le egyáltalán.
+   */
+  outside: ReadonlySet<CellId>;
+  band: ReadonlySet<CellId>;
+  /** A sáv azon cellái, amik a kültérrel érintkeznek — a finom menet magjai. */
+  bandBorder: readonly CellId[];
+}
+
+/**
+ * Ennyi durva falat őrzünk meg.
+ *
+ * Egy bejegyzés a sávval együtt néhány ezer azonosító. A korlát elérésekor a
+ * teljes tartalmat eldobjuk, nem egyenként avulunk — ugyanaz a megfontolás,
+ * mint a `neighbours.ts`-ben: egy LRU könyvelése többe kerülne, mint amennyit
+ * megspórol, a nyereség pedig úgyis EGY aktivitás feldolgozásán belül jön.
+ */
+const MAX_CACHED_CONTEXTS = 64;
+
+/**
+ * Ennél nagyobb előkészületet nem tárolunk.
+ *
+ * ⚠️ Egy Balaton-méretű hurok sávja több millió cella is lehet; abból 64-et
+ * megtartani félgigás nagyságrend a Cloud Runon (`MAX_CLAIM_CELLS` ott ~920 MB
+ * a csúcs). Az ilyen hurokból amúgy sincs sok egy aktivitásban, tehát a
+ * gyorsítótár nem is nyerne rajta — a kihagyás itt olcsóbb, mint a kockázat.
+ */
+const MAX_CACHED_CONTEXT_CELLS = 200_000;
+
+const coarseContexts = new Map<string, CoarseContext>();
+
+/** Kanonikus kulcs: a halmaz bejárási sorrendje hívásonként más lehet. */
+function coarseKeyOf(coarseWall: ReadonlySet<CellId>, coarseRes: number, res: number): string {
+  return `${coarseRes}:${res}:${[...coarseWall].sort().join(',')}`;
+}
+
+function coarseContextOf(
+  coarseWall: ReadonlySet<CellId>,
+  coarseRes: number,
+  res: number,
+): CoarseContext {
+  const key = coarseKeyOf(coarseWall, coarseRes, res);
+  const cached = coarseContexts.get(key);
+  if (cached !== undefined) return cached;
+
+  const region = candidateRegion(coarseWall, coarseRes);
+  const outside = new Set<CellId>();
+  const queue: CellId[] = [];
+
+  for (const cell of region) {
+    if (coarseWall.has(cell)) continue;
+    for (const near of ringOf(cell)) {
+      if (!region.has(near)) {
+        outside.add(cell);
+        queue.push(cell);
+        break;
+      }
+    }
+  }
+  while (queue.length > 0) {
+    const cell = queue.pop()!;
+    for (const near of ringOf(cell)) {
+      if (!region.has(near) || coarseWall.has(near) || outside.has(near)) continue;
+      outside.add(near);
+      queue.push(near);
+    }
+  }
+
+  const band = new Set<CellId>();
+  for (const coarse of coarseWall) {
+    for (const child of childrenOf(coarse, res)) band.add(child);
+  }
+
+  const bandBorder: CellId[] = [];
+  for (const cell of band) {
+    for (const near of ringOf(cell)) {
+      if (band.has(near)) continue;
+      const parent = parentOf(near, coarseRes);
+      if (outside.has(parent) || !region.has(parent)) {
+        bandBorder.push(cell);
+        break;
+      }
+    }
+  }
+
+  const context: CoarseContext = { region, outside, band, bandBorder };
+  if (region.size + band.size <= MAX_CACHED_CONTEXT_CELLS) {
+    if (coarseContexts.size >= MAX_CACHED_CONTEXTS) coarseContexts.clear();
+    coarseContexts.set(key, context);
+  }
+  return context;
+}
+
 export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId> {
   const first = wall.values().next().value as CellId | undefined;
   if (first === undefined) return new Set();
@@ -458,45 +584,32 @@ export function floodFillInteriorAdaptive(wall: ReadonlySet<CellId>): Set<CellId
   const coarseWall = new Set<CellId>();
   for (const cell of wall) coarseWall.add(parentOf(cell, coarseRes));
 
-  const coarseRegion = candidateRegion(coarseWall, coarseRes);
-  const coarseOutside = new Set<CellId>();
-  const queue: CellId[] = [];
-
-  for (const cell of coarseRegion) {
-    if (coarseWall.has(cell)) continue;
-    for (const near of ringOf(cell)) {
-      if (!coarseRegion.has(near)) {
-        coarseOutside.add(cell);
-        queue.push(cell);
-        break;
-      }
-    }
-  }
-  spreadCoarse(queue);
+  const context = coarseContextOf(coarseWall, coarseRes, res);
+  const coarseRegion = context.region;
+  /**
+   * MÁSOLAT, nem a gyorsítótárazott halmaz: a 3. lépés (visszaterjesztés) ezt
+   * a FINOM fal alapján tovább nyitja, tehát a bejegyzés beszennyeződne, és a
+   * következő jelölt hibásan nagy kültérrel indulna.
+   */
+  const coarseOutside = new Set<CellId>(context.outside);
 
   /* ── 2. Finom menet a határsávban ───────────────────────────────── */
 
   /** A határsáv finom cellái: a falat tartalmazó durva cellák gyerekei. */
-  const band = new Set<CellId>();
-  for (const coarse of coarseWall) {
-    for (const child of childrenOf(coarse, res)) band.add(child);
-  }
+  const band = context.band;
 
   const fineOutside = new Set<CellId>();
   const fineQueue: CellId[] = [];
-  for (const cell of band) {
+  /**
+   * Kívülről indulunk: a sáv azon cellái, amiknek van szomszédjuk egy KÍVÜLNEK
+   * ismert durva cellában (vagy a régión kívül). Ez a halmaz KIZÁRÓLAG a durva
+   * faltól függ, ezért a `coarseContextOf` már kiszámolta — itt csak a falban
+   * fekvő cellákat kell kiszűrni belőle, ami jelöltenként változik.
+   */
+  for (const cell of context.bandBorder) {
     if (wall.has(cell)) continue;
-    // Kívülről indulunk: a sáv azon cellái, amiknek van szomszédjuk egy
-    // KÍVÜLNEK ismert durva cellában (vagy a régión kívül).
-    for (const near of ringOf(cell)) {
-      if (band.has(near)) continue;
-      const parent = parentOf(near, coarseRes);
-      if (coarseOutside.has(parent) || !coarseRegion.has(parent)) {
-        fineOutside.add(cell);
-        fineQueue.push(cell);
-        break;
-      }
-    }
+    fineOutside.add(cell);
+    fineQueue.push(cell);
   }
   spreadFine(fineQueue);
 
