@@ -19,7 +19,7 @@
  * KÖZÖS MODUL: se DOM, se Firebase, se Node API.
  */
 
-import { cellToLatLng, gridDisk } from 'h3-js';
+import { cellToLatLng } from 'h3-js';
 import type { CellId } from '@/types';
 import { ringOf } from './neighbours';
 
@@ -162,12 +162,40 @@ export function windingCounts(
   path: readonly CellId[],
   cells: Iterable<CellId>,
 ): Map<CellId, number> {
+  return windingBreakdown(path, cells).counts;
+}
+
+/**
+ * Egy régió: a görbén kívüli, összefüggő cellák és a rájuk mért körüljárás.
+ *
+ * A `windingCounts` csak a cellánkénti végeredményt adja vissza; az élő
+ * előnézet inkrementális útjának (`incrementalClaims.ts`) viszont tudnia kell,
+ * MELY cellán mérve jött ki az érték. Ha ugyanazokra a képviselőkre a
+ * meghosszabbított nyomvonalon ugyanannyi körüljárás jön ki, az egész
+ * körüljárás-térkép változatlan — és akkor a rá épülő elszámolás is az.
+ */
+export interface WindingRegion {
+  /** A régió lexikografikusan legkisebb cellája — ezen mérünk. */
+  representative: CellId;
+  turns: number;
+}
+
+export interface WindingBreakdown {
+  counts: Map<CellId, number>;
+  regions: WindingRegion[];
+}
+
+export function windingBreakdown(
+  path: readonly CellId[],
+  cells: Iterable<CellId>,
+): WindingBreakdown {
   const wanted = new Set<CellId>(cells);
   const counts = new Map<CellId, number>();
+  const regions: WindingRegion[] = [];
   const projected = projectPath(path);
   if (projected === null) {
     for (const cell of wanted) counts.set(cell, 0);
-    return counts;
+    return { counts, regions };
   }
 
   const onPath = new Set<CellId>(path);
@@ -228,26 +256,109 @@ export function windingCounts(
 
     const turns = turnsAt(representative);
     for (const cell of region) counts.set(cell, turns);
+    regions.push({ representative, turns });
   }
 
   // ── 2. A görbén lévő cellák a szomszédos régiótól örökölnek ─────────────
+  const inherited = createInheritedTurns(onPath, counts);
   for (const cell of wanted) {
     if (!onPath.has(cell)) continue;
-
-    let inherited = 0;
-    for (let ring = 1; ring <= MAX_INHERIT_RINGS; ring += 1) {
-      let found = false;
-      for (const near of gridDisk(cell, ring)) {
-        if (near === cell || onPath.has(near)) continue;
-        const known = counts.get(near);
-        if (known === undefined) continue;
-        found = true;
-        if (known > inherited) inherited = known;
-      }
-      if (found) break;
-    }
-    counts.set(cell, inherited);
+    counts.set(cell, inherited(cell));
   }
 
-  return counts;
+  return { counts, regions };
+}
+
+/**
+ * Körüljárási szám adott cellákra, régióképzés nélkül.
+ *
+ * Az inkrementális előnézet ezzel ellenőrzi, hogy a korábban mért régió-
+ * képviselők értéke változott-e a nyomvonal meghosszabbodásától. Ugyanaz a
+ * számítás fut, mint a `windingBreakdown`-ban — a vetítés egyszer készül el.
+ */
+export function encirclementsFor(
+  path: readonly CellId[],
+  cells: readonly CellId[],
+): number[] {
+  const projected = projectPath(path);
+  if (projected === null) return cells.map(() => 0);
+  const { mPerDegLng } = projected;
+  return cells.map((cell) =>
+    encirclementsAround(projected, cellX(cell, mPerDegLng), cellY(cell)));
+}
+
+/**
+ * Falcellák örökölt körüljárási száma: a legközelebbi olyan korongból, ami
+ * tartalmaz ismert, görbén kívüli cellát, a LEGNAGYOBB érték.
+ *
+ * ⚠️ EZ VOLT AZ ÉLŐ ELŐNÉZET LEGDRÁGÁBB MŰVELETE (mérve, GRUNDO #33). Az
+ * eredeti változat falcellánként `gridDisk(cell, 1..3)`-at hívott — három
+ * WASM-hívás, 7+19+37 új stringgel. Egy 12 km-es városi nyomvonalon 6 huroknál
+ * a `windingCounts` 14,1 ms-ából 9,1 ms ment el ITT, miközben maga a
+ * körüljárás-számítás 0,3 ms volt.
+ *
+ * A GYORSÍTÁS KÉT LÉPCSŐS, és mindkettő ugyanazt a halmazt nézi, mint eddig:
+ *
+ * 1. A korongot nem a h3 adja, hanem a MÁR MEMOIZÁLT `ringOf` kiterjesztése —
+ *    a k-sugarú korong definíció szerint a szomszédság ismételt kiterjesztése.
+ * 2. A tágabb korongokat nem cellánként járjuk be, hanem a SZOMSZÉDOK
+ *    egy-sugarú maximumaiból rakjuk össze, és minden részeredményt megjegyzünk.
+ *    A fal cellái egymás szomszédai, tehát ugyanazt a részeredményt tízszer is
+ *    kérnék — így egyszer számoljuk ki.
+ *
+ *    Miért ugyanaz: `disk₂(c) = ⋃ₙ∈disk₁(c) disk₁(n)`, tehát a `disk₂` fölötti
+ *    maximum megegyezik a szomszédok `disk₁`-maximumainak maximumával. Ugyanez
+ *    egy lépéssel feljebb a `disk₃`-ra.
+ *
+ * A korábbi gyűrűk nem járulhatnak hozzá az eredményhez: ha ott lett volna
+ * ismert cella, már ott megálltunk volna.
+ */
+export function createInheritedTurns(
+  onPath: ReadonlySet<CellId>,
+  counts: ReadonlyMap<CellId, number>,
+): (cell: CellId) => number {
+  /** Cellánként a saját egy-, illetve kétsugarú korongjának maximuma. -1 = nincs ismert cella. */
+  const disk1 = new Map<CellId, number>();
+  const disk2 = new Map<CellId, number>();
+
+  function maxInDisk1(cell: CellId): number {
+    const cached = disk1.get(cell);
+    if (cached !== undefined) return cached;
+
+    let best = -1;
+    for (const near of ringOf(cell)) {
+      if (near === cell || onPath.has(near)) continue;
+      const known = counts.get(near);
+      if (known !== undefined && known > best) best = known;
+    }
+    disk1.set(cell, best);
+    return best;
+  }
+
+  function maxInDisk2(cell: CellId): number {
+    const cached = disk2.get(cell);
+    if (cached !== undefined) return cached;
+
+    let best = -1;
+    for (const near of ringOf(cell)) {
+      const value = maxInDisk1(near);
+      if (value > best) best = value;
+    }
+    disk2.set(cell, best);
+    return best;
+  }
+
+  return (cell: CellId): number => {
+    let best = maxInDisk1(cell);
+    if (best >= 0 || MAX_INHERIT_RINGS < 2) return Math.max(best, 0);
+
+    best = maxInDisk2(cell);
+    if (best >= 0 || MAX_INHERIT_RINGS < 3) return Math.max(best, 0);
+
+    for (const near of ringOf(cell)) {
+      const value = maxInDisk2(near);
+      if (value > best) best = value;
+    }
+    return Math.max(best, 0);
+  };
 }

@@ -32,7 +32,7 @@ import {
   type CompactClaimPreview,
 } from './compactClaim';
 import { cleanupStolenFrontierOrphans } from './frontierCleanup';
-import { windingCounts } from './winding';
+import { windingBreakdown, type WindingRegion } from './winding';
 import { mergeClaims, resolveClaim } from './claim';
 import { computeActivityGp } from './scoring';
 import { DEFAULT_GAMEPLAY, type GameplayConfig } from '@/config/gameplay';
@@ -113,6 +113,14 @@ export interface LoopClaimResolution {
   perLoop: ClaimResult[];
   /** A hurkok után kialakult átmeneti ownership. */
   running: OwnershipMap;
+  /**
+   * A körüljárás régiói — melyik cellán mérve, mennyi jött ki.
+   *
+   * Az élő előnézet inkrementális útja (`incrementalClaims.ts`) ebből dönti
+   * el, hogy a hosszabb nyomvonalon változott-e egyáltalán a körüljárás. Az
+   * elszámolás maga nem használja.
+   */
+  windingRegions: WindingRegion[];
 }
 
 /**
@@ -176,7 +184,7 @@ export function resolveLoopClaims(
     }
   }
 
-  const winding = windingCounts(path, claimedCells);
+  const { counts: winding, regions: windingRegions } = windingBreakdown(path, claimedCells);
   // Egy 5-ös védelmű rivális cellához négy áttörés, egy elvétel és négy saját
   // megerősítés kell — ennél többre semmilyen futás nem tud hivatkozni.
   const maxPasses = cfg.MAX_DEFENSE * 2;
@@ -216,7 +224,7 @@ export function resolveLoopClaims(
 
   const perLoop = schedule.map((planned) => applyPasses(planned, running, actorId, cfg));
 
-  return { running, claimedCells, perLoop };
+  return { running, claimedCells, perLoop, windingRegions };
 }
 
 function addPass(target: Map<CellId, number>, cell: CellId, by = 1): void {
@@ -352,9 +360,21 @@ export class IncrementalActivityGeometry {
  * Ez teszi lehetővé, hogy az élő preview ne számolja újra a teljes hurokgeometriát
  * csak azért, mert érkezett egy új GPS fix vagy frissült a nearby ownership.
  */
+/**
+ * A feldolgozás melléktermékei — kizárólag az élő előnézet gyorsítótárának.
+ *
+ * NEM az eredmény része: a `ProcessResult` alakja a szerver felé is megy,
+ * és nem akartuk egy előnézeti részlettel bővíteni. A hívó ad egy üres
+ * objektumot, a motor kitölti; aki nem kéri, annak semmi nem változik.
+ */
+export interface ProcessTrace {
+  windingRegions?: WindingRegion[];
+}
+
 export function processActivityGeometry(
   input: ProcessInput,
   geometry: ActivityGeometry,
+  trace?: ProcessTrace,
 ): ProcessResult {
   const cfg = input.cfg ?? DEFAULT_GAMEPLAY;
   const path = geometry.cellPath;
@@ -415,6 +435,7 @@ export function processActivityGeometry(
     cfg,
   );
   const { claimedCells, perLoop } = resolution;
+  if (trace) trace.windingRegions = resolution.windingRegions;
 
   const mergedClaim =
     perLoop.length > 0 ? mergeClaims(perLoop, input.ownership, input.actorId, cfg) : null;

@@ -21,7 +21,9 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { IncrementalCellPath, layerOf } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
-import { hasCompactInterior, IncrementalActivityGeometry, processActivityGeometry } from '@/game';
+import { hasCompactInterior, IncrementalActivityGeometry } from '@/game';
+import { IncrementalActivityClaims } from '@/game/incrementalClaims';
+import type { OwnershipMap } from '@/types';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import { isNativeApp, isNativeIos } from '@/lib/platform';
@@ -51,6 +53,13 @@ import './tracking.css';
 const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
 
 const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
+
+/**
+ * Nagy (compact belsejű) huroknál a motor csak ÜRES birtokviszonyt fogad el.
+ * Modulszintű állandó, mert az elszámolás-gyorsítótár a Map azonosságát nézi:
+ * egy hívásonként újragyártott üres Map minden alkalommal tévesztés lenne.
+ */
+const EMPTY_OWNERSHIP: OwnershipMap = new Map();
 
 /**
  * Egy előnézeti mező úgy, ahogy a `MapView` várja.
@@ -256,6 +265,33 @@ export function TrackingScreen() {
   const geometrySession = useRef('');
 
   /**
+   * Az ELSZÁMOLÁS gyorsítótára — a geometria mellé.
+   *
+   * A geometriai cache csak a hurkok megtalálását teszi inkrementálissá; a
+   * `processActivityGeometry` utána minden frissítésnél újrakönyvelte a
+   * TELJES hurokkészletet. Mérve (GRUNDO #33, 24 km, 9 hurok): 40 ms
+   * hívásonként, a főszálon. Két bezárás között viszont az eredmény nem
+   * változik — az `IncrementalActivityClaims` ezt ellenőrzi és újrahasználja.
+   */
+  const claimsCache = useRef(new IncrementalActivityClaims());
+
+  /**
+   * A KÖRNYÉK BIRTOKVISZONYA CELLÁNKÉNT — az élő előnézethez és a valós idejű
+   * lépéshanghoz.
+   *
+   * Ugyanaz a `/api/tiles` válasz, amiből a térkép is dolgozik; itt csak
+   * keresésre alkalmas alakban. Külön `useMemo`, hogy a másodperces
+   * stopper-render ne építse újra minden képkockán — és mert az elszámolás-
+   * gyorsítótár a Map AZONOSSÁGÁBÓL tudja, hogy változatlan-e a birtokviszony:
+   * egy hívásonként újragyártott Map minden előnézetet újraszámoltatna.
+   */
+  const nearbyOwnership = useMemo(() => {
+    const map: OwnershipMap = new Map();
+    for (const cell of nearby?.cells ?? []) map.set(cell.cell, { owner: cell.owner, defense: cell.defense });
+    return map;
+  }, [nearby]);
+
+  /**
    * Élő előnézet: mi lenne, ha MOST fejezném be?
    *
    * A motort a térkép legutóbbi birtok-pillanatképével futtatjuk. A végleges
@@ -275,6 +311,7 @@ export function TrackingScreen() {
     }
     if (geometrySession.current !== geometrySessionKey) {
       geometryCache.current.reset();
+      claimsCache.current.reset();
       geometrySession.current = geometrySessionKey;
     }
     const previewStartedAt = performance.now();
@@ -293,12 +330,8 @@ export function TrackingScreen() {
        * visszafoglalt cellák MEGKÜLÖNBÖZTETÉSE vész el élő nézetben.
        */
       const hasCompactLoop = geometry.loops.some(hasCompactInterior);
-      const ownership = hasCompactLoop
-        ? new Map<string, { owner: string; defense: number }>()
-        : new Map(
-            (nearby?.cells ?? []).map((cell) => [cell.cell, { owner: cell.owner, defense: cell.defense }]),
-          );
-      const result = measurePerf('preview.process', () => processActivityGeometry(
+      const ownership = hasCompactLoop ? EMPTY_OWNERSHIP : nearbyOwnership;
+      const result = measurePerf('preview.process', () => claimsCache.current.update(
         {
           points: displayPoints,
           type: displayType,
@@ -555,19 +588,6 @@ export function TrackingScreen() {
     running || remoteState?.status === 'recording',
   );
   const captureAccent = cellColorHexOrNull(myCellColor);
-
-  /**
-   * A KÖRNYÉK BIRTOKVISZONYA CELLÁNKÉNT — a valós idejű lépéshanghoz.
-   *
-   * Ugyanaz a `/api/tiles` válasz, amiből a térkép is dolgozik; itt csak
-   * keresésre alkalmas alakban. Külön `useMemo`, hogy a másodperces
-   * stopper-render ne építse újra minden képkockán.
-   */
-  const nearbyOwnership = useMemo(() => {
-    const map = new Map<string, { owner: string; defense: number }>();
-    for (const cell of nearby?.cells ?? []) map.set(cell.cell, { owner: cell.owner, defense: cell.defense });
-    return map;
-  }, [nearby]);
 
   /**
    * KOPPANÁS MINDEN ÚJ MEZŐN — Geri kérése (2026-09-01).
