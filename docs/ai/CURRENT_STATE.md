@@ -50,11 +50,14 @@ kör volt.
 - **TELEPÍTETLEN, frontend kell**: a most commitolt kör (perf-előzmény,
   banda-rollover gomb), ÉS a #34-ből örökölt `6d1030b` (claim-cache) is —
   egyik sem ment ki még. Backend/szabályok/indexek nem érintettek.
-- **`backfill:banda-stats --apply --allow-production`**: NEM futott — Geri
-  megkapta a pontos parancsot (ADC-váltás → száraz futás → éles futás → ADC
-  vissza), de a chat lezárásakor még nem jelezte, hogy lefutott volna.
-- **`gcloud scheduler jobs create ... grundo-banda-rollover`**: NEM futott,
-  ugyanígy Gerinél a pontos parancs.
+- **`backfill:banda-stats --apply --allow-production`**: Geri lefuttatta
+  (2026-09-04). Eredmény: 11 felhasználó, 0 hiányzó `bandaStats` — tehát
+  mindenkinél már megvolt (korábbi körben vagy `newUserDoc`-ból). Nincs
+  teendő vele.
+- **`gcloud scheduler jobs create ... grundo-banda-rollover`**: Geri
+  lefuttatta (2026-09-04), a job **ENABLED**, első futás
+  `2026-09-04T14:00:00Z`. A `bandas/*/totals` mostantól óránként frissül
+  magától — az admin „Banda-összesítés futtatása" gomb csak vésztartalék.
 
 ## Ellenőrzések
 
@@ -69,14 +72,17 @@ kör volt.
 
 1. **Frontend telepítés**, majd: (a) a #34 teleport-fix + claim-cache
    telefonos újramérése a LAB-útvonalon, (b) `/admin/teljesitmeny` és a
-   banda-rollover gomb kipróbálása élesben.
-2. **`backfill:banda-stats`** és a **Cloud Scheduler bejegyzés** — ha Geri
-   időközben lefuttatta, csak ellenőrizni kell (`bandas/*/totals` frissül-e).
-3. **Főszálas költség tovább csökkentése** (körüljárás + `resolveClaim`,
+   banda-rollover gomb kipróbálása élesben, (c) `2026-09-04T14:00:00Z` után
+   ellenőrizni, hogy a `grundo-banda-rollover` Scheduler-job tényleg lefutott
+   és a `bandas/*/totals` frissült (Cloud Logging vagy Firestore-nézet).
+2. **Főszálas költség tovább csökkentése** (körüljárás + `resolveClaim`,
    asztali legrosszabb eset 24,4 ms) — **Opus, High**, mért anomáliára épülő
    architektúra-döntés.
-4. **Körbe-körbe futásnál a cache sosem talál** — dokumentált korlát, nincs
+3. **Körbe-körbe futásnál a cache sosem talál** — dokumentált korlát, nincs
    olcsó javítás; ha mégis foglalkozunk vele, ez is **Opus, High**.
+
+A #31 óta nyitott 3 tétel (banda kép, backfill, Scheduler) mindegyike
+**lezárva** ebben a körben.
 
 ## Modelljavaslat
 
