@@ -80,6 +80,16 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   térképet; csak a DOM `originalEvent`-tel érkező valódi felhasználói gesztus
   teszi ezt. A következő GPS-frissítés középen tartja a pozíciót, de megőrzi a
   gombbal választott zoomot.
+- **A `traceToCellPath` SOSEM futhat a teljes nyomvonalon élő rögzítés közben.**
+  A GRUNDO #21 energiaelemzés ezt már egyszer kijavította a `TrackingScreen`
+  saját cellalánc-cache-ében (`IncrementalCellPath`), de a `game/index.ts`-beli
+  `IncrementalActivityGeometry` (GP/claim preview) egy szinttel feljebb
+  megismételte — mérve (#31→#32): 10 km-es városi Android-rögzítésnél a teljes
+  app lassulását okozta. Mindkét osztály mostantól ugyanazt az O(1),
+  pontreferencia-alapú folytatás-felismerést használja (lásd `grundo-lessons`
+  #9). **Ha új élő-preview kód `traceToCellPath`-ot vagy `buildActivityGeometry`-t
+  hívna GPS-mintánként, az hiba — a `IncrementalCellPath`/`IncrementalActivityGeometry`
+  meglévő cache-einek kell futnia helyette.**
 
 ## Munkamódszer
 

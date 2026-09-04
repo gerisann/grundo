@@ -23,7 +23,7 @@ export * from './claim';
 export * from './scoring';
 export * from './modifiers';
 
-import { traceToCellPath, layerOf, cellsToM2 } from './cells';
+import { traceToCellPath, layerOf, cellsToM2, IncrementalCellPath } from './cells';
 import { detectLoopsDetailed, IncrementalLoopDetector } from './loopDetection';
 import { loopCells } from './loops';
 import { hasCompactInterior } from './loopInterior';
@@ -281,28 +281,60 @@ export function buildActivityGeometry(points: readonly TracePoint[]): ActivityGe
  * kizárólag az új H3 cellákat dolgozza fel. Route reset, GPS-history csere vagy
  * bármilyen visszamenőleges eltérés esetén egyszer újraépít, majd onnantól megint
  * inkrementálisan halad.
+ *
+ * ⚠️ EZ A LEÍRÁS KORÁBBAN HAZUDOTT (mérve, GRUNDO #32, 10 km-es városi
+ * rögzítés Android-on érezhetően belassította a TELJES appot, nem csak a
+ * térképet). A `traceToCellPath(points)` a TELJES nyomvonalat újraszámolta
+ * minden hívásnál, az `isPrefix` pedig a teljes korábbi cellaláncot
+ * végigolvasta — pontosan az a hiba, amit a `cells.ts`-beli
+ * `IncrementalCellPath` a GRUNDO #21 energiaelemzés után megoldott, csak ez
+ * az osztály egy szinttel feljebb, a GP/claim preview-nál ismételte meg. A
+ * `res 12`-es rács és az 5 m-es mozgásküszöb mellett szinte minden elfogadott
+ * GPS-minta új cellába esik, tehát ez a szinkron, main threades újraszámítás
+ * gyakorlatilag minden mintánál lefutott — annál drágábban, minél hosszabb
+ * volt addig a nyomvonal.
+ *
+ * A javítás: a cellalánc-építést a MÁR MEGLÉVŐ `IncrementalCellPath`-ra
+ * bízzuk (ugyanaz az O(1) folytatás-felismerés, mint a `TrackingScreen`
+ * saját `cellPathCache`-ében), és a hurokdetektort saját, szintén O(1)
+ * pontreferencia-ellenőrzéssel — nem a teljes cellalánc `isPrefix`
+ * összehasonlításával — döntjük el, hogy folytatás vagy újraépítés történt.
  */
 export class IncrementalActivityGeometry {
   private detector = new IncrementalLoopDetector();
-  private path: CellId[] = [];
+  private cellPath = new IncrementalCellPath();
+  /** Az előző hívás pontlistája — CSAK a folytatás O(1) felismeréséhez kell. */
+  private seenPoints: readonly TracePoint[] = [];
+  private pathLength = 0;
 
   reset(): void {
     this.detector = new IncrementalLoopDetector();
-    this.path = [];
+    this.cellPath.reset();
+    this.seenPoints = [];
+    this.pathLength = 0;
   }
 
   update(points: readonly TracePoint[]): ActivityGeometry {
-    const traced = traceToCellPath(points);
-    const nextPath = traced.path;
+    // Ugyanaz a trükk, mint `IncrementalCellPath.update()`-ben: a gyakori
+    // (append) esetben a korábbi pontobjektumok REFERENCIÁJA nem változik,
+    // tehát elég az utolsó, korábban látott pontot összehasonlítani —
+    // nincs szükség a teljes cellalánc végigolvasására.
+    const previousCount = this.seenPoints.length;
+    const isExtension = points[previousCount - 1] === this.seenPoints[previousCount - 1];
+    const previousPathLength = this.pathLength;
 
-    if (!isPrefix(this.path, nextPath)) {
+    const traced = this.cellPath.update(points);
+    const nextPath = traced.path;
+    this.seenPoints = points;
+    this.pathLength = nextPath.length;
+
+    if (!isExtension) {
       this.detector = new IncrementalLoopDetector();
       this.detector.appendMany(nextPath);
-    } else if (nextPath.length > this.path.length) {
-      this.detector.appendMany(nextPath.slice(this.path.length));
+    } else if (nextPath.length > previousPathLength) {
+      this.detector.appendMany(nextPath.slice(previousPathLength));
     }
 
-    this.path = nextPath;
     const loopDetection = this.detector.snapshot();
     return {
       cellPath: nextPath,
@@ -440,10 +472,3 @@ export function previewArea(cellCount: number): number {
   return cellsToM2(cellCount);
 }
 
-function isPrefix(previous: readonly CellId[], next: readonly CellId[]): boolean {
-  if (previous.length > next.length) return false;
-  for (let i = 0; i < previous.length; i += 1) {
-    if (previous[i] !== next[i]) return false;
-  }
-  return true;
-}

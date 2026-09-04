@@ -75,3 +75,18 @@ megoldja, ne hozz be harmadik felet.**
 
 A friss `HEAD` helyett. A repóban más forrás is dolgozik — mindig a friss
 `HEAD`-ből indulj.
+
+## 9. Egy javított hibaminta más rétegben visszatérhet
+
+A GRUNDO #21 energiaelemzés megoldotta, hogy élő rögzítésnél a cellalánc-
+építés (`traceToCellPath`) minden GPS-mintánál a TELJES nyomvonalat
+újraszámolta (`IncrementalCellPath`, `src/game/cells.ts`). A `game/index.ts`-beli
+`IncrementalActivityGeometry` — egy réteggel feljebb, a GP/claim preview-nál —
+ugyanezt a hibát ismételte meg: a saját doksi-kommentje azt állította, „csak az
+ÚJ pontokat dolgozza fel", miközben a kódja minden hívásnál újraszámolt.
+2026-09-04-ig senki nem vetette össze a kommentet a tényleges implementációval
+— 10 km-es városi Android-rögzítésnél ez okozta a teljes app lassulását.
+**Ha egy ismert, drága primitívet (itt: `traceToCellPath`) egyszer kijavítasz,
+keress rá MINDEN hívási helyére** (`grep`), ne csak arra, ahol a tünetet
+észlelted — és ne higgy egy „inkrementális"-nak nevezett osztály kommentjének
+a kód elolvasása nélkül.
