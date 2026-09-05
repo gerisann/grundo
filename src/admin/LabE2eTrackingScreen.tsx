@@ -21,7 +21,12 @@ import {
   type LabSaveSimulation,
 } from './labE2eSandbox';
 import { activateLabTileBridge, releaseLabTileBridge } from './labE2eTileBridge';
-import { labPlaybackRate, loadLabE2eSession, type LabE2eSession } from './labE2eSession';
+import {
+  describePlaybackRate,
+  labPlaybackRateSchedule,
+  loadLabE2eSession,
+  type LabE2eSession,
+} from './labE2eSession';
 import './lab-e2e-tracking.css';
 
 export function LabE2eTrackingScreen() {
@@ -90,7 +95,7 @@ export function LabE2eTrackingRuntime({
   const source = useMemo(
     () => new SimulationPositionSource(
       generated.samples,
-      labPlaybackRate(session.playbackRate),
+      labPlaybackRateSchedule(session.playbackRate),
       () => setRouteComplete(true),
     ),
     [generated.samples, session.playbackRate],
@@ -157,7 +162,7 @@ export function LabE2eTrackingRuntime({
   const environment = useMemo(() => ({
     mode: 'lab' as const,
     label: 'LAB / SANDBOX',
-    detail: `${session.scenarioName} · ${session.phaseName} · ${session.playerName} · ${session.playbackRate.toUpperCase()}×`,
+    detail: `${session.scenarioName} · ${session.phaseName} · ${session.playerName} · ${describePlaybackRate(session.playbackRate)}`,
     initialPosition: session.route[0] ? { lat: session.route[0].lat, lng: session.route[0].lng } : null,
     sharedPositionEnabled: false,
     // A mentőlap is a sandboxba ír, különben a production végpont „Nincs
@@ -331,7 +336,7 @@ function LabE2eTrackingBody({ session, sandbox }: { session: LabE2eSession; sand
       >
         <strong style={{ fontSize: 10, letterSpacing: '.12em' }}>LAB / SANDBOX</strong>
         <span style={{ fontSize: 10, opacity: .78 }}>
-          {session.scenarioName} · {session.phaseName} · {session.playerName} · {session.playbackRate === 'max' ? 'MAX' : `${session.playbackRate}×`}
+          {session.scenarioName} · {session.phaseName} · {session.playerName} · {describePlaybackRate(session.playbackRate)}
         </span>
       </div>
 

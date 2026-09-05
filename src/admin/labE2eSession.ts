@@ -1,9 +1,22 @@
-import type { GpsSimulationConfig, SimulationWaypoint } from '@/tracking/simulationSource';
+import {
+  twoStagePlaybackRate,
+  type GpsSimulationConfig,
+  type PlaybackRateInput,
+  type SimulationWaypoint,
+} from '@/tracking/simulationSource';
 
 const STORAGE_PREFIX = 'grundo.lab.e2e.';
 const VERSION = 1;
 
+/**
+ * Vagy egy egyszerű szám ("100"), a "max", vagy egy RAMP: "gyors>lassú@arány"
+ * — pl. "1000>1@0.9" annyit jelent, hogy 1000× az útvonal 90%-áig, utána 1×.
+ * Session-ben (JSON-ban) ez is egyszerű string marad; a függvénnyé alakítás
+ * a `labPlaybackRateSchedule()`-ban történik, felhasználáskor.
+ */
 export type LabE2ePlaybackRate = string;
+
+const RAMP_PATTERN = /^(\d+(?:\.\d+)?)>(\d+(?:\.\d+)?)@(0(?:\.\d+)?|1(?:\.0+)?)$/;
 
 export interface LabE2ePlayerRef {
   id: string;
@@ -102,21 +115,48 @@ export function deleteLabE2eSession(id: string): void {
   }
 }
 
+/** Fix szorzóra fordítja — RAMP-nál a KEZDETI (gyors) szorzót adja vissza. */
 export function labPlaybackRate(rate: LabE2ePlaybackRate): number {
   if (rate === 'max') return 0;
+  const ramp = RAMP_PATTERN.exec(rate);
+  if (ramp) return Number(ramp[1]);
   const numeric = Number(rate);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
+/**
+ * A `SimulationPositionSource`-nak átadható tényleges bemenet — fix szám,
+ * vagy RAMP esetén a `twoStagePlaybackRate()` függvénye. Ezt hívja a
+ * lejátszó, `labPlaybackRate()`-et pedig csak a megjelenítés (pl. induló
+ * címke) használja, ahol egyetlen szám kell.
+ */
+export function labPlaybackRateSchedule(rate: LabE2ePlaybackRate): PlaybackRateInput {
+  const ramp = RAMP_PATTERN.exec(rate);
+  if (!ramp) return labPlaybackRate(rate);
+  const [, fast, slow, at] = ramp;
+  return twoStagePlaybackRate(Number(fast), Number(slow), Number(at));
+}
+
+/** Emberi olvasásra, pl. a LAB fejlécében: "1000>1@0.9" → "1000×→1× (90%-nál)". */
+export function describePlaybackRate(rate: LabE2ePlaybackRate): string {
+  if (rate === 'max') return 'MAX';
+  const ramp = RAMP_PATTERN.exec(rate);
+  if (!ramp) return `${rate}×`;
+  const [, fast, slow, at] = ramp;
+  return `${fast}×→${slow}× (${Math.round(Number(at) * 100)}%-nál)`;
 }
 
 function isValidPlaybackRate(rate: unknown): rate is LabE2ePlaybackRate {
   if (rate === 'max') return true;
   if (typeof rate !== 'string') return false;
+  if (RAMP_PATTERN.test(rate)) return true;
   const numeric = Number(rate);
   return Number.isFinite(numeric) && numeric > 0;
 }
 
 function normalizePlaybackRate(rate: LabE2ePlaybackRate): LabE2ePlaybackRate {
   if (rate === 'max') return rate;
+  if (RAMP_PATTERN.test(rate)) return rate;
   const numeric = Number(rate);
   return Number.isFinite(numeric) && numeric > 0 ? String(numeric) : '1';
 }

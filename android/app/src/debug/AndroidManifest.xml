@@ -5,7 +5,7 @@
 
   Ez a fájl adja hozzá a Firebase Test Lab Game Loop belépőjét. A
   `com.google.test.loops` a scenariók SZÁMA (1..1024); a Test Lab a
-  `scenario-numbers` kapcsolóval választ közülük. A hármas a
+  `scenario-numbers` kapcsolóval választ közülük. A négyes a
   `src/admin/gameLoopScenarios.ts` pályakönyvéhez igazodik — ha ott új pálya
   kerül a listába, ezt a számot is emelni kell, különben a Test Lab nem
   engedi elindítani.
@@ -19,7 +19,7 @@
 
         <meta-data
             android:name="com.google.test.loops"
-            android:value="3" />
+            android:value="4" />
 
         <activity
             android:name=".GameLoopActivity"

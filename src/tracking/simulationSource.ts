@@ -207,6 +207,37 @@ export function generateGpsActivity(
 }
 
 /**
+ * Vagy egy fix szorzó, vagy egy függvény, ami a lejátszás előrehaladását
+ * (0–1, a minták arányában) kapja, és az ANNÁL a pontnál érvényes szorzót
+ * adja vissza. Lásd `twoStagePlaybackRate()`.
+ */
+export type PlaybackRateInput = number | ((progressFraction: number) => number);
+
+/**
+ * Két ütemű lejátszási séma: gyors sebesség egy adott ponttal az útvonalon,
+ * onnan lassabbra vált.
+ *
+ * MIÉRT KELL: a nagy hurokszámú/cellaszámú szakaszokon a viselkedés VALÓS
+ * ütemben érdekes (2026-09-05, Geri kérése) — de az egész menetet 1×-ben
+ * végigvárni egy 25 km-es pályánál ~68 percbe kerülne. A ramp azt adja meg,
+ * ami mindkettőt kihozza: a térkép gyorsan „teleszóródik" hurkokkal/
+ * cellákkal, majd az utolsó szakaszon valós ütemben nézhető, hogyan
+ * viselkedik az app egy már megterhelt állapotban.
+ *
+ * @param fastRate a szorzó az útvonal elején (pl. 1000)
+ * @param slowRate a szorzó a váltás után (pl. 1, a valós ütemhez)
+ * @param switchAtFraction hol vált (0–1, a minták arányában — pl. 0.9 a
+ *   pálya utolsó 10%-át teszi valós ütemre)
+ */
+export function twoStagePlaybackRate(
+  fastRate: number,
+  slowRate: number,
+  switchAtFraction: number,
+): (progressFraction: number) => number {
+  return (progress) => (progress < switchAtFraction ? fastRate : slowRate);
+}
+
+/**
  * `PositionSource` implementáció a generált telemetryhez.
  *
  * A recorder szempontjából ez ugyanolyan forrás, mint a böngésző vagy a natív
@@ -231,9 +262,26 @@ export class SimulationPositionSource implements PositionSource {
 
   constructor(
     private readonly samples: readonly PositionSample[],
-    private readonly playbackRate = 1,
+    private readonly playbackRate: PlaybackRateInput = 1,
     private readonly onComplete?: () => void,
   ) {}
+
+  /**
+   * A HATÁLYOS sebesség a mintasor előrehaladásának függvényében.
+   *
+   * Fix szám esetén ez triviális; a `progressRateSchedule()`-lal gyártott
+   * függvény viszont a `this.index / samples.length` arányt kapja, hogy
+   * pl. „1000× az útvonal 90%-áig, utána 1×” séma is megvalósítható legyen
+   * — így nézhető meg, hogyan viselkedik az app VALÓS ütemben, de már egy
+   * teleszórt, sokhurkos térképen, anélkül hogy az egész menetet valós
+   * időben végig kellene várni.
+   */
+  private currentRate(): number {
+    if (typeof this.playbackRate === 'function') {
+      return this.playbackRate(this.samples.length === 0 ? 0 : this.index / this.samples.length);
+    }
+    return this.playbackRate;
+  }
 
   async start(
     handlers: PositionHandlers,
@@ -306,8 +354,9 @@ export class SimulationPositionSource implements PositionSource {
     if (this.stopped || this.paused) return;
     const handlers = this.handlers;
     if (!handlers) return;
+    const rate = this.currentRate();
 
-    if (!Number.isFinite(this.playbackRate) || this.playbackRate <= 0) {
+    if (!Number.isFinite(rate) || rate <= 0) {
       const end = Math.min(this.samples.length, this.index + MAX_PLAYBACK_CHUNK);
       while (this.index < end) {
         const sample = this.samples[this.index];
@@ -341,7 +390,7 @@ export class SimulationPositionSource implements PositionSource {
       return;
     }
 
-    this.schedule(Math.max(0, (next.t - sample.t) / this.playbackRate));
+    this.schedule(Math.max(0, (next.t - sample.t) / rate));
   }
 
   private schedule(delay: number): void {

@@ -79,6 +79,19 @@ export const GAME_LOOP_SCENARIOS: readonly GameLoopScenario[] = [
       'Ugyanaz valós időben. ⚠️ ~68 perc, tehát a napi ingyenes keretet '
       + 'TÚLLÉPI — csak tudatosan, fizetős futásként indítandó.',
   },
+  {
+    number: 4,
+    key: 'scenario-25km-ramp-1000-to-1',
+    scenario: SCENARIO_25KM,
+    phaseId: 'phase-1',
+    playbackRate: '1000>1@0.9',
+    purpose:
+      '1000×-es lejátszás az útvonal 90%-áig, utána 1×-re lassul (~2,5 km, '
+      + '~6-7 perc valós idő) — Geri kérése (2026-09-05): a térkép gyorsan '
+      + 'teleszóródik hurkokkal/cellákkal, majd VALÓS ütemben nézhető, '
+      + 'hogyan viselkedik az app egy már megterhelt állapotban, anélkül '
+      + 'hogy a teljes ~68 percet végig kellene várni.',
+  },
 ];
 
 export function findGameLoopScenario(scenarioNumber: number): GameLoopScenario | null {
