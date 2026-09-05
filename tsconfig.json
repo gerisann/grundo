@@ -17,9 +17,10 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@bench/*": ["bench/*"]
     }
   },
-  "include": ["src", "scripts", "vite.config.ts"],
+  "include": ["src", "scripts", "vite.config.ts", "bench"],
   "exclude": ["node_modules", "dist", "server", "_archive", "tmp", "vendor"]
 }

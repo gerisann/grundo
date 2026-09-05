@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "dev:emulator": "vite --mode emulator",
+    "dev:gameloop": "node scripts/build-gameloop.mjs dev",
     "build": "tsc --noEmit && vite build",
+    "build:gameloop": "tsc --noEmit && node scripts/build-gameloop.mjs build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

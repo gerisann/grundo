@@ -333,6 +333,15 @@
   */
   --mission-veil: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
   --mission-veil-deep: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
+  /*
+    A HÁTTÉRKÉP ÉS A SÖTÉTÍTÉS KÜLÖN VÁLTOZÓBAN — hogy a világos téma CSAK
+    ezt a kettőt cserélje. A fedő gradiens ugyanabban a `background-image`
+    shorthandben él, tehát a kép felülírásához az egész réteglistát meg
+    kellene ismételni; egy ilyen másolat viszont némán szétcsúszna az
+    eredetitől, amint a fedést legközelebb hangoljuk.
+  */
+  --mission-image: url('/mission-bg.webp');
+  --mission-dim: rgba(0, 0, 0, 0.5);
   background-image:
     linear-gradient(
       to bottom,
@@ -344,13 +353,26 @@
       var(--mission-veil) 76%,
       var(--mission-veil-deep) 100%
     ),
-    linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
-    url('/mission-bg.webp');
+    linear-gradient(var(--mission-dim), var(--mission-dim)),
+    var(--mission-image);
   background-size: cover;
   background-position: center top;
   background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
   color: inherit;
   font: inherit;
+}
+
+/*
+  VILÁGOS TÉMA: saját kép (Geri kérése, 2026-09-05).
+
+  ⚠️ A SÖTÉTÍTÉS IS FELJEBB MEGY. Az 50%-os fekete réteg a sötét témás
+  látképhez volt hangolva; világos témán a fedő gradiens maga is világos,
+  tehát alatta az 50% feketétől a kép sárosan szürke lenne. 28% annyit tart
+  meg belőle, amennyi a címke és a szöveg olvashatóságához kell.
+*/
+[data-theme='light'] .home__mission {
+  --mission-image: url('/mission-bg-light.webp');
+  --mission-dim: rgba(0, 0, 0, 0.28);
 }
 
 /* A nyíl a jobb alsó sarokban, a bezáró gomb a jobb felsőben.
@@ -416,12 +438,17 @@
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  /* ⚠️ Kért, rögzített márkaszín — szándékosan nem tokenből jön, és mindkét
-     témában ugyanez a korall. A sötét fátyol fölött mindkettőn olvasható. */
+  /* ⚠️ Kért, rögzített márkaszín — szándékosan nem tokenből jön. Sötét témán
+     korall, világoson lila (Geri, 2026-09-05); lásd a lenti felülírást. */
   color: #fc5f72;
   /* A címke a kép és a fedés határán ül — árnyék nélkül a városi fények
      fölött elveszik. */
   text-shadow: 0 1px 3px color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+}
+
+/* Világos témán lila a címke — a világos képhez a korall túl harsány. */
+[data-theme='light'] .home__mission-label {
+  color: #8e5cf2;
 }
 
 .home__mission-text {

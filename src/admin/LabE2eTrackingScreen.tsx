@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import type { ActivityType } from '@/types';
+import type { ActivitySummary } from '@/lib/api';
 import { Button } from '@/components/ui';
 import { Dock } from '@/components/Dock';
 import { RecorderProvider, useRecorderContext } from '@/hooks/RecorderProvider';
@@ -45,21 +47,52 @@ export function LabE2eTrackingScreen() {
   );
 }
 
-function LabE2eTrackingRuntime({
+/**
+ * AZ AUTOPILÓTA — a Game Loop futtató kapaszkodója.
+ *
+ * A LAB E2E-t rendes esetben ember indítja a Dockról és ember menti el. A
+ * Firebase Test Lab készülékén viszont NINCS ember: a futásnak magától kell
+ * elindulnia, végigmennie és lezárulnia. Ez a szerződés írja le, mit vár a
+ * hívó — a mérendő lánc maga változatlan.
+ *
+ * ⚠️ Az `onFinished` AKKOR IS lefut, ha a mentés hibára fut. Enélkül egy
+ * elszállt mentés úgy fagyasztaná be a futást, hogy a Test Lab időtúllépéssel,
+ * mérés nélkül zárna — pedig a hiba pont az az információ, amiért mérünk.
+ */
+export interface LabAutopilot {
+  onFinished: (outcome: { summary: ActivitySummary | null; error: string | null }) => void;
+}
+
+export function LabE2eTrackingRuntime({
   session,
   profileUid,
   myColor,
+  autopilot,
 }: {
   session: LabE2eSession;
   profileUid: string;
   myColor: string;
+  autopilot?: LabAutopilot;
 }) {
   const generated = useMemo(
     () => generateGpsActivity(session.route, { ...session.config, startAt: Date.now() }),
     [session],
   );
+  /**
+   * A NYOMVONAL VÉGE — csak az autopilótának számít.
+   *
+   * A `SimulationPositionSource` harmadik paramétere pontosan erre való, és
+   * eddig senki nem használta: kézi futásnál a felhasználó látja, hogy megállt
+   * a pötty. A gépi futásnak viszont ez az EGYETLEN jelzése arról, hogy a menet
+   * lejátszódott és jöhet a lezárás.
+   */
+  const [routeComplete, setRouteComplete] = useState(false);
   const source = useMemo(
-    () => new SimulationPositionSource(generated.samples, labPlaybackRate(session.playbackRate)),
+    () => new SimulationPositionSource(
+      generated.samples,
+      labPlaybackRate(session.playbackRate),
+      () => setRouteComplete(true),
+    ),
     [generated.samples, session.playbackRate],
   );
   const store = useMemo(() => memoryStore(), []);
@@ -149,9 +182,83 @@ function LabE2eTrackingRuntime({
         cloudSync={false}
       >
         <LabE2eTrackingBody session={session} sandbox={sandbox} />
+        {autopilot ? (
+          <LabAutopilotDriver
+            activityType={session.config.activityType}
+            routeComplete={routeComplete}
+            onFinished={autopilot.onFinished}
+          />
+        ) : null}
       </RecorderProvider>
     </TrackingEnvironmentProvider>
   );
+}
+
+/**
+ * AZ AUTOPILÓTA VEZÉRLŐJE — nem rajzol semmit, csak nyomja a gombokat.
+ *
+ * MIÉRT KÜLÖN KOMPONENS, ÉS MIÉRT A `RecorderProvider` ALATT: a rögzítőhöz
+ * csak innen lehet hozzáférni, és így a kézi LAB-futás kódja egyetlen sorral
+ * sem változik — a vezérlő egyszerűen nincs ott.
+ *
+ * A menet három lépés, mindegyik pontosan egyszer:
+ *   1. indítás, amint a rögzítő üresjáratban van;
+ *   2. lezárás, amint a szimulált nyomvonal elfogyott;
+ *   3. mentés, majd a kimenetel leadása — sikeré és hibáé egyaránt.
+ *
+ * ⚠️ MINDEN LÉPÉS ŐRIZVE VAN egy `ref`-fel. A rögzítő állapota másodpercenként
+ * sokszor változik; őr nélkül a `begin()` és az `uploadActivity()` minden
+ * rendernél újraindulna.
+ */
+function LabAutopilotDriver({
+  activityType,
+  routeComplete,
+  onFinished,
+}: {
+  activityType: ActivityType;
+  routeComplete: boolean;
+  onFinished: LabAutopilot['onFinished'];
+}) {
+  const recorder = useRecorderContext();
+  const started = useRef(false);
+  const finished = useRef(false);
+  const uploaded = useRef(false);
+  const reported = useRef(false);
+
+  const { status } = recorder.state;
+  const { begin, finish, uploadActivity, upload } = recorder;
+
+  useEffect(() => {
+    if (started.current || status !== 'idle') return;
+    started.current = true;
+    void begin(activityType);
+  }, [activityType, begin, status]);
+
+  useEffect(() => {
+    if (!routeComplete || finished.current) return;
+    if (status !== 'recording' && status !== 'paused') return;
+    finished.current = true;
+    void finish();
+  }, [finish, routeComplete, status]);
+
+  useEffect(() => {
+    if (uploaded.current || status !== 'finished') return;
+    uploaded.current = true;
+    void uploadActivity();
+  }, [status, uploadActivity]);
+
+  useEffect(() => {
+    if (reported.current) return;
+    if (upload.status === 'done') {
+      reported.current = true;
+      onFinished({ summary: upload.summary, error: null });
+    } else if (upload.status === 'error') {
+      reported.current = true;
+      onFinished({ summary: null, error: upload.message });
+    }
+  }, [onFinished, upload]);
+
+  return null;
 }
 
 function LabE2eTrackingBody({ session, sandbox }: { session: LabE2eSession; sandbox: LabE2eSandbox }) {

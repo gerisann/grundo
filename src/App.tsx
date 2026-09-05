@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './hooks/ThemeProvider';
+import { GAME_LOOP_BUILD } from './lib/gameLoopBuild';
 import { AuthProvider, useAuth } from './hooks/AuthProvider';
 import { ProfileProvider, useProfile } from './hooks/ProfileProvider';
 import { RecorderProvider, useRecorderUploadStatus } from './hooks/RecorderProvider';
@@ -67,6 +68,21 @@ const CompleteProfileScreen = lazy(() => import('./screens/auth/CompleteProfileS
  * belépő csomag azonnal megnő, és a döntés indoka elvész.
  */
 const AdminArea = lazy(() => import('./admin'));
+
+/**
+ * A Game Loop futtató — lustán, ÉS a kapcsoló mögé zárva.
+ *
+ * ⚠️ A FELTÉTELNEK ITT KELL LENNIE, NEM CSAK A HASZNÁLATNÁL. Először a `lazy`
+ * hívás feltétel nélkül állt, a `GAME_LOOP_BUILD` csak az útvonalat őrizte —
+ * és MÉRVE (2026-09-05) a kiadási `npm run build` így is legyártotta a
+ * `LabGameLoopScreen` chunkot, benne a 29 kB-os mérőpályával. Az útvonal
+ * elérhetetlen volt, de a kód kiment. A `define` a `GAME_LOOP_BUILD`-et
+ * literál `false`-ra cseréli, így viszont a dinamikus import az ággal együtt
+ * kiesik, és a chunk meg sem születik.
+ */
+const LabGameLoopScreen = GAME_LOOP_BUILD
+  ? lazy(() => import('@/admin/LabGameLoopScreen').then((m) => ({ default: m.LabGameLoopScreen })))
+  : null;
 
 export function App() {
   return (
@@ -145,6 +161,25 @@ function Router() {
    */
   const savePanelOpen = useRecorderUploadStatus() === 'done';
   const { pathname } = useLocation();
+
+  /**
+   * A GAME LOOP FUTTATÓ — MINDEN KAPU ELŐTT.
+   *
+   * ⚠️ MÉG A `status === 'loading'` ÁG ELŐTT IS. A Firebase Test Lab
+   * készülékén nincs bejelentkezett felhasználó, és hálózat híján a
+   * hitelesítés `loading`-ban is ragadhat — akkor a mérőfutás egy Splash
+   * képernyőt bámulna végig, majd időtúllépéssel zárna, mérés nélkül.
+   *
+   * A belépő csak a `GRUNDO_GAMELOOP=1`-gyel készült buildben létezik
+   * (`vite.config.ts`), éles csomagból kiesik.
+   */
+  if (LabGameLoopScreen && pathname === '/gameloop') {
+    return (
+      <Suspense fallback={<Splash />}>
+        <LabGameLoopScreen />
+      </Suspense>
+    );
+  }
 
   if (status === 'loading') return <Splash />;
 

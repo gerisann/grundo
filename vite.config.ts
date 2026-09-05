@@ -29,6 +29,28 @@ const releaseChannel = process.env.VITE_BUILD_CHANNEL ?? 'web';
  */
 const nativeBuild = releaseChannel !== 'web';
 
+/**
+ * BENNE VAN-E EBBEN A BUILDBEN A GAME LOOP BELÉPŐ?
+ *
+ * A Firebase Test Lab Game Loop tesztje bejelentkezés NÉLKÜL indítja az
+ * appot, ezért a futtató útvonala a hitelesítési kapu ELŐTT van bekötve
+ * (`App.tsx`). Ilyen belépőt nem hagyunk éles buildben.
+ *
+ * ⚠️ NEM az `import.meta.env.DEV` dönt: a natív APK-ba MINDIG a production
+ * webes build kerül, tehát a `DEV` a debug APK-ban is hamis lenne, és a
+ * belépő sosem létezne ott, ahol pont kell.
+ *
+ * A `GRUNDO_GAMELOOP=1`-gyel készült webes csomag megy a **debug** APK-ba;
+ * a kiadási build ezt sosem állítja be, ott a `define` hamisra fordul, és a
+ * futtató kódja kiesik a csomagból.
+ *
+ * A mérőfutás egyébként sem tud csalni: a LAB sandbox kizárólag a böngésző
+ * memóriájába commitol, production aktivitás-végpontot nem hív
+ * (`labE2eSandbox.ts`). Ez a kapcsoló tehát a felület elrejtéséről szól,
+ * nem a játék védelméről.
+ */
+const gameLoopBuild = process.env.GRUNDO_GAMELOOP === '1';
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -45,10 +67,37 @@ export default defineConfig({
     __GRUNDO_VERSION__: JSON.stringify(releaseVersion),
     __GRUNDO_REVISION__: JSON.stringify(revision),
     __GRUNDO_CHANNEL__: JSON.stringify(releaseChannel),
+    __GRUNDO_GAMELOOP__: JSON.stringify(gameLoopBuild),
   },
   resolve: {
     alias: {
+      /**
+       * A GAME LOOP FUTTATÓ KIEJTÉSE A KIADÁSI CSOMAGBÓL.
+       *
+       * ⚠️ MÉRVE, NEM FELTÉTELEZVE (2026-09-05): a `__GRUNDO_GAMELOOP__`
+       * kapcsoló önmagában NEM elég. Se a használat helyén lévő hamis
+       * feltétel, se a hamis ágba tett `lazy(() => import(...))` nem ejtette
+       * ki a chunkot — a rolldown a dinamikus importot mindkét esetben
+       * legyártotta, benne a 29 kB-os mérőpályával.
+       *
+       * Az alias viszont a MODULFELOLDÁSNÁL cserél, tehát a valódi modul be
+       * sem kerül a gráfba. A helyettesítő egy `null`-t adó komponens.
+       */
+      ...(gameLoopBuild ? {} : {
+        '@/admin/LabGameLoopScreen': fileURLToPath(
+          new URL('./src/admin/LabGameLoopScreen.disabled.tsx', import.meta.url),
+        ),
+      }),
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      /**
+       * A MÉRÉSI PÁLYAKORPUSZ — szándékosan a `src`-n KÍVÜL.
+       *
+       * Ugyanazt a nyomvonalat két fogyasztó használja: a Game Loop futtató a
+       * böngészőben, és (később) a Node-os mérőpad. Ha a korpusz a `src` alatt
+       * lakna, a Node-os mérés az alkalmazás forrásából olvasna — fordítva
+       * kötné össze a kettőt, mint kellene.
+       */
+      '@bench': fileURLToPath(new URL('./bench', import.meta.url)),
     },
   },
   /**
