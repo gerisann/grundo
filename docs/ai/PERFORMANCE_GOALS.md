@@ -12,7 +12,7 @@ felel, kérdezd meg, mielőtt belevágsz.
 
 | # | Cél | Mit jelent | Státusz (2026-09-05) |
 |---|---|---|---|
-| 1 | **Gyors indulás rögzítéskor** | a Tracking-képernyő megnyitása és az első GPS-fix közti idő rövid | instrumentálva (`tracking.timeToFirstFix`, [useRecorder.ts](../../src/hooks/useRecorder.ts)), valódi készülékes mérésre vár |
+| 1 | **Gyors indulás rögzítéskor** | a Tracking-képernyő megnyitása és az első GPS-fix közti idő rövid | **mérve, 1 minta** — **3305 ms** (Samsung SM-G780F, 2026-09-05, `tracking.timeToFirstFix`) |
 | 2 | **Hosszú rögzítés stabilitása** | sok km / hosszú idő alatt se lassuljon, ne akadjon | részben mérve — ×5,6 per-hívás növekedés 8,6 km alatt ([archive](archive/2026-09-04-terepi-fosszal-meres.md)) |
 | 3 | **Magas hurokszám stabilitása** | sok hurok/cella esetén se lassuljon, ne akadjon | mérve — Game Loop scenario 2: 17 hurok, 14 799 cella, `preview.total` max 175,8 ms ([CURRENT_STATE](CURRENT_STATE.md)) |
 | 4 | **Sima mérés** | a GPS-mintavétel/feldolgozás ne akadozzon a UI-tól függetlenül | nincs önállóan mérve — a 2–3. pont mérése ezt is érinti, de nincs elkülönítve |
@@ -26,8 +26,11 @@ vissza, a `src/game/` motor és a köré épülő adatfeldolgozás terhelésére
 
 ## Amit még nem tudunk
 
-- Az 1., 4., 6. és 7. pontra **nincs mérési adat** — ezekhez saját mérési
-  helyzet kell (némelyik natív Android-szintű teszt, nem csak JS-motor mérés).
+- Az 1. pont **egyetlen mintából** áll (3305 ms) — nincs viszonyítási alap
+  (hideg vs. meleg GPS, kültér vs. beltér, ismételt indítás). Nem tudjuk, ez
+  jó vagy rossz szám, amíg nincs mellé legalább 5–10 ismételt mérés.
+- A 4., 6. és 7. pontra **nincs mérési adat** — ezekhez saját mérési helyzet
+  kell (némelyik natív Android-szintű teszt, nem csak JS-motor mérés).
 - A mentési út (kliens feltöltés + szerveroldali `activityCommit`) **teljesen
   méretlen** — ez a 2. és 4. pontot is érinti.
 - A Mapbox-rétegrajzolás költsége **nincs elkülönítve** a preview-számítástól
