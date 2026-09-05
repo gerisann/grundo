@@ -3,7 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Button, ScreenHeader, SegmentedControl } from '@/components/ui';
 import type { LabPhase, LabPlayer } from './labScenarioEngine';
 import { createLabE2eSession, type LabE2ePlaybackRate } from './labE2eSession';
-import { PERF_SCENARIO_ID, PERF_TEST_SCENARIO } from './labPerfScenario';
+import { PERF_SCENARIO_ID, PERF_TEST_SCENARIO, type BuiltInLabScenario } from './labPerfScenario';
+import scenario25kmJson from '@bench/tracks/scenario-25km.json';
+
+/**
+ * Ugyanaz a 25 km-es pálya, amit a Game Loop scenario 2/3 is használ
+ * (`gameLoopScenarios.ts`) — itt az ÉLES UI-ban, kézi térképvezérléssel
+ * (hexagon réteg, 2D/3D, követés, zoom) tesztelhető, nem csak automatán.
+ */
+const SCENARIO_25KM = scenario25kmJson as unknown as BuiltInLabScenario;
 
 const SCENARIO_STORAGE_KEY = 'grundo.lab.scenarios.v2';
 
@@ -23,7 +31,7 @@ export function LabE2eLauncherScreen() {
    * A mentett scenariók `localStorage`-ban élnek, tehát telefonon üres a
    * lista — a teljesítménymérést viszont pont ott kell tudni elindítani.
    */
-  const scenarios = useMemo(() => [PERF_TEST_SCENARIO, ...loadScenarios()], []);
+  const scenarios = useMemo(() => [PERF_TEST_SCENARIO, SCENARIO_25KM, ...loadScenarios()], []);
   const [scenarioId, setScenarioId] = useState(scenarios[0]?.id ?? '');
   const scenario = scenarios.find((item) => item.id === scenarioId) ?? scenarios[0] ?? null;
   const [phaseId, setPhaseId] = useState(scenario?.phases[0]?.id ?? '');
