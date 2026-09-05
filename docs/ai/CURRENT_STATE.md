@@ -84,6 +84,25 @@ visszamenőleg is teljes.
   „Továbbiak betöltése" gomb 10 → 20 kártyát tölt; a 12:58:46 hosszú
   aktivitás címe „Szombati bringázás".
 
+## UI-kör (2026-09-05 délután)
+
+A #41 telepítése után egy felületi kör következett, **nincs telepítve**:
+
+- A Home „mai küldetésed" kártyája háttérképet kapott (fekete fátyol +
+  márkaszínű átmenet), sarokba illesztett „Útvonalak" gombbal.
+- Új `OptionSwitch` (2–3 állású csúszkás választó) váltja a korábbi
+  szegmensvezérlőket a Home, Felfedezés, Bandák, Banda, Küldetések és a
+  rögzítés képernyőn; a rögzítésnél a mozgásforma-szín a csúszkára került.
+- A Profil és Közösség fülsávja pirula alapot kapott. ⚠️ Ott NINCS egyenlő
+  osztás: hat fül mobilon olvashatatlan lenne.
+- A Felfedezés bandás módja valódi tartalmat kapott, és üresre szűrt lap
+  esetén legfeljebb négy további lapot magától bekér.
+- Belépés előtti képernyők: valódi logó, új szövegek, forgó mozgásforma-szó.
+
+⚠️ **Amit teszt nem bizonyít, és élőben sem néztem meg**: az intro és a
+belépés képernyő bejelentkezve átirányít, ezért a logót és a forgó szót csak
+injektált próbaelemen mértem, a valódi képernyőn nem.
+
 ## Nyitott ügyek
 
 1. Android/iOS készülékes smoke teszt — a natív kliensek a régi frontendet
