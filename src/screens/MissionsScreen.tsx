@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, SegmentedControl } from '@/components/ui';
+import { Button, SegmentedControl, OptionSwitch } from '@/components/ui';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useProfile } from '@/hooks/ProfileProvider';
@@ -335,12 +335,11 @@ export function MissionsScreen() {
       <div className="screen-body stack">
         <section className="card mission__form">
           <div>
-          <SegmentedControl
+          <OptionSwitch
             options={[{ value: 'time', label: 'Idő' }, { value: 'distance', label: 'Távolság' }]}
             value={targetMode}
             onChange={setTargetMode}
             label="Tervezés alapja"
-            block
           />
 
           <div className="mission__question">
@@ -435,12 +434,11 @@ export function MissionsScreen() {
           )}
 
           <div className="mission__type">
-            <SegmentedControl
+            <OptionSwitch
               options={TYPE_OPTIONS}
               value={type}
               onChange={changeType}
               label="Mozgásforma"
-              block
             />
           </div>
 

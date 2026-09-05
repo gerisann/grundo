@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cellToChildren, latLngToCell } from 'h3-js';
-import { Button, SegmentedControl } from '@/components/ui';
+import { Button, OptionSwitch } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import type { MapViewProps } from '@/components/MapView';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
@@ -860,9 +860,8 @@ export function TrackingScreen() {
           >
             ✕
           </button>
-          <SegmentedControl
+          <OptionSwitch
             label="Mozgásforma"
-            block
             value={type}
             onChange={setPendingType}
             options={[

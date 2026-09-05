@@ -1,0 +1,82 @@
+/*
+ * Csúszkás választó (2–3 állás) — a Grund réteg-váltójának formája.
+ *
+ * A háttér TÖMÖR, nem áttetsző: ugyanaz a tanulság, mint a `layerSwitch`-nél
+ * — félig áttetsző háttéren az inaktív felirat olvashatatlanná válik a
+ * mögötte lévő tartalom fölött.
+ */
+.optsw {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--optsw-count, 2), 1fr);
+  align-items: center;
+  width: 100%;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/*
+ * A csúszka a feliratok alatt fut — így nem takarja őket.
+ *
+ * ⚠️ A SZÉLESSÉG ÉS AZ ELTOLÁS EGYMÁSHOZ VAN KÖTVE: a szélesség a belső
+ * (padding nélküli) sáv N-ed része, az eltolás pedig ugyanennyi × sorszám.
+ * A `translateX(100%)` önmagában csak kétállásnál stimmelne.
+ */
+.optsw__thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--optsw-count, 2));
+  border-radius: var(--r-pill);
+  /* A csúszka színe felülírható (`--optsw-thumb`) — a rögzítés képernyőn
+     mozgásformánként más. Alapból a márkaszín. */
+  background: var(--optsw-thumb, var(--accent));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--optsw-thumb, var(--accent)) 45%, transparent);
+  transform: translateX(calc(100% * var(--optsw-active, 0)));
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 0;
+}
+
+.optsw__option {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 10px 8px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  /* Az INAKTÍV felirat is olvasható marad: nem halványítjuk el, csak a
+     kiemelt kap kontrasztos színt. */
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 200ms ease;
+}
+
+/* Az aktív felirat a csúszka fölött — a `--accent-on` mindkét témában olvasható. */
+.optsw__option--on {
+  color: var(--accent-on);
+}
+
+/* Kiválasztás nélkül nincs mit kiemelni — a csúszka elbújik. */
+.optsw--unset .optsw__thumb {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optsw__thumb {
+    transition: none;
+  }
+}

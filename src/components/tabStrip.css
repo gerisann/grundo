@@ -1,15 +1,23 @@
-/* A fülsor KERETES, nem aláhúzott (Geri, 2026-08-26).
+/* A fülsor a CSÚSZKÁS VÁLASZTÓ formáját viseli (Geri, 2026-09-05): egyetlen
+   pirulán ülnek a fülek, az aktív tömör márkaszínt kap — ugyanaz a nyelv,
+   mint a Grund képernyő réteg-váltójánál és a többi választónál.
 
-   Az aktív fül teljes, lekerekített keretet kap az aláhúzás helyett, és a
-   sor alól eltűnt az 1 px-es elválasztó vonal: két vízszintes vonal egymás
-   alatt (a keret alja és az elválasztó) rácsot rajzolt volna a fejlécbe.
-   A keret MINDEN fülön ott van, csak átlátszóan — különben az aktív fül
-   szélesebb lenne a többinél, és a sor megugrana váltáskor. */
+   ⚠️ ITT NEM EGYENLŐ OSZTÁS VAN, mint az `OptionSwitch`-nél: a Profil hat
+   fület tartalmaz, azok egyenlő hatodokban mobilon olvashatatlanok lennének.
+   A fülek a saját szélességüket tartják, a sáv pedig vízszintesen görgethető
+   marad — a `ScrollableTabs` gondoskodik róla, hogy az aktív fül képernyőt
+   váltva is látszódjon. */
 
 .tab-strip {
   display: flex;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-4) var(--sp-2);
+  gap: 0;
+  /* A pirula oldalt a képernyő margójáig ér; a belső 4 px a kiemelés helye. */
+  margin: 0 var(--sp-4) var(--sp-2);
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
   overflow-x: auto;
   scrollbar-width: none;
   touch-action: pan-x;
@@ -24,18 +32,26 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  min-height: 38px;
+  min-height: 34px;
   padding: 0 var(--sp-3);
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--r-pill);
+  /* Az INAKTÍV felirat is olvasható marad — nem halványítjuk el. */
   color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 15px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: color 200ms ease, background-color 200ms ease;
 }
 
 .tab-strip__item--active {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-strip__item {
+    transition: none;
+  }
 }

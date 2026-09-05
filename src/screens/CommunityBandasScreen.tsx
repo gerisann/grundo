@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CommunityHeader } from '@/components/CommunityHeader';
 import { Avatar } from '@/components/ActivityCard';
 import { BandaRoleChip } from '@/components/BandaRoleChip';
-import { Button, EmptyState, List, ListRow, TextField, SegmentedControl } from '@/components/ui';
+import { Button, EmptyState, List, ListRow, TextField, SegmentedControl, OptionSwitch } from '@/components/ui';
 import {
   api,
   ApiError,
@@ -47,7 +47,7 @@ export function CommunityBandasScreen() {
 
 type BandaDiscoverTab = 'popular' | 'new';
 
-function DiscoverBandas() {
+export function DiscoverBandas() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<BandaDiscoverTab>('popular');
   const [results, setResults] = useState<Record<BandaDiscoverTab, Banda[] | null>>({
@@ -80,7 +80,7 @@ function DiscoverBandas() {
   const items = results[tab];
   return (
     <section className="stack">
-      <SegmentedControl
+      <OptionSwitch
         label="Bandák böngészése"
         options={[
           { value: 'popular', label: 'Népszerű Bandák' },
@@ -88,7 +88,6 @@ function DiscoverBandas() {
         ]}
         value={tab}
         onChange={setTab}
-        block
       />
       {items === null ? (
         <div className="card">Betöltés…</div>
@@ -393,7 +392,7 @@ function CreateBanda() {
   );
 }
 
-function SearchPublicBandas() {
+export function SearchPublicBandas() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Banda[] | null>(null);

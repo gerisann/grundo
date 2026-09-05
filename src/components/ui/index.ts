@@ -15,6 +15,7 @@ export {
 } from './SegmentedControl';
 export { Switch, type SwitchProps } from './Switch';
 export { LayerSwitch, type LayerSwitchProps } from './LayerSwitch';
+export { OptionSwitch, type OptionSwitchProps, type OptionSwitchItem } from './OptionSwitch';
 export { TextField, type TextFieldProps } from './TextField';
 export { Chip, type ChipProps, type ChipVariant } from './Chip';
 export { List, ListRow, type ListRowProps } from './ListRow';

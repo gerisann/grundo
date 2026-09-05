@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, SegmentedControl } from '@/components/ui';
+import { Button, EmptyState, OptionSwitch } from '@/components/ui';
 import { ActivityCard } from '@/components/ActivityCard';
 import { useActivities } from '@/hooks/useActivities';
 import type { FeedActivity, FeedResult, FeedScope } from '@/lib/api';
@@ -201,9 +201,8 @@ export function Feed() {
 
   return (
     <div className="feed">
-      <SegmentedControl
+      <OptionSwitch
         label="Feed nézet"
-        block
         value={tab}
         onChange={chooseTab}
         options={[

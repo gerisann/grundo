@@ -735,21 +735,19 @@
 /*
   MOZGÁSFORMÁNKÉNT EGYEDI SZÍN kiválasztva — Geri kérése (2026-08-27):
   Futás világoskék, Séta türkíz zöld, Bringa marad lila (az az alap
-  `--accent`, amit a `.seg__item[aria-checked='true']` már ad, nem kell
-  felülírni). A `data-value` a `SegmentedControl`-ból jön (az `option.value`
-  szerint), ide van szűkítve, hogy más képernyők szegmens-váltóit ne
-  érintse.
+  `--accent`). A vezérlő azóta csúszkás váltó (`OptionSwitch`), ezért nem a
+  kiválasztott gomb hátterét színezzük, hanem MAGÁT A CSÚSZKÁT — a szín így
+  átcsúszik a következő állásba, ahogy a kapcsoló mozog.
+
+  A horgony a váltó gyökerén lévő `data-value`, ide szűkítve, hogy más
+  képernyők váltóit ne érintse.
 */
-.track__type-picker [data-value='run'][aria-checked='true'] {
-  background: color-mix(in srgb, var(--info) 16%, transparent);
-  border-color: color-mix(in srgb, var(--info) 55%, transparent);
-  color: var(--info);
+.track__type-picker .optsw[data-value='run'] {
+  --optsw-thumb: var(--info);
 }
 
-.track__type-picker [data-value='walk'][aria-checked='true'] {
-  background: color-mix(in srgb, #14b8a6 16%, transparent);
-  border-color: color-mix(in srgb, #14b8a6 55%, transparent);
-  color: #14b8a6;
+.track__type-picker .optsw[data-value='walk'] {
+  --optsw-thumb: #14b8a6;
 }
 
 .track__hint {

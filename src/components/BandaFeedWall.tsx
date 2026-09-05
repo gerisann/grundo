@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBold, faComment, faImage, faItalic, faLink, faList, faListOl, faPen, faQuoteLeft, faReply, faTrash, faUnderline } from '@fortawesome/free-solid-svg-icons';
 import { Avatar } from '@/components/ActivityCard';
-import { Button, SegmentedControl } from '@/components/ui';
+import { Button, OptionSwitch } from '@/components/ui';
 import { useAuth } from '@/hooks/AuthProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { api, ApiError, type BandaComment, type BandaPost } from '@/lib/api';
@@ -24,7 +24,7 @@ export function BandaFeedWall({
   const [tab, setTab] = useState<'feed' | 'wall'>('feed');
   return (
     <section className="stack">
-      <SegmentedControl label="Hírfolyam vagy üzenőfal" options={[{ value: 'feed', label: 'Hírfolyam' }, { value: 'wall', label: 'Üzenőfal' }]} value={tab} onChange={setTab} block />
+      <OptionSwitch label="Hírfolyam vagy üzenőfal" options={[{ value: 'feed', label: 'Hírfolyam' }, { value: 'wall', label: 'Üzenőfal' }]} value={tab} onChange={setTab} />
       <BandaPostBoard key={tab} bandaId={bandaId} kind={tab} canPost={tab === 'wall' || canPostFeed} canModerate={canModerate} placeholder={tab === 'feed' ? 'Mi újság a bandában?' : 'Üzenet az üzenőfalra'} emptyText={tab === 'feed' ? 'Még nincs poszt a hírfolyamban.' : 'Még nincs üzenet az üzenőfalon.'} deniedText="Ebben a bandában a beállítás szerint most nem te posztolhatsz a hírfolyamba." />
     </section>
   );
