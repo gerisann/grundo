@@ -17,8 +17,8 @@ felel, kérdezd meg, mielőtt belevágsz.
 | 3 | **Magas hurokszám stabilitása** | sok hurok/cella esetén se lassuljon, ne akadjon | mérve — Game Loop scenario 2: 17 hurok, 14 799 cella, `preview.total` max 175,8 ms ([CURRENT_STATE](CURRENT_STATE.md)) |
 | 4 | **Sima mérés** | a GPS-mintavétel/feldolgozás ne akadozzon a UI-tól függetlenül | nincs önállóan mérve — a 2–3. pont mérése ezt is érinti, de nincs elkülönítve |
 | 5 | **Gyors, akadásmentes háttér→előtér váltás** | app-visszatéréskor ne legyen látható szünet/dermedés | mérve, ismert ok — **859 ms-os blokk** háttérből visszatéréskor, kötegelt GPS-feldolgozásból ([archive](archive/2026-09-04-terepi-fosszal-meres.md)) |
-| 6 | **Pontos adat lezárt telefon (screen-off) alatt** | kikapcsolt kijelzővel is pontosan rögzítsen | nincs mérve |
-| 7 | **Ébredéskor ne fagyjon le** | a lezárás alatt felgyűlt adat feldolgozása induláskor ne blokkoljon | nincs önállóan mérve — rokon az 5. ponttal (kötegelt feldolgozás), de más helyzet (app-indulás vs. háttér→előtér) |
+| 6 | **Pontos adat lezárt telefon (screen-off) alatt** | kikapcsolt kijelzővel is pontosan rögzítsen | **első valódi minta, könnyű terhelésnél** — Samsung SM-G780F, valódi lezárás (Doze), a natív `BackgroundLocationPlugin` már **8 másodperccel a zárolás után** mintát adott (`Notifying listeners for event location`), tehát a háttér-GPS zárolva is működik. **Hiányzik:** hosszú (10+ perces) zárolás, sok felgyűlt ponttal — ez csak állva, pár perces zárolással volt tesztelve (12 pont összesen) |
+| 7 | **Ébredéskor ne fagyjon le** | a lezárás alatt felgyűlt adat feldolgozása induláskor ne blokkoljon | **első valódi minta, könnyű terhelésnél** — ébredéskor a felület azonnal reszponzív volt (Szünet/Befejezés gombok éltek), a visszatérési feldolgozás **46,9 ms** volt. **Hiányzik:** a súlyos eset — sok (több száz) felgyűlt minta egyszerre történő feldolgozása ébredéskor, ami a valódi kockázat (lásd az 5. pont 859 ms-os blokkja) |
 
 Összefoglalva: **optimalizáció** — mind a hét pont ugyanarra a gyökérre megy
 vissza, a `src/game/` motor és a köré épülő adatfeldolgozás terhelésére és
@@ -30,8 +30,10 @@ vissza, a `src/game/` motor és a köré épülő adatfeldolgozás terhelésére
   ugyanazon a készüléken, ugyanott — a leggyorsabb futás majdnem fele a
   leglassúnak. Nincs viszonyítási alap (mi számít jónak egy Android GPS-nél),
   és nem tudjuk, a szórás forrása a hardver (meleg/hideg fix) vagy a kód.
-- A 4., 6. és 7. pontra **nincs mérési adat** — ezekhez saját mérési helyzet
-  kell (némelyik natív Android-szintű teszt, nem csak JS-motor mérés).
+- A 4. pontra **nincs mérési adat** — saját mérési helyzet kell hozzá.
+- A 6. és 7. pont csak **könnyű terheléssel** (12 pont, pár perces zárolás)
+  van tesztelve — a valódi kockázat (sok felgyűlt pont ébredéskor, mint az
+  5. pont 859 ms-os blokkja) még nincs reprodukálva zárolt képernyőn.
 - A mentési út (kliens feltöltés + szerveroldali `activityCommit`) **teljesen
   méretlen** — ez a 2. és 4. pontot is érinti.
 - A Mapbox-rétegrajzolás költsége **nincs elkülönítve** a preview-számítástól
