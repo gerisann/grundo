@@ -1,82 +1,98 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-05** · GRUNDO **#40**
+> Frissítve: **2026-09-05** · GRUNDO **#41**
 > Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: a négy kért módosítás kész; handoff, commit és push ebben a körben.
-> Utoljára dolgozott: **Codex (GPT-6, Erős)** · Átadva: **Codex**
+> Állapot: a #40 hibái javítva, **élesben fut és ellenőrizve**.
+> Utoljára dolgozott: **Claude Opus 5** · Átadva: **Claude**
 
 ## Jelenlegi cél
 
-Mentési idő szerinti aktivitás-feed, tízes lapozás, oldalváltást túlélő helyi
-cache és nyolc óránál hosszabb aktivitások napnév szerinti automatikus címe.
-A fejlesztés és az ellenőrzések elkészültek; **telepítés nem történt**.
+A #40 (aktivitás-feed lapozás és sorrend) hibáinak helyrehozása, majd
+telepítés. Kész és éles.
+
+## ⚠️ Ami ma élesben elromlott, és hogyan állt helyre
+
+A #40 backendje **07:53 UTC-kor telepítve lett a hozzá tartozó Firestore
+indexek nélkül** — az átadó azt írta, hogy nincs telepítve, a Cloud Run
+revíziólistája szerint volt. Ettől a `/api/activities` **minden felhasználónak
+500-at adott** (`9 FAILED_PRECONDITION: The query requires an index`), tehát
+az éles feed kb. 45 percig halott volt, webes és natív kliensen egyaránt.
+
+A hiba a kliens „Nem sikerült betölteni az aktivitásokat" üzeneteként
+jelentkezett — a valódi ok kizárólag a Cloud Run **stderr** naplójából derült
+ki, a kérésnaplóból nem.
+
+Helyreállítás sorrendben:
+
+1. Forgalom visszaterelése az előző revízióra
+   (`gcloud run services update-traffic … --to-revisions grundo-api-00143-sqm=100`)
+   — a feed percek alatt újra 200-at adott.
+2. `endedAt` indexek telepítése, majd **megvárva mind a három `READY`-t**.
+3. Backend, majd frontend telepítése.
+4. ⚠️ **A rollback után a forgalom a régi revízión RAGAD.** Az új build
+   magától nem kap forgalmat; `update-traffic --to-latest` kell hozzá.
+   Enélkül a telepítés némán hatástalan.
 
 ## Elkészült
 
-1. A feed `createdAt` (szerveroldali mentés) szerint rendez és szűr dátumra;
-   a kártya is ezt mutatja. A tényleges `startedAt`/`endedAt` megmarad a
-   részletek és a statisztika számára. A meglévő mentési utak már tárolják
-   a `createdAt` mezőt, nem kell felülírni a kezdési időt.
-2. Home (globális, helyi, követett), saját/nyilvános profil és Felfedezés:
-   kezdetben 10 aktivitás, „Továbbiak betöltése” gombbal újabb 10.
-   Időpont + dokumentumazonosító kurzor; azonos időpontok nem vesznek el.
-   A szerver legfeljebb 300 jelöltet vizsgál kérésenként; sok rejtett/távoli
-   sor után üres lap is lehet, de a folytatókurzor és a gomb megmarad.
-   A Banda már meglévő tízes bővítésének gombfelirata is egységes.
-3. TanStack Query memóriacache fiók és szűrők szerint, a betöltött lapokkal:
-   5 perc frissesség, 30 perc inaktív megőrzés. Sikeres API-módosítás
-   érvénytelenít, auth-állapotváltás ürít. Új appindításkor új lekérés;
-   aktivitásadatot nem mentünk localStorage-ba.
-4. A saját profil heti összesítője külön, útvonal/fotó nélküli végpontról
-   jön, így a lapozás nem csonkolja a heti statisztikát.
-5. Automatikus cím: **teljes időtartam > 8 óra** esetén a mentési nap neve,
-   például „Szombati bringázás”. Pontosan 8 óráig a kezdési napszak marad;
-   az egyedi cím elsőbbséget élvez. Kártya, részletező és értesítések követik.
-   A kliens helyi naptárat, a szerverértesítés Europe/Budapest időzónát használ.
+1. **A feed a BEFEJEZÉS ideje (`endedAt`) szerint rendez, szűr és lapoz.**
+   A #40 ehelyett a `createdAt`-ot, vagyis a szerveroldali mentés idejét
+   használta; offline vagy késve feltöltött körnél ez érdemben eltér. Érinti
+   a rendezést, a dátumszűrőt, a lapozókurzort, a kártya dátumát, az
+   aktivitás-részletezőt és az értesítések címét.
+2. **Nyolc óránál hosszabb aktivitás címe a befejezés napjának neve**
+   („Szombati bringázás"). A napnév fix magyar táblából jön; a #40 az `Intl`
+   hu-HU kimenetéhez ragasztott „i" végződést, ami ICU-verziófüggő.
+3. **A banda üzenőfala tízesével lapoz**, „Továbbiak betöltése" gombbal. A
+   #40 ezt kihagyta: a fal fix százas listát adott vissza, gomb nélkül.
+4. A „Továbbiak" gomb csak a következő lap töltésekor pörög
+   (`isFetchingNextPage`), nem minden háttérfrissítéskor.
+5. A három feedindex `endedAt DESC` alakra váltott.
+6. Visszakerültek a #40 által kitörölt magyar magyarázó kommentek.
+
+**Migráció nem kellett:** az `endedAt` mezőt a legelső mentési implementáció
+(2026-08-17) óta minden aktivitás-dokumentum tartalmazza, ezért a rendezés
+visszamenőleg is teljes.
 
 ## Módosított fájlok
 
-- Backend: `server/src/routes/activities.ts`, `feedScopes.emulator.test.ts`.
-- Indexek: `firestore.indexes.json` — három új `createdAt DESC` index;
-  a korábbi `startedAt` indexek megmaradnak.
-- Cache/API: `src/lib/queryClient.ts`, `activityQueries.ts`, `api.ts`,
-  `src/hooks/useActivities.ts`, `AuthProvider.tsx`, `src/main.tsx`.
-- UI: `Feed.tsx`, `ActivityCard.tsx`, `BandaFeedWall.tsx`, `ProfileScreen.tsx`,
-  `PublicProfileScreen.tsx`, `DiscoverScreen.tsx`, `ActivityScreen.tsx`.
-- Formázás/teszt: `src/lib/format.ts`, `format.test.ts`, `week.ts`,
-  `activityQueries.test.ts`.
-- Specifikáció: `docs/02-funkcionalis-spec.md`, `docs/05-adatmodell.md`,
+- Backend: `server/src/routes/activities.ts` (feed, cím, értesítés),
+  `server/src/routes/bandas.ts` (üzenőfal-lapozás).
+- Indexek: `firestore.indexes.json` — három index `createdAt` → `endedAt`.
+- Kliens: `src/lib/format.ts`, `src/lib/api.ts`, `src/hooks/useActivities.ts`,
+  `src/components/Feed.tsx`, `ActivityCard.tsx`, `BandaFeedWall.tsx`,
+  `src/screens/ActivityScreen.tsx`.
+- Tesztek: `format.test.ts`, `feedScopes.emulator.test.ts`,
+  `bandas.emulator.test.ts` (új üzenőfal-lapozás teszt).
+- Dokumentáció: `docs/02-funkcionalis-spec.md`, `docs/05-adatmodell.md`,
   `docs/ai/DECISIONS.md`, ez az átadó.
 
-## Élesben fut / telepítetlen
+## Élesben fut
 
-- Élesben továbbra is a #39; a #40 nincs telepítve.
-- Sorrend: **push → indexek → backend → frontend**.
-- Várd meg mindhárom új index elkészültét a backend telepítése előtt.
-- Adatbázis-migráció és **szabalyok** telepítése nem szükséges.
-- A backend kompatibilis a régi klienssel; az új frontendhez új backend kell
-  a kurzor és a heti összesítő miatt. Natív store-kiadás külön feladat.
+- Backend: `grundo-api-00145-d2x`, 100% forgalom.
+- Frontend: telepítve (`grundo.web.app`).
+- Indexek: mindhárom `endedAt` index `READY`.
+- Szabályok és adatbázis-migráció nem kellett.
 
 ## Ellenőrzések
 
-- Kliens teljes készlet: **803 zöld**, 180 emulátoros teszt kihagyva.
-- Szerver teljes készlet: **229 zöld**, 180 emulátoros teszt kihagyva.
-- Célzott új cím/cache tesztek: **11/11 zöld**.
-- Firestore-emulátor, feed: **13/13 zöld**. Az első futás a 10 másodperces
-  inicializálási határ miatt leállt; 60 másodperces hook-limittel zöld.
-- Kliens és szerver külön típusellenőrzése zöld; frontend production build
-  zöld (a meglévő nagy csomagokra továbbra is figyelmeztet).
-- Közös lista és gomb: 390 px-es helyi komponens-előnézet világos/sötét
-  témában; 10 → 20 kártya, végén a gomb eltűnik. Nem teljes, bejelentkezett
-  képernyőteszt; éles fiókon és Android/iOS készüléken nem ellenőrizve.
-- `git diff --check` tiszta. Tesztlogok és UI-próba a nem verziókövetett `tmp/` alatt.
+- Kliens teljes készlet: **803 zöld**, 181 kihagyva.
+- Feed emulátoros teszt: **13/13 zöld** az `endedAt` mezővel.
+- Banda emulátoros teszt: **28 zöld** (benne az új üzenőfal-lapozás).
+- Kliens és szerver típusellenőrzés külön-külön zöld.
+- **Bejelentkezett böngészős ellenőrzés élesen**: a feed 200-at ad; a
+  „Továbbiak betöltése" gomb 10 → 20 kártyát tölt; a 12:58:46 hosszú
+  aktivitás címe „Szombati bringázás".
 
 ## Nyitott ügyek
 
-1. A fenti sorrendben telepíteni, majd bejelentkezett fiókkal ellenőrizni:
-   hosszú aktivitás mentése, feed-sorrend, lapozás és visszalépési cache.
-2. Android/iOS készülékes smoke teszt és szükség esetén natív kiadás.
+1. Android/iOS készülékes smoke teszt — a natív kliensek a régi frontendet
+   futtatják, amíg nincs új store-kiadás. A backend visszafelé kompatibilis,
+   de a lapozás és a befejezés szerinti sorrend csak új klienssel látszik.
+2. A banda üzenőfal lapozása egy kérésben legfeljebb 100 nyers sort néz át;
+   nagyon sok rejtett üzenetnél ez később kurzoros lapozást igényelhet.
 
 ## Modelljavaslat
 
-**Codex Sol, Közepes** a telepítéshez és smoke teszthez.
+**Sonnet, közepes** a natív smoke teszthez; **Opus** csak akkor, ha megint
+éles hibakeresés jön.
