@@ -37,7 +37,12 @@ vissza, a `src/game/` motor és a köré épülő adatfeldolgozás terhelésére
 - A mentési út (kliens feltöltés + szerveroldali `activityCommit`) **teljesen
   méretlen** — ez a 2. és 4. pontot is érinti.
 - A Mapbox-rétegrajzolás költsége **nincs elkülönítve** a preview-számítástól
-  — ez a 3. és 5. pontot is érintheti.
+  — ez a 3. és 5. pontot is érintheti. **Egy konkrét esetét már megtaláltuk
+  és javítottuk** (2026-09-05): egy 148 717 cellás aktivitás mélyzoomos
+  megjelenítése főszál-blokkoláson át összeomlasztotta az appot — lásd
+  [DECISIONS.md](DECISIONS.md), „Térképi teljesítmény". Ez nem a rögzítés
+  közbeni preview-t érinti, hanem az aktivitás UTÓLAGOS megtekintését — külön
+  eset, de ugyanabba a „nagy cellaszám" témába tartozik.
 
 ## Kapcsolódó dokumentumok
 

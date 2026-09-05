@@ -118,6 +118,22 @@ kerül bele, ami hónapok múlva is korlátozza a megoldásteret. A napi állapo
   azonos a `tmp/measure-preview-cost.test.ts` mérőpadjával, ettől
   összehasonlítható az asztali és a telefonos szám.
 
+- **A nagy (10 000+ cellás) `layers` réteg viewport-szűrése MINDIG a durva
+  vödrözésen (`mapRender.ts`, `filterCellsToBounds`/`coarseBucketsOf`) menjen
+  át, sose a nyers `cells.filter(cellInBounds)`-on.** Gyökérok (2026-09-05,
+  jamal 148 717 cellás aktivitása): a hexagon-réteg (`AREA_SOURCE`/
+  `CELL_SOURCE`) minden jelentős zoom/pan után (`moveend`) a TELJES
+  cellalistán futtatta a pontos, natív H3 `cellToLatLng`-et — a
+  `CELL_CENTER_CACHE` 50 000-es korlátja emiatt ennél a méretnél folyamatosan
+  kiürült. Ez a szinkron főszál-blokkolás az aktivitás-térkép mélyzoomos
+  ÖSSZEOMLÁSÁT okozta (Android megölte és újraindította a WebView-t). A durva
+  vödrözés a `territoryBlobStore.ts` szintjeivel azonos elvet visz át
+  kliensoldalra: előbb egy sokkal ritkább (res8) rácson dől el, mely
+  vödrökbe érdemes belenézni. Készülékes teszttel megerősítve (Samsung
+  SM-G780F): ugyanaz a reprodukció (hexagon mód + mélyzoom + gyors pásztázás
+  jamal aktivitásán) többé nem omlik össze, a folyamat PID-je végig azonos
+  maradt.
+
 ## Munkamódszer
 
 - **Egy klón, egy mappa:** `C:\Users\Geri\Documents\GitHub\grundo`. 2026-08-29:
