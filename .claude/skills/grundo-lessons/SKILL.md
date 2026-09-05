@@ -152,3 +152,16 @@ a hibát, amit megfogni hivatott; ha nem bukik, a teszt nem azt méri, amit
 hiszel. (Ott a megoldás típusszintű lett: a mező `ReadonlySet`, tehát a
 másolat elhagyása fordítási hiba — ez a fordító garanciája, nem a fixture
 szerencséjéé.)
+
+## 14. A kötelező utóművelet ne függjön opcionális indextől
+
+A banda-tag kirúgási tranzakciója előbb törölte a tagságot, majd egy közös
+`Promise.all` blokkban kereste a tag posztjait és egy collection-group queryvel
+a kommentjeit. Az emulátor zöld volt, de élesben a kommentlekérdezéshez hiányzó
+index az egész blokkot megszakíthatta: a tag már kikerült, a posztjai viszont
+láthatók maradtak.
+
+**Ha egy állapotváltás kötelező takarítást indít, a kritikus részt hajtsd végre
+először és a legszűkebb collection scope-ban.** Collection-group queryt csak
+deklarált indexszel használj, és ne tedd ugyanabba az all-or-nothing párhuzamos
+blokkba olyan művelettel, amelynek mindenképp le kell futnia.
