@@ -1,67 +1,31 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, apiConfigured, type FeedQuery, type FeedResult } from '@/lib/api';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { type FeedQuery, type FeedResult } from '@/lib/api';
+import { activityFeedOptions } from '@/lib/activityQueries';
+import { useAuth } from './AuthProvider';
 
-/**
- * Aktivitás-lista betöltése.
- *
- * Külön hook, mert KÉT helyen kell ugyanaz: a feedben (Home) és a profilon.
- * Ha a profil is a `Feed` komponenst használná, nem férne hozzá a betöltött
- * adathoz — pedig a heti oszlopdiagram és az összegzők ugyanabból a listából
- * készülnek. Így a profil EGY kérésből építi mind a hármat.
- */
 export interface ActivitiesState {
   result: FeedResult | null;
   loading: boolean;
   error: string;
   reload: () => void;
+  loadMore: () => void;
+  hasMore: boolean;
+  loadingMore: boolean;
 }
 
+/** Account- and filter-scoped memory cache survives navigation, including loaded pages. */
 export function useActivities(query: FeedQuery | null): ActivitiesState {
-  const [result, setResult] = useState<FeedResult | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  /**
-   * A lekérdezés MEZŐNKÉNT a függőségi listában, nem objektumként.
-   *
-   * A hívó minden rendereléskor új objektumot ad át — ha az kerülne a
-   * függőségek közé, a hatás végtelen körbe futna: betöltés → renderelés →
-   * új objektum → újabb betöltés.
-   */
-  const { scope, limit, lat, lng, radiusKm, dateFrom, dateTo, userId } =
-    query ?? ({} as Partial<FeedQuery>);
-
-  const load = useCallback(async () => {
-    if (scope === undefined) return;
-    if (!apiConfigured) {
-      setResult({ activities: [] });
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    try {
-      setResult(
-        await api.activities({
-          scope,
-          ...(limit === undefined ? {} : { limit }),
-          ...(dateFrom === undefined ? {} : { dateFrom }),
-          ...(dateTo === undefined ? {} : { dateTo }),
-          ...(scope === 'local' ? { lat, lng, radiusKm } : {}),
-          ...(scope === 'user' ? { userId } : {}),
-        }),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nem sikerült betölteni az aktivitásokat.');
-      setResult(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [scope, limit, lat, lng, radiusKm, dateFrom, dateTo, userId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return { result, loading, error, reload: () => void load() };
+  const { user } = useAuth();
+  const feed = useInfiniteQuery(activityFeedOptions(user?.uid, query));
+  const pages = feed.data?.pages;
+  return {
+    result: pages ? { ...pages.at(-1), activities: [...new Map(pages.flatMap((page) =>
+      page.activities).map((item) => [item.id, item])).values()] } : null,
+    loading: feed.isLoading,
+    error: feed.error ? 'Nem sikerült betölteni az aktivitásokat. Próbáld újra.' : '',
+    reload: () => { void (feed.isFetchNextPageError ? feed.fetchNextPage() : feed.refetch()); },
+    loadMore: () => { if (feed.hasNextPage && !feed.isFetching) void feed.fetchNextPage(); },
+    hasMore: feed.hasNextPage,
+    loadingMore: feed.isFetching,
+  };
 }

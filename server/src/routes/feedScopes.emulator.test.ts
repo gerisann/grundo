@@ -72,6 +72,59 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
     }
   });
 
+  it('pages 10/10/3 with equal save timestamps, without duplicates', async () => {
+    for (let i = 0; i < 23; i++) await seedActivity(`page-${String(i).padStart(2, '0')}`, ME, new Date('2026-09-05T20:00:00Z'));
+    const first = await feed('scope=mine');
+    expect(first.activities).toHaveLength(10);
+    const second = await feed(`scope=mine&cursor=${first.nextCursor}`);
+    expect(second.activities).toHaveLength(10);
+    const third = await feed(`scope=mine&cursor=${second.nextCursor}`);
+    expect(third.activities).toHaveLength(3);
+    expect(third.nextCursor).toBeNull();
+    const ids = [...first.activities, ...second.activities, ...third.activities].map((row: { id: string }) => row.id);
+    expect(new Set(ids).size).toBe(23);
+  });
+
+  it('orders and filters by save time while preserving the actual start', async () => {
+    await seedActivity('morning-ride', ME, new Date('2026-09-05T06:00:00Z'));
+    await db.collection('activities').doc('morning-ride').update({ createdAt: new Date('2026-09-05T20:00:00Z') });
+    await seedActivity('afternoon', ME, new Date('2026-09-05T15:00:00Z'));
+    const result = await feed(`scope=world&dateFrom=${Date.parse('2026-09-05T18:00:00Z')}`);
+    expect(result.activities.map((row: { id: string }) => row.id)).toEqual(['morning-ride']);
+    expect(result.activities[0].startedAt).toBe(Date.parse('2026-09-05T06:00:00Z'));
+    expect(result.activities[0].createdAt).toBe(Date.parse('2026-09-05T20:00:00Z'));
+  });
+
+  it('continues across deleted rows and an empty scan', async () => {
+    const batch = db.batch();
+    for (let i = 0; i < 305; i++) {
+      batch.set(db.collection('activities').doc(`hidden-${i}`), {
+        userId: ME, visibility: 'everyone', startedAt: new Date(1000 + i), createdAt: new Date(1000 + i), deletedAt: new Date(),
+      });
+    }
+    await batch.commit();
+    await seedActivity('old-visible', ME, new Date(1));
+    const first = await feed('scope=mine');
+    expect(first.activities).toHaveLength(0);
+    expect(first.nextCursor).toBeTruthy();
+    const second = await feed(`scope=mine&cursor=${first.nextCursor}`);
+    expect(second.activities.map((row: { id: string }) => row.id)).toEqual(['old-visible']);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('rejects malformed cursors', async () => {
+    const response = await fetch(`${base}/api/activities?scope=world&cursor=bad`);
+    expect(response.status).toBe(400);
+  });
+
+  it('weekly statistics include more than ten activities without route payloads', async () => {
+    for (let i = 0; i < 12; i++) await seedActivity(`week-${i}`, ME, new Date('2026-09-05T10:00:00Z'));
+    const response = await fetch(`${base}/api/activities/week?from=${Date.parse('2026-08-31T00:00:00Z')}&to=${Date.parse('2026-09-07T00:00:00Z')}`);
+    const result = await response.json() as { activities: Record<string, unknown>[] };
+    expect(result.activities).toHaveLength(12);
+    expect(result.activities[0]).not.toHaveProperty('route');
+  });
+
   /** Egy minimális, de a feed számára teljes értékű aktivitás. */
   async function seedActivity(
     id: string,
@@ -85,6 +138,7 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
       layer: 'foot',
       visibility,
       startedAt,
+      createdAt: startedAt,
       distanceM: 5000,
       movingS: 1800,
       areaGainedM2: 0,
@@ -138,6 +192,7 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
       layer: 'foot',
       visibility: 'everyone',
       startedAt: new Date('2026-08-18T10:00:00Z'),
+      createdAt: new Date('2026-08-18T10:00:00Z'),
       distanceM: 5000,
       movingS: 1800,
       areaGainedM2: Math.round(79 * 307.09),

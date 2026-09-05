@@ -46,7 +46,7 @@ export function startOfWeek(at: Date): Date {
   return monday;
 }
 
-export function weekSummary(activities: readonly FeedActivity[], now = new Date()): WeekSummary {
+export function weekSummary(activities: readonly Pick<FeedActivity, 'startedAt' | 'distanceM' | 'movingS' | 'gp'>[], now = new Date()): WeekSummary {
   const monday = startOfWeek(now);
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 

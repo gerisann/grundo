@@ -204,6 +204,14 @@
   válaszában, mentés nélkül felülírja a publikus route-ot a teljes privát
   nyomvonallal. Így a „saját nézet mindig teljes” szabály minden képernyőn
   érvényes, miközben más felhasználó továbbra sem fér hozzá a teljes nyomhoz.
+Az aktivitás-feed `createdAt DESC, dokumentumazonosító DESC` szerint lapoz;
+`createdAt` a szerveroldali mentési idő, `startedAt`/`endedAt` a tényleges mozgás.
+A GET válaszban `nextCursor` viszi tovább a lapozást (üres lap után is lehet);
+az alaplap 10 elem. A kártyaadat `createdAt` és `durationS` mezőt is tartalmaz.
+A saját heti statisztika külön `/api/activities/week` végponton, kezdési idő
+szerint, útvonalak és fotók nélkül érkezik. A korábbi `startedAt` indexek
+megmaradnak; a feedhez három új `createdAt` összetett index tartozik.
+
 - `activities/{id}/likes/{uid}` → `{ createdAt }`
 - `activities/{id}/comments/{cid}` → `{ userId, text, createdAt, editedAt?, deleted? }`
 

@@ -1,3 +1,4 @@
+import { ActivityPagination } from '@/components/Feed';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CommunityHeader } from '@/components/CommunityHeader';
@@ -248,12 +249,11 @@ function DiscoverFeed() {
   }, [profile?.username]);
 
   const awaitingPosition = view === 'local' && position === null;
-  const { result, loading, error, reload } = useActivities(
+  const { result, loading, error, reload, hasMore, loadingMore, loadMore } = useActivities(
     awaitingPosition
       ? null
       : {
           scope: view,
-          limit: 30,
           ...(view === 'local' ? { ...position!, radiusKm: 10 } : {}),
         },
   );
@@ -288,7 +288,7 @@ function DiscoverFeed() {
           title="Nincs helyadat"
           description="A helyi nézethez engedélyezd a helymeghatározást a böngészőben, vagy válaszd a Népszerű nézetet."
         />
-      ) : error ? (
+      ) : error && result === null ? (
         <div className="card" role="alert">
           {error}
           <div style={{ marginTop: 'var(--sp-3)' }}>
@@ -311,6 +311,8 @@ function DiscoverFeed() {
           ))}
         </div>
       )}
+      {error && result !== null ? <p role="alert">{error}</p> : null}
+      <ActivityPagination hasMore={hasMore} loadingMore={loadingMore} onLoadMore={loadMore} />
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { queryClient } from '@/lib/queryClient';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
@@ -138,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let receivedInitialState = false;
     const unsubscribe = onAuthStateChanged(auth, (next) => {
       receivedInitialState = true;
+      queryClient.clear();
       setUser(next);
       setStatus(next ? 'signed-in' : 'signed-out');
 

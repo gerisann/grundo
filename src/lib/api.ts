@@ -1,3 +1,4 @@
+import { queryClient } from './queryClient';
 import { auth } from './firebase';
 import { appCheckHeader } from './appCheck';
 import type { PerfHistoryEntry } from './perfMeter';
@@ -136,6 +137,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (body === null) {
     throw new ApiError(response.status, 'empty_response', 'A szerver üres választ adott.');
+  }
+  if (init?.method && init.method !== 'GET') {
+    // Mutations can affect activity visibility, authors, reactions or statistics.
+    void queryClient.invalidateQueries({ queryKey: ['activities'] });
   }
   return body as T;
 }
@@ -336,6 +341,8 @@ export interface ActivityAuthor {
 export type FeedScope = 'mine' | 'world' | 'local' | 'following' | 'user';
 
 export interface FeedActivity {
+  createdAt?: number;
+  durationS?: number;
   id: string;
   type: 'run' | 'walk' | 'ride';
   layer: 'foot' | 'bike';
@@ -425,6 +432,7 @@ export interface ActivityComment {
 
 /** Egy aktivitás teljes adatlapja — a részletek képernyőhöz. */
 export interface ActivityDetail {
+  createdAt?: number;
   id: string;
   /** A sajátom-e. Ettől függ, mit szabad mutatni és mit lehet szerkeszteni. */
   mine: boolean;
@@ -470,12 +478,14 @@ export interface ActivityDetail {
 }
 
 export interface FeedResult {
+  nextCursor?: string | null;
   activities: FeedActivity[];
   /** A helyi nézet a vizsgált halmaz végéig ért — lehet, hogy van még. */
   truncated?: boolean;
 }
 
 export interface FeedQuery {
+  cursor?: string;
   scope: FeedScope;
   limit?: number;
   /** Opcionális kezdő- és végidő (Unix ms), a felhasználó helyi naptárából. */
@@ -1546,12 +1556,17 @@ export const api = {
       `/api/activities/${encodeURIComponent(id)}/upload-status`,
     ),
 
+  activityWeek: (from: number, to: number) => request<{ activities: Pick<FeedActivity, 'startedAt' | 'distanceM' | 'movingS' | 'gp'>[] }>(
+    `/api/activities/week?from=${from}&to=${to}`,
+  ),
+
   /** A feed — nézet szerint szűrve. */
   activities: (query: FeedQuery) => {
     const params = new URLSearchParams({
       scope: query.scope,
-      limit: String(query.limit ?? 20),
+      limit: String(query.limit ?? 10),
     });
+    if (query.cursor) params.set('cursor', query.cursor);
     if (query.dateFrom !== undefined) params.set('dateFrom', String(query.dateFrom));
     if (query.dateTo !== undefined) params.set('dateTo', String(query.dateTo));
     if (query.scope === 'local') {

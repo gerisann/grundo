@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { RivalBadge } from '@/components/RivalBadge';
 import { Avatar } from '@/components/ActivityCard';
-import { ActivityList } from '@/components/Feed';
+import { ActivityList, ActivityPagination } from '@/components/Feed';
 import { BadgeList } from '@/components/BadgeList';
 import { Button, Chip, EmptyState } from '@/components/ui';
 import { ReportUserSheet } from '@/components/ReportUserSheet';
@@ -26,9 +26,6 @@ import './publicProfile.css';
  * TODO(F3): jelvények, riválisok — mindkettőnek van helye a specben
  * (`users/{uid}/badges`, illetve a riválisokhoz még adatmodell-döntés kell).
  */
-
-/** Ennyi aktivitást kérünk le a profilhoz. */
-const HISTORY_LIMIT = 20;
 
 export function PublicProfileScreen() {
   const navigate = useNavigate();
@@ -95,7 +92,7 @@ export function PublicProfileScreen() {
    * tiltásnál nincs is mit lekérni.
    */
   const feed = useActivities(
-    !restricted && targetUid ? { scope: 'user', userId: targetUid, limit: HISTORY_LIMIT } : null,
+    !restricted && targetUid ? { scope: 'user', userId: targetUid } : null,
   );
 
   async function act(action: () => Promise<unknown>, message = '') {
@@ -261,6 +258,7 @@ export function PublicProfileScreen() {
                     error={feed.error}
                     onRetry={feed.reload}
                   />
+                  <ActivityPagination hasMore={feed.hasMore} loadingMore={feed.loadingMore} onLoadMore={feed.loadMore} />
                 </div>
               </>
             )}

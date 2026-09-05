@@ -195,8 +195,18 @@ const MOVEMENT: Record<'run' | 'walk' | 'ride', string> = {
  * a napszak + mozgásforma sokkal használhatóbb, mint egy azonosító. Egy
  * listában így is meg lehet különböztetni a reggeli futást az estitől.
  */
-export function activityTitle(type: 'run' | 'walk' | 'ride', startedAt: number): string {
-  const hour = new Date(startedAt).getHours();
+export function activityTitle(
+  type: 'run' | 'walk' | 'ride', startedAt: number, durationS = 0,
+  savedAt = startedAt, timeZone?: string,
+): string {
+  if (durationS > 8 * 60 * 60) {
+    const day = new Intl.DateTimeFormat('hu-HU', { weekday: 'long', ...(timeZone ? { timeZone } : {}) })
+      .format(new Date(savedAt));
+    return `${day.charAt(0).toUpperCase()}${day.slice(1)}i ${MOVEMENT[type]}`;
+  }
+  const hour = timeZone
+    ? Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(new Date(startedAt)))
+    : new Date(startedAt).getHours();
   const part = DAY_PART.find((p) => hour < p.until)?.name ?? 'Éjszakai';
   return `${part} ${MOVEMENT[type]}`;
 }

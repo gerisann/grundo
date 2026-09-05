@@ -134,7 +134,7 @@ export function Feed() {
 
   // A helyi nézet pozíció nélkül nem kérdezhető le — addig nem indítunk kérést.
   const awaitingPosition = scope === 'local' && position === null;
-  const { result, loading, error, reload } = useActivities(
+  const { result, loading, error, reload, loadMore, hasMore, loadingMore } = useActivities(
     awaitingPosition || dateRange === null
       ? null
       : {
@@ -144,18 +144,8 @@ export function Feed() {
         },
   );
 
-  /**
-   * A mozgásforma-szűrés a BETÖLTÖTT lapon fut, nem a szerveren.
-   *
-   * A `type` szerinti szerveroldali szűréshez `where('type','in',…)` kellene
-   * az `orderBy('startedAt')` mellé, ami új összetett indexet jelent — és a
-   * feed amúgy is egyetlen, időrendben bekért lapot hoz. A szűrés így
-   * azonnali, gépelés nélkül, hálózat nélkül.
-   *
-   * ⚠️ EMIATT A SZŰRT LISTA HIÁNYOS LEHET: ha a lap már eleve levágott
-   * (`truncated`), a kiszűrt mozgásformák helyén NEM jönnek fel régebbi
-   * aktivitások. A `truncated` jelzést ezért változatlanul továbbadjuk.
-   */
+  // Movement filters apply to cached pages; pagination stays available even
+  // when the current pages contain no matching activity.
   const visibleResult = useMemo<FeedResult | null>(() => {
     if (result === null) return null;
     if (types.length === ALL_TYPES.length) return result;
@@ -364,6 +354,7 @@ export function Feed() {
           onStart={() => navigate('/rogzites')}
         />
       )}
+      <ActivityPagination hasMore={hasMore} loadingMore={loadingMore} onLoadMore={loadMore} />
     </div>
   );
 }
@@ -416,23 +407,16 @@ export interface ActivityListProps {
   onStart?: () => void;
 }
 
-/**
- * A lista maga — a profil is ezt használja, saját lekérdezéssel.
- *
- * Külön exportált, mert a profil UGYANABBÓL a betöltésből építi a heti
- * oszlopdiagramot és az összegzőket is. Ha ott is a teljes `Feed` futna,
- * ugyanaz az adat kétszer jönne le.
- */
+/** Shared activity cards for Home and profile feeds. */
 export function ActivityList({
   scope,
   result,
-  loading,
   error,
   radiusKm = 10,
   onRetry,
   onStart,
 }: ActivityListProps) {
-  if (error) {
+  if (error && !result?.activities.length) {
     return (
       <div className="card" role="alert">
         {error}
@@ -445,7 +429,7 @@ export function ActivityList({
     );
   }
 
-  if (result === null || loading) return <div className="card">Betöltés…</div>;
+  if (result === null) return <div className="card">Betöltés…</div>;
 
   if (result.activities.length === 0) {
     if (scope === 'mine') {
@@ -502,13 +486,17 @@ export function ActivityList({
           <ActivityCard key={item.id} item={item} showAuthor={scope !== 'mine'} />
         ))}
       </div>
-      {result.truncated ? (
-        <p className="feed__note">
-          Sok az aktivitás — lehet, hogy nem mindegyik fér bele a listába.
-        </p>
-      ) : null}
+      {error ? <div className="card" role="alert">{error} <Button size="sm" onClick={onRetry}>Újrapróbálom</Button></div> : null}
     </>
   );
+}
+
+export function ActivityPagination({ hasMore, loadingMore, onLoadMore }: {
+  hasMore: boolean; loadingMore: boolean; onLoadMore: () => void;
+}) {
+  return hasMore ? <div style={{ marginTop: 'var(--sp-3)' }}><Button variant="secondary" block loading={loadingMore} onClick={onLoadMore}>
+    {loadingMore ? 'Betöltés…' : 'Továbbiak betöltése'}
+  </Button></div> : null;
 }
 
 function read(key: string): string | null {
@@ -549,6 +537,7 @@ function feedDateRange(
 ): { dateFrom?: number; dateTo?: number } | null {
   const now = new Date();
   const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
   let start: Date | null = null;
 
   if (preset === 'today') {

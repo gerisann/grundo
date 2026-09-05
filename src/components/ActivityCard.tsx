@@ -55,7 +55,7 @@ export function ActivityCard({
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const mapUrl = mapFailed ? null : routeImageUrl(item.route, { theme });
   const effort = formatEffort(item.type, item.distanceM, item.movingS);
-  const title = item.title ?? activityTitle(item.type, item.startedAt);
+  const title = item.title ?? activityTitle(item.type, item.startedAt, item.durationS, item.createdAt ?? item.startedAt);
   /**
    * A hexagon-előnézet cellái — CSAK KINYITOTT ÁLLAPOTBAN számolva.
    *
@@ -191,7 +191,7 @@ export function ActivityCard({
         <span className="acard__when">
           <span aria-hidden="true">{ACTIVITY_ICON[item.type]}</span>{' '}
           {showAuthor ? `${ACTIVITY_LABEL[item.type]} · ` : ''}
-          {formatRelativeDay(item.startedAt)}
+          {formatRelativeDay(item.createdAt ?? item.startedAt)}
         </span>
       </span>
     </header>

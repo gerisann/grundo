@@ -134,7 +134,20 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
    `MINDIG` / `EGYEDI` dátumszűrő van. A dátumválasztó az app saját lekerekített
    lenyíló paneljét használja, nem az operációs rendszer alapértelmezett listáját.
    Az egyedi időszak kezdő- és végdátumot kér.
-6. **Aktivitás-feed** (végtelen görgetés, oldalanként 15).
+6. **Aktivitás-feed**: kezdetben 10 aktivitás; a „Továbbiak betöltése” gomb
+   újabb 10-et kér. Ugyanez érvényes a saját és nyilvános profilra, valamint
+   a Felfedezés aktivitáslistájára. A Banda hírfolyam tízes bővítése ugyanezt
+   a gombfeliratot használja.
+   A sorrend és dátumszűrés a szerveroldali mentés ideje (`createdAt`), nem
+   a mozgás kezdete. A tényleges kezdés megmarad a részletekhez és statisztikákhoz.
+   A lista fiókonként és szűrésenként helyi memóriacache-t használ: 5 percig
+   friss, inaktívan 30 percig tárolt; oldalváltáskor a már betöltött lapok is
+   megmaradnak. Mentés, szerkesztés, törlés és közösségi módosítás érvénytelenít;
+   auth-állapotváltás ürít. Új appindításkor új lekérés történik.
+   A heti összesítő külön, kis méretű adatlekérésből készül, nem a feed lapjából.
+   Automatikus címnél 8 óránál hosszabb teljes időtartam esetén a mentés
+   napneve szerepel (például „Szombati bringázás”); pontosan 8 óráig a kezdési
+   napszak marad. Az egyedi cím elsőbbséget élvez.
 
 ### Feed-kártya (képek #09, #14, #15)
 - Fejléc: avatar (PRO jelvénnyel) · név · aktivitás-típus ikon · relatív idő · `⋯` menü.

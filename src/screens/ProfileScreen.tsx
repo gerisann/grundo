@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chip } from '@/components/ui';
-import { ActivityList } from '@/components/Feed';
+import { ActivityList, ActivityPagination } from '@/components/Feed';
 import { BadgeList } from '@/components/BadgeList';
 import { Avatar } from '@/components/ActivityCard';
 import { ConnectionsSheet } from '@/components/ConnectionsSheet';
@@ -13,7 +14,7 @@ import { useAuth } from '@/hooks/AuthProvider';
 import { api } from '@/lib/api';
 import { uploadProfilePhoto } from '@/lib/photos';
 import { levelProgress } from '@/game/levels';
-import { weekSummary } from '@/lib/week';
+import { weekSummary, startOfWeek } from '@/lib/week';
 import { formatArea, formatDistance, formatDuration, formatGp, formatPace } from '@/lib/format';
 import './profile.css';
 
@@ -32,8 +33,6 @@ import './profile.css';
  * TODO(F2): a második haladásjelző, a távolság-jelvény („38,4 / 50 km").
  */
 
-/** Ennyi aktivitást kérünk le: bőven fedi az aktuális hetet is. */
-const HISTORY_LIMIT = 50;
 
 export function ProfileScreen() {
   const navigate = useNavigate();
@@ -44,7 +43,17 @@ export function ProfileScreen() {
   /** Melyik kapcsolat-lista van nyitva a számlálókról — vagy egyik sem. */
   const [connections, setConnections] = useState<'followers' | 'following' | null>(null);
   const [avatarError, setAvatarError] = useState('');
-  const { result, loading, error, reload } = useActivities({ scope: 'mine', limit: HISTORY_LIMIT });
+  const { result, loading, error, reload, hasMore, loadingMore, loadMore } = useActivities({ scope: 'mine' });
+  const weekFrom = startOfWeek(new Date()).getTime();
+  const weekEnd = new Date(weekFrom);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekly = useQuery({
+    queryKey: ['activities', user?.uid, 'week', weekFrom],
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    queryFn: () => api.activityWeek(weekFrom, weekEnd.getTime()),
+  });
 
   const territoryM2 = (profile?.territoryM2.foot ?? 0) + (profile?.territoryM2.bike ?? 0);
   const distanceKm =
@@ -53,7 +62,7 @@ export function ProfileScreen() {
     (profile?.counters.distanceKm.ride ?? 0);
 
   const level = levelProgress(profile?.gpTotal ?? 0);
-  const week = useMemo(() => weekSummary(result?.activities ?? []), [result]);
+  const week = useMemo(() => weekSummary(weekly.data?.activities ?? []), [weekly.data]);
 
   return (
     <>
@@ -156,7 +165,8 @@ export function ProfileScreen() {
         </div>
 
         {/* ── Ez a hét ────────────────────────────────────────────── */}
-        <section className="prof__week card" aria-label="Ez a hét">
+        {weekly.isError ? <p role="alert">A heti összesítő nem tölthető be.</p> : weekly.isPending ? <p>Heti összesítő betöltése…</p> : null}
+        {weekly.data ? <section className="prof__week card" aria-label="Ez a hét">
           <div className="prof__week-head">
             <span className="label">Ez a hét</span>
             <span className="prof__week-total">{formatDistance(week.distanceM)}</span>
@@ -202,7 +212,7 @@ export function ProfileScreen() {
             />
             <Summary label="pont" value={formatGp(week.gp)} />
           </dl>
-        </section>
+        </section> : null}
 
         {/*
           NÉGY doboz, 2×2-ben — korábban három volt egy sorban.
@@ -249,6 +259,7 @@ export function ProfileScreen() {
             onRetry={reload}
             onStart={() => navigate('/rogzites')}
           />
+          <ActivityPagination hasMore={hasMore} loadingMore={loadingMore} onLoadMore={loadMore} />
         </div>
       </div>
 

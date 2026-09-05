@@ -278,3 +278,14 @@ szükség, és akkor is célzottan (`grep`-pel a fejezetcímre).
 | `archive/2026-08-25-lab-e2e.md` | compact claim primitívek, chunked route, LAB → production tracking UI, gameplay regressziós mátrix |
 | `archive/2026-08-25-reinforcement.md` | a körüljárás bevezetése, a mérések, a nyitott szálszabály és nyomvonal-vékonyítás |
 | `archive/2026-09-04-terepi-fosszal-meres.md` | a két készülékes terepi főszál-mérés teljes kiértékelése, a hurokkeresés fázisbontása, és a NEM működő optimalizálási irányok |
+
+## Aktivitás-feed — #40
+
+- A feed mentési idő (`createdAt`) szerint rendez; a `startedAt` a tényleges
+  kezdés marad, nem írható át a megjelenítési sorrend kedvéért.
+- A tízes lapozás kurzora időpont + dokumentumazonosító: azonos időpontnál
+  sem hagyhat ki aktivitást. Rejtett/távoli sorok esetén üres lap is adhat
+  folytatókurzort, a kliens ilyenkor is mutatja a betöltőgombot.
+- A heti statisztika nem függhet a feedben megnyitott lapok számától.
+- A feed memóriacache fiók- és szűrésfüggő, módosításkor érvénytelenítendő,
+  auth-váltáskor ürítendő. Privát aktivitásadat nem kerül localStorage-ba.

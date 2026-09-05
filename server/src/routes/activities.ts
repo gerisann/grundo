@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { compactCells, getResolution } from 'h3-js';
-import { type DocumentReference, type Query } from 'firebase-admin/firestore';
+import { FieldPath, type DocumentReference, type Query } from 'firebase-admin/firestore';
 import { COLLECTIONS, db, FIREBASE_STORAGE_BUCKET, storage } from '../lib/firebase';
 import { badRequest, forbidden, HttpError, notFound } from '../lib/errors';
 import { distanceM } from '../../../src/game/geo';
@@ -424,7 +424,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
           followers.docs.map((doc) => doc.id),
           username,
           activityId,
-          activityTitle(type, startedAt),
+          activityTitle(type, startedAt, (endedAt - startedAt) / 1000, Date.now(), 'Europe/Budapest'),
         );
       }
     })().catch((error: unknown) => {
@@ -499,9 +499,8 @@ activitiesRouter.get('/:id/upload-status', async (req: AuthedRequest, res, next)
  * geohash-tartományok lennének; addig a friss aktivitásokat kérjük le, és
  * távolság szerint szűrünk.
  *
- * MIKOR KELL CSERÉLNI? Amikor a napi aktivitások száma meghaladja a
- * `LOCAL_SCAN_LIMIT`-et — onnantól egy távoli város aktivitásai kiszoríthatják
- * a közelieket a vizsgált halmazból, és a helyi feed hiányosan töltődne.
+ * At most LOCAL_SCAN_LIMIT candidates are examined per request. The cursor
+ * lets the next request continue even when a sparse local page is empty.
  */
 const LOCAL_SCAN_LIMIT = 300;
 
@@ -513,150 +512,116 @@ const FOLLOWING_CHUNKS = 10;
 
 type Scope = 'mine' | 'world' | 'local' | 'following' | 'user';
 
+/** Lightweight weekly statistics, independent of feed pagination. */
+activitiesRouter.get('/week', async (req: AuthedRequest, res, next) => {
+  try {
+    const from = parseFeedDate(req.query.from, 'from');
+    const to = parseFeedDate(req.query.to, 'to');
+    if (from === null || to === null || to <= from || to - from > 8 * 86_400_000) {
+      throw badRequest('invalid_date_range', 'Érvénytelen heti időszak.');
+    }
+    const snapshot = await db.collection(COLLECTIONS.activities)
+      .where('userId', '==', req.uid!).where('startedAt', '>=', new Date(from))
+      .where('startedAt', '<', new Date(to)).orderBy('startedAt', 'desc')
+      .select('startedAt', 'distanceM', 'movingS', 'gp', 'deletedAt').get();
+    res.json({ activities: snapshot.docs.filter((doc) => doc.data().deletedAt == null).map((doc) => {
+      const data = doc.data();
+      return { startedAt: toMillis(data.startedAt), distanceM: Number(data.distanceM ?? 0),
+        movingS: Number(data.movingS ?? 0), gp: Number(data.gp?.total ?? 0) };
+    }) });
+  } catch (error) { next(error); }
+});
+
 activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
   try {
     const scope = parseScope(req.query.scope);
-    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 10)));
     const dateFrom = parseFeedDate(req.query.dateFrom, 'dateFrom');
     const dateTo = parseFeedDate(req.query.dateTo, 'dateTo');
     if (dateFrom !== null && dateTo !== null && dateFrom > dateTo) {
       throw badRequest('invalid_date_range', 'Az időszak kezdete nem lehet később a végénél.');
     }
-
+    let cursor: { at: number; id: string } | null = null;
+    if (req.query.cursor !== undefined) {
+      try {
+        const parsed: unknown = JSON.parse(Buffer.from(String(req.query.cursor), 'base64url').toString());
+        if (!parsed || typeof parsed !== 'object' || !('at' in parsed) || !('id' in parsed) ||
+          typeof parsed.at !== 'number' || !Number.isFinite(parsed.at) ||
+          Math.abs(parsed.at) > 8.64e15 || typeof parsed.id !== 'string' ||
+          !parsed.id || parsed.id.includes('/')) throw new Error();
+        cursor = { at: parsed.at, id: parsed.id };
+      } catch { throw badRequest('invalid_cursor', 'Érvénytelen lapozási azonosító.'); }
+    }
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    const radiusKm = Math.min(200, Math.max(1, Number(req.query.radiusKm) || 10));
+    if (scope === 'local' && (!Number.isFinite(lat) || !Number.isFinite(lng))) {
+      throw badRequest('missing_position', 'A helyi nézethez meg kell adni a pozíciót.');
+    }
     const collection = db.collection(COLLECTIONS.activities);
-    const perQueryLimit =
-      scope === 'local' ? LOCAL_SCAN_LIMIT : scope === 'mine' ? Math.min(150, limit * 3) : limit;
-
-    /** A dátumszűrő és a rendezés minden nézetre ugyanaz — egy helyen. */
-    const finish = (query: Query): Query => {
-      let next = query;
-      if (dateFrom !== null) next = next.where('startedAt', '>=', new Date(dateFrom));
-      if (dateTo !== null) next = next.where('startedAt', '<=', new Date(dateTo));
-      // A saját listában a 30 napig tárolt soft-delete dokumentumokat csak a
-      // lekérés után tudjuk kiszűrni, ezért kis ráhagyással olvasunk.
-      return next.orderBy('startedAt', 'desc').limit(perQueryLimit);
-    };
-
     const queries: Query[] = [];
-    if (scope === 'mine') {
-      queries.push(finish(collection.where('userId', '==', req.uid!)));
-    } else if (scope === 'user') {
+    if (scope === 'mine') queries.push(collection.where('userId', '==', req.uid!));
+    else if (scope === 'user') {
       const target = String(req.query.userId ?? '');
       if (!target) throw badRequest('missing_user', 'Hiányzik a felhasználó azonosítója.');
-      /**
-       * A SAJÁT profilom is ezen a nézeten megy — ott viszont a rejtett
-       * aktivitásokat is látnom kell, hiszen az enyémek. Idegen profilnál
-       * csak a `visibility: 'everyone'` megy ki; a `followers` láthatóság
-       * szűrése akkor kerül ide, amikor a Feed is tud vele mit kezdeni.
-       */
-      queries.push(
-        finish(
-          target === req.uid
-            ? collection.where('userId', '==', target)
-            : collection.where('userId', '==', target).where('visibility', '==', 'everyone'),
-        ),
-      );
+      queries.push(target === req.uid ? collection.where('userId', '==', target) :
+        collection.where('userId', '==', target).where('visibility', '==', 'everyone'));
     } else if (scope === 'following') {
-      const following = await db
-        .collection(COLLECTIONS.users)
-        .doc(req.uid!)
-        .collection('following')
-        .limit(IN_CHUNK * FOLLOWING_CHUNKS)
-        .get();
+      const following = await db.collection(COLLECTIONS.users).doc(req.uid!)
+        .collection('following').limit(IN_CHUNK * FOLLOWING_CHUNKS).get();
       const ids = following.docs.map((doc) => doc.id);
-      if (ids.length === 0) {
-        return res.json({ activities: [], truncated: false });
-      }
       for (let index = 0; index < ids.length; index += IN_CHUNK) {
-        queries.push(
-          finish(
-            collection
-              .where('userId', 'in', ids.slice(index, index + IN_CHUNK))
-              .where('visibility', '==', 'everyone'),
-          ),
-        );
+        queries.push(collection.where('userId', 'in', ids.slice(index, index + IN_CHUNK))
+          .where('visibility', '==', 'everyone'));
       }
-    } else {
-      queries.push(finish(collection.where('visibility', '==', 'everyone')));
-    }
+    } else queries.push(collection.where('visibility', '==', 'everyone'));
 
-    const snapshots = await Promise.all(queries.map((query) => query.get()));
-    /**
-     * Több darab esetén az egyesített halmazt ÚJRA RENDEZNI kell: külön-külön
-     * mindegyik időrendben jön, együtt viszont nem. Rendezés nélkül a feed
-     * darabonként csoportosítva mutatná a bejegyzéseket.
-     */
-    const docs = snapshots
-      .flatMap((snapshot) => snapshot.docs)
-      .sort((a, b) => toMillis(b.data().startedAt) - toMillis(a.data().startedAt))
-      .slice(0, scope === 'local' ? LOCAL_SCAN_LIMIT : perQueryLimit);
-
-    const repairLimit = scope === 'local' ? Math.min(50, docs.length) : docs.length;
-    const documents = await Promise.all(
-      docs.map(async (doc, index) => {
-        const data = doc.data() as Record<string, unknown>;
-        if (index >= repairLimit || data.deletedAt != null) return data;
-        return repairActivityRoute(doc.ref, data);
-      }),
-    );
-    /**
-     * A TILTOTT FELHASZNÁLÓK aktivitásai KIESNEK a feedből — MINDKÉT IRÁNYBAN.
-     *
-     * ⚠️ Ez a szűrés a lekérdezés UTÁN történik, nem benne. A Firestore-nak
-     * nincs „nem egyenlő ezekkel a uid-ekkel" szűrője (a `not-in` legfeljebb
-     * 10 értéket enged, és nem kombinálható a meglévő rendezéssel), ezért a
-     * sorokat itt dobjuk el. Ennek ÁRA van: egy sok embert letiltó
-     * felhasználónál a feed rövidebb lehet a kért `limit`-nél. Ez a helyes
-     * csere — inkább kevesebb sor, mint egy letiltott ember bejegyzése.
-     *
-     * A KÉT IRÁNY KÉT ALKOLLEKCIÓ, és mindkettő a SAJÁT felhasználómé:
-     *
-     *   - `blocks` — kit tiltottam én,
-     *   - `blockedBy` — ki tiltott engem (a szerver által írt tükör, lásd
-     *     `routes/users.ts` → block).
-     *
-     * A tükör nélkül a második irányhoz minden szerző `blocks`
-     * alkollekcióját külön kellene olvasni soronként; így két olcsó,
-     * párhuzamos lekérdezés adja mindkettőt. (`docs/05` → „sem a tiltó, sem
-     * a tiltott nem látja a másikat".)
-     */
     const own = db.collection(COLLECTIONS.users).doc(req.uid!);
     const [blocked, blockedBy] = await Promise.all([
-      own.collection('blocks').select().get(),
-      own.collection('blockedBy').select().get(),
+      own.collection('blocks').select().get(), own.collection('blockedBy').select().get(),
     ]);
-    const blockedIds = new Set([
-      ...blocked.docs.map((doc) => doc.id),
-      ...blockedBy.docs.map((doc) => doc.id),
-    ]);
-
-    let rows = documents
-      .map((data, index) => ({ data, doc: docs[index]! }))
-      .filter(({ data }) => data.deletedAt == null)
-      .map(({ data, doc }) => toFeedRow(doc.id, data))
-      .filter((row) => !blockedIds.has(row.userId));
-    rows = await withOwnerFullRoutes(rows, req.uid!);
-    if (scope === 'mine' || scope === 'user' || scope === 'following') rows = rows.slice(0, limit);
-
-    let truncated = false;
-    if (scope === 'local') {
-      const lat = Number(req.query.lat);
-      const lng = Number(req.query.lng);
-      const radiusKm = Math.min(200, Math.max(1, Number(req.query.radiusKm) || 10));
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        throw badRequest('missing_position', 'A helyi nézethez meg kell adni a pozíciót.');
+    const blockedIds = new Set([...blocked.docs, ...blockedBy.docs].map((doc) => doc.id));
+    const rows: FeedRow[] = [];
+    let hasMore = false;
+    let scanned = 0;
+    // Scan past hidden/blocked/distant rows, with a bounded server work budget.
+    // The cursor advances over every examined row, including an empty page.
+    while (queries.length && rows.length < limit && scanned < LOCAL_SCAN_LIMIT) {
+      const batchSize = Math.min(30, LOCAL_SCAN_LIMIT - scanned);
+      const snapshots = await Promise.all(queries.map((query) => {
+        let next = query;
+        if (dateFrom !== null) next = next.where('createdAt', '>=', new Date(dateFrom));
+        if (dateTo !== null) next = next.where('createdAt', '<=', new Date(dateTo));
+        next = next.orderBy('createdAt', 'desc').orderBy(FieldPath.documentId(), 'desc');
+        if (cursor) next = next.startAfter(new Date(cursor.at), cursor.id);
+        return next.limit(batchSize).get();
+      }));
+      const docs = snapshots.flatMap((snapshot) => snapshot.docs).sort((a, b) =>
+        toMillis(b.data().createdAt) - toMillis(a.data().createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+      ).slice(0, batchSize);
+      hasMore = snapshots.some((snapshot) => snapshot.size === batchSize) || snapshots.reduce((sum, snapshot) => sum + snapshot.size, 0) > batchSize;
+      for (let index = 0; index < docs.length; index++) {
+        const doc = docs[index]!;
+        let data = doc.data() as Record<string, unknown>;
+        cursor = { at: toMillis(data.createdAt), id: doc.id };
+        scanned++;
+        if (data.deletedAt != null || blockedIds.has(String(data.userId))) continue;
+        // Local filtering uses the public route center, as before.
+        data = await repairActivityRoute(doc.ref, data);
+        const row = toFeedRow(doc.id, data);
+        if (scope === 'local' && (row.center === null || distanceM({ lat, lng }, row.center) > radiusKm * 1000)) continue;
+        rows.push(row);
+        if (rows.length === limit) {
+          hasMore ||= index < docs.length - 1;
+          break;
+        }
       }
-      rows = rows
-        .filter((row) => row.center !== null && distanceM({ lat, lng }, row.center) <= radiusKm * 1000)
-        .slice(0, limit);
-      truncated = docs.length >= LOCAL_SCAN_LIMIT;
+      if (!hasMore || docs.length === 0) break;
     }
-
-    const authored = await withAuthors(rows, req.uid!);
-    res.json({ activities: await withLegacyPhotoUrls(authored), truncated });
-  } catch (error) {
-    next(error);
-  }
+    const authored = await withAuthors(await withOwnerFullRoutes(rows, req.uid!), req.uid!);
+    const nextCursor = hasMore && cursor ? Buffer.from(JSON.stringify(cursor)).toString('base64url') : null;
+    res.json({ activities: await withLegacyPhotoUrls(authored), truncated: hasMore, nextCursor });
+  } catch (error) { next(error); }
 });
 
 function parseScope(raw: unknown): Scope {
@@ -679,6 +644,8 @@ interface FeedRow {
   type: unknown;
   layer: unknown;
   startedAt: number;
+  createdAt: number;
+  durationS: number;
   distanceM: number;
   movingS: number;
   areaGainedM2: number;
@@ -859,6 +826,8 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     type: data.type,
     layer: data.layer,
     startedAt: toMillis(data.startedAt),
+    createdAt: toMillis(data.createdAt),
+    durationS: Number(data.durationS ?? 0),
     distanceM: Number(data.distanceM ?? 0),
     movingS: Number(data.movingS ?? 0),
     areaGainedM2: Number(data.areaGainedM2 ?? 0),
@@ -1158,6 +1127,7 @@ activitiesRouter.get('/:id', async (req: AuthedRequest, res, next) => {
         ...activityCellPayload(data.activityCells, data.activityCellParents),
         likedByMe: await hasLiked(snapshot.id, req.uid!),
         startedAt: toMillis(data.startedAt),
+        createdAt: toMillis(data.createdAt),
         endedAt: toMillis(data.endedAt),
         distanceM: Number(data.distanceM ?? 0),
         durationS: Number(data.durationS ?? 0),
@@ -1452,6 +1422,8 @@ async function setLike(activityId: string, uid: string, liked: boolean) {
       title?: string | null;
       type?: 'run' | 'walk' | 'ride';
       startedAt?: unknown;
+      createdAt?: unknown;
+      durationS?: number;
     };
     const count = Number(activityData.likeCount ?? 0);
     const ownerId = String(activityData.userId ?? '');
@@ -1459,7 +1431,7 @@ async function setLike(activityId: string, uid: string, liked: boolean) {
     // napszak + mozgásforma alakú automatikus cím — ugyanaz, amit a kártya mutat.
     const title =
       activityData.title ||
-      activityTitle(activityData.type ?? 'run', toMillis(activityData.startedAt));
+      activityTitle(activityData.type ?? 'run', toMillis(activityData.startedAt), activityData.durationS, toMillis(activityData.createdAt), 'Europe/Budapest');
     if (existing.exists === liked) {
       return { likeCount: count, likedByMe: liked, ownerId, title, isNew: false };
     }
