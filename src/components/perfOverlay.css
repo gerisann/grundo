@@ -44,39 +44,43 @@
   opacity: 1;
 }
 
+/**
+ * TELJES KÉPERNYŐS PANEL (2026-09-05, Geri jelzése).
+ *
+ * A korábbi lebegő kártya (rögzített 260 → 300px szélesség) a láthatóság-
+ * bontás táblázatával (4 oszlop, hosszú fejlécek: „előtér" / „háttér" /
+ * „visszatérés") semmilyen szélességnél nem fért ki telefonon — a fejlécek
+ * egybefolytak, a cellák két sorra törtek, ami a panel magasságát is
+ * feleslegesen felnyomta. Diagnosztikai, admin-only rétegről van szó, nem
+ * esztétikai elemről — a teljes képernyő megszünteti az oszlopszélesség-
+ * egyeztetést, cserébe MINDIG elfér minden adat.
+ */
 .perf-overlay {
-  position: absolute;
-  top: var(--perf-overlay-top);
-  right: var(--sp-3);
+  position: fixed;
+  inset: 0;
   z-index: 10030;
-  width: min(300px, calc(100% - var(--sp-5)));
-  padding: var(--sp-3);
+  padding: var(--perf-overlay-top) var(--sp-3) var(--sp-5);
   display: grid;
+  align-content: start;
   gap: var(--sp-2);
-  border-radius: var(--r-sm);
-  border: 1px solid var(--border-default);
   background: var(--bg-elevated);
   color: var(--text-primary);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   font-size: var(--fs-label);
-  /**
-   * ⚠️ MAGASSÁG-KORLÁT, KÜLÖN GÖRGETÉSSEL.
-   *
-   * A #37-es bontással (láthatóság-táblázat + legdrágább futások) a panel
-   * telefonon átnyúlna a képernyő alján, és pont a rögzítés gombjait
-   * takarná — miközben a mérés akkor is fut, ha nem látod. A `dvh` a mobil
-   * böngészősáv miatt kell: `vh`-val a panel a sáv megjelenésekor kilógna.
-   */
-  max-height: calc(100dvh - var(--perf-overlay-top) - var(--sp-5));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
 .perf-overlay__head {
+  position: sticky;
+  top: calc(-1 * var(--perf-overlay-top));
+  margin: calc(-1 * var(--perf-overlay-top)) calc(-1 * var(--sp-3)) 0;
+  padding: var(--perf-overlay-top) var(--sp-3) var(--sp-2);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
+  background: var(--bg-elevated);
+  z-index: 1;
 }
 
 .perf-overlay__head strong {
@@ -140,8 +144,19 @@
 
 .perf-overlay__table th,
 .perf-overlay__table td {
-  padding: 2px 0;
+  padding: 2px var(--sp-2);
   text-align: right;
+}
+
+.perf-overlay__table th:first-child,
+.perf-overlay__table td:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.perf-overlay__table th:last-child,
+.perf-overlay__table td:last-child {
+  padding-right: 0;
 }
 
 .perf-overlay__table thead th {
