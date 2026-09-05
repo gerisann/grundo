@@ -1,10 +1,11 @@
 import { ActivityPagination } from '@/components/Feed';
-import { useEffect, useMemo, useState } from 'react';
+import { DiscoverBandas, SearchPublicBandas } from './CommunityBandasScreen';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CommunityHeader } from '@/components/CommunityHeader';
 import { Avatar, ActivityCard } from '@/components/ActivityCard';
 import { RivalBadge } from '@/components/RivalBadge';
-import { Button, EmptyState, SegmentedControl } from '@/components/ui';
+import { Button, EmptyState, OptionSwitch } from '@/components/ui';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { api, ApiError, type DiscoverUser, type FeedActivity, type FollowStatus } from '@/lib/api';
@@ -13,6 +14,9 @@ import '@/components/feed.css';
 import './discover.css';
 
 const DEBOUNCE_MS = 300;
+
+/** Hány további lapot kérjen be magától a Felfedezés, ha üresre szűrődött. */
+const DISCOVER_AUTO_PAGE_BUDGET = 4;
 type SearchKind = 'people' | 'bandas';
 type FeedView = 'world' | 'local';
 
@@ -30,20 +34,34 @@ type FeedView = 'world' | 'local';
  *      követett szerző. Ritka eset, és a lista így is szűkíti a feedet.
  */
 export function DiscoverScreen() {
+  /*
+    A választó az EGÉSZ FÜLET kapcsolja, nem csak a keresőmezőt: bandákra
+    váltva a lenti lista is bandákat mutat. Korábban a kereső bandás
+    állásában csak egy „a Bandák fülön elérhető" mondat állt, alatta viszont
+    továbbra is emberek aktivitásai futottak — a választónak így nem volt
+    értelme.
+  */
+  const [kind, setKind] = useState<SearchKind>('people');
+
   return (
     <>
       <CommunityHeader active="discover" />
       <div className="screen-body stack">
-        <DiscoverSearch />
-        <DiscoverFeed />
+        <DiscoverSearch kind={kind} onKindChange={setKind} />
+        {kind === 'bandas' ? <DiscoverBandas /> : <DiscoverFeed />}
       </div>
     </>
   );
 }
 
-function DiscoverSearch() {
+function DiscoverSearch({
+  kind,
+  onKindChange,
+}: {
+  kind: SearchKind;
+  onKindChange: (kind: SearchKind) => void;
+}) {
   const navigate = useNavigate();
-  const [kind, setKind] = useState<SearchKind>('people');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<DiscoverUser[] | null>(null);
   const [error, setError] = useState('');
@@ -99,19 +117,18 @@ function DiscoverSearch() {
 
   return (
     <section className="card discover-search">
-      <SegmentedControl
+      <OptionSwitch
         label="Keresés típusa"
         options={[
           { value: 'people', label: 'Emberek' },
           { value: 'bandas', label: 'Bandák' },
         ]}
         value={kind}
-        onChange={setKind}
-        block
+        onChange={onKindChange}
       />
 
       {kind === 'bandas' ? (
-        <p className="search__note">A banda-keresés a Bandák fülön elérhető.</p>
+        <SearchPublicBandas />
       ) : (
         <>
           <div className="search__field" style={{ marginTop: 'var(--sp-3)' }}>
@@ -266,10 +283,33 @@ function DiscoverFeed() {
     );
   }, [result, followingIds, profile?.uid]);
 
+  /*
+    ⚠️ ÜRESRE SZŰRT LAP — AUTOMATIKUS UTÁNTÖLTÉS.
+
+    A Felfedezés a saját és a KÖVETETT felhasználók sorait kliensoldalon
+    dobja el, a szerver viszont tízesével lapoz. Ha az első tíz aktivitás
+    mind ilyen, a lista üresen maradt, holott van még mit mutatni — a
+    felhasználónak úgy nézett ki, mintha „nincs itt senki új".
+
+    Ezért amíg nincs egyetlen találat sem, magunktól kérjük a következő
+    lapot. A `PAGE_BUDGET` a fék: sok követett mellett sem indul végtelen
+    láncbetöltés, a maradékot a „Továbbiak betöltése" gomb hozza.
+  */
+  const autoPages = useRef(0);
+  useEffect(() => {
+    autoPages.current = 0;
+  }, [view]);
+  useEffect(() => {
+    if (!discovered || discovered.length > 0) return;
+    if (!hasMore || loadingMore || autoPages.current >= DISCOVER_AUTO_PAGE_BUDGET) return;
+    autoPages.current += 1;
+    loadMore();
+  }, [discovered, hasMore, loadingMore, loadMore]);
+
   return (
     <section className="stack">
       <h2 className="discover-feed__title">Ki mozog most?</h2>
-      <SegmentedControl
+      <OptionSwitch
         label="Feed nézete"
         options={[
           { value: 'world', label: 'Népszerű' },
@@ -280,7 +320,6 @@ function DiscoverFeed() {
           setView(next);
           if (next === 'local') setPosition(null);
         }}
-        block
       />
 
       {view === 'local' && positionDenied ? (

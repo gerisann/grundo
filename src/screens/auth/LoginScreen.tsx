@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, TextField } from '@/components/ui';
+import { AuthBrand } from './AuthBrand';
 import { useAuth } from '@/hooks/AuthProvider';
 import { authErrorMessage, isAccountLinkError, isGoogleAccountError } from '@/lib/authErrors';
 import { validateEmail } from '@/lib/validation';
@@ -87,8 +88,8 @@ export function LoginScreen() {
   return (
     <main className="auth">
       <div>
-        <h1 className="auth__brand">GRUNDO</h1>
-        <p className="auth__tagline">Üdv újra. Folytassuk ott, ahol abbahagytad.</p>
+        <AuthBrand />
+        <p className="auth__tagline">Üdv újra! Készen állsz egy új kalandra?</p>
       </div>
 
       <form className="auth__form" onSubmit={submit} noValidate>

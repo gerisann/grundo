@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui';
+import { AuthBrand } from './AuthBrand';
+import { RotatingVerb } from './RotatingVerb';
 import './auth.css';
 
 /**
@@ -12,7 +14,7 @@ const SLIDES = [
   {
     icon: '⬡',
     title: 'Zárd a kört',
-    text: 'Fuss, sétálj vagy bringázz. Ha az útvonalad keresztezi önmagát, a közrezárt terület a tiéd.',
+    text: 'Fuss, sétálj vagy bringázz. Ha az útvonalad keresztezi önmagát, a körbezárt terület a tiéd.',
   },
   {
     icon: '⚑',
@@ -35,8 +37,10 @@ export function WelcomeScreen() {
   return (
     <main className="auth">
       <div>
-        <h1 className="auth__brand">GRUNDO</h1>
-        <p className="auth__tagline">Egy város. Két birodalom.</p>
+        <AuthBrand />
+        <p className="auth__tagline">
+          Ne csak ingázz, <RotatingVerb />
+        </p>
       </div>
 
       <div className="welcome">

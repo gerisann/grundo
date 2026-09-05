@@ -7,11 +7,109 @@
 }
 
 .auth__brand {
-  font-size: 40px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--accent);
   margin: 0;
+  /* A cím már a logó képe — a szöveges méretezésre nincs szükség, csak a
+     sor magasságát nullázzuk, hogy a kép alatt ne maradjon üres sáv. */
+  line-height: 0;
+}
+
+.auth__logo {
+  display: block;
+  width: 180px;
+  height: auto;
+}
+
+.auth__logo--dark {
+  display: none;
+}
+
+[data-theme='dark'] .auth__logo--light {
+  display: none;
+}
+
+[data-theme='dark'] .auth__logo--dark {
+  display: block;
+}
+
+/*
+  A FORGÓ SZÓ — „Ne csak ingázz, Bringázz! / Fuss! / Sétálj!"
+
+  A doboz `inline-grid`: a látható szó és a méretadó szellempéldány EGYMÁSRA
+  kerül (mindkettő az 1/1 cellába), így a szócsere nem tolja a mondatot.
+  Az `overflow: hidden` adja a henger hatását — a szó a doboz tetején tűnik
+  el és az aljáról jön vissza.
+*/
+.verb-roll {
+  /* `inline-grid`, hogy a szellempéldány és a látható szó EGY cellába
+     kerüljön, és a doboz alapvonala a szellempéldányé legyen (alapértelmezett
+     `vertical-align: baseline` mellett a rács első elemének alapvonala). */
+  display: inline-grid;
+  overflow: hidden;
+  /* A leszálló szárak (g, j, y) miatt kell a kis ráhagyás, különben a
+     levágás beléjük vágna. */
+  padding-bottom: 0.15em;
+}
+
+.verb-roll__ghost,
+.verb-roll__word {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  /* A szellempéldány is FÉLKÖVÉR: normál vastagsággal keskenyebb dobozt
+     adna, és a látható szó vége (a felkiáltójel) levágódna. */
+  font-weight: 700;
+}
+
+/*
+  ⚠️ A SZELLEMPÉLDÁNY TARTJA AZ ALAPVONALAT, nem csak a szélességet.
+
+  Korábban `vertical-align: bottom` állt itt: az a doboz ALJÁT igazította a
+  sorhoz, az alapvonalát nem — a lila szó ezért láthatóan elcsúszott a mondat
+  többi részéhez képest. Alapértelmezett alapvonal-igazítással a rács első
+  elemének, vagyis a szellempéldánynak az alapvonala lesz a dobozé, és a szó
+  pontosan a mondat sorába ül.
+*/
+.verb-roll__ghost {
+  visibility: hidden;
+}
+
+.verb-roll__word {
+  color: var(--accent);
+  font-weight: 700;
+  animation: verb-roll-in 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.verb-roll__word--out {
+  animation: verb-roll-out 400ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes verb-roll-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes verb-roll-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+/* Mozgásérzékenyeknél nincs gördülés — a szó egyszerűen átúszik. */
+@media (prefers-reduced-motion: reduce) {
+  .verb-roll__word,
+  .verb-roll__word--out {
+    animation: none;
+  }
 }
 
 .auth__tagline {
