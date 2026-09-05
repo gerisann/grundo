@@ -45,6 +45,7 @@ explicit táblázat biztosítja.
 | Mért tanulságok, hibaminták, mérés nélküli magyarázat vagy új megkötés | [grundo-lessons](.codex/skills/grundo-lessons/SKILL.md) |
 | Modelljavaslat | [models.md](.codex/models.md) |
 | Tartós döntések | [DECISIONS.md](docs/ai/DECISIONS.md) |
+| Teljesítmény-optimalizáció (bármelyik oldal) | [PERFORMANCE_GOALS.md](docs/ai/PERFORMANCE_GOALS.md) |
 
 A workflow-khoz a hivatkozott `SKILL.md` fájlt közvetlenül nyisd meg.
 Nem szükséges, hogy a `.codex/skills` megjelenjen az alkalmazás skillválasztójában.

@@ -61,7 +61,8 @@ bezárás, védelem, Trust Score) · `04` pontrendszer · `05` adatmodell · `06
 architektúra és admin · `07`–`08` iOS/Android kiadás.
 
 Tartós megvalósítási döntések (**mit nem szabad visszacsinálni**):
-`docs/ai/DECISIONS.md`.
+`docs/ai/DECISIONS.md`. Teljesítmény-optimalizáció fókuszpontjai (a hét cél,
+amihez minden mérést/javítást vissza kell kötni): `docs/ai/PERFORMANCE_GOALS.md`.
 
 ## Parancsok (Git Bash, repo gyökér)
 
