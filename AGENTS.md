@@ -1,40 +1,50 @@
-# AGENTS.md — GRUNDO
+# AGENTS.md — GRUNDO / Codex
 
-**A projekt szabályai a [`CLAUDE.md`](CLAUDE.md)-ben vannak.** Ez a fájl csak
-átirányítás, hogy minden ügynök ugyanazt olvassa — egy helyen kell karbantartani.
+## Kötelező munkakönyvtár és kommunikáció
 
-> **Claude Code-nak nem kell elolvasnia ezt a fájlt**: ő a `CLAUDE.md`-t és a
-> `.claude/rules/` útvonalhoz kötött szabályait tölti be magától. Ez a fájl a
-> Codexnek és más ügynököknek szól, amelyek `AGENTS.md`-t keresnek.
+Minden GRUNDO-munkát kizárólag innen végezz:
+`C:\Users\Geri\Documents\GitHub\grundo`.
+Induláskor ellenőrizd az aktuális könyvtárat. Ha eltér, állj meg és szólj.
+Ne hozz létre másik klónt vagy worktree-t; új feladatnál is a mentett projekt
+közvetlen helyi (local) munkapéldányát használd.
+
+Geri felé minden chat-üzenet magyarul legyen; kód és kommentek angolul.
+Minden munka közbeni üzenet végén jelezd a haladást százalékban,
+több tételnél `x/y` alakban is.
 
 ## Minden munkamenet elején
 
-1. [`CLAUDE.md`](CLAUDE.md) — a projekt, a sérthetetlen szabályok, a parancsok
-2. [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md) — hol tartunk
-3. `git status` és `git diff --stat`
+1. [`.codex/README.md`](.codex/README.md) — projekt, szabályok, Codex-munkarend.
+2. [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md) — aktuális állapot.
+3. `git status --short` és `git diff --stat` — más forrás munkáját őrizd meg.
+4. [skill-discovery.md](.codex/rules/skill-discovery.md).
+5. [grundo-session-start](.codex/skills/grundo-session-start/SKILL.md)
+   — az előbb már olvasott fájlokat ne olvasd újra.
 
-Ezután **célzott kereséssel** nyisd meg, ami az adott feladathoz kell. Ne
-olvasd végig a repót.
+A Codex projektutasításainak forrása a `.codex/` mappa.
+A `CLAUDE.md` és `.claude/` a Claude saját munkarendje.
+A közös termékspecifikáció forrása továbbra is `docs/`.
+Ezután célzottan keress (`rg`); ne olvasd végig a repót.
 
-## Amit csak akkor olvass el, ha odanyúlsz
+## Feladathoz kötött kötelező olvasás
 
-| Ha ehhez nyúlsz | Olvasd el |
+Módosítás előtt minden illeszkedő szabályfájlt olvass el.
+A szabályok YAML `paths` mezője dokumentáció; Codexben a betöltést ez az
+explicit táblázat biztosítja.
+
+| Ha ehhez nyúlsz / ezt végzed | Olvasd el |
 |---|---|
-| `src/game/`, `src/config/` | `.claude/rules/game-engine.md` |
-| `server/` | `.claude/rules/server.md` |
-| `src/screens/`, `components/`, `styles/`, `lib/`, `hooks/`, `store/` | `.claude/rules/frontend.md` |
-| `android/`, `ios/`, `src/tracking/` | `.claude/rules/native.md` |
-| `firebase.json`, `*.rules`, `.env*` | `.claude/rules/firebase-config.md` |
-| tesztfájl | `.claude/rules/testing.md` |
-| telepítés, kiadás | `.claude/skills/grundo-deploy/SKILL.md` |
-| menetzárás, átadás | `.claude/skills/grundo-handoff/SKILL.md` |
-| mért tanulságok, hibaminták | `.claude/skills/grundo-lessons/SKILL.md` |
-| tartós döntések | [`docs/ai/DECISIONS.md`](docs/ai/DECISIONS.md) |
+| `src/game/**`, `src/config/**`, `server/src/lib/activity*.ts` | [game-engine.md](.codex/rules/game-engine.md) |
+| `server/**` | [server.md](.codex/rules/server.md) |
+| `src/screens/**`, `src/components/**`, `src/styles/**`, `src/lib/**`, `src/hooks/**`, `src/store/**` | [frontend.md](.codex/rules/frontend.md) |
+| `android/**`, `ios/**`, `src/tracking/**`, `capacitor.config.*` | [native.md](.codex/rules/native.md) |
+| `firebase.json`, `.firebaserc`, `firestore.rules`, `firestore.indexes.json`, `storage.rules`, `.env*`, `src/lib/firebase.ts`, `server/server.ts` | [firebase-config.md](.codex/rules/firebase-config.md) |
+| `**/*.test.ts`, `**/*.test.tsx`, `vite.config.ts`, tesztelési stratégia | [testing.md](.codex/rules/testing.md) |
+| Telepítés, kiadás | [grundo-deploy](.codex/skills/grundo-deploy/SKILL.md) |
+| Menetzárás, átadás | [grundo-handoff](.codex/skills/grundo-handoff/SKILL.md) |
+| Mért tanulságok, hibaminták, mérés nélküli magyarázat vagy új megkötés | [grundo-lessons](.codex/skills/grundo-lessons/SKILL.md) |
+| Modelljavaslat | [models.md](.codex/models.md) |
+| Tartós döntések | [DECISIONS.md](docs/ai/DECISIONS.md) |
 
-⚠️ **Minden ügynök ebből az egy mappából dolgozik:**
-`C:\Users\Geri\Documents\GitHub\grundo`. Ne hozz létre másik klónt; ha a
-munkamenet más útvonalon indul, állj meg és szólj.
-
-⚠️ **Geri felé minden chat-üzenet magyarul** (a kód és a kommentek angolul), és
-**minden munka közbeni üzenet végén jelezd a haladást** százalékban, több
-tételnél `x/y` alakban is.
+A workflow-khoz a hivatkozott `SKILL.md` fájlt közvetlenül nyisd meg.
+Nem szükséges, hogy a `.codex/skills` megjelenjen az alkalmazás skillválasztójában.

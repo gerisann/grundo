@@ -281,8 +281,19 @@ szükség, és akkor is célzottan (`grep`-pel a fejezetcímre).
 
 ## Aktivitás-feed — #40
 
-- A feed mentési idő (`createdAt`) szerint rendez; a `startedAt` a tényleges
-  kezdés marad, nem írható át a megjelenítési sorrend kedvéért.
+- **A feed a BEFEJEZÉS ideje (`endedAt`) szerint rendez és dátumoz**, nem a
+  `startedAt`, és nem is a szerveroldali mentés idejét jelző `createdAt`
+  szerint. A `startedAt` a tényleges kezdés marad, nem írható át a
+  megjelenítési sorrend kedvéért.
+  ⚠️ A #40 először `createdAt`-tal ment ki; offline vagy késve feltöltött
+  körnél az érdemben eltér a valóságtól. Az `endedAt` mezőt a 2026-08-17-i
+  legelső mentési implementáció óta minden aktivitás-dokumentum tartalmazza,
+  ezért a váltás migráció nélkül visszamenőleg is helyes.
+- **Új feedmezőre váltás előtt az indexeknek KINT KELL LENNIÜK.** A #40
+  backendje `createdAt`-os indexek nélkül települt élesbe (2026-09-05 07:53
+  UTC), ettől a `/api/activities` mindenkinek 500-at adott
+  (`FAILED_PRECONDITION`). A helyreállítás forgalom-visszaterelés volt az
+  előző revízióra; a sorrend nem opcionális: **index → backend → frontend.**
 - A tízes lapozás kurzora időpont + dokumentumazonosító: azonos időpontnál
   sem hagyhat ki aktivitást. Rejtett/távoli sorok esetén üres lap is adhat
   folytatókurzort, a kliens ilyenkor is mutatja a betöltőgombot.

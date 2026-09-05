@@ -138,8 +138,9 @@ Ezt az onboarding szövegében is így kell megfogalmazni — nem szabad olyat �
    újabb 10-et kér. Ugyanez érvényes a saját és nyilvános profilra, valamint
    a Felfedezés aktivitáslistájára. A Banda hírfolyam tízes bővítése ugyanezt
    a gombfeliratot használja.
-   A sorrend és dátumszűrés a szerveroldali mentés ideje (`createdAt`), nem
-   a mozgás kezdete. A tényleges kezdés megmarad a részletekhez és statisztikákhoz.
+   A Banda üzenőfala szintén tízesével lapoz, ugyanezzel a gombbal.
+   A sorrend és dátumszűrés a mozgás BEFEJEZÉSE (`endedAt`) szerint megy, nem
+   a kezdete. A tényleges kezdés megmarad a részletekhez és statisztikákhoz.
    A lista fiókonként és szűrésenként helyi memóriacache-t használ: 5 percig
    friss, inaktívan 30 percig tárolt; oldalváltáskor a már betöltött lapok is
    megmaradnak. Mentés, szerkesztés, törlés és közösségi módosítás érvénytelenít;
