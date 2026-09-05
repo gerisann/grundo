@@ -18,8 +18,9 @@ import { cellColorHex } from '@/lib/cellColors';
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
 import { GRAPHICS_PROFILES, type GraphicsProfile } from '@/lib/graphicsSettings';
 import {
+  cellInBounds,
   containsBounds,
-  pointInBounds,
+  filterCellsToBounds,
   renderBounds as calculateRenderBounds,
   tiltedZoomForViewingDistance,
   visibleTrackSegments,
@@ -1364,25 +1365,6 @@ function clampDefense(value: number): 1 | 2 | 3 | 4 | 5 {
   return Math.min(5, Math.max(1, Math.round(value))) as 1 | 2 | 3 | 4 | 5;
 }
 
-/**
- * A Mapbox csak a forráson belül tud viewport szerint csempézni. Ezért a
- * drága GeoJSON-építés ELŐTT vágjuk ki a kamerán kívüli cellákat.
- */
-const CELL_CENTER_CACHE = new Map<CellId, { lat: number; lng: number }>();
-const CELL_CENTER_CACHE_LIMIT = 50_000;
-
-function cellInBounds(cell: CellId, bounds: RenderBounds | null): boolean {
-  if (bounds === null) return true;
-  let center = CELL_CENTER_CACHE.get(cell);
-  if (!center) {
-    const [lat, lng] = cellToLatLng(cell);
-    center = { lat, lng };
-    if (CELL_CENTER_CACHE.size >= CELL_CENTER_CACHE_LIMIT) CELL_CENTER_CACHE.clear();
-    CELL_CENTER_CACHE.set(cell, center);
-  }
-  return pointInBounds(center, bounds);
-}
-
 function filterLayersToBounds(
   layers: MapViewProps['layers'],
   bounds: RenderBounds | null,
@@ -1390,10 +1372,7 @@ function filterLayersToBounds(
   if (bounds === null) return layers;
   return layers?.map((layer) => ({
     role: layer.role,
-    cells: [...layer.cells].filter((entry) => {
-      const cell = typeof entry === 'string' ? entry : entry.cell;
-      return cellInBounds(cell, bounds);
-    }),
+    cells: filterCellsToBounds(layer.cells, bounds),
   }));
 }
 

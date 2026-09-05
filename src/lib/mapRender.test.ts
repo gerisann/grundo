@@ -1,11 +1,15 @@
+import { latLngToCell } from 'h3-js';
 import { describe, expect, it } from 'vitest';
 import {
+  cellInBounds,
   containsBounds,
+  filterCellsToBounds,
   pointInBounds,
   renderBounds,
   tiltedZoomForViewingDistance,
   visibleTrackSegments,
 } from './mapRender';
+import type { CellId } from '@/types';
 
 describe('renderBounds', () => {
   const viewport = { south: 47.49, west: 19.03, north: 47.5, east: 19.04 };
@@ -63,6 +67,63 @@ describe('visibleTrackSegments', () => {
     );
     const renderedPointCount = segments.reduce((sum, segment) => sum + segment.length, 0);
     expect(renderedPointCount).toBeLessThan(60);
+  });
+});
+
+describe('filterCellsToBounds', () => {
+  /**
+   * Res12 cellák egy ~0,2°×0,2° (≈22 km) területen szétszórva — a `bounds`
+   * ennek csak a középső sávja, tehát mindig van BENNE és KÍVÜLE eső cella
+   * is. A lépésköz jóval nagyobb, mint egy res12 hatszög (~18,8 m), így nem
+   * esnek egybe cellák — a `count` valóban ennyi EGYEDI cellát ad.
+   */
+  function gridCells(count: number): CellId[] {
+    const cells = new Set<CellId>();
+    const side = Math.ceil(Math.sqrt(count));
+    const step = 0.2 / side;
+    for (let row = 0; row < side && cells.size < count; row += 1) {
+      for (let col = 0; col < side && cells.size < count; col += 1) {
+        cells.add(latLngToCell(47.30 + row * step, 19.00 + col * step, 12));
+      }
+    }
+    return [...cells];
+  }
+
+  const bounds = { south: 47.38, west: 19.08, north: 47.42, east: 19.12 };
+
+  it('kis rétegnél (küszöb alatt) a sima szűréssel egyező eredményt ad', () => {
+    const cells = gridCells(200);
+    const naive = cells.filter((cell) => cellInBounds(cell, bounds));
+    const result = filterCellsToBounds(cells, bounds);
+    expect(new Set(result)).toEqual(new Set(naive));
+  });
+
+  it('nagy rétegnél (küszöb fölött, durva vödrözéssel) is a sima szűréssel egyező eredményt ad', () => {
+    const cells = gridCells(9_000);
+    expect(cells.length).toBeGreaterThan(5_000);
+    const naive = cells.filter((cell) => cellInBounds(cell, bounds));
+    const result = filterCellsToBounds(cells, bounds);
+    // A durva vödrözés a viewport SZÉLÉN álló cellákat is megtarthatja
+    // (szándékos ráhagyás) — de a naiv szűrés eredménye MINDIG benne van.
+    const resultSet = new Set(result);
+    for (const cell of naive) expect(resultSet.has(cell)).toBe(true);
+    // És nem hoz be a viewporttól durván távoli, semmiképpen sem látható cellát.
+    for (const entry of result) {
+      const cell = typeof entry === 'string' ? entry : entry.cell;
+      expect(cellInBounds(cell, {
+        south: bounds.south - 0.03,
+        west: bounds.west - 0.03,
+        north: bounds.north + 0.03,
+        east: bounds.east + 0.03,
+      })).toBe(true);
+    }
+  });
+
+  it('a `{cell, ...}` alakú bejegyzéseket is kezeli, nem csak a csupasz indexet', () => {
+    const cells = gridCells(200).map((cell) => ({ cell, defense: 2 }));
+    const result = filterCellsToBounds(cells, bounds);
+    expect(result.length).toBeGreaterThan(0);
+    for (const entry of result) expect(cellInBounds((entry as { cell: CellId }).cell, bounds)).toBe(true);
   });
 });
 
