@@ -13,7 +13,12 @@ export interface ActivitiesState {
   loadingMore: boolean;
 }
 
-/** Account- and filter-scoped memory cache survives navigation, including loaded pages. */
+/**
+ * Aktivitás-lista betöltése lapozással.
+ *
+ * A memóriacache fiókra ÉS szűrőre van kulcsolva, a már betöltött lapokkal
+ * együtt — így a részletekből visszalépve nem indul újra a feed az elejéről.
+ */
 export function useActivities(query: FeedQuery | null): ActivitiesState {
   const { user } = useAuth();
   const feed = useInfiniteQuery(activityFeedOptions(user?.uid, query));
@@ -24,8 +29,8 @@ export function useActivities(query: FeedQuery | null): ActivitiesState {
     loading: feed.isLoading,
     error: feed.error ? 'Nem sikerült betölteni az aktivitásokat. Próbáld újra.' : '',
     reload: () => { void (feed.isFetchNextPageError ? feed.fetchNextPage() : feed.refetch()); },
-    loadMore: () => { if (feed.hasNextPage && !feed.isFetching) void feed.fetchNextPage(); },
+    loadMore: () => { if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage(); },
     hasMore: feed.hasNextPage,
-    loadingMore: feed.isFetching,
+    loadingMore: feed.isFetchingNextPage,
   };
 }

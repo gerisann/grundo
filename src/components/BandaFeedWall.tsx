@@ -51,7 +51,7 @@ function BandaPostBoard({ bandaId, kind, canPost, canModerate, placeholder, empt
 
   async function load(limit = visibleLimit) {
     try {
-      const result = kind === 'feed' ? await api.bandas.feed(bandaId, limit) : await api.bandas.wall(bandaId);
+      const result = kind === 'feed' ? await api.bandas.feed(bandaId, limit) : await api.bandas.wall(bandaId, limit);
       setHasMore(result.hasMore);
       return result.items;
     } catch (problem) {
@@ -164,7 +164,7 @@ function BandaPostBoard({ bandaId, kind, canPost, canModerate, placeholder, empt
       {items === null ? <p className="search__note">Betöltés…</p> : items.length === 0 ? <p className="search__note">{emptyText}</p> : items.map((item) => kind === 'feed' ?
         <FeedPostCard key={item.id} bandaId={bandaId} item={item} own={item.authorUid === profile?.uid} currentUid={profile?.uid ?? ''} canModerate={canModerate} now={now} onEdit={() => editPost(item)} onDelete={() => void deletePost(item)} onError={setError} onChange={(change) => updateItem(item.id, change)} /> :
         <WallMessage key={item.id} bandaId={bandaId} item={item} own={item.authorUid === profile?.uid} now={now} onReply={() => { setReplyingTo(item); textareaRef.current?.focus(); }} onChange={(change) => updateItem(item.id, change)} />)}
-      {kind === 'feed' && hasMore ? <Button variant="secondary" block onClick={() => { const next = visibleLimit + 10; setVisibleLimit(next); void load(next).then(setItems); }}>Továbbiak betöltése</Button> : null}
+      {hasMore ? <Button variant="secondary" block onClick={() => { const next = visibleLimit + 10; setVisibleLimit(next); void load(next).then(setItems); }}>Továbbiak betöltése</Button> : null}
     </div>
   </div>;
 }

@@ -341,7 +341,8 @@ export interface ActivityAuthor {
 export type FeedScope = 'mine' | 'world' | 'local' | 'following' | 'user';
 
 export interface FeedActivity {
-  createdAt?: number;
+  /** A befejezés ideje — a feed ez szerint rendez és dátumoz. */
+  endedAt?: number;
   durationS?: number;
   id: string;
   type: 'run' | 'walk' | 'ride';
@@ -1399,8 +1400,8 @@ export const api = {
       ),
 
     /** A chat fal, a legrégebbivel kezdve. */
-    wall: (bandaId: string) =>
-      request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall`),
+    wall: (bandaId: string, limit = 10) =>
+      request<{ items: BandaPost[]; hasMore: boolean }>(`/api/bandas/${encodeURIComponent(bandaId)}/wall?limit=${limit}`),
 
     /** Új üzenet a chat falra — bármelyik tag írhat. */
     postToWall: (bandaId: string, text: string, replyToId?: string) =>

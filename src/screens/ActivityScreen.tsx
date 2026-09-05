@@ -276,7 +276,7 @@ export function ActivityScreen() {
             </button>
             <div className="act__title-row">
               <h1 className="act__title">
-                {activity.title ?? activityTitle(activity.type, activity.startedAt, activity.durationS, activity.createdAt ?? activity.startedAt)}
+                {activity.title ?? activityTitle(activity.type, activity.startedAt, activity.durationS, activity.endedAt ?? activity.startedAt)}
               </h1>
               {activity.mine && user ? (
                 <span className="act__owner-actions">

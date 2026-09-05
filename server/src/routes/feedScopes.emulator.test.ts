@@ -85,21 +85,22 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
     expect(new Set(ids).size).toBe(23);
   });
 
-  it('orders and filters by save time while preserving the actual start', async () => {
+  it('orders and filters by end time while preserving the actual start', async () => {
+    // Reggel indult, de csak este ért véget — a feedben ESTIKÉNT kell állnia.
     await seedActivity('morning-ride', ME, new Date('2026-09-05T06:00:00Z'));
-    await db.collection('activities').doc('morning-ride').update({ createdAt: new Date('2026-09-05T20:00:00Z') });
+    await db.collection('activities').doc('morning-ride').update({ endedAt: new Date('2026-09-05T20:00:00Z') });
     await seedActivity('afternoon', ME, new Date('2026-09-05T15:00:00Z'));
     const result = await feed(`scope=world&dateFrom=${Date.parse('2026-09-05T18:00:00Z')}`);
     expect(result.activities.map((row: { id: string }) => row.id)).toEqual(['morning-ride']);
     expect(result.activities[0].startedAt).toBe(Date.parse('2026-09-05T06:00:00Z'));
-    expect(result.activities[0].createdAt).toBe(Date.parse('2026-09-05T20:00:00Z'));
+    expect(result.activities[0].endedAt).toBe(Date.parse('2026-09-05T20:00:00Z'));
   });
 
   it('continues across deleted rows and an empty scan', async () => {
     const batch = db.batch();
     for (let i = 0; i < 305; i++) {
       batch.set(db.collection('activities').doc(`hidden-${i}`), {
-        userId: ME, visibility: 'everyone', startedAt: new Date(1000 + i), createdAt: new Date(1000 + i), deletedAt: new Date(),
+        userId: ME, visibility: 'everyone', startedAt: new Date(1000 + i), endedAt: new Date(1000 + i), deletedAt: new Date(),
       });
     }
     await batch.commit();
@@ -138,7 +139,7 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
       layer: 'foot',
       visibility,
       startedAt,
-      createdAt: startedAt,
+      endedAt: startedAt,
       distanceM: 5000,
       movingS: 1800,
       areaGainedM2: 0,
@@ -192,7 +193,7 @@ describe.skipIf(!EMULATOR)('Feed-nézetek — valódi Firestore ellen', () => {
       layer: 'foot',
       visibility: 'everyone',
       startedAt: new Date('2026-08-18T10:00:00Z'),
-      createdAt: new Date('2026-08-18T10:00:00Z'),
+      endedAt: new Date('2026-08-18T10:00:00Z'),
       distanceM: 5000,
       movingS: 1800,
       areaGainedM2: Math.round(79 * 307.09),

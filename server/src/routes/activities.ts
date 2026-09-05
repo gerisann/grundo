@@ -424,7 +424,7 @@ activitiesRouter.post('/', async (req: AuthedRequest, res, next) => {
           followers.docs.map((doc) => doc.id),
           username,
           activityId,
-          activityTitle(type, startedAt, (endedAt - startedAt) / 1000, Date.now(), 'Europe/Budapest'),
+          activityTitle(type, startedAt, (endedAt - startedAt) / 1000, endedAt, 'Europe/Budapest'),
         );
       }
     })().catch((error: unknown) => {
@@ -590,20 +590,20 @@ activitiesRouter.get('/', async (req: AuthedRequest, res, next) => {
       const batchSize = Math.min(30, LOCAL_SCAN_LIMIT - scanned);
       const snapshots = await Promise.all(queries.map((query) => {
         let next = query;
-        if (dateFrom !== null) next = next.where('createdAt', '>=', new Date(dateFrom));
-        if (dateTo !== null) next = next.where('createdAt', '<=', new Date(dateTo));
-        next = next.orderBy('createdAt', 'desc').orderBy(FieldPath.documentId(), 'desc');
+        if (dateFrom !== null) next = next.where('endedAt', '>=', new Date(dateFrom));
+        if (dateTo !== null) next = next.where('endedAt', '<=', new Date(dateTo));
+        next = next.orderBy('endedAt', 'desc').orderBy(FieldPath.documentId(), 'desc');
         if (cursor) next = next.startAfter(new Date(cursor.at), cursor.id);
         return next.limit(batchSize).get();
       }));
       const docs = snapshots.flatMap((snapshot) => snapshot.docs).sort((a, b) =>
-        toMillis(b.data().createdAt) - toMillis(a.data().createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+        toMillis(b.data().endedAt) - toMillis(a.data().endedAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
       ).slice(0, batchSize);
       hasMore = snapshots.some((snapshot) => snapshot.size === batchSize) || snapshots.reduce((sum, snapshot) => sum + snapshot.size, 0) > batchSize;
       for (let index = 0; index < docs.length; index++) {
         const doc = docs[index]!;
         let data = doc.data() as Record<string, unknown>;
-        cursor = { at: toMillis(data.createdAt), id: doc.id };
+        cursor = { at: toMillis(data.endedAt), id: doc.id };
         scanned++;
         if (data.deletedAt != null || blockedIds.has(String(data.userId))) continue;
         // Local filtering uses the public route center, as before.
@@ -644,7 +644,8 @@ interface FeedRow {
   type: unknown;
   layer: unknown;
   startedAt: number;
-  createdAt: number;
+  /** A befejezés ideje — a feed EZ SZERINT rendez és dátumozik. */
+  endedAt: number;
   durationS: number;
   distanceM: number;
   movingS: number;
@@ -826,7 +827,7 @@ function toFeedRow(id: string, data: Record<string, unknown>): FeedRow {
     type: data.type,
     layer: data.layer,
     startedAt: toMillis(data.startedAt),
-    createdAt: toMillis(data.createdAt),
+    endedAt: toMillis(data.endedAt),
     durationS: Number(data.durationS ?? 0),
     distanceM: Number(data.distanceM ?? 0),
     movingS: Number(data.movingS ?? 0),
@@ -1422,7 +1423,7 @@ async function setLike(activityId: string, uid: string, liked: boolean) {
       title?: string | null;
       type?: 'run' | 'walk' | 'ride';
       startedAt?: unknown;
-      createdAt?: unknown;
+      endedAt?: unknown;
       durationS?: number;
     };
     const count = Number(activityData.likeCount ?? 0);
@@ -1431,7 +1432,7 @@ async function setLike(activityId: string, uid: string, liked: boolean) {
     // napszak + mozgásforma alakú automatikus cím — ugyanaz, amit a kártya mutat.
     const title =
       activityData.title ||
-      activityTitle(activityData.type ?? 'run', toMillis(activityData.startedAt), activityData.durationS, toMillis(activityData.createdAt), 'Europe/Budapest');
+      activityTitle(activityData.type ?? 'run', toMillis(activityData.startedAt), activityData.durationS, toMillis(activityData.endedAt), 'Europe/Budapest');
     if (existing.exists === liked) {
       return { likeCount: count, likedByMe: liked, ownerId, title, isNew: false };
     }

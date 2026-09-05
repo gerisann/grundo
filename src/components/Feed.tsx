@@ -144,8 +144,15 @@ export function Feed() {
         },
   );
 
-  // Movement filters apply to cached pages; pagination stays available even
-  // when the current pages contain no matching activity.
+  /**
+   * A mozgásforma-szűrés a BETÖLTÖTT lapokon fut, nem a szerveren.
+   *
+   * A `type` szerinti szerveroldali szűréshez `where('type','in',…)` kellene
+   * az `orderBy('endedAt')` mellé, ami újabb összetett indexet jelentene.
+   *
+   * ⚠️ EMIATT EGY LAP TELJESEN ÜRESRE SZŰRŐDHET. A „Továbbiak betöltése"
+   * gomb ilyenkor is megmarad — a következő lapon jöhet illeszkedő sor.
+   */
   const visibleResult = useMemo<FeedResult | null>(() => {
     if (result === null) return null;
     if (types.length === ALL_TYPES.length) return result;
@@ -407,7 +414,16 @@ export interface ActivityListProps {
   onStart?: () => void;
 }
 
-/** Shared activity cards for Home and profile feeds. */
+/**
+ * A lista maga — a profil is ezt használja, saját lekérdezéssel.
+ *
+ * Külön exportált, mert a profil UGYANABBÓL a betöltésből építi a heti
+ * oszlopdiagramot és az összegzőket is.
+ *
+ * ⚠️ A `loading` már nem vált „Betöltés…"-re: a lapozó cache miatt a régi
+ * lista marad kint a háttérfrissítés alatt, különben minden visszalépésnél
+ * villogna a lista.
+ */
 export function ActivityList({
   scope,
   result,

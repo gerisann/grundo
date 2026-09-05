@@ -1067,7 +1067,9 @@ const POST_MAX = 1000;
 const FEED_PAGE = 10;
 const FEED_PAGE_MAX = 50;
 const FEED_SCAN_MAX = 250;
-const WALL_PAGE = 100;
+const WALL_PAGE = 10;
+/** Egy kérésben ennyi nyers sort nézünk át, mielőtt a rejtetteket kiszűrjük. */
+const WALL_SCAN_MAX = 100;
 const COMMENT_MAX = 500;
 
 async function loadMemberRole(bandaRef: FirebaseFirestore.DocumentReference, uid: string): Promise<BandaRole> {
@@ -1465,9 +1467,10 @@ bandasRouter.get('/:id/wall', async (req: AuthedRequest, res: Response, next) =>
      * lista; az üzenőfalon viszont a friss üzenet a lényeg, és az üzenetírás is
      * a lista fölött van — így nem kell végiggörgetni a régieket.
      */
-    const snapshot = await bandaRef.collection('wall').orderBy('createdAt', 'desc').limit(WALL_PAGE).get();
+    const limit = requestedLimit(req.query.limit, WALL_PAGE, WALL_SCAN_MAX);
+    const snapshot = await bandaRef.collection('wall').orderBy('createdAt', 'desc').limit(WALL_SCAN_MAX).get();
     const visible = snapshot.docs.filter((doc) => doc.get('hiddenAt') == null);
-    res.json({ items: await postSummaries(visible, uid), hasMore: snapshot.docs.length >= WALL_PAGE });
+    res.json({ items: await postSummaries(visible.slice(0, limit), uid), hasMore: visible.length > limit });
   } catch (error) {
     next(error);
   }

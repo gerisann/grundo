@@ -518,6 +518,20 @@ describe.skipIf(!EMULATOR)('Bandák API — valódi Firestore ellen', () => {
     expect(wall.items[0]).toMatchObject({ text: 'Válasz', replyToId: firstId, replyToUsername: 'alapito', likeCount: 1 });
   });
 
+  it('az üzenőfal tízesével lapoz, és a folytatás a régebbieket hozza', async () => {
+    const created = await (await call('/', OWNER, { method: 'POST', body: JSON.stringify({ name: 'Lapozó Fal', visibility: 'public' }) })).json();
+    const bandaId = created.banda.id as string;
+    for (let index = 0; index < 12; index++) {
+      await call(`/${bandaId}/wall`, OWNER, { method: 'POST', body: JSON.stringify({ text: `Uzenet ${index}` }) });
+    }
+    const first = await (await call(`/${bandaId}/wall`, OWNER)).json();
+    expect(first.items).toHaveLength(10);
+    expect(first.hasMore).toBe(true);
+    const second = await (await call(`/${bandaId}/wall?limit=20`, OWNER)).json();
+    expect(second.items).toHaveLength(12);
+    expect(second.hasMore).toBe(false);
+  });
+
   it('"postPermission: owner" beállításnál a sima tag nem posztolhat a hírfolyamba, a falra viszont igen', async () => {
     const created = await (
       await call('/', OWNER, {

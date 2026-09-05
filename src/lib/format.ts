@@ -189,20 +189,39 @@ const MOVEMENT: Record<'run' | 'walk' | 'ride', string> = {
 };
 
 /**
+ * A napnevek melléknévi alakja, a hét napjának sorszáma szerint (0 = vasárnap).
+ *
+ * ⚠️ NEM az `Intl` hu-HU kimenetéhez ragasztunk „i" végződést: a toldalékolás
+ * ICU-verziófüggő lenne, itt viszont fix, ellenőrizhető lista kell.
+ */
+const WEEKDAY_ADJECTIVE = [
+  'Vasárnapi', 'Hétfői', 'Keddi', 'Szerdai', 'Csütörtöki', 'Pénteki', 'Szombati',
+] as const;
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+/**
  * Automatikus cím: „Délutáni bringázás".
  *
  * Az aktivitásnak lesz szerkeszthető címe, de amíg a felhasználó nem ad neki,
  * a napszak + mozgásforma sokkal használhatóbb, mint egy azonosító. Egy
  * listában így is meg lehet különböztetni a reggeli futást az estitől.
+ *
+ * ⚠️ NYOLC ÓRÁNÁL HOSSZABB aktivitásnál a napszak félrevezető — egy egész
+ * napos túra nem „reggeli" —, ezért ott a BEFEJEZÉS napjának neve jön:
+ * „Szombati bringázás".
  */
 export function activityTitle(
   type: 'run' | 'walk' | 'ride', startedAt: number, durationS = 0,
-  savedAt = startedAt, timeZone?: string,
+  endedAt = startedAt, timeZone?: string,
 ): string {
   if (durationS > 8 * 60 * 60) {
-    const day = new Intl.DateTimeFormat('hu-HU', { weekday: 'long', ...(timeZone ? { timeZone } : {}) })
-      .format(new Date(savedAt));
-    return `${day.charAt(0).toUpperCase()}${day.slice(1)}i ${MOVEMENT[type]}`;
+    const short = new Intl.DateTimeFormat('en-US', { weekday: 'short', ...(timeZone ? { timeZone } : {}) })
+      .format(new Date(endedAt));
+    const day = WEEKDAY_ADJECTIVE[WEEKDAY_INDEX[short] ?? new Date(endedAt).getDay()]!;
+    return `${day} ${MOVEMENT[type]}`;
   }
   const hour = timeZone
     ? Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(new Date(startedAt)))
