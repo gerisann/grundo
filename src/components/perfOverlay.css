@@ -49,7 +49,7 @@
   top: var(--perf-overlay-top);
   right: var(--sp-3);
   z-index: 10030;
-  width: min(260px, calc(100% - var(--sp-5)));
+  width: min(300px, calc(100% - var(--sp-5)));
   padding: var(--sp-3);
   display: grid;
   gap: var(--sp-2);
