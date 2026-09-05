@@ -165,3 +165,14 @@ láthatók maradtak.
 először és a legszűkebb collection scope-ban.** Collection-group queryt csak
 deklarált indexszel használj, és ne tedd ugyanabba az all-or-nothing párhuzamos
 blokkba olyan művelettel, amelynek mindenképp le kell futnia.
+
+## 15. A DOM-ban jelen lévő felirat nem bizonyít alkalmazásállapotot
+
+A Samsung Game Loop futásából kiolvasott `innerText` tartalmazta a „SZÜNET”
+feliratot, és ezt megállásként jelentettem. Az aktív állapotot és a felirat
+tényleges láthatóságát nem ellenőriztem; a scenario közben továbbhaladt,
+majd sikeres eredményt adott és bezárult (2026-09-05).
+
+**Állapotváltást ne vezess le egy felirat jelenlétéből.** Ellenőrizd az
+állapotot jelző osztályt/attribútumot, a tényleges láthatóságot és az időbeli
+haladást vagy a runtime eseményt, mielőtt hibát jelentesz vagy javítasz.

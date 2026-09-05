@@ -300,3 +300,14 @@ szükség, és akkor is célzottan (`grep`-pel a fejezetcímre).
 - A heti statisztika nem függhet a feedben megnyitott lapok számától.
 - A feed memóriacache fiók- és szűrésfüggő, módosításkor érvénytelenítendő,
   auth-váltáskor ürítendő. Privát aktivitásadat nem kerül localStorage-ba.
+
+## Külön Android debug app és Game Loop (2026-09-05)
+
+- A release applicationId `app.grundo.android`, a debugé
+  `app.grundo.android.debug`. A debug telepítése nem törölheti és nem írhatja
+  felül az éles appot; a két csomag együttélését Samsungon ellenőriztük.
+- A Java namespace továbbra is `app.grundo.android`. A Game Loop component
+  `app.grundo.android.debug/app.grundo.android.GameLoopActivity`.
+- A `GameLoopActivity`, a Test Lab intent-filter és a loops metaadat kizárólag
+  `android/app/src/debug` alatt létezhet; release-be nem kerülhet. A Game Loop
+  webcsomag sem kiadási csomag: az éles webbuildhez a rendes build szükséges.

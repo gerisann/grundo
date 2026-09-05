@@ -1,117 +1,95 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-05** · GRUNDO **#41**
-> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **`main`**
-> Állapot: a #40 hibái javítva, **élesben fut és ellenőrizve**.
-> Utoljára dolgozott: **Claude Opus 5** · Átadva: **Claude**
+> Frissítve: **2026-09-05** · Menetszám: **#42 javaslat**, nem megerősített
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · HEAD: **8d12869**
+> Utoljára dolgozott: **Codex (GPT-6; pontos modellváltozat/erősség nem igazolt)**
+> Átadva: **Claude**
 
 ## Jelenlegi cél
 
-A #40 (aktivitás-feed lapozás és sorrend) hibáinak helyrehozása, majd
-telepítés. Kész és éles.
-
-## ⚠️ Ami ma élesben elromlott, és hogyan állt helyre
-
-A #40 backendje **07:53 UTC-kor telepítve lett a hozzá tartozó Firestore
-indexek nélkül** — az átadó azt írta, hogy nincs telepítve, a Cloud Run
-revíziólistája szerint volt. Ettől a `/api/activities` **minden felhasználónak
-500-at adott** (`9 FAILED_PRECONDITION: The query requires an index`), tehát
-az éles feed kb. 45 percig halott volt, webes és natív kliensen egyaránt.
-
-A hiba a kliens „Nem sikerült betölteni az aktivitásokat" üzeneteként
-jelentkezett — a valódi ok kizárólag a Cloud Run **stderr** naplójából derült
-ki, a kérésnaplóból nem.
-
-Helyreállítás sorrendben:
-
-1. Forgalom visszaterelése az előző revízióra
-   (`gcloud run services update-traffic … --to-revisions grundo-api-00143-sqm=100`)
-   — a feed percek alatt újra 200-at adott.
-2. `endedAt` indexek telepítése, majd **megvárva mind a három `READY`-t**.
-3. Backend, majd frontend telepítése.
-4. ⚠️ **A rollback után a forgalom a régi revízión RAGAD.** Az új build
-   magától nem kap forgalmat; `update-traffic --to-latest` kell hozzá.
-   Enélkül a telepítés némán hatástalan.
+**Kész:** helyi Windows debug APK → külön telepített app → Game Loop scenario 2
+sikeres futtatása a fizikai Samsungon. A következő feladatot Geri adja meg;
+az elkészült folyamatot ne indítsd újra automatikusan.
 
 ## Elkészült
 
-1. **A feed a BEFEJEZÉS ideje (`endedAt`) szerint rendez, szűr és lapoz.**
-   A #40 ehelyett a `createdAt`-ot, vagyis a szerveroldali mentés idejét
-   használta; offline vagy késve feltöltött körnél ez érdemben eltér. Érinti
-   a rendezést, a dátumszűrőt, a lapozókurzort, a kártya dátumát, az
-   aktivitás-részletezőt és az értesítések címét.
-2. **Nyolc óránál hosszabb aktivitás címe a befejezés napjának neve**
-   („Szombati bringázás"). A napnév fix magyar táblából jön; a #40 az `Intl`
-   hu-HU kimenetéhez ragasztott „i" végződést, ami ICU-verziófüggő.
-3. **A banda üzenőfala tízesével lapoz**, „Továbbiak betöltése" gombbal. A
-   #40 ezt kihagyta: a fal fix százas listát adott vissza, gomb nélkül.
-4. A „Továbbiak" gomb csak a következő lap töltésekor pörög
-   (`isFetchingNextPage`), nem minden háttérfrissítéskor.
-5. A három feedindex `endedAt DESC` alakra váltott.
-6. Visszakerültek a #40 által kitörölt magyar magyarázó kommentek.
+- SDK: `C:\Users\Geri\AppData\Local\Android\Sdk`; Java: Temurin 21.0.12,
+  `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot`.
+- Készülék: **RF8R11T8KXE**, Samsung **SM-G780F**, Android 13.
+- A debug package **app.grundo.android.debug**, versionCode **1**,
+  versionName **1.0.0-debug**; az APK-ból `aapt`-tal ellenőrizve.
+- Az éles **app.grundo.android** változatlanul telepítve: versionCode **28**,
+  lastUpdateTime **2026-09-05 14:09:27**. Nem töröltük vagy írtuk felül.
+- Scenario **2 / scenario-25km-fast / 100×** eredmény: **236206 ms**,
+  **26544 m**, **17 hurok**, **14799 cella**, **496 GP**, `error: null`,
+  `host: native`. A JS eredményt írt a logcatba, majd az Activity bezárult.
 
-**Migráció nem kellett:** az `endedAt` mezőt a legelső mentési implementáció
-(2026-08-17) óta minden aktivitás-dokumentum tartalmazza, ezért a rendezés
-visszamenőleg is teljes.
+## Windows buildhiba: mért tények és korlátok
 
-## Módosított fájlok
+- A hibás `android/app/build/intermediates/incremental/packageDebug/tmp`
+  alatt a `debug` és `debug/zip-cache` könyvtár **ReadOnly** attribútumú volt.
+- A Microsoft Sysinternals Handle a célútvonalra nem talált nyitott fogantyút.
+  Egy szélesebb handle-keresés elakadt; csak ezt a saját segédfolyamatot állítottuk le.
+- A Gradle daemon (PID **26232**) szabályosan leállt a `--stop` paranccsal.
+  Ezután az üres `zip-cache` Win32 törlési próbája **5 / Access denied** hibát adott.
+- Csak az érintett `tmp` könyvtárfán vettük le a ReadOnly attribútumot.
+  A következő Gradle build maga kitakarította a cache-t: **BUILD SUCCESSFUL, 37 s**.
+  Forráskódot, globális Gradle cache-t, teljes buildfát nem töröltünk.
+- A ReadOnly attribútum a build után visszatért. A Gradle naplóban `desktop.ini`
+  létrehozások látszanak. A Google Drive naplója igazolja a repo és `.git/objects`
+  szinkronizálását, de **az attribútumot beállító folyamat nincs bizonyítva**.
+  Ne nevezd bizonyított Java-fájlzárnak vagy Google Drive-hibának.
 
-- Backend: `server/src/routes/activities.ts` (feed, cím, értesítés),
-  `server/src/routes/bandas.ts` (üzenőfal-lapozás).
-- Indexek: `firestore.indexes.json` — három index `createdAt` → `endedAt`.
-- Kliens: `src/lib/format.ts`, `src/lib/api.ts`, `src/hooks/useActivities.ts`,
-  `src/components/Feed.tsx`, `ActivityCard.tsx`, `BandaFeedWall.tsx`,
-  `src/screens/ActivityScreen.tsx`.
-- Tesztek: `format.test.ts`, `feedScopes.emulator.test.ts`,
-  `bandas.emulator.test.ts` (új üzenőfal-lapozás teszt).
-- Dokumentáció: `docs/02-funkcionalis-spec.md`, `docs/05-adatmodell.md`,
-  `docs/ai/DECISIONS.md`, ez az átadó.
+## Build, telepítés, indítás (PowerShell, repo gyökér)
 
-## Élesben fut
+A korábbi `npm run build:gameloop` és `npx cap sync android` kimenetét használtuk;
+ezeket ebben a körben nem futtattuk újra. A csomagolt webes revision **6091d5d**,
+a natív package-beállítás már **8d12869**. A riport `channel: web` mezője
+nem jelenti, hogy böngészőben futott: `platform: android`, `native: true`.
 
-- Backend: `grundo-api-00145-d2x`, 100% forgalom.
-- Frontend: telepítve (`grundo.web.app`).
-- Indexek: mindhárom `endedAt` index `READY`.
-- Szabályok és adatbázis-migráció nem kellett.
+```powershell
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot'
+$adb='C:\Users\Geri\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+.\android\gradlew.bat -p android --stop
+.\android\gradlew.bat -p android :app:assembleDebug --no-daemon --no-watch-fs
+& $adb -s RF8R11T8KXE install -r android/app/build/outputs/apk/debug/app-debug.apk
+& $adb -s RF8R11T8KXE shell pm list packages --user 0 app.grundo.android
+& $adb -s RF8R11T8KXE shell am start --user 0 -W -n app.grundo.android.debug/app.grundo.android.GameLoopActivity -a com.google.intent.action.TEST_LOOP -t application/javascript --ei scenario 2
+& $adb -s RF8R11T8KXE logcat -d -s GrundoGameLoop
+```
 
-## Ellenőrzések
+## Módosított fájlok és helyi bizonyítékok
 
-- Kliens teljes készlet: **803 zöld**, 181 kihagyva.
-- Feed emulátoros teszt: **13/13 zöld** az `endedAt` mezővel.
-- Banda emulátoros teszt: **28 zöld** (benne az új üzenőfal-lapozás).
-- Kliens és szerver típusellenőrzés külön-külön zöld.
-- **Bejelentkezett böngészős ellenőrzés élesen**: a feed 200-at ad; a
-  „Továbbiak betöltése" gomb 10 → 20 kártyát tölt; a 12:58:46 hosszú
-  aktivitás címe „Szombati bringázás".
+- Az alkalmazás forráskódja nem változott; csak ez az átadó, a döntések és a
+  Codex tanulságfájl frissült. **Nincs commit vagy push**, ezekre nem volt kérés.
+- APK: `android/app/build/outputs/apk/debug/app-debug.apk` (13236832 bájt).
+- SHA256: `B6694583CB911168390182D247BC96E9453A59436CDAC41D147D634E991C8E5C`.
+- **Csak helyben, gitignore alatt:** `tmp/android-debug-diagnostics/`:
+  `scenario-2-result.json`, `scenario-2-logcat.txt`, `scenario-2-runtime.log`,
+  `assemble-debug.log`, `release-manifest.log`, diagnosztikai segédeszközök.
+  A runtime napló korai pillanatfelvétel; a befejezést a külön Game Loop napló őrzi.
 
-## UI-kör (2026-09-05 délután)
+## Élesben fut / telepítetlen, ellenőrzések
 
-A #41 telepítése után egy felületi kör következett, **nincs telepítve**:
+- Ebben a körben kizárólag a helyi debug app települt; felhős telepítés nem volt.
+- A korábbi #41 átadó szerint a feed javítása éles, a délutáni UI-kör nem települt;
+  ezt most nem ellenőriztük újra. A történet az előző CURRENT_STATE git-változatában.
+- A `:app:processReleaseMainManifest` sikeres. Az összeállított release manifestben
+  nincs `GameLoopActivity`, `TEST_LOOP` vagy `com.google.test.loops`; a Java osztály
+  kizárólag `src/debug` alatt van. Release APK-t ebben a körben nem építettünk.
+- Nem futott felhős Firebase Test Lab teszt, logFile URI-s eredményírás, scenario 1/3,
+  release build/telepítés vagy új teljes tesztkészlet. A helyi scenario 2 bizonyított.
 
-- A Home „mai küldetésed" kártyája háttérképet kapott (fekete fátyol +
-  márkaszínű átmenet), sarokba illesztett „Útvonalak" gombbal.
-- Új `OptionSwitch` (2–3 állású csúszkás választó) váltja a korábbi
-  szegmensvezérlőket a Home, Felfedezés, Bandák, Banda, Küldetések és a
-  rögzítés képernyőn; a rögzítésnél a mozgásforma-szín a csúszkára került.
-- A Profil és Közösség fülsávja pirula alapot kapott. ⚠️ Ott NINCS egyenlő
-  osztás: hat fül mobilon olvashatatlan lenne.
-- A Felfedezés bandás módja valódi tartalmat kapott, és üresre szűrt lap
-  esetén legfeljebb négy további lapot magától bekér.
-- Belépés előtti képernyők: valódi logó, új szövegek, forgó mozgásforma-szó.
+## Nyitott ügyek / tanulság
 
-⚠️ **Amit teszt nem bizonyít, és élőben sem néztem meg**: az intro és a
-belépés képernyő bejelentkezve átirányít, ezért a logót és a forgó szót csak
-injektált próbaelemen mértem, a valódi képernyőn nem.
-
-## Nyitott ügyek
-
-1. Android/iOS készülékes smoke teszt — a natív kliensek a régi frontendet
-   futtatják, amíg nincs új store-kiadás. A backend visszafelé kompatibilis,
-   de a lapozás és a befejezés szerinti sorrend csak új klienssel látszik.
-2. A banda üzenőfal lapozása egy kérésben legfeljebb 100 nyers sort néz át;
-   nagyon sok rejtett üzenetnél ez később kurzoros lapozást igényelhet.
+- Hiányzik a natív Firebase alapkonfiguráció: App Check és Authentication plugin
+  betöltési hibák vannak. A sikeres sandbox Game Loopot nem akadályozták; nem javítottuk.
+- A ReadOnly attribútum visszaállításának forrása további mérést igényel, ha ismét előjön.
+- A `pm list packages` Samsung-profilhibát adott user 150-re; a `--user 0` működött.
+- A DOM-ban kiolvasott „SZÜNET” szöveget tévesen megállásnak értelmeztem. Ez nem
+  igazolt szüneteltetés; a futás önállóan befejeződött. Ne induljon erre hibajavítás.
 
 ## Modelljavaslat
 
-**Sonnet, közepes** a natív smoke teszthez; **Opus** csak akkor, ha megint
-éles hibakeresés jön.
+Astra / high az ismeretlen Windows-attribútumhiba további méréséhez;
+a már sikeres scenario 2 ismétléséhez Terra / medium elegendő a projektajánlás szerint.
