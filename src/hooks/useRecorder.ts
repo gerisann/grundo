@@ -62,6 +62,7 @@ import {
 } from '@/tracking/lifecycle';
 import { captureDeviceInfo, type RecordingDeviceInfo } from '@/tracking/deviceInfo';
 import { trackLifecycleTimeline, type LifecycleTimelineEvent } from '@/tracking/lifecycleTimeline';
+import { recordPerf } from '@/lib/perfMeter';
 
 export interface RecorderUploadInput {
   activityId: string;
@@ -314,6 +315,15 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const lifecycleTimelineRef = useRef<LifecycleTimelineEvent[]>([]);
   const MAX_LIFECYCLE_EVENTS = 500;
 
+  /**
+   * Indulás-teljesítmény: mennyi telik el a forrás elindítása és az első
+   * elfogadott GPS-minta között (GRUNDO teljesítmény-cél #1, lásd
+   * `docs/ai/PERFORMANCE_GOALS.md`). Csak az adott `attach()`-hívás ELSŐ
+   * mintájára mérünk — utána a ref `null`-ra vált, hogy a további minták ne
+   * írják felül.
+   */
+  const attachStartedAtRef = useRef<number | null>(null);
+
   /** Minden állapotváltozás egy helyen fut át: ref, React, megőrzés. */
   const apply = useCallback(
     (change: (current: RecorderState) => RecorderState) => {
@@ -367,9 +377,14 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     activityState: RecorderState = stateRef.current,
   ) => {
     setError(null);
+    attachStartedAtRef.current = Date.now();
     try {
       await positionSource.start({
         onSample: (sample) => {
+          if (attachStartedAtRef.current !== null) {
+            recordPerf('tracking.timeToFirstFix', Date.now() - attachStartedAtRef.current);
+            attachStartedAtRef.current = null;
+          }
           setHasFix(true);
           // A hibát töröljük: ha jön fix, a korábbi jelvesztés már nem áll fenn.
           setError(null);
