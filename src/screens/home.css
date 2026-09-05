@@ -1,8 +1,15 @@
 .home__hero {
   display: grid;
   gap: var(--sp-3);
-  padding-bottom: var(--sp-2);
-  border-bottom: 1px solid var(--border-subtle);
+  /*
+    A hero ALATTI rés pontosan annyi legyen, mint a hero BELSŐ rése (12 px),
+    különben a statisztika panel alul-felül más távolságra ül. Mérve: a
+    `screen-body` rácsa 16 px-et ad, a korábbi 8 px alsó belsővel együtt 24
+    px-et — ezért nincs alsó belső, és a 4 px különbséget negatív margó
+    egyenlíti ki.
+  */
+  padding-bottom: 0;
+  margin-bottom: calc(var(--sp-3) - var(--sp-4));
   /*
     ⚠️ A `min-width: 0` NEM DÍSZ. Rács-elemként az alapértelmezett minimum a
     tartalom min-content mérete: egy széles gyerek (például a kinyitott
@@ -299,17 +306,49 @@
   width: 100%;
   /* A küldetés nélküli állapotban csak két sor van, és a jobb alsó nyíl
      ilyenkor felcsúszna a bezáró gombra. Mérve: enélkül 2 px-en átfednek. */
-  min-height: 80px;
-  align-content: center;
+  /* Képes kártya: a felső sáv a hexrácsos látkép, a szöveg alul ül. */
+  min-height: 200px;
+  align-content: end;
   padding: var(--sp-3);
-  /* Jobbra több hely: a bezáró gomb és a nyíl is ide kerül, a szöveg ne
-     fusson alájuk. */
+  /* Alul a sarokba ült „Útvonalak" gomb helye, jobbra a bezáró gombé — a
+     szöveg egyik alá se fusson be. */
+  padding-bottom: calc(var(--sp-3) + 20px);
   padding-right: calc(var(--sp-3) + var(--sp-4) + var(--sp-2));
   text-align: left;
   border-radius: var(--r-md);
   border: 1px solid var(--accent-border);
-  /* Halvány márkatónus: kiemelkedik a feed fölül, de nem kiabál. */
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+  /*
+    A kép fölé LEFELÉ SŰRŰSÖDŐ márkaszín kerül: fent szabadon látszik a
+    látkép, a szöveg mögött viszont már teljesen fed. Enélkül a fehér
+    hexagonok és a városi fények alatt olvashatatlan a szöveg.
+
+    ⚠️ Két réteg egy tulajdonságban: a gradiens ELÖL, a kép hátul — fordítva
+    a kép takarná a fedést. A `background` shorthand emiatt nem írható felül
+    hoverben, ott csak a keret változik.
+  */
+  /*
+    A fedés SZÍNE végig ugyanaz, csak az átlátszatlansága nő — így nincs
+    színugrás az átmenetben. A kártya alja ennél is sötétebbre megy
+    (`--bg-primary`), hogy a szöveg alatt teljesen nyugodt legyen a felület.
+  */
+  --mission-veil: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  --mission-veil-deep: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
+  background-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in srgb, var(--mission-veil) 12%, transparent) 22%,
+      color-mix(in srgb, var(--mission-veil) 34%, transparent) 38%,
+      color-mix(in srgb, var(--mission-veil) 62%, transparent) 52%,
+      color-mix(in srgb, var(--mission-veil) 86%, transparent) 64%,
+      var(--mission-veil) 76%,
+      var(--mission-veil-deep) 100%
+    ),
+    linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+    url('/mission-bg.webp');
+  background-size: cover;
+  background-position: center top;
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
   color: inherit;
   font: inherit;
 }
@@ -319,37 +358,57 @@
    végigfuttatni a jobb oszlopon — de a `-1` az IMPLICIT rácsban az első
    vonalra esik, tehát a nyíl a néhány pixel magas első sorban ragadt, és
    ráült a bezáró gombra. Mérés fogta meg, nem szemrevételezés. */
-.home__mission-chevron {
-  position: absolute;
-  right: var(--sp-2);
-  bottom: var(--sp-3);
-  color: var(--accent);
-}
-
 .home__mission:hover {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+}
+
+/*
+  A kártya jobb alsó sarkába ÜLTETETT gomb: a doboz széléhez tapad, ezért a
+  jobb alsó sarka a dobozéval azonos sugarú, a két belső sarka egyenes, a bal
+  felső pedig lekerekített — így nem lóg ki a kártya formájából.
+*/
+.home__mission-cta {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-md) 0 var(--r-md) 0;
+  background: var(--accent);
+  color: var(--accent-on);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 700;
+}
+
+.home__mission-cta:hover {
+  background: var(--accent-hover);
 }
 
 .home__mission-close {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
   display: grid;
   place-items: center;
   /* 32 px-es koppintási felület 16 px-es ikonnal — a sarok így is elérhető marad. */
   width: 32px;
   height: 32px;
   padding: 0;
-  border: none;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--text-tertiary);
+  border: 1px solid var(--accent-border);
+  /* ⚠️ KEREK, TÖMÖR HÁTTÉR: a kártya háttérképe fölött az átlátszó változat
+     eltűnt, és a bezárás gyakorlatilag megtalálhatatlan volt. */
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  color: var(--text-primary);
+  backdrop-filter: blur(4px);
 }
 
 .home__mission-close:hover {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border-color: var(--accent);
 }
 
 .home__mission-label {
@@ -357,7 +416,12 @@
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
+  /* ⚠️ Kért, rögzített márkaszín — szándékosan nem tokenből jön, és mindkét
+     témában ugyanez a korall. A sötét fátyol fölött mindkettőn olvasható. */
+  color: #fc5f72;
+  /* A címke a kép és a fedés határán ül — árnyék nélkül a városi fények
+     fölött elveszik. */
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--bg-elevated) 80%, transparent);
 }
 
 .home__mission-text {
@@ -365,6 +429,9 @@
   font-weight: 600;
   line-height: 1.4;
   color: var(--text-primary);
+  /* A gradiens alja már fed, de a szöveg a kép fölött indul: az árnyék a
+     világos hexagonok fölött is elválasztja a betűt a háttértől. */
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--bg-elevated) 70%, transparent);
 }
 
 .home__mission-meta {

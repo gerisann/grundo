@@ -239,7 +239,7 @@ function DailyMissionCard() {
         <span className="home__mission-text">
           {mission
             ? missionSummary(mission)
-            : 'Van fél órád? Mutatunk egy kört, aminek tétje van.'}
+            : 'Nem tudod merre menj? Mutatunk pár útvonalat ami érdekes lehet.'}
         </span>
         {mission ? (
           <span className="home__mission-meta">
@@ -247,7 +247,19 @@ function DailyMissionCard() {
             {formatNumber(mission.estimatedGp)} GP
           </span>
         ) : null}
-        <ChevronRightIcon />
+      </button>
+
+      {/*
+        ⚠️ A CTA SEM LEHET A NAGY GOMBON BELÜL — ugyanaz a szabály, mint a
+        bezáró gombnál: egymásba ágyazott interaktív elem érvénytelen HTML.
+        Ezért a burkolóban ül, a kártya jobb alsó sarkába illesztve.
+      */}
+      <button
+        type="button"
+        className="home__mission-cta"
+        onClick={() => navigate('/kuldetesek')}
+      >
+        Útvonalak
       </button>
 
       <button
@@ -262,26 +274,6 @@ function DailyMissionCard() {
         <CloseIcon />
       </button>
     </div>
-  );
-}
-
-/** A „tovább" jelzés — eddig semmi nem mutatta, hogy a kártya kattintható. */
-function ChevronRightIcon() {
-  return (
-    <svg
-      className="home__mission-chevron"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m9 6 6 6-6 6" />
-    </svg>
   );
 }
 
