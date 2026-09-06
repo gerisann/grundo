@@ -22,6 +22,22 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- A natív Google-belépés visszahívási sémája. Értéke a
+	     GoogleService-Info.plist REVERSED_CLIENT_ID mezője; ha az iOS OAuth
+	     kliens cserélődik, mindkét helyen frissíteni kell. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>google-signin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.65689674957-grtjhgtdrobu9mjqonemcenujsf3biid</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>

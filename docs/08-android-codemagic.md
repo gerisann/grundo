@@ -75,7 +75,34 @@ Androidon a `@capacitor-firebase/authentication` natív Credential Manager
 fiókválasztója szerzi meg a Google ID tokent. A tartós munkamenetet továbbra is
 a közös Firebase JS SDK kezeli: a natív tokenből `GoogleAuthProvider`
 credential készül, majd ugyanaz a kliensoldali belépési vagy fiók-összekapcsolási
-folyamat fut, mint weben. Az iOS Google-belépés ettől nem változik.
+folyamat fut, mint weben. iOS-en ugyanez a JS út fut, a natív oldalon a
+GoogleSignIn SDK-val (`docs/07-ios-testflight-codemagic.md`, 8. pont).
+
+### Miért nem megy a Google-belépés a helyben épített debug appban
+
+Két, egymástól független ok — mindkettő a debug buildre igaz:
+
+1. A `google-services.json` **nincs a repóban**; a Codemagic írja ki a
+   `GOOGLE_SERVICES_JSON_BASE64` változóból. Nélküle a
+   `com.google.gms.google-services` Gradle plugin sem kapcsol be, így nem jön
+   létre a `default_web_client_id` string erőforrás, amiből a Credential
+   Manager a szerveroldali kliensazonosítót veszi.
+2. A debug build `applicationId`-ja `app.grundo.android.debug`
+   (`applicationIdSuffix ".debug"`), tehát a Firebase szemében **másik
+   csomag**. Ahhoz, hogy a debug appban is menjen a Google-belépés, a Firebase
+   projektben külön Android appként kell felvenni ezt a csomagnevet a **debug
+   keystore SHA-1** ujjlenyomatával, és az így letöltött, mindkét csomagot
+   tartalmazó `google-services.json`-t kell az `android/app/` alá másolni.
+
+A `android/app/google-services.json` helyi példánya szándékosan nincs
+verziókövetve; kézzel másolt fájlként marad a munkapéldányban.
+
+### Credential Manager függőségek
+
+Az `androidx.credentials` és az `androidx.credentials:credentials-play-services-auth`
+verziójának **egyeznie kell**. A plugin alapértelmezése `1.2.0-rc01`, a
+`variables.gradle` viszont `1.3.0`-t ír elő — ezért mindkét változó ott van
+beállítva. Ha csak az egyiket írjuk felül, a két artefakt szétcsúszik.
 
 Google Play App Signing bekapcsolásakor a Play más tanúsítvánnyal írja alá a
 felhasználóknak kiosztott APK-kat. A Play Console-ban megjelenő **app signing
@@ -84,6 +111,39 @@ Firebase Android apphoz, majd ismét frissíteni kell a Codemagicben tárolt
 `google-services.json` értéket. Enélkül a Codemagicből közvetlenül telepített
 APK-ban működhet a Google-belépés, a Play Áruházból telepített verzióban viszont
 nem.
+
+### Mért hibaminta: `one tap:10` — DEVELOPER_ERROR
+
+**Tünet (2026-09-05, éles Android app):**
+
+```
+During being sign in, failure response from one tap:10:
+[28444] Developer console is not set up correctly
+```
+
+A `10`-es kód a Google Sign-In `DEVELOPER_ERROR`-ja: a Google szerver nem
+talál olyan **Android OAuth klienst**, amiben a *futó* app csomagneve **és**
+aláíró tanúsítványának SHA-1 ujjlenyomata együtt szerepel. A kódban ilyenkor
+nincs hiba — a `google-services.json`-ban lévő ujjlenyomat nem az, amivel az
+APK ténylegesen alá van írva.
+
+**Helyreállítás:**
+
+1. Play Console → GRUNDO → **Test and release → App integrity → App signing
+   key certificate** → az itteni **SHA-1** másolása.
+2. Firebase Console → Project settings → az `app.grundo.android` app →
+   **Add fingerprint** → beillesztés → mentés. Az upload key ujjlenyomata is
+   maradjon bent, hogy az oldalról telepített APK is működjön.
+3. Néhány perc után a **már telepített appban is** működik a belépés; a
+   javításhoz nem kell új build.
+4. A friss `google-services.json` base64 értékét frissíteni kell a Codemagic
+   `GOOGLE_SERVICES_JSON_BASE64` változójában, különben a következő build
+   visszahozza a hibát.
+
+**Megelőzés:** ha a Codemagicben be van állítva az `ANDROID_SIGNING_SHA1`
+változó (vesszővel elválasztva több ujjlenyomat is), a workflow build előtt
+ellenőrzi, hogy mindegyik szerepel a `google-services.json`-ban. Ajánlott
+érték: az upload key **és** a Play app signing key SHA-1-e.
 
 ## GPS és háttérmérés
 
@@ -149,9 +209,12 @@ Az Android workflow a meglévő `grundo_ios` csoport platformfüggetlen
 `grundo_ios_signing` csoportban van, azt az Android workflow nem kapja meg.
 Így a közös értékeket nem kell duplikálni, és később sem tudnak eltérni.
 
-A `grundo_android` csoportban csak ez az Android-specifikus változó szükséges:
+A `grundo_android` csoport Android-specifikus változói:
 
 - `GOOGLE_SERVICES_JSON_BASE64` (**Secret**, az előző fejezet szerint)
+- `ANDROID_SIGNING_SHA1` (opcionális, nem titkos) — vesszővel elválasztva az
+  upload key és a Play app signing key SHA-1 ujjlenyomata. Ha be van állítva,
+  a build ellenőrzi, hogy mindkettő szerepel a `google-services.json`-ban.
 
 A `grundo_ios` csoportból újrahasznált közös változók:
 

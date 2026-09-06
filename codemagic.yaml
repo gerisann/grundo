@@ -42,6 +42,10 @@ workflows:
           test -f ios/App/App/GoogleService-Info.plist
           grep -q "CapacitorFirebaseMessaging" ios/App/CapApp-SPM/Package.swift
           grep -q "CapacitorFirebaseAppCheck" ios/App/CapApp-SPM/Package.swift
+          grep -q "CapacitorFirebaseAuthentication" ios/App/CapApp-SPM/Package.swift
+          REVERSED_CLIENT_ID="$(/usr/libexec/PlistBuddy -c 'Print :REVERSED_CLIENT_ID' ios/App/App/GoogleService-Info.plist)"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' ios/App/App/Info.plist \
+            | grep -qx "$REVERSED_CLIENT_ID"
           grep -q "aps-environment" ios/App/App/App.entitlements
           grep -q "com.apple.developer.devicecheck.appattest-environment" ios/App/App/App.entitlements
           xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release -showBuildSettings \
@@ -123,6 +127,13 @@ workflows:
           test -n "$GOOGLE_SERVICES_JSON_BASE64"
           node -e 'const fs=require("fs"); fs.writeFileSync("android/app/google-services.json", Buffer.from(process.env.GOOGLE_SERVICES_JSON_BASE64, "base64"));'
           node -e "const f=require('./android/app/google-services.json'); const client=f.client.find(c=>c.client_info?.android_client_info?.package_name===process.env.ANDROID_APPLICATION_ID); if(!client) throw new Error('A google-services.json nem a '+process.env.ANDROID_APPLICATION_ID+' Android apphoz tartozik.'); const oauth=client.oauth_client??[]; if(!oauth.some(c=>c.client_type===1&&c.android_info?.package_name===process.env.ANDROID_APPLICATION_ID)||!oauth.some(c=>c.client_type===3)) throw new Error('A google-services.json nem tartalmazza a natív Google-belépés Android és web OAuth klienseit.');"
+          # Opcionális: ha az ANDROID_SIGNING_SHA1 be van állítva (vesszővel
+          # elválasztva több ujjlenyomat is), ellenőrizzük, hogy mindegyik
+          # szerepel a fájlban. Hiányzó ujjlenyomatnál a Google-belépés
+          # DEVELOPER_ERROR (10) hibát ad a telepített appban.
+          if [ -n "$ANDROID_SIGNING_SHA1" ]; then
+            node -e "const f=require('./android/app/google-services.json'); const client=f.client.find(c=>c.client_info?.android_client_info?.package_name===process.env.ANDROID_APPLICATION_ID); const have=(client.oauth_client??[]).filter(c=>c.client_type===1).map(c=>(c.android_info?.certificate_hash??'').toLowerCase()); const missing=process.env.ANDROID_SIGNING_SHA1.split(',').map(s=>s.trim().replace(/:/g,'').toLowerCase()).filter(s=>s&&!have.includes(s)); if(missing.length) throw new Error('A google-services.json nem tartalmazza ezeket az aláíró ujjlenyomatokat: '+missing.join(', ')+' — a Google-belépés DEVELOPER_ERROR (10) hibát fog adni.');"
+          fi
 
       - name: Vite production build
         script: |

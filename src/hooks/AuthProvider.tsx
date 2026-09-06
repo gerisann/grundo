@@ -19,7 +19,8 @@ import {
 import { auth, firebaseConfigured, requireAuth } from '@/lib/firebase';
 // `backend` néven, mert az AuthProvider saját visszatérési objektuma is `api`.
 import { api as backend, apiConfigured } from '@/lib/api';
-import { isNativeAndroid, isNativeApp } from '@/lib/platform';
+import { isNativeApp } from '@/lib/platform';
+import { nativeGoogleErrorMessage } from '@/lib/googleAuthErrors';
 
 export type AuthStatus = 'loading' | 'signed-in' | 'signed-out' | 'unconfigured';
 
@@ -81,6 +82,8 @@ async function nativeGoogleCredential() {
       // A natív SDK a rendszer fiókválasztóját adja, de a tartós auth-állapot
       // továbbra is a GRUNDO meglévő Firebase JS rétegében marad.
       skipNativeAuth: true,
+      // Csak Androidon van hatása (Credential Manager); iOS-en a plugin a
+      // GoogleSignIn SDK-t hívja, és ezt a mezőt figyelmen kívül hagyja.
       useCredentialManager: true,
     });
     const idToken = result.credential?.idToken;
@@ -94,6 +97,12 @@ async function nativeGoogleCredential() {
       const cancelled = new Error('A bejelentkezést megszakítottad.');
       Object.assign(cancelled, { code: 'auth/popup-closed-by-user' });
       throw cancelled;
+    }
+    const friendly = nativeGoogleErrorMessage(message);
+    if (friendly) {
+      // A nyers natív szöveget megtartjuk a diagnosztikának, de a felhasználó
+      // magyar mondatot lát az angol SDK-hibakód helyett.
+      throw new Error(friendly, { cause: error });
     }
     throw error;
   }
@@ -280,16 +289,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       async signInWithGoogle() {
-        if (isNativeAndroid()) {
+        // Androidon és iOS-en is a natív fiókválasztó adja az ID tokent; a
+        // WKWebView/Chrome Custom Tab popup flow natív appban nem megbízható.
+        if (isNativeApp()) {
           const credential = await nativeGoogleCredential();
           await signInWithCredential(requireAuth(), credential);
           return;
-        }
-        if (isNativeApp()) {
-          throw new Error(
-            'A Google-belépés az iOS alkalmazás első verziójában még nem érhető el. ' +
-              'Lépj be e-mail-címmel és jelszóval.',
-          );
         }
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
@@ -299,15 +304,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async linkGoogle() {
         const instance = requireAuth();
         if (!instance.currentUser) throw new Error('Nincs bejelentkezett felhasználó.');
-        if (isNativeAndroid()) {
+        if (isNativeApp()) {
           const credential = await nativeGoogleCredential();
           await linkWithCredential(instance.currentUser, credential);
           return;
-        }
-        if (isNativeApp()) {
-          throw new Error(
-            'A Google-fiók összekapcsolása az iOS alkalmazás első verziójában még nem érhető el.',
-          );
         }
         await linkWithPopup(instance.currentUser, new GoogleAuthProvider());
       },

@@ -27,7 +27,7 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | Terület | Első build állapota |
 |---|---|
 | Firebase Auth e-mail/jelszó | Támogatott; iOS-en kényszerített `localStorage` perzisztencia van, mert a WKWebView IndexedDB-je kezdeti auth-beragadást okozhat. |
-| Google popup OAuth | WKWebView-ben nem megbízható, ezért natív appban őszinte hibaüzenet jelenik meg. A későbbi natív Google flow iOS OAuth client ID-t és URL scheme-et igényel. Weben változatlanul működik. |
+| Google-belépés | A WKWebView popup OAuth nem megbízható, ezért natív appban a `@capacitor-firebase/authentication` GoogleSignIn folyamata fut (lásd „8. Natív Google-belépés"). Weben marad a popup. |
 | Firestore / Storage | A meglévő web SDK marad. A fotófeldolgozás `createImageBitmap` hiányakor WebKit-kompatibilis `<img>` fallbacket használ, miközben a vászonra újrakódolás továbbra is törli az EXIF-et. |
 | Cloud Run API | A backend CORS allowlist része a `capacitor://localhost`; a backend újratelepítése szükséges az iOS API-hívások előtt. |
 | Mapbox GL | A webes WebGL implementáció marad. A Codemagicben olyan nyilvános Mapbox tokent kell használni, amelyet nem kizárólag HTTPS web-originre korlátoztak. |
@@ -189,6 +189,35 @@ privát kulcs vagy szerveroldali secret nem lehet `VITE_*` változóban.
    néhány percet igényelhet. A build mellett `Internal` jelölés várható.
 5. A **TestFlight → Internal Testing** alatt add a buildet a belső tesztelői
    csoporthoz, ha azt az App Store Connect nem rendelte hozzá automatikusan.
+
+### 8. Natív Google-belépés
+
+Az iOS Google-belépés ugyanazon a JS úton fut, mint az Android: a natív réteg
+csak az ID tokent szerzi meg, a tartós munkamenetet a Firebase JS SDK kezeli
+(`skipNativeAuth: true`, `signInWithCredential`).
+
+Amire szüksége van, és ami a repóban már be van kötve:
+
+1. **iOS OAuth kliens** — a Firebase iOS appban létezik; a `CLIENT_ID` és a
+   `REVERSED_CLIENT_ID` a verziókövetett `GoogleService-Info.plist`-ben van.
+2. **URL scheme** — az `Info.plist` `CFBundleURLTypes` tömbjében a
+   `REVERSED_CLIENT_ID` séma. Enélkül a GoogleSignIn SDK nem tud visszatérni
+   az appba. A Codemagic iOS workflow PlistBuddyval ellenőrzi, hogy a két
+   érték egyezik.
+3. **GoogleSignIn SDK** — a `@capacitor-firebase/authentication` SPM
+   csomagjának alapértelmezett `Google` traitje hozza be; a Codemagic
+   ellenőrzi, hogy a `cap sync` után a `CapApp-SPM/Package.swift` tartalmazza
+   a `CapacitorFirebaseAuthentication` csomagot.
+4. **URL visszahívás** — a `SceneDelegate.scene(_:openURLContexts:)` már
+   továbbadja az URL-t a Capacitor proxynak, külön AppDelegate-kód nem kell.
+
+⚠️ Ha az iOS OAuth kliens cserélődik, a `GoogleService-Info.plist` **és** az
+`Info.plist` sémáját is frissíteni kell.
+
+Készüléken (vagy TestFlight buildben) ellenőrizendő: a Google gomb a rendszer
+fiókválasztóját nyitja, sikeres választás után a GRUNDO bejelentkezett
+állapotba kerül, a megszakítás pedig „A bejelentkezést megszakítottad."
+üzenetet ad, nem néma hibát.
 
 ## Első Codemagic buildben ellenőrizendő
 
