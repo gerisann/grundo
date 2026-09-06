@@ -48,6 +48,7 @@ workflows:
             | grep -qx "$REVERSED_CLIENT_ID"
           grep -q "aps-environment" ios/App/App/App.entitlements
           grep -q "com.apple.developer.devicecheck.appattest-environment" ios/App/App/App.entitlements
+          grep -q "com.apple.developer.applesignin" ios/App/App/App.entitlements
           xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release -showBuildSettings \
             | grep -q "APS_ENVIRONMENT = production"
           grep -q "NSSupportsLiveActivities" ios/App/App/Info.plist

@@ -31,9 +31,9 @@ const config: CapacitorConfig = {
     },
     FirebaseAuthentication: {
       // A GRUNDO továbbra is a Firebase JS SDK auth-állapotát használja.
-      // A natív réteg csak a Google ID tokent szerzi meg.
+      // A natív réteg csak az ID tokent szerzi meg.
       skipNativeAuth: true,
-      providers: ['google.com'],
+      providers: ['google.com', 'apple.com'],
     },
   },
   experimental: {

@@ -211,14 +211,15 @@ export const loginHandler: RequestHandler = async (req, res, next) => {
 
     const record = await recordForUsername(username);
     /**
-     * A GOOGLE-FIÓKOS FELHASZNÁLÓNAK MEGMONDJUK, MI A TEENDŐ.
+     * A CSAK GOOGLE/APPLE-FIÓKOS FELHASZNÁLÓNAK MEGMONDJUK, MI A TEENDŐ.
      *
      * Enélkül csak annyit kapott, hogy „hibás felhasználónév vagy jelszó" —
      * és mivel jelszava sosem volt, ezt a falat nem tudta megkerülni. Az
      * egységes hibaüzenet a NEM LÉTEZŐ fiókot védi; egy létező fiók belépési
      * módját elárulni ennél kisebb ár, mint hogy a felhasználó kizárja magát.
      */
-    if (isGoogleOnly(record)) throw useGoogleError();
+    const socialProvider = socialOnlyProvider(record);
+    if (socialProvider) throw useSocialOnlyError(socialProvider);
 
     const email = record?.email ?? null;
     if (!email) throw invalidCredentials();
@@ -292,14 +293,15 @@ export const signInMethodHandler: RequestHandler = async (req, res, next) => {
   try {
     const identifier = String((req.body as { identifier?: unknown }).identifier ?? '').trim();
     if (!identifier || identifier.length > 320) {
-      return res.json({ googleOnly: false });
+      return res.json({ googleOnly: false, appleOnly: false });
     }
 
     const record = identifier.includes('@')
       ? await adminAuth.getUserByEmail(identifier).catch(() => null)
       : await recordForUsername(identifier);
 
-    res.json({ googleOnly: isGoogleOnly(record) });
+    const provider = socialOnlyProvider(record);
+    res.json({ googleOnly: provider === 'google.com', appleOnly: provider === 'apple.com' });
   } catch (error) {
     next(error);
   }
@@ -319,18 +321,28 @@ async function recordForUsername(raw: string) {
  * felhasználó hiába írja be az e-mail-címét és bármilyen jelszót — a Firebase
  * „hibás adat"-ot mond, mert jelszó egyszerűen nem tartozik a fiókhoz.
  */
-function isGoogleOnly(record: { providerData: { providerId: string }[] } | null): boolean {
-  if (!record) return false;
+type SocialProvider = 'google.com' | 'apple.com';
+
+/** `null`, ha van jelszava, vagy egyik szociális szolgáltatóhoz sem tartozik. */
+function socialOnlyProvider(
+  record: { providerData: { providerId: string }[] } | null,
+): SocialProvider | null {
+  if (!record) return null;
   const providers = record.providerData.map((p) => p.providerId);
-  return providers.includes('google.com') && !providers.includes('password');
+  if (providers.includes('password')) return null;
+  if (providers.includes('google.com')) return 'google.com';
+  if (providers.includes('apple.com')) return 'apple.com';
+  return null;
 }
 
-/** A Google-fiókosnak szóló üzenet — egy helyen, hogy a két út ugyanazt mondja. */
-const useGoogleError = () =>
+/** A csak Google/Apple-fiókosnak szóló üzenet — egy helyen, hogy a két út ugyanazt mondja. */
+const useSocialOnlyError = (provider: SocialProvider) =>
   new HttpError(
     409,
-    'use_google',
-    'Ezt a fiókot Google-fiókkal hoztad létre. Lépj be a „Belépés Google-fiókkal" gombbal.',
+    provider === 'google.com' ? 'use_google' : 'use_apple',
+    provider === 'google.com'
+      ? 'Ezt a fiókot Google-fiókkal hoztad létre. Lépj be a „Belépés Google-fiókkal" gombbal.'
+      : 'Ezt a fiókot Apple-fiókkal hoztad létre. Lépj be a „Belépés Apple-fiókkal" gombbal.',
   );
 
 function isOwnAvatarUrl(raw: string, uid: string): boolean {

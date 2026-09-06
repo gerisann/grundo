@@ -17,7 +17,7 @@ import './auth.css';
 
 export function RegisterScreen() {
   const navigate = useNavigate();
-  const { registerWithEmail, signInWithGoogle, status } = useAuth();
+  const { registerWithEmail, signInWithGoogle, signInWithApple, status } = useAuth();
   const { createProfile } = useProfile();
 
   const [username, setUsername] = useState('');
@@ -70,6 +70,19 @@ export function RegisterScreen() {
     setBusy(true);
     try {
       await signInWithGoogle();
+      navigate('/');
+    } catch (error) {
+      setFormError(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apple() {
+    setFormError('');
+    setBusy(true);
+    try {
+      await signInWithApple();
       navigate('/');
     } catch (error) {
       setFormError(authErrorMessage(error));
@@ -146,6 +159,10 @@ export function RegisterScreen() {
 
         <Button variant="secondary" block onClick={google} disabled={busy || status === 'unconfigured'}>
           Folytatás Google-fiókkal
+        </Button>
+
+        <Button variant="secondary" block onClick={apple} disabled={busy || status === 'unconfigured'}>
+          Folytatás Apple-fiókkal
         </Button>
 
         <p className="auth__switch">

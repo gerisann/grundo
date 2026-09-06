@@ -1520,10 +1520,10 @@ export const api = {
    * arra, hogy a valódi hibát elrejtsük.
    */
   signInMethod: (identifier: string) =>
-    request<{ googleOnly: boolean }>('/api/auth/method', {
+    request<{ googleOnly: boolean; appleOnly: boolean }>('/api/auth/method', {
       method: 'POST',
       body: JSON.stringify({ identifier }),
-    }).catch(() => ({ googleOnly: false })),
+    }).catch(() => ({ googleOnly: false, appleOnly: false })),
 
   register: (username: string) =>
     request<{ profile: Profile }>('/api/auth/register', {

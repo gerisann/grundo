@@ -27,12 +27,12 @@ const MESSAGES: Record<string, string> = {
   // ── Fiókösszevonás — ez a legfontosabb ─────────────────────────────────
   'auth/account-exists-with-different-credential':
     'Ezzel az e-mail-címmel már van fiókod, jelszóval. Lépj be jelszóval, és a ' +
-    'Beállításokban összekapcsolhatod a Google-fiókoddal.',
+    'Beállításokban összekapcsolhatod a Google- vagy Apple-fiókoddal.',
   'auth/credential-already-in-use':
-    'Ez a Google-fiók már egy másik GRUNDO-fiókhoz tartozik.',
+    'Ez a fiók már egy másik GRUNDO-fiókhoz tartozik.',
   'auth/provider-already-linked': 'Ez a bejelentkezési mód már össze van kapcsolva.',
 
-  // ── Google belépés ─────────────────────────────────────────────────────
+  // ── Google/Apple belépés ───────────────────────────────────────────────
   'auth/popup-closed-by-user': 'A bejelentkezést megszakítottad.',
   'auth/cancelled-popup-request': 'A bejelentkezést megszakítottad.',
   'auth/popup-blocked':
@@ -55,6 +55,12 @@ export function authErrorMessage(error: unknown): string {
   return 'Váratlan hiba történt. Próbáld újra.';
 }
 
+function errorCode(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : '';
+}
+
 /** Igaz, ha a hiba fiókösszevonást igényel — a felület ilyenkor mást ajánl. */
 /**
  * Google-fiókos felhasználó próbált jelszóval belépni?
@@ -65,17 +71,14 @@ export function authErrorMessage(error: unknown): string {
  *     annyit mond, hogy „hibás adat", és utólag kérdezzük meg a szervert).
  */
 export function isGoogleAccountError(error: unknown): boolean {
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? String((error as { code: unknown }).code)
-      : '';
-  return code === 'use_google';
+  return errorCode(error) === 'use_google';
+}
+
+/** Az `isGoogleAccountError` párja Apple-fiókokhoz. */
+export function isAppleAccountError(error: unknown): boolean {
+  return errorCode(error) === 'use_apple';
 }
 
 export function isAccountLinkError(error: unknown): boolean {
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? String((error as { code: unknown }).code)
-      : '';
-  return code === 'auth/account-exists-with-different-credential';
+  return errorCode(error) === 'auth/account-exists-with-different-credential';
 }

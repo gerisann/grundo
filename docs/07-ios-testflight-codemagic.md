@@ -27,7 +27,7 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 | Terület | Első build állapota |
 |---|---|
 | Firebase Auth e-mail/jelszó | Támogatott; iOS-en kényszerített `localStorage` perzisztencia van, mert a WKWebView IndexedDB-je kezdeti auth-beragadást okozhat. |
-| Google-belépés | A WKWebView popup OAuth nem megbízható, ezért natív appban a `@capacitor-firebase/authentication` GoogleSignIn folyamata fut (lásd „8. Natív Google-belépés"). Weben marad a popup. |
+| Google-/Apple-belépés | A WKWebView popup OAuth nem megbízható, ezért natív appban a `@capacitor-firebase/authentication` GoogleSignIn/AuthenticationServices folyamata fut (lásd „8. Natív Google-belépés", „9. Natív Apple-belépés"). Weben marad a popup mindkettőnél. |
 | Firestore / Storage | A meglévő web SDK marad. A fotófeldolgozás `createImageBitmap` hiányakor WebKit-kompatibilis `<img>` fallbacket használ, miközben a vászonra újrakódolás továbbra is törli az EXIF-et. |
 | Cloud Run API | A backend CORS allowlist része a `capacitor://localhost`; a backend újratelepítése szükséges az iOS API-hívások előtt. |
 | Mapbox GL | A webes WebGL implementáció marad. A Codemagicben olyan nyilvános Mapbox tokent kell használni, amelyet nem kizárólag HTTPS web-originre korlátoztak. |
@@ -42,7 +42,9 @@ A Vite buildbe bekerül az `iOS build <szám>` és a rövid Git commit is.
 
 A Push Notifications capability és a Background Modes → Location Updates +
 Remote notifications már a tényleges natív implementációval együtt szerepel.
-Sign in with Apple és Associated Domains továbbra sincs bekapcsolva. A
+A Sign in with Apple capability bekötve (`App.entitlements`, lásd „9. Natív
+Apple-belépés") — az Apple Developer Portalon az App ID-n is be kell
+kapcsolni, lásd ott. Associated Domains továbbra sincs bekapcsolva. A
 készülékes, lezárt kijelzős GPS- és push-teszt kötelező.
 
 ## Kiadási rend: web és TestFlight
@@ -218,6 +220,46 @@ Készüléken (vagy TestFlight buildben) ellenőrizendő: a Google gomb a rendsz
 fiókválasztóját nyitja, sikeres választás után a GRUNDO bejelentkezett
 állapotba kerül, a megszakítás pedig „A bejelentkezést megszakítottad."
 üzenetet ad, nem néma hibát.
+
+### 9. Natív Apple-belépés
+
+Ugyanaz az elv, mint a Google-belépésnél: a `@capacitor-firebase/
+authentication` `signInWithApple()`-je (`skipNativeAuth: true`) csak az
+Apple ID tokent (és a hozzá tartozó `nonce`-t) szerzi meg natívan
+(`ASAuthorizationController`), a tartós munkamenetet a Firebase JS SDK
+`OAuthProvider('apple.com')`+`signInWithCredential` viszi tovább.
+
+Amire szüksége van, és ami a repóban már be van kötve:
+
+1. **`com.apple.developer.applesignin` entitlement** — `App.entitlements`-ben,
+   `["Default"]` értékkel. A Codemagic iOS workflow grep-pel ellenőrzi a
+   jelenlétét, DE ez önmagában nem elég — lásd a 2. pontot.
+2. ⚠️ **Az App ID-n is be kell kapcsolni** az Apple Developer Portalon
+   (**Certificates, Identifiers & Profiles → Identifiers → `app.grundo.ios`
+   → Capabilities → Sign In with Apple**). Enélkül az
+   `app-store-connect fetch-signing-files --create` lépés által generált
+   provisioning profil NEM fogja tartalmazni ezt a képességet, és az
+   aláírás elhasal, még ha az entitlements fájl helyes is.
+3. **Firebase Console — Apple provider** — Authentication → Sign-in method
+   → **Apple** → Enable. A natív (nem web-redirect) folyamathoz a Services
+   ID / Team ID / Key ID mezők jellemzően NEM kellenek — ezek csak a webes,
+   redirect-alapú Apple-bejelentkezéshez szükségesek. Ha a Firebase Console
+   mégis kéri őket az Enable gomb előtt, kövesd az ottani útmutatót.
+4. **`FirebaseAuthentication.providers`** — a `capacitor.config.ts`-ben
+   `['google.com', 'apple.com']`; a `cap sync ios` ez alapján hozza be az
+   `AuthenticationServices` keretrendszert és a GoogleSignIn SDK mellé az
+   Apple traitet is.
+
+⚠️ Az Apple előírja (App Store Review Guideline 4.8), hogy ha egy app
+harmadik féltől való bejelentkezést (pl. Google) kínál, az Apple-lépéssel
+egyenrangú belépési lehetőséget is fel kell ajánlania — ez volt a mostani
+munka közvetlen kiváltó oka, nem csak kényelmi funkció.
+
+Készüléken (vagy TestFlight buildben) ellenőrizendő: az Apple gomb a
+rendszer natív Apple ID-választóját (Face ID/Touch ID megerősítéssel) nyitja
+meg, sikeres választás után a GRUNDO bejelentkezett állapotba kerül. Az Apple
+ID-választó "Hide My Email" opciójával létrehozott, elrejtett e-mail-címmel
+is működnie kell a regisztrációnak.
 
 ## Első Codemagic buildben ellenőrizendő
 

@@ -1,58 +1,71 @@
 /**
- * „Ezzel a fiókkal Google-lel kell belépni" — a felismerés szabálya.
+ * „Ezzel a fiókkal Google-/Apple-lel kell belépni" — a felismerés szabálya.
  *
- * A HIBA, amit megelőz: aki Google-fiókkal regisztrált, annak SOSEM volt
- * jelszava. Ha jelszóval próbálkozik, a Firebase csak annyit mond, hogy hibás
- * adat — a felhasználó pedig a világ végezetéig próbálkozhatna, mert nincs
- * olyan jelszó, ami működne. Ezt a falat csak úgy lehet lebontani, ha
- * megmondjuk neki, hogy a Google-gombot keresse.
+ * A HIBA, amit megelőz: aki Google- vagy Apple-fiókkal regisztrált, annak
+ * SOSEM volt jelszava. Ha jelszóval próbálkozik, a Firebase csak annyit mond,
+ * hogy hibás adat — a felhasználó pedig a világ végezetéig próbálkozhatna,
+ * mert nincs olyan jelszó, ami működne. Ezt a falat csak úgy lehet lebontani,
+ * ha megmondjuk neki, melyik gombot keresse.
  *
- * A szabály szándékosan SZŰK: csak akkor igaz, ha van Google-szolgáltató és
- * NINCS jelszó. Aki mindkettővel rendelkezik (összekapcsolta a fiókjait),
- * annak a jelszava működik, tehát nem szabad elterelni.
+ * A szabály szándékosan SZŰK: csak akkor jelez vissza szolgáltatót, ha van
+ * pontosan egy szociális szolgáltató és NINCS jelszó. Aki mindkettővel
+ * rendelkezik (összekapcsolta a fiókjait), annak a jelszava működik, tehát
+ * nem szabad elterelni.
  */
 import { describe, expect, it } from 'vitest';
 
-/** A vizsgált szabály — az `auth.ts` `isGoogleOnly` függvényének a mása. */
-function isGoogleOnly(record: { providerData: { providerId: string }[] } | null): boolean {
-  if (!record) return false;
+type SocialProvider = 'google.com' | 'apple.com';
+
+/** A vizsgált szabály — az `auth.ts` `socialOnlyProvider` függvényének a mása. */
+function socialOnlyProvider(
+  record: { providerData: { providerId: string }[] } | null,
+): SocialProvider | null {
+  if (!record) return null;
   const providers = record.providerData.map((p) => p.providerId);
-  return providers.includes('google.com') && !providers.includes('password');
+  if (providers.includes('password')) return null;
+  if (providers.includes('google.com')) return 'google.com';
+  if (providers.includes('apple.com')) return 'apple.com';
+  return null;
 }
 
 const withProviders = (...ids: string[]) => ({
   providerData: ids.map((providerId) => ({ providerId })),
 });
 
-describe('isGoogleOnly', () => {
-  it('a csak Google-lel regisztrált fiókra igaz', () => {
-    expect(isGoogleOnly(withProviders('google.com'))).toBe(true);
+describe('socialOnlyProvider', () => {
+  it('a csak Google-lel regisztrált fiókra "google.com"-ot ad', () => {
+    expect(socialOnlyProvider(withProviders('google.com'))).toBe('google.com');
   });
 
-  it('a jelszavas fiókra hamis', () => {
-    expect(isGoogleOnly(withProviders('password'))).toBe(false);
+  it('a csak Apple-lel regisztrált fiókra "apple.com"-ot ad', () => {
+    expect(socialOnlyProvider(withProviders('apple.com'))).toBe('apple.com');
   });
 
-  it('az ÖSSZEKAPCSOLT fiókra hamis', () => {
+  it('a jelszavas fiókra null', () => {
+    expect(socialOnlyProvider(withProviders('password'))).toBeNull();
+  });
+
+  it('az ÖSSZEKAPCSOLT fiókra null', () => {
     // Akinek van jelszava is, annak a jelszó működik — nem szabad elterelni.
-    expect(isGoogleOnly(withProviders('google.com', 'password'))).toBe(false);
-    expect(isGoogleOnly(withProviders('password', 'google.com'))).toBe(false);
+    expect(socialOnlyProvider(withProviders('google.com', 'password'))).toBeNull();
+    expect(socialOnlyProvider(withProviders('password', 'google.com'))).toBeNull();
+    expect(socialOnlyProvider(withProviders('apple.com', 'password'))).toBeNull();
   });
 
-  it('a nem létező fiókra hamis', () => {
+  it('a nem létező fiókra null', () => {
     /**
      * EZ A LÉNYEG A NÉVELLENŐRZÉS ELLEN.
      *
      * A nem létező fiók és a jelszavas fiók UGYANAZT a választ kapja. Így a
      * végpontból nem lehet megtudni, hogy létezik-e egy e-mail-cím — csak azt,
-     * hogy „ezzel Google-lel kell belépni", ami önmagában is csak egy létező,
-     * Google-fiókos azonosítóra igaz.
+     * hogy melyik szociális szolgáltatóval kell belépni, ami önmagában is csak
+     * egy létező, csak-szociális fiókos azonosítóra ad választ.
      */
-    expect(isGoogleOnly(null)).toBe(false);
+    expect(socialOnlyProvider(null)).toBeNull();
   });
 
-  it('az ismeretlen szolgáltatóra hamis', () => {
-    expect(isGoogleOnly(withProviders('apple.com'))).toBe(false);
-    expect(isGoogleOnly(withProviders())).toBe(false);
+  it('az ismeretlen szolgáltatóra null', () => {
+    expect(socialOnlyProvider(withProviders('facebook.com'))).toBeNull();
+    expect(socialOnlyProvider(withProviders())).toBeNull();
   });
 });

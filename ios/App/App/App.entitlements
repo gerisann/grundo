@@ -6,5 +6,11 @@
 	<string>$(APS_ENVIRONMENT)</string>
 	<key>com.apple.developer.devicecheck.appattest-environment</key>
 	<string>production</string>
+	<!-- "Sign In with Apple" képesség — az Apple Developer Portalon az App ID-hoz
+	     is be kell kapcsolni, különben a natív ASAuthorizationController hibát ad. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>

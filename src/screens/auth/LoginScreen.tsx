@@ -3,22 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { Button, TextField } from '@/components/ui';
 import { AuthBrand } from './AuthBrand';
 import { useAuth } from '@/hooks/AuthProvider';
-import { authErrorMessage, isAccountLinkError, isGoogleAccountError } from '@/lib/authErrors';
+import {
+  authErrorMessage,
+  isAccountLinkError,
+  isAppleAccountError,
+  isGoogleAccountError,
+} from '@/lib/authErrors';
 import { validateEmail } from '@/lib/validation';
 import { FirebaseNotice } from './FirebaseNotice';
 import './auth.css';
 
 export function LoginScreen() {
   const navigate = useNavigate();
-  const { signInWithIdentifier, signInWithGoogle, status } = useAuth();
+  const { signInWithIdentifier, signInWithGoogle, signInWithApple, status } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState('');
   const [linkHint, setLinkHint] = useState(false);
-  /** Google-fiókkal regisztrált, de jelszóval próbálkozik. */
-  const [googleHint, setGoogleHint] = useState(false);
+  /** Google- vagy Apple-fiókkal regisztrált, de jelszóval próbálkozik. */
+  const [socialHint, setSocialHint] = useState<'google' | 'apple' | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -50,14 +55,17 @@ export function LoginScreen() {
       navigate('/');
     } catch (error) {
       /**
-       * A Google-fiókos eset NEM sima hibaüzenet.
+       * A Google-/Apple-fiókos eset NEM sima hibaüzenet.
        *
        * Ehhez a fiókhoz nincs jelszó, tehát az újrapróbálkozás sosem sikerül.
        * A felhasználónak nem azt kell mondani, hogy „hibás adat", hanem hogy
        * merre menjen — ezért kap egy gombot is, nem csak szöveget.
        */
       if (isGoogleAccountError(error)) {
-        setGoogleHint(true);
+        setSocialHint('google');
+        setFormError('');
+      } else if (isAppleAccountError(error)) {
+        setSocialHint('apple');
         setFormError('');
       } else {
         setFormError(authErrorMessage(error));
@@ -70,7 +78,7 @@ export function LoginScreen() {
   async function google() {
     setFormError('');
     setLinkHint(false);
-    setGoogleHint(false);
+    setSocialHint(null);
     setBusy(true);
     try {
       await signInWithGoogle();
@@ -79,6 +87,22 @@ export function LoginScreen() {
       setFormError(authErrorMessage(error));
       // A leggyakoribb eset: ugyanaz az e-mail már jelszóval regisztrált.
       // Ilyenkor nem elég a hibaüzenet — meg kell mutatni a kivezető utat.
+      if (isAccountLinkError(error)) setLinkHint(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apple() {
+    setFormError('');
+    setLinkHint(false);
+    setSocialHint(null);
+    setBusy(true);
+    try {
+      await signInWithApple();
+      navigate('/');
+    } catch (error) {
+      setFormError(authErrorMessage(error));
       if (isAccountLinkError(error)) setLinkHint(true);
     } finally {
       setBusy(false);
@@ -99,14 +123,21 @@ export function LoginScreen() {
             {formError}
           </div>
         ) : null}
-        {googleHint ? (
+        {socialHint !== null ? (
           <div className="auth__notice">
-            <strong>Szia! Ezt a fiókot Google-fiókkal hoztad létre.</strong>{' '}
-            Jelszó nem tartozik hozzá, ezért a lenti <strong>Belépés Google-fiókkal</strong>{' '}
-            gombbal tudsz bejelentkezni.
+            <strong>
+              Szia! Ezt a fiókot {socialHint === 'google' ? 'Google' : 'Apple'}-fiókkal hoztad létre.
+            </strong>{' '}
+            Jelszó nem tartozik hozzá, ezért a lenti{' '}
+            <strong>Belépés {socialHint === 'google' ? 'Google' : 'Apple'}-fiókkal</strong> gombbal
+            tudsz bejelentkezni.
             <div style={{ marginTop: 'var(--sp-3)' }}>
-              <Button size="sm" onClick={() => void google()} disabled={busy}>
-                Belépés Google-fiókkal
+              <Button
+                size="sm"
+                onClick={() => void (socialHint === 'google' ? google() : apple())}
+                disabled={busy}
+              >
+                Belépés {socialHint === 'google' ? 'Google' : 'Apple'}-fiókkal
               </Button>
             </div>
           </div>
@@ -115,7 +146,7 @@ export function LoginScreen() {
         {linkHint ? (
           <div className="auth__notice">
             Lépj be a jelszavaddal, majd a <strong>Beállítások → Bejelentkezési módok</strong>{' '}
-            alatt kapcsold össze a Google-fiókoddal. Utána bármelyikkel beléphetsz.
+            alatt kapcsold össze a Google- vagy Apple-fiókoddal. Utána bármelyikkel beléphetsz.
           </div>
         ) : null}
 
@@ -159,6 +190,10 @@ export function LoginScreen() {
 
         <Button variant="secondary" block onClick={google} disabled={busy || status === 'unconfigured'}>
           Folytatás Google-fiókkal
+        </Button>
+
+        <Button variant="secondary" block onClick={apple} disabled={busy || status === 'unconfigured'}>
+          Folytatás Apple-fiókkal
         </Button>
 
         <p className="auth__switch">

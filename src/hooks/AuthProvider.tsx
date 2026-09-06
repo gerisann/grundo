@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
   GoogleAuthProvider,
+  OAuthProvider,
   createUserWithEmailAndPassword,
   linkWithCredential,
   linkWithPopup,
@@ -14,6 +15,7 @@ import {
   signInWithPopup,
   signOut as fbSignOut,
   updateProfile,
+  type AuthCredential,
   type User,
 } from 'firebase/auth';
 import { auth, firebaseConfigured, requireAuth } from '@/lib/firebase';
@@ -21,6 +23,7 @@ import { auth, firebaseConfigured, requireAuth } from '@/lib/firebase';
 import { api as backend, apiConfigured } from '@/lib/api';
 import { isNativeApp } from '@/lib/platform';
 import { nativeGoogleErrorMessage } from '@/lib/googleAuthErrors';
+import { nativeAppleErrorMessage } from '@/lib/appleAuthErrors';
 
 export type AuthStatus = 'loading' | 'signed-in' | 'signed-out' | 'unconfigured';
 
@@ -44,6 +47,8 @@ export interface AuthApi {
   signInWithIdentifier: (identifier: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   linkGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
+  linkApple: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -66,6 +71,16 @@ export class GoogleAccountError extends Error {
   constructor() {
     super('Ezt a fiókot Google-fiókkal hoztad létre. Lépj be a Google-gombbal.');
     this.name = 'GoogleAccountError';
+  }
+}
+
+/** A `GoogleAccountError` párja Apple-fiókokhoz — lásd ott a magyarázatot. */
+export class AppleAccountError extends Error {
+  readonly code = 'use_apple';
+
+  constructor() {
+    super('Ezt a fiókot Apple-fiókkal hoztad létre. Lépj be az Apple-gombbal.');
+    this.name = 'AppleAccountError';
   }
 }
 
@@ -102,6 +117,37 @@ async function nativeGoogleCredential() {
     if (friendly) {
       // A nyers natív szöveget megtartjuk a diagnosztikának, de a felhasználó
       // magyar mondatot lát az angol SDK-hibakód helyett.
+      throw new Error(friendly, { cause: error });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Az Apple `signInWithApple()` a Google-lel ellentétben `idToken` MELLÉ
+ * `nonce`-t is ad vissza (`credential.nonce`) — a Firebase `OAuthProvider`
+ * ezt `rawNonce` néven várja a hitelesítő adat összeállításához. Enélkül a
+ * `signInWithCredential`/`linkWithCredential` `auth/missing-or-invalid-nonce`
+ * hibával utasítaná el a tokent.
+ */
+async function nativeAppleCredential(): Promise<AuthCredential> {
+  try {
+    const result = await FirebaseAuthentication.signInWithApple({ skipNativeAuth: true });
+    const idToken = result.credential?.idToken;
+    if (!idToken) {
+      throw new Error('Az Apple-belépés nem adott azonosító tokent. Próbáld újra.');
+    }
+    const provider = new OAuthProvider('apple.com');
+    return provider.credential({ idToken, rawNonce: result.credential?.nonce });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/cancel/i.test(message)) {
+      const cancelled = new Error('A bejelentkezést megszakítottad.');
+      Object.assign(cancelled, { code: 'auth/popup-closed-by-user' });
+      throw cancelled;
+    }
+    const friendly = nativeAppleErrorMessage(message);
+    if (friendly) {
       throw new Error(friendly, { cause: error });
     }
     throw error;
@@ -260,11 +306,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
              * sikeres belépés ne kapjon fölösleges körbefordulót.
              */
             if (apiConfigured && !(error instanceof AuthTimeoutError)) {
-              const { googleOnly } = await withAuthTimeout(
+              const { googleOnly, appleOnly } = await withAuthTimeout(
                 backend.signInMethod(value),
                 'A belépési mód ellenőrzése',
               );
               if (googleOnly) throw new GoogleAccountError();
+              if (appleOnly) throw new AppleAccountError();
             }
             throw error;
           }
@@ -310,6 +357,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         await linkWithPopup(instance.currentUser, new GoogleAuthProvider());
+      },
+
+      async signInWithApple() {
+        // Ugyanaz az elv, mint a Google-nél: natívon az ASAuthorizationController
+        // (iOS) / a plugin saját webes folyamata (Android) adja a tokent, a
+        // tartós munkamenetet innentől a Firebase JS SDK viszi tovább.
+        if (isNativeApp()) {
+          const credential = await nativeAppleCredential();
+          await signInWithCredential(requireAuth(), credential);
+          return;
+        }
+        const provider = new OAuthProvider('apple.com');
+        provider.addScope('email');
+        provider.addScope('name');
+        await signInWithPopup(requireAuth(), provider);
+      },
+
+      async linkApple() {
+        const instance = requireAuth();
+        if (!instance.currentUser) throw new Error('Nincs bejelentkezett felhasználó.');
+        if (isNativeApp()) {
+          const credential = await nativeAppleCredential();
+          await linkWithCredential(instance.currentUser, credential);
+          return;
+        }
+        await linkWithPopup(instance.currentUser, new OAuthProvider('apple.com'));
       },
 
       async sendPasswordReset(email) {
