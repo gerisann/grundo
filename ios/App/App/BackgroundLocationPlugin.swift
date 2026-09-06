@@ -109,6 +109,20 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     @objc func start(_ call: CAPPluginCall) {
+        /**
+         GRUNDO #42: a lezárt képernyő alatt is gyűjtő lemezes sor NEM tudja,
+         melyik logikai aktivitáshoz tartozik — csak azt, hogy „háttérben
+         gyűjtött, még át nem adott pont". Ha a JS oldal VADONATÚJ aktivitást
+         indít (`resume: false`), egy korábbi, félbehagyott/force-quitolt
+         aktivitás itt ragadt maradéka NEM kerülhet bele — eldobjuk, mielőtt
+         bármi mást tennénk. Legitim folytatásnál (`resume: true`, az
+         IndexedDB-ből visszaállított állapothoz) a sor változatlanul
+         megmarad, a `drain()` később helyesen visszaadja.
+         */
+        if call.getBool("resume") != true {
+            pendingLocations.removeAll()
+            clearPersistedLocations()
+        }
         requestedActivityType = normalizedActivityType(call.getString("activityType"))
         // ⚠️ GRUNDO #21 energiaelemzés, C3: a szűrő mozgásformánként eltérő.
         // Bringánál a régi, egységes 5 méteres szűrő 30 km/h-nál kb.

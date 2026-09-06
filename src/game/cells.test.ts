@@ -33,6 +33,35 @@ describe('largeGaps — GRUNDO #34: időtudatos teleport-detektálás', () => {
   });
 });
 
+describe('largeGaps — GRUNDO #42: térben KÖZELI, de időben óriási rés', () => {
+  const START = Date.UTC(2026, 8, 5, 15, 23, 0);
+  // A két pont EGYMÁSHOZ KÖZEL van (jóval a MAX_GRID_PATH_CELLS küszöb alatt),
+  // ezért az implikált sebesség triviálisan alacsony — a régi, sebesség-alapú
+  // ellenőrzés ezt sosem fogta volna meg. Pontosan ez volt a valós eset: egy
+  // ~11,5 órás natív GPS-puffer szennyeződés két, alig pár méterre lévő pontja.
+  const near: TracePoint[] = [
+    { ...p(0, 0), t: START },
+    { ...p(5, 0), t: START }, // ideiglenes t, tesztenként felülírva
+  ];
+
+  it('~11,5 órás, térben közeli ugrás largeGaps-ot ad, jóllehet a sebesség nevetségesen alacsony', () => {
+    const points: TracePoint[] = [near[0]!, { ...near[1]!, t: START + 11.5 * 60 * 60 * 1000 }];
+    expect(traceToCellPath(points).largeGaps).toBe(1);
+  });
+
+  it('egy ésszerű, tudatos szünet (25 perc) még NEM számít gyanúsnak', () => {
+    const points: TracePoint[] = [near[0]!, { ...near[1]!, t: START + 25 * 60 * 1000 }];
+    expect(traceToCellPath(points).largeGaps).toBe(0);
+  });
+
+  it('a küszöb fölötti, de térben azonos cellába eső ugrás is largeGaps-ot ad', () => {
+    // Ugyanaz a pont (0 m elmozdulás) — a régi kód itt a "same cell" ágon a
+    // sebesség-ellenőrzést EGYÁLTALÁN nem is érte volna el.
+    const points: TracePoint[] = [near[0]!, { ...near[0]!, t: START + 2 * 60 * 60 * 1000 }];
+    expect(traceToCellPath(points).largeGaps).toBe(1);
+  });
+});
+
 describe('IncrementalCellPath', () => {
   it('mintánkénti bővítéssel pontosan ugyanazt a láncot adja, mint a kötegelt traceToCellPath', () => {
     const points = buildTrace([p(0, 0), p(0, 400), p(400, 400), p(400, 0), p(0, 0)], { stepM: 5 });

@@ -91,6 +91,18 @@ public final class BackgroundLocationPlugin extends Plugin {
 
     @PluginMethod
     public void start(PluginCall call) {
+        /**
+         * GRUNDO #42: a tartós, lezárt képernyő alatt is gyűjtő SQLite-sor nem
+         * tudja, melyik logikai aktivitáshoz tartozik — csak azt, hogy
+         * "háttérben gyűjtött, még át nem adott pont". Vadonatúj aktivitásnál
+         * (resume=false) egy korábbi, félbehagyott/force-quitolt aktivitás
+         * itt ragadt maradéka nem kerülhet bele — eldobjuk, mielőtt bármi
+         * mást tennénk. Legitim folytatásnál (resume=true) a sor változatlan
+         * marad, a drain() később helyesen visszaadja.
+         */
+        if (!call.getBoolean("resume", false)) {
+            store.clear();
+        }
         if (!locationServicesEnabled()) {
             call.reject("A helymeghatározás ki van kapcsolva a készüléken.", "location_disabled");
             return;

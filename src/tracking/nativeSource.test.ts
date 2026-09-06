@@ -99,6 +99,28 @@ describe('NativePositionSource háttérsor', () => {
     expect(received).toEqual([100, 200, 300]);
   });
 
+  it('alapból NEM resume-ként indít, és a natív oldal ez alapján dobhatja a leragadt sort (GRUNDO #42)', async () => {
+    const source = new NativePositionSource();
+    const starting = source.start({ onSample: vi.fn(), onError: vi.fn() }, 'ride');
+
+    await vi.waitFor(() => expect(native.plugin.drain).toHaveBeenCalledOnce());
+    native.finishDrain([]);
+    await starting;
+
+    expect(native.plugin.start).toHaveBeenCalledWith(expect.objectContaining({ resume: false }));
+  });
+
+  it('explicit resume esetén ezt a natívnak is jelzi, hogy a leragadt sort adja vissza', async () => {
+    const source = new NativePositionSource();
+    const starting = source.start({ onSample: vi.fn(), onError: vi.fn() }, 'ride', undefined, true);
+
+    await vi.waitFor(() => expect(native.plugin.drain).toHaveBeenCalledOnce());
+    native.finishDrain([]);
+    await starting;
+
+    expect(native.plugin.start).toHaveBeenCalledWith(expect.objectContaining({ resume: true }));
+  });
+
   it('a leállítás bevárja a már futó draint a listener leválasztása előtt', async () => {
     const received: number[] = [];
     const source = new NativePositionSource();

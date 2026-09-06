@@ -8,6 +8,7 @@ import { RecorderProvider, useRecorderUploadStatus } from './hooks/RecorderProvi
 import { RivalProvider } from './hooks/RivalProvider';
 import { NotificationsProvider } from './hooks/useNotifications';
 import { Dock } from './components/Dock';
+import { ResumeActivityPrompt } from './components/ResumeActivityPrompt';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
 import { addNativePushActionListener } from './lib/push';
@@ -299,6 +300,13 @@ function Router() {
       pathname.startsWith('/beallitasok') ||
       /^\/bandak\/[^/]+\/beallitasok\/?$/.test(pathname) ||
       (pathname === '/rogzites' && savePanelOpen) ? null : <Dock />}
+      {/*
+        A FÉLBEHAGYOTT AKTIVITÁS megerősítése — bármelyik képernyőn, azonnal
+        app-indítás után. Lásd `ResumeActivityPrompt.tsx` fejlécét: a
+        Rögzítés képernyőbe zárt banner nem elég, mert a felhasználó nem
+        biztos, hogy oda navigál (GRUNDO #42).
+      */}
+      <ResumeActivityPrompt />
     </>
   );
 }

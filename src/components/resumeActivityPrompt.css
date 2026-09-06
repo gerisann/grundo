@@ -1,0 +1,46 @@
+.resume-prompt__backdrop {
+  position: fixed;
+  inset: 0;
+  /* A Dock (z-index: 40) és minden képernyő-szintű overlay FÖLÉ kell —
+     ez egy app-szintű kapu, aminek minden más elé kell kerülnie. */
+  z-index: 100;
+  display: grid;
+  place-items: end center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.resume-prompt__sheet {
+  width: 100%;
+  max-width: var(--app-max-width);
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-5) calc(var(--safe-bottom) + var(--sp-5));
+  background: var(--bg-elevated);
+  border: 1px solid var(--warning);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.resume-prompt__title {
+  font-size: var(--fs-heading);
+  color: var(--text-primary);
+}
+
+.resume-prompt__lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.resume-prompt__notice {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
+
+.resume-prompt__actions {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}

@@ -10,10 +10,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRunPersister,
+  indexedDbStore,
   isPendingUpload,
   isResumable,
   memoryStore,
   prepareForRestore,
+  recoverExpiredRun,
   restoreStrategy,
   type PersistedRun,
   type RunStore,
@@ -31,6 +33,8 @@ import type { PositionSample } from './types';
 
 const T0 = 1_800_000_000_000;
 const BASE = { lat: 47.4979, lng: 19.0402 };
+// Szándékosan PARAMÉTER, nem `GAMEPLAY` import — lásd autoUpload.test.ts fejléce.
+const MIN_DISTANCE_M = 100;
 
 function sample(offsetM: number, seconds: number): PositionSample {
   return {
@@ -180,6 +184,99 @@ describe('összevont írás', () => {
   });
 });
 
+/** A valódi IDBRequest minimál-hamisítványa: csak on{success,error} kell. */
+interface FakeRequest {
+  onsuccess: (() => void) | null;
+  onerror: (() => void) | null;
+  onupgradeneeded: (() => void) | null;
+  result: unknown;
+  error: Error | null;
+}
+
+function makeRequest(): FakeRequest {
+  return { onsuccess: null, onerror: null, onupgradeneeded: null, result: undefined, error: null };
+}
+
+/**
+ * Egy `indexedDB.open()` hamisítvány, ami az első N hívást elbuktatja, utána
+ * sikeres — GRUNDO #42 regressziója: az `open()` hibája ne ragadjon be örökre.
+ */
+function fakeIndexedDbFailingOpens(failCount: number) {
+  let attempts = 0;
+  const data = new Map<string, unknown>();
+
+  function fakeStore() {
+    return {
+      get(key: string) {
+        const request = makeRequest();
+        queueMicrotask(() => {
+          request.result = data.get(key);
+          request.onsuccess?.();
+        });
+        return request;
+      },
+      put(value: unknown, key: string) {
+        const request = makeRequest();
+        queueMicrotask(() => {
+          data.set(key, value);
+          request.onsuccess?.();
+        });
+        return request;
+      },
+      delete(key: string) {
+        const request = makeRequest();
+        queueMicrotask(() => {
+          data.delete(key);
+          request.onsuccess?.();
+        });
+        return request;
+      },
+    };
+  }
+
+  return {
+    open() {
+      attempts += 1;
+      const request = makeRequest();
+      const shouldFail = attempts <= failCount;
+      queueMicrotask(() => {
+        if (shouldFail) {
+          request.error = new Error('átmeneti IndexedDB-nyitási hiba');
+          request.onerror?.();
+          return;
+        }
+        request.result = {
+          objectStoreNames: { contains: () => true },
+          transaction: () => ({ objectStore: fakeStore }),
+        };
+        request.onsuccess?.();
+      });
+      return request;
+    },
+  };
+}
+
+describe('IndexedDB nyitási hiba (GRUNDO #42)', () => {
+  it('egy sikertelen open() után a KÖVETKEZŐ írás újrapróbálja, nem ismétli örökre a hibát', async () => {
+    const original = globalThis.indexedDB;
+    (globalThis as unknown as { indexedDB: unknown }).indexedDB = fakeIndexedDbFailingOpens(1);
+
+    try {
+      const store = indexedDbStore();
+      const run: PersistedRun = { version: 1, state: runWithPoints(), savedAt: T0 };
+
+      // Az első írás elhasal — ez a #42-ben a néma adatvesztés forrása volt.
+      await expect(store.write(run)).rejects.toThrow();
+
+      // A KÖVETKEZŐ írásnak sikerülnie kell — a hibát nem szabad örökre cache-elni.
+      await expect(store.write(run)).resolves.toBeUndefined();
+      expect(await store.read()).toEqual(run);
+    } finally {
+      (globalThis as unknown as { indexedDB: unknown }).indexedDB = original;
+    }
+  });
+});
+
 describe('visszaállíthatóság', () => {
   const fresh = (state: RecorderState, savedAt: number): PersistedRun => ({
     version: 1,
@@ -191,10 +288,28 @@ describe('visszaállíthatóság', () => {
     expect(isResumable(fresh(runWithPoints(), T0), T0 + 60_000)).toBe(true);
   });
 
-  it('natív WebView-újrainduláskor automatikusan folytat, weben kérdez', () => {
+  it('natív WebView-újrainduláskor (rövid kihagyás) automatikusan folytat, weben kérdez', () => {
     const saved = fresh(runWithPoints(), T0);
     expect(restoreStrategy(saved, T0 + 1_000, true)).toBe('automatic');
     expect(restoreStrategy(saved, T0 + 1_000, false)).toBe('prompt');
+  });
+
+  describe('natív, HOSSZABB kihagyás után is megkérdez (GRUNDO #42)', () => {
+    it('a 2 perces csendes ablakon belül még automatikus', () => {
+      const saved = fresh(runWithPoints(), T0);
+      expect(restoreStrategy(saved, T0 + 2 * 60 * 1000, true)).toBe('automatic');
+    });
+
+    it('a 2 perces ablakon túl natívon is megkérdez, nem folytat csendben', () => {
+      const saved = fresh(runWithPoints(), T0);
+      expect(restoreStrategy(saved, T0 + 2 * 60 * 1000 + 1, true)).toBe('prompt');
+    });
+
+    it('egy valódi, órákkal későbbi force-quit utáni visszatérés is kérdez, nem discard', () => {
+      // Az 1 órás ablakon belül vagyunk, csak a natív csendes puffert lépi túl.
+      const saved = fresh(runWithPoints(), T0);
+      expect(restoreStrategy(saved, T0 + 45 * 60 * 1000, true)).toBe('prompt');
+    });
   });
 
   it('lejárt vagy befejezett mentést natívban sem állít helyre', () => {
@@ -217,6 +332,32 @@ describe('visszaállíthatóság', () => {
 
   it('a pont nélküli rögzítést nem ajánljuk fel', () => {
     expect(isResumable(fresh(start(createRecorder('run'), T0), T0), T0 + 1000)).toBe(false);
+  });
+
+  describe('lejárt mentés — mégis menthető feltöltésre (GRUNDO #42)', () => {
+    it('elég hosszú, lejárt mentésből lezárt, feltöltésre kész állapotot ad', () => {
+      const long = applySample(applySample(start(createRecorder('ride'), T0), sample(0, 0)), sample(200, 40));
+      const recovered = recoverExpiredRun(fresh(long, T0 + 40_000), MIN_DISTANCE_M);
+
+      expect(recovered).not.toBeNull();
+      expect(recovered?.status).toBe('finished');
+      expect(recovered?.endedAt).toBe(T0 + 40_000);
+      expect(recovered?.distanceM).toBeGreaterThanOrEqual(MIN_DISTANCE_M);
+    });
+
+    it('túl rövid, lejárt mentést nem ment meg — nincs mit feltölteni', () => {
+      const short = applySample(applySample(start(createRecorder('run'), T0), sample(0, 0)), sample(10, 5));
+      expect(recoverExpiredRun(fresh(short, T0 + 5_000), MIN_DISTANCE_M)).toBeNull();
+    });
+
+    it('a lezárás az utolsó ismert mentési időponttal történik, nem a jelennel', () => {
+      const long = applySample(applySample(start(createRecorder('ride'), T0), sample(0, 0)), sample(200, 40));
+      const savedAt = T0 + 40_000;
+      const recovered = recoverExpiredRun(fresh(long, savedAt), MIN_DISTANCE_M);
+      // Ha a jelennel zárnánk le, a mozgásidő tévesen tartalmazná a felfedezésig eltelt (akár órás) szünetet is.
+      expect(recovered?.endedAt).not.toBe(Date.now());
+      expect(recovered?.endedAt).toBe(savedAt);
+    });
   });
 
   it('az egy óránál régebbi mentést nem ajánljuk fel', () => {

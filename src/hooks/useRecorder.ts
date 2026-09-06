@@ -36,6 +36,7 @@ import {
   defaultRunStore,
   isPendingUpload,
   prepareForRestore,
+  recoverExpiredRun,
   restoreStrategy,
   type PersistedRun,
   type RunStore,
@@ -375,6 +376,14 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
   const attach = useCallback(async (
     activityType: ActivityType = stateRef.current.type,
     activityState: RecorderState = stateRef.current,
+    /**
+     * Csak a legitim, IndexedDB-ből visszaállított folytatásnál `true` —
+     * lásd a hívási helyeket. Ez dönti el, hogy a natív oldal a lezárt
+     * képernyő alatt gyűjtött, leragadt sort átadja-e, vagy eldobja
+     * (GRUNDO #42: egy vadonatúj `begin()` nem örökölhet egy korábbi,
+     * ezzel semmilyen kapcsolatban nem álló aktivitás maradékát).
+     */
+    resume = false,
   ) => {
     setError(null);
     attachStartedAtRef.current = Date.now();
@@ -403,7 +412,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
           apply((current) => applySample(current, sample));
         },
         onError: (err) => setError(err),
-      }, activityType, toPositionActivityState(activityState) ?? undefined);
+      }, activityType, toPositionActivityState(activityState) ?? undefined, resume);
     } catch (err) {
       setError(
         err instanceof TrackingError
@@ -483,7 +492,7 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
         stateRef.current = saved.state;
         setState(saved.state);
         persister.save(saved.state);
-        await attach(saved.state.type, saved.state);
+        await attach(saved.state.type, saved.state, true);
         if (!cancelled) await acquireWakeLock();
         return;
       }
@@ -491,6 +500,18 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
         resumableRun.current = saved;
         setResumable(saved.state);
         setResumableNotice(describeResumeCause(readLastLifecycleEvent(), currentNavigationType()));
+        return;
+      }
+
+      // Lejárt a folytatási ablak — de a megtett táv attól még számít.
+      // Lásd `recoverExpiredRun` a GRUNDO #42 hátteréért.
+      const recovered = recoverExpiredRun(saved, GAMEPLAY.MIN_DISTANCE_M);
+      if (recovered !== null) {
+        await runStore.write({ version: 1, state: recovered, savedAt: saved.savedAt }).catch(() => undefined);
+        setUpload(apiConfigured ? { status: 'processing', firstCheckDelayMs: 0 } : { status: 'idle' });
+        setUploadLocallySaved(true);
+        stateRef.current = recovered;
+        setState(recovered);
         return;
       }
       await runStore.clear().catch(() => undefined);
@@ -786,7 +807,11 @@ export function useRecorder(source?: PositionSource, options: RecorderOptions = 
     setState(stateRef.current);
     persister.save(stateRef.current);
     await acquireWakeLock();
-    await attach(stateRef.current.type);
+    // `resume: true` — a `strategy === 'prompt'` mostantól natívon is
+    // előfordulhat (GRUNDO #42, 2 percnél hosszabb kihagyás után), nem csak
+    // weben. A natív oldalnak jeleznie kell, hogy ez legitim folytatás: a
+    // lezárt képernyő alatt gyűjtött sort adja vissza (drain), ne dobja el.
+    await attach(stateRef.current.type, stateRef.current, true);
   }, [acquireWakeLock, attach, persister, resumable]);
 
   const dismissResumable = useCallback(async () => {

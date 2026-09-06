@@ -19,6 +19,21 @@ import type { ActivityType, CellId, Layer, TracePoint } from '@/types';
  */
 const PHYSICALLY_IMPOSSIBLE_MPS = 250 / 3.6; // 250 km/h
 
+/**
+ * Két egymást követő minta közt ennél hosszabb rés ÖNMAGÁBAN gyanús — a
+ * térbeli távolságtól és az abból számolt sebességtől FÜGGETLENÜL.
+ *
+ * GRUNDO #42: egy natív GPS-puffer hibája miatt egy előző, félbehagyott
+ * aktivitás maradéka egy 11,5 órás, fizikailag lehetetlen idő-ugrással
+ * ragadt egy másik körbe — és ezt sem a sebesség-, sem a régi hézag-
+ * ellenőrzés nem fogta meg, mert a két pont térben KÖZEL esett egymáshoz
+ * (az implikált sebesség emiatt nevetségesen alacsony, tehát "ártatlannak"
+ * tűnt). A küszöb szándékosan nagyvonalú: egy hosszabb, tudatos pihenő
+ * (ebéd, defekt, alagút) még simán belefér, csak a többszörösen hosszabb
+ * rés számít gyanúsnak.
+ */
+const MAX_SAMPLE_GAP_MS = 30 * 60 * 1000; // 30 perc
+
 export function layerOf(type: ActivityType): Layer {
   return type === 'ride' ? 'bike' : 'foot';
 }
@@ -77,6 +92,12 @@ function extendCellPath(
       prevPoint = p;
       continue;
     }
+
+    // Lásd `MAX_SAMPLE_GAP_MS` — ez UNCONDITIONÁLISAN fut, azaz a
+    // "same cell" ágon is, ahol a lenti, térbeli/sebesség-alapú ellenőrzés
+    // sosem éri el ugyanezt az esetet.
+    if (prevPoint !== undefined && p.t - prevPoint.t > MAX_SAMPLE_GAP_MS) largeGaps++;
+
     if (last === cell) {
       prevPoint = p;
       continue; // ugyanabban a cellában maradtunk

@@ -99,6 +99,7 @@ export class BrowserPositionSource implements PositionSource {
     handlers: PositionHandlers,
     _activityType?: ActivityType,
     _activityState?: PositionActivityState,
+    _resume?: boolean,
   ): Promise<void> {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       throw new TrackingError('unsupported', 'Ez a böngésző nem tud helymeghatározást.');

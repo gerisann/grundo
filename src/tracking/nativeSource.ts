@@ -32,6 +32,8 @@ interface BackgroundLocationPlugin {
     activityType: ActivityType;
     activityState?: PositionActivityState;
     liveActivityEnabled: boolean;
+    /** `false` esetén a natív oldal eldobja a leragadt lemezes sort induláskor. */
+    resume: boolean;
   }): Promise<{
     permission: 'granted' | 'prompt';
     backgroundPermission?: 'granted' | 'not_granted';
@@ -94,6 +96,7 @@ export class NativePositionSource implements PositionSource {
     handlers: PositionHandlers,
     activityType: ActivityType = 'run',
     activityState?: PositionActivityState,
+    resume = false,
   ): Promise<void> {
     // Egy új WebView ugyanahhoz a már futó natív helyméréshez
     // kapcsolódik vissza. Itt TILOS a natív szolgáltatást leállítani: az
@@ -125,6 +128,7 @@ export class NativePositionSource implements PositionSource {
         activityType,
         activityState,
         liveActivityEnabled: liveActivityEnabled(),
+        resume,
       });
       this.backgroundPermissionGranted = status.backgroundPermission === 'granted';
       await this.drain();

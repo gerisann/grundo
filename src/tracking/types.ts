@@ -88,11 +88,23 @@ export interface PositionSource {
    */
   readonly ordered: boolean;
 
-  /** A mozgásforma a natív szolgáltatás energia- és aktivitási profiljához kell. */
+  /**
+   * A mozgásforma a natív szolgáltatás energia- és aktivitási profiljához kell.
+   *
+   * A `resume` mondja meg a natív oldalnak, hogy ez egy MÁR ISMERT aktivitás
+   * folytatása-e (a JS IndexedDB-ből visszaállított, félbehagyott futás), vagy
+   * egy VADONATÚJ kezdés. A kettő között a natív, lezárt képernyő alatt is
+   * tovább gyűjtő lemezes sor sorsa dől el: `resume: true` esetén a rajta
+   * maradt pontokat át kell adni (`drain`), `resume: false` esetén viszont
+   * EL KELL DOBNI — különben egy korábbi, be nem gyűjtött aktivitás maradéka
+   * szivároghat be egy azzal semmilyen kapcsolatban nem álló, később indított
+   * körbe (GRUNDO #42).
+   */
   start(
     handlers: PositionHandlers,
     activityType?: ActivityType,
     activityState?: PositionActivityState,
+    resume?: boolean,
   ): Promise<void>;
   /** Előtérben a pontos, szűrt recorder-állapotot átadja a natív élő értesítésnek. */
   syncActivity?(state: PositionActivityState): void | Promise<void>;

@@ -691,22 +691,11 @@ export function TrackingScreen() {
             </span>
           </div>
         ) : null}
-        {recorder.resumable !== null ? (
-          <div className="track__note track__note--warn">
-            <strong>Van egy félbehagyott rögzítésed.</strong>{' '}
-            {recorder.resumable.points.length} pont,{' '}
-            {formatDistance(recorder.resumable.distanceM)}.
-            {recorder.resumableNotice !== null ? <span> {recorder.resumableNotice}</span> : null}
-            <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-3)' }}>
-              <Button size="sm" onClick={() => void recorder.restore()}>
-                Folytatom
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => void recorder.dismissResumable()}>
-                Eldobom
-              </Button>
-            </div>
-          </div>
-        ) : null}
+        {/*
+          A félbehagyott rögzítés megerősítése GLOBÁLIS popuppá költözött
+          (`ResumeActivityPrompt.tsx`, `App.tsx`) — ide zárva a felhasználó
+          sosem látta volna, ha nem épp erre a képernyőre navigál (GRUNDO #42).
+        */}
 
         {(running || paused) && !recorder.supportsBackground && showWakeNote ? (
           <div className="track__note track__note--warn track__note--closable">

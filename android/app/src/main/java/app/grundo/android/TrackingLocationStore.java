@@ -130,6 +130,20 @@ final class TrackingLocationStore extends SQLiteOpenHelper {
         }
     }
 
+    /**
+     * A leragadt sor eldobása visszaadás nélkül — GRUNDO #42: egy vadonatúj
+     * aktivitás indításakor a korábbi, félbehagyott/force-quitolt aktivitásból
+     * itt maradt pontok nem örökölhetők át. A {@link #drain()}-től eltérően
+     * ez nem adja vissza a törölt sorokat, csak megszünteti őket.
+     */
+    void clear() {
+        synchronized (QUEUE_LOCK) {
+            SQLiteDatabase db = getWritableDatabase();
+            db.delete("locations", null, null);
+            cachedQueuedLocations = 0L;
+        }
+    }
+
     private static long queuedLocationCount(SQLiteDatabase db) {
         if (cachedQueuedLocations < 0L) {
             cachedQueuedLocations = DatabaseUtils.queryNumEntries(db, "locations");

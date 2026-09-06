@@ -16,8 +16,8 @@
  * a lényeg. Ezek memóriatárral pontosan vizsgálhatók.
  */
 
-import { pause, type RecorderState } from './recorder';
-import { isInsideBasicResumeWindow } from './resumePolicy';
+import { finish, pause, type RecorderState } from './recorder';
+import { isInsideBasicResumeWindow, isWithinSilentNativeResumeWindow } from './resumePolicy';
 
 /** A tárolt alak. A `version` a későbbi sémaváltáshoz kell. */
 export interface PersistedRun {
@@ -62,12 +62,16 @@ export function isPendingUpload(run: PersistedRun): boolean {
 export type RestoreStrategy = 'discard' | 'prompt' | 'automatic';
 
 /**
- * Natív appban a helyi mentés nem feltétlenül félbehagyott aktivitás.
+ * Natív appban a helyi mentés RÖVID kihagyásnál nem feltétlenül félbehagyott
+ * aktivitás — a Core Location a WebView pillanatnyi újraindulása alatt is
+ * tovább mér, ez a felhasználó szemszögéből meg sem történt, tehát a
+ * folytatásnak is kérdés nélkül, azonnal kell történnie.
  *
- * A Core Location a WebView rövid újraindulása alatt is tovább mér. Ilyenkor
- * a helyes viselkedés az automatikus visszakapcsolódás; a kézi kérdés csak a
- * webes/PWA környezetben indokolt, ahol háttérben tényleg megszakadhatott a
- * pozícióforrás.
+ * HOSSZABB kihagyásnál (lásd `NATIVE_SILENT_RESUME_WINDOW_MS`) viszont már
+ * nem tartható ez a feltételezés — a felhasználó valószínűleg ténylegesen
+ * bezárta/kilőtte az appot. Ilyenkor natívon is meg kell kérdezni, mint
+ * weben: a rögzítés soha nem folytatódhat a felhasználó tudta/beleegyezése
+ * nélkül a háttérben (GRUNDO #42).
  */
 export function restoreStrategy(
   run: PersistedRun,
@@ -75,7 +79,8 @@ export function restoreStrategy(
   nativeApp: boolean,
 ): RestoreStrategy {
   if (!isResumable(run, now)) return 'discard';
-  return nativeApp ? 'automatic' : 'prompt';
+  if (nativeApp && isWithinSilentNativeResumeWindow(run.savedAt, now)) return 'automatic';
+  return 'prompt';
 }
 
 /**
@@ -87,6 +92,25 @@ export function restoreStrategy(
  */
 export function prepareForRestore(run: PersistedRun): RecorderState {
   return run.state.status === 'recording' ? pause(run.state, run.savedAt) : run.state;
+}
+
+/**
+ * A folytatásra már fel nem ajánlható (egyórás ablakon túli) mentésből még
+ * menthető-e valami feltöltésre?
+ *
+ * Korábban ez a pont némán eldobta a mentést — a felhasználó szemszögéből ez
+ * pontosan úgy néz ki, mintha az egész aktivitás nyomtalanul eltűnt volna,
+ * holott a pontsor megvolt (GRUNDO #42). A folytatás ilyenkor tényleg
+ * értelmetlen (a nyomvonal két távoli pontja közé nem húzható értelmes
+ * egyenes), DE ha a megtett táv addig eléri a minimumot, LEZÁRVA (nem
+ * folytatható állapotban) feltöltésre érdemes ajánlani — az
+ * `isPendingUpload`-hoz hasonlóan —, nem szótlanul megsemmisíteni.
+ *
+ * `null`, ha nincs mit menteni (a táv nem éri el a küszöböt).
+ */
+export function recoverExpiredRun(run: PersistedRun, minDistanceM: number): RecorderState | null {
+  const closed = finish(run.state, run.savedAt);
+  return closed.distanceM >= minDistanceM ? closed : null;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -233,7 +257,14 @@ export function indexedDbStore(): RunStore {
         }
       };
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error('IndexedDB megnyitása sikertelen'));
+      request.onerror = () => {
+        // Egy átmeneti nyitási hiba (pl. WKWebView induláskori erőforrás-
+        // nyomás) NEM zárhatja ki a mentést a teljes hátralévő munkamenetre.
+        // A `handle` nullázása nélkül minden további write()/read() ugyanazt
+        // a lecache-elt hibát adná vissza, örökre — lásd GRUNDO #42.
+        handle = null;
+        reject(request.error ?? new Error('IndexedDB megnyitása sikertelen'));
+      };
     });
     return handle;
   }
