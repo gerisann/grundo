@@ -1,7 +1,7 @@
 # Jelenlegi állapot
 
 > Frissítve: **2026-09-08** · Menetszám: **#43, folyamatban**
-> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · HEAD: **af55601**
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · HEAD: **00c291b**
 > Utoljára dolgozott: **Claude (Opus 5)**
 > Átadva: **Claude vagy Codex** — a készülékes visszaigazolás van hátra
 
@@ -30,23 +30,33 @@ jöttek létre, és mind teljes hosszban megszólalt.
 | 2 | mindent, szinkron `pause()`-zal (09-04) | el sem indult | **NÉMA app** |
 | 3 | 51 elemet | teljes hosszban (`duration` `NaN`) | szól, de **hangzavar** |
 | 4 | 1 elemet (build 48) | teljes hosszban (`NaN`) | **szól, zavar nélkül** |
-| 5 | 2 elemet (build 49) | a hang **végére ugorva** | **NÉMA app** |
+| 5 | 2 elemet (build 49) | a hang **végére ugorva**, előtöltött elemen | **NÉMA app** |
+| 6 | 1 elemet (build 50) | elejétől, de `volume = 0`-val, előtöltött elemen | **NÉMA app** |
+
+**A GYÖKÉROK, ami mind a hat sort megmagyarázza:** iOS-en a
+`HTMLMediaElement.volume` írása **csak addig hatástalan, amíg az elem nincs
+betöltve**. A 3. és 4. sorban az elemek a gombnyomás pillanatában jöttek létre,
+tehát a `volume = 0` no-op volt → a lejátszás hangos → az AVAudioSession
+aktiválódott. Az 5–6. sorban a `primeSounds()` már korábban lefutott (a `Dock`
+mountjában), az elem betöltött, a némítás **érvényre jutott** — és egy néma
+lejátszás nem aktivál semmit.
 
 Az aktiváló tényező tehát **nem az elemek száma**, hanem hogy történik-e
-**valódi, végigfutó lejátszás**. Egy elem elég, és azon keresztül a fel **nem**
-oldott elemek is megszólalnak (a nyomva tartás hangja is szólt a 48-asban,
-pedig nem kapott feloldást).
+**valódi, HALLHATÓ, végigfutó lejátszás**. Egy elem elég, és azon keresztül a
+fel **nem** oldott elemek is megszólalnak (a nyomva tartás hangja is szólt a
+48-asban, pedig nem kapott feloldást).
 
-⚠️ Az `UNLOCK_TAIL_S` iOS-en **sosem működött, csak sosem derült ki**: a
-`primeSounds()` addig egyedül a `TrackingScreen`-en futott, tehát a Kezdőlapról
-indítva a `duration` mindig `NaN` volt, és az ugratás csendben kimaradt. Amint
-a `primeSounds()` előrébb került, az ugratás életbe lépett — és **harmadszor is
-elnémította az appot**. A védelem, ami sosem futott le, nem védelem.
+⚠️ Ugyanez a magyarázat a `muted = true` régi figyelmeztetésére is, és arra is,
+hogy az `UNLOCK_TAIL_S` iOS-en sosem működött — csak sosem derült ki, mert a
+`duration` mindig `NaN` volt, és az ugratás csendben kimaradt.
 
-Beégetve: **natív iOS → pontosan 1 elem, a hang elejétől, teljes hosszban**
-(rövid koppanás a Play gombnál). **Web és Android → változatlan**: weben nincs
-Capacitor, ott a gesztus-kapu él és elemenkénti, a szűkítés elnémítaná a webes
-appot (iPhone Safari is ide tartozik).
+Beégetve: **natív iOS → pontosan 1 elem, a hang elejétől, némítás nélkül**
+(egyetlen rövid, hallható koppanás a Play gombnál — ez az ára annak, hogy utána
+minden más hang megszólaljon). A `primeSounds()` visszakerült a `Dock`
+mountjából; az előkészítés helye ismét csak a `TrackingScreen`. **Web és
+Android → változatlan**: ott a `volume = 0` megbízhatóan hat, a gesztus-kapu
+viszont elemenként érvényes, tehát minden elem néma feloldást kap (iPhone
+Safari is ide tartozik).
 
 ### 2. A Play gomb beragadása a Kezdőlapon
 
@@ -71,11 +81,12 @@ A legvalószínűbb kapocs: 51 élő `<audio>` elem terhelése alatt a WebKit ne
 tudta időben feldolgozni az érintést, és `pointercancel`-t küldött. **Ez
 magyarázat, nem mérés.**
 
-A mutató-elfogás (`setPointerCapture`) ettől függetlenül bekerült — a
-`SwipeFinishButton` ugyanabban a fájlban már így csinálja —, és mellette egy
-**ideiglenes diagnosztika**, ami kiírja az előző megszakítás okát.
+A mutató-elfogás (`setPointerCapture`) ettől függetlenül bekerült és **marad** —
+a `SwipeFinishButton` ugyanabban a fájlban már így csinálja. Az ideiglenes
+diagnosztikai kiírás Geri kérésére **kikerült** (`00c291b`): a gomb a build
+50-ben már jó volt.
 
-## Commitok (`f168f4f..e65093b`)
+## Commitok (`f168f4f..00c291b`)
 
 | Commit | Mit |
 |---|---|
@@ -84,36 +95,37 @@ A mutató-elfogás (`setPointerCapture`) ettől függetlenül bekerült — a
 | `55afed6` | befejezés gomb: mutató-elfogás + ideiglenes diagnosztika |
 | `e65093b` | a mért minimum beégetve (51 → 2), mérőállás eltávolítva — **ez némította el a 49-es buildet** |
 | `bf76480` | #43 állapotfrissítés |
-| `af55601` | a harmadik némulás javítva: iOS-en 1 elem, a hang **elejétől** |
+| `af55601` | 3. némulás javítási kísérlete: iOS-en 1 elem, a hang **elejétől** — **kevés volt** |
+| `ee3d788` | #43 állapotfrissítés |
+| `00c291b` | **a valódi gyökérok**: a `volume = 0` előtöltött elemen már hat — iOS-en némítás nélkül; diagnosztika kivéve |
 
 ## Élesben fut / telepítetlen
 
 - A kód a `main`-en van és **fel van pusholva**.
-- **iOS build 48** = `35152f3` (mérőállás) · **build 49** = `e65093b`
-  (**néma app** — lásd az 5. mérési sort). Új build kell **`af55601`**-ből.
+- **iOS build 48** = `35152f3` (mérőállás, `Összesen 1` beállítással **jó**) ·
+  **49** = `e65093b` (néma) · **50** = `ee3d788` (néma). Új build kell
+  **`00c291b`**-ből.
 - A webes frontend telepítése ebben a menetben megtörtént (`bf76480`
-  tartalmával). Az `af55601` **csak a natív iOS ágat érinti**, a webes
-  viselkedés bitre azonos — újratelepítés emiatt nem szükséges.
+  tartalmával). Az azóta jött commitok **csak a natív iOS ágat érintik**, a
+  webes viselkedés bitre azonos — újratelepítés emiatt nem szükséges.
 
 ## Ellenőrzések
 
 - `tsc --noEmit` kliens **és** szerver: zöld.
-- `npm run test`: 847 zöld, 181 skip.
+- `npm run test`: 848 zöld, 181 skip.
 - Készüléken mérve: a hangzár hatóköre (build 48). A beégetett változat
   visszaigazolása hátravan.
 
 ## Nyitott ügyek
 
-- **Készülékes visszaigazolás `af55601`-ből**: a Play gombnál egyetlen rövid
-  koppanás szól (nem hangzavar, nem is némaság); a 3-2-1 síp, a cellahangok, az
+- **Készülékes visszaigazolás `00c291b`-ből**: a Play gombnál egyetlen rövid
+  koppanás szól (se hangzavar, se némaság); a 3-2-1 síp, a cellahangok, az
   aktivitás-hangok és a **nyomva tartás hangja** is megszólal.
-- ⚠️ **A befejezés gomb oka MÉG NINCS ELDÖNTVE.** A 49-es buildben működött, de
-  ott *egyetlen hang sem szólt* — tehát nem lehet szétválasztani, hogy a
+- ⚠️ **A befejezés gomb oka MÉG NINCS ELDÖNTVE.** A 49–50-es buildben működött,
+  de ott *egyetlen hang sem szólt* — nem lehet szétválasztani, hogy a
   mutató-elfogás (`55afed6`) javította-e, vagy csak a hangterhelés hiánya. A
   következő build az első, ahol hangok VANNAK és a mutató-javítás is bent van:
   ha ott is stabil, az a mutató-elfogás mellett szól.
-- Ha a befejezés gomb rendben, a **diagnosztikai kiírás kivehető**
-  (`finish-overlay__diag`, `lastHoldCancel()`).
 - ⚠️ **Nyitott adatkérdés:** a `8b29f3f0-4785-4116-b4a1-293ab3ecd8bb`
   aktivitás `startedAt`/`endedAt` mezői nyers számként íródtak vissza
   (Timestamp helyett), amitől kieshet az idő-alapú lekérdezésekből. A javító
