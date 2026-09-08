@@ -21,12 +21,7 @@
  */
 
 import { feedbackSettings, type FeedbackSettings } from './feedbackSettings';
-import {
-  soundUnlockMode,
-  unlockCountFor,
-  unlockResumable,
-  type SoundUnlockMode,
-} from './soundUnlockMode';
+import { isNativeIos } from './platform';
 
 export type SoundName =
   | 'count-down-beep'
@@ -290,52 +285,57 @@ export function unlockSounds(): void {
   primeSounds();
 
   /**
-   * ⚠️ A HATÓKÖR MOST MÉRÉS ALATT ÁLL — lásd `lib/soundUnlockMode.ts`.
+   * ⚠️ NATÍV iOS-EN KÉT ELEM ELÉG — ÉS EZ MÉRT EREDMÉNY, NEM FELTEVÉS.
    *
-   * Az alapértelmezés a MAI viselkedés (minden elem), tehát ez a sor önmagában
-   * semmit nem változtat. A készüléken mért eredmény után a győztes hatókör
-   * beégetésre kerül, a kapcsoló pedig kikerül.
+   * MÉRVE (Geri, iPhone, 2026-09-08, iOS build 48): egyetlen elem feloldása
+   * után a TÖBBI hang is hibátlanul szólt — a cellahangok, a visszaszámlálás
+   * és az aktivitás-hangok is. A WebKit elemenkénti gesztus-kapuja tehát natív
+   * appban tényleg ki van kapcsolva (Capacitor:
+   * `mediaTypesRequiringUserActionForPlayback = []`), és a 2026-09-03-i
+   * némulás oka KIZÁRÓLAG az volt, hogy nulla lejátszás történt: a rendszer
+   * hangútvonala (AVAudioSession) attól aktiválódik, hogy VALAMI ténylegesen
+   * megszólal. Egy elem is „felszenteli".
+   *
+   * MI VOLT A BAJ AZ 51-GYEL. iOS-en a `volume` írása hatástalan, a hallható
+   * zavart csak a hang legvégére ugrás kerüli el — az viszont csendben kiesik,
+   * ha a `duration` még `NaN`. Ekkor MIND az 51 elem teljes hosszban
+   * megszólalt: ez volt a „összevissza hangok a Play gombnál".
+   *
+   * ⚠️ A MÉRÉS MÁSODIK, NEM VÁRT EREDMÉNYE: ugyanettől a BEFEJEZÉS GOMB is
+   * megjavult (addig a nyomva tartás „random" megszakadt). 51 élő `<audio>`
+   * elem terhelése alatt a WebKit nem tudta időben feldolgozni az érintést. Ez
+   * MAGYARÁZAT, nem mérés — amit tudunk: a szűkítéssel a tünet elmúlt.
+   *
+   * ⚠️ WEBEN NEM SZABAD SZŰKÍTENI. Ott nincs Capacitor, tehát a gesztus-kapu
+   * ÉL, és elemenként érvényes: egyetlen elem feloldása a webes appot
+   * elnémítaná. Androidon nincs tünet, ott sincs mit kockáztatni.
+   *
+   * MIÉRT KETTŐ, ÉS NEM EGY. A nyomva tartás hangja (`pressing-finish-activity`)
+   * a pooltól KÜLÖN elem, és a mérés éppen azt hagyta feloldatlanul — a
+   * működéséről tehát nincs adatunk. Egy plusz elem ára egyetlen, a hang
+   * csendes végére ugró lejátszás; a némaság ára egy néma gomb.
    */
-  const mode = soundUnlockMode();
-  let unlockedElements = 0;
-
-  SOUND_NAMES.forEach((name, soundIndex) => {
-    const target = pools.get(name);
-    if (!target) return;
-    const count = unlockCountFor(mode, soundIndex, target.elements.length);
-    for (let index = 0; index < count; index += 1) {
-      unlockElement(target.elements[index]!);
-      unlockedElements += 1;
-    }
-  });
-
-  if (unlockResumable(mode)) {
-    const resumable = resumableElements.get('pressing-finish-activity');
-    if (resumable) {
-      unlockElement(resumable);
-      unlockedElements += 1;
-    }
-  }
-
-  lastUnlock = { mode, elements: unlockedElements };
+  for (const element of elementsToUnlock()) unlockElement(element);
 }
 
 /**
- * MI TÖRTÉNT A LEGUTÓBBI FELOLDÁSKOR — a mérőpanel ebből olvas.
+ * MELYIK ELEMEKET KELL FELOLDANI — a hatókör döntése, a lejátszástól külön.
  *
- * Készüléken nincs fejlesztői konzol kéznél, a feloldás pedig
- * WebView-életciklusonként EGYSZER fut le: enélkül a mérésnél csak találgatni
- * lehetne, hogy tényleg a beállított hatókör érvényesült-e.
+ * Natív iOS-en a legelső hang legelső eleme aktiválja a rendszer
+ * hangútvonalát, a nyomva tartás külön eleme pedig azért jön vele, mert az nem
+ * része egyetlen poolnak sem. Máshol minden elem feloldást kap.
  */
-export interface UnlockReport {
-  mode: SoundUnlockMode;
-  elements: number;
-}
+function elementsToUnlock(): HTMLAudioElement[] {
+  const resumable = resumableElements.get('pressing-finish-activity');
 
-let lastUnlock: UnlockReport | null = null;
+  if (isNativeIos()) {
+    const first = pools.get(SOUND_NAMES[0]!)?.elements[0];
+    return [first, resumable].filter((element): element is HTMLAudioElement => !!element);
+  }
 
-export function lastUnlockReport(): UnlockReport | null {
-  return lastUnlock;
+  const all = SOUND_NAMES.flatMap((name) => pools.get(name)?.elements ?? []);
+  if (resumable) all.push(resumable);
+  return all;
 }
 
 /**

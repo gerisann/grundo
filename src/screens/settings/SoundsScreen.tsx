@@ -1,21 +1,7 @@
-import { useState } from 'react';
-import { List, ScreenHeader, SegmentedControl, Switch } from '@/components/ui';
+import { List, ScreenHeader, Switch } from '@/components/ui';
 import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
 import { updateFeedbackSettings } from '@/lib/feedbackSettings';
-import {
-  SOUND_LABEL,
-  lastUnlockReport,
-  playSound,
-  unlockSounds,
-  type SoundName,
-} from '@/lib/sound';
-import {
-  SOUND_UNLOCK_MODES,
-  SOUND_UNLOCK_MODE_LABEL,
-  setSoundUnlockMode,
-  soundUnlockMode,
-  type SoundUnlockMode,
-} from '@/lib/soundUnlockMode';
+import { SOUND_LABEL, playSound, unlockSounds, type SoundName } from '@/lib/sound';
 import './sounds.css';
 
 /**
@@ -77,13 +63,6 @@ const GROUPS: readonly {
 
 export function SoundsScreen() {
   const settings = useFeedbackSettings();
-  /**
-   * A hatókör a tárolóból indul, és NEM él újra-olvasásból: a feloldás a
-   * WebView életciklusában egyszer fut le, tehát a most választott érték
-   * úgyis csak a KÖVETKEZŐ indításkor érvényes.
-   */
-  const [unlockMode, setUnlockMode] = useState<SoundUnlockMode>(() => soundUnlockMode());
-  const report = lastUnlockReport();
 
   function preview(name: SoundName) {
     unlockSounds();
@@ -181,42 +160,6 @@ export function SoundsScreen() {
             </div>
           </section>
         ))}
-
-        {/*
-          ⚠️ IDEIGLENES MÉRŐPANEL — a válasz megérkezése után KI KELL VENNI.
-          A teljes indoklás: `lib/soundUnlockMode.ts` fejléce.
-        */}
-        <section className="stack stack--tight">
-          <div className="label">Mérés: hangzár-feloldás hatóköre</div>
-          <SegmentedControl
-            label="A feloldáskor megszólaltatott elemek száma"
-            options={SOUND_UNLOCK_MODES.map((mode) => ({
-              value: mode,
-              label: SOUND_UNLOCK_MODE_LABEL[mode],
-            }))}
-            value={unlockMode}
-            block
-            size="sm"
-            onChange={(mode) => {
-              setUnlockMode(mode);
-              setSoundUnlockMode(mode);
-            }}
-          />
-          <p className="field__hint">
-            Ideiglenes, mérés céljára. A beállítás csak az app <strong>teljes
-            újraindítása</strong> után lép életbe — a feloldás WebView-nként
-            pontosan egyszer fut le. Mérés: állítsd be, zárd be az appot
-            teljesen, indítsd újra, majd a Kezdőlapról nyomj Play-t.
-          </p>
-          <p className="field__hint">
-            Legutóbbi feloldás ebben a munkamenetben:{' '}
-            <strong>
-              {report === null
-                ? 'még nem történt'
-                : `${SOUND_UNLOCK_MODE_LABEL[report.mode]} — ${report.elements} elem`}
-            </strong>
-          </p>
-        </section>
       </div>
     </>
   );

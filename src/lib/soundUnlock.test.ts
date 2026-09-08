@@ -16,13 +16,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const platform = { native: false };
+const platform = { native: false, ios: false };
 
 vi.mock('./platform', () => ({
   isNativeApp: () => platform.native,
-  isNativeIos: () => false,
+  isNativeIos: () => platform.ios,
   isNativeAndroid: () => false,
 }));
+
+beforeEach(() => {
+  platform.native = false;
+  platform.ios = false;
+});
 
 /** Ismert időtartam — feloldáskor ide, a hang legvégére kell ugrani. */
 const CLIP_SECONDS = 2;
@@ -94,6 +99,54 @@ describe('unlockSounds', () => {
     for (const element of FakeAudio.instances) {
       expect(element.playCount).toBe(1);
     }
+  });
+
+  /**
+   * ⚠️ NATÍV iOS-EN CSAK KETTŐ — ÉS EZ MÉRT EREDMÉNY.
+   *
+   * MÉRVE (Geri, iPhone, 2026-09-08): egyetlen elem feloldása után a TÖBBI hang
+   * is szólt. A Capacitor tehát tényleg kikapcsolja a WebKit elemenkénti
+   * gesztus-kapuját; a 2026-09-03-i némulás oka kizárólag az volt, hogy NULLA
+   * lejátszás történt, és így a rendszer hangútvonala nem aktiválódott.
+   *
+   * Az 51 elem ára nem elméleti volt: iOS-en a `volume` írása hatástalan, és ha
+   * a `duration` még `NaN`, mind az 51 TELJES hosszban megszólal — ez volt az
+   * „összevissza hangok a Play gombnál".
+   *
+   * A második elem a nyomva tartás hangja: az egyetlen poolon KÍVÜLI elem,
+   * amiről a mérésnek nincs adata. Egy plusz, csendes végű lejátszás olcsóbb,
+   * mint egy néma befejezés gomb.
+   */
+  it('natív iOS-en CSAK két elemet old fel — a mért minimumot', async () => {
+    platform.native = true;
+    platform.ios = true;
+    vi.stubGlobal('Audio', FakeAudio);
+    const { unlockSounds } = await import('./sound');
+
+    unlockSounds();
+
+    const played = FakeAudio.instances.filter((element) => element.playCount > 0);
+    expect(played).toHaveLength(2);
+    // A pooltól külön élő, folytatható elem is köztük van.
+    expect(played.some((element) => element.src.includes('pressing-finish-activity'))).toBe(true);
+  });
+
+  /**
+   * ⚠️ WEBEN NEM SZABAD SZŰKÍTENI. Ott nincs Capacitor, tehát a gesztus-kapu
+   * ÉL és elemenként érvényes — egyetlen elem feloldása a webes appot
+   * elnémítaná. iPhone Safari is ide tartozik, nem a natív ághoz.
+   */
+  it('weben MINDEN elemet felold, akkor is, ha iOS-en fut a böngésző', async () => {
+    platform.native = false;
+    platform.ios = false;
+    vi.stubGlobal('Audio', FakeAudio);
+    const { unlockSounds } = await import('./sound');
+
+    unlockSounds();
+
+    const played = FakeAudio.instances.filter((element) => element.playCount > 0);
+    expect(played).toHaveLength(FakeAudio.instances.length);
+    expect(played.length).toBeGreaterThan(2);
   });
 
   /**

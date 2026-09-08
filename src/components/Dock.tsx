@@ -13,6 +13,7 @@ import {
   pauseSoundPlayback,
   playHoldSound,
   playSound,
+  primeSounds,
   unlockSounds,
 } from '@/lib/sound';
 import './Dock.css';
@@ -84,6 +85,28 @@ export function Dock() {
    * pillanatára esik, nem a gombnyomásra.
    */
   const [showRajt, setShowRajt] = useState(false);
+
+  /**
+   * A HANGFÁJLOK ELŐKÉSZÍTÉSE MÁR A DOKK MEGJELENÉSEKOR — NEM A PLAY GOMBNÁL.
+   *
+   * ⚠️ EZ A NÉMA FELOLDÁS FELTÉTELE. Az `unlockSounds()` a hallható zavart úgy
+   * kerüli el, hogy a hang UTOLSÓ ezredmásodperceire ugrik (`UNLOCK_TAIL_S`) —
+   * ehhez viszont ismernie kell a hang hosszát. A `duration` csak a metaadat
+   * betöltése után ismert; addig `NaN`, és az ugratás CSENDBEN kimarad.
+   *
+   * Korábban a `primeSounds()` egyedül a `TrackingScreen` mount-effektjében
+   * futott. A Kezdőlapról Play-t nyomva az a képernyő még sosem épült fel,
+   * tehát az elemek ÉPP AKKOR jöttek létre — `duration` nélkül, teljes hosszban
+   * megszólalva. Innen jött az „összevissza hangok a Play gombnál" (mérve,
+   * iPhone, 2026-09-08).
+   *
+   * A dokk a játékos-képernyőkön végig fent van, tehát a metaadat bőven a
+   * gombnyomás előtt megérkezik. A hívás olcsó: néhány `<audio>` elem
+   * `preload="auto"`-val, a letöltés ütemét a böngésző dönti el.
+   */
+  useEffect(() => {
+    primeSounds();
+  }, []);
 
   useEffect(() => {
     if (countdown === null) return;
