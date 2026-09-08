@@ -398,7 +398,6 @@ const UNLOCK_TAIL_S = 0.05;
  */
 function unlockElement(element: HTMLAudioElement): void {
   const restore = element.volume;
-  element.volume = 0;
   const settle = () => {
     element.pause();
     element.currentTime = 0;
@@ -406,20 +405,38 @@ function unlockElement(element: HTMLAudioElement): void {
   };
   try {
     /**
-     * ⚠️ NATÍV iOS-EN NEM UGRUNK A HANG VÉGÉRE — EZ A HARMADIK NÉMULÁS LECKÉJE.
+     * ⚠️ NATÍV iOS-EN A FELOLDÁS HALLHATÓ — ÉS EZ SZÁNDÉKOS, NEM ENGEDMÉNY.
      *
-     * MÉRVE (2026-09-08, iOS build 49): a végére ugratott feloldás után az app
-     * MINDEN hangja néma maradt, holott az előző buildben ugyanaz az EGYETLEN
-     * elem — csak elejétől játszva — mindent életre keltett. A lecsengés
-     * csendes vége nem aktiválja a rendszer hangútvonalát (AVAudioSession):
-     * ott gyakorlatilag nincs mit lejátszani.
+     * A NÉGY MÉRÉS EGYETLEN MECHANIZMUSSAL MAGYARÁZHATÓ:
      *
-     * Weben marad az ugratás. Ott a `volume = 0` amúgy is hat, tehát a
-     * feloldás némasága nem ezen múlik — viszont a `duration` ismeretében ez
-     * a rövidebb út, és a meglévő viselkedést nem kockáztatjuk meg egy
-     * platformon, ahol nincs is tünet.
+     *   | mit oldottunk fel | az elem állapota | `volume = 0` hatott? | eredmény |
+     *   |---|---|---|---|
+     *   | 51 elem | frissen létrehozva | nem (no-op) | hangos → AKTIVÁL |
+     *   | 1 elem (build 48) | frissen létrehozva | nem (no-op) | hangos → AKTIVÁL |
+     *   | 2 elem (build 49) | előtöltve | IGEN | néma → nem aktivál |
+     *   | 1 elem (build 50) | előtöltve | IGEN | néma → nem aktivál |
+     *
+     * iOS-en a `HTMLMediaElement.volume` írása csak addig hatástalan, amíg az
+     * elem nincs betöltve. A `primeSounds()` előrehozása (a `Dock` mountjába)
+     * épp ezt billentette át: az elem addigra betöltött, a `volume = 0`
+     * ÉRVÉNYRE JUTOTT, és egy néma lejátszás nem aktiválja a rendszer
+     * hangútvonalát (AVAudioSession). Innen a harmadik és negyedik némulás.
+     *
+     * Ugyanez a magyarázat a `muted = true` régi figyelmeztetésére is: a WebKit
+     * a néma lejátszást nem tekinti valódinak.
+     *
+     * EZÉRT iOS-EN: se némítás, se a hang végére ugrás — VALÓDI, HALLHATÓ
+     * lejátszás az elejéről. Ez egyetlen rövid koppanás a Play gombnál, és
+     * pontosan ez az ára annak, hogy utána minden más hang megszólaljon.
+     *
+     * Weben marad a régi út: ott a `volume = 0` megbízhatóan hat, a
+     * gesztus-kapu viszont elemenként érvényes, tehát minden elem kap
+     * feloldást — némán.
      */
-    if (!isNativeIos()) {
+    if (isNativeIos()) {
+      element.currentTime = 0;
+    } else {
+      element.volume = 0;
       const duration = element.duration;
       if (Number.isFinite(duration) && duration > UNLOCK_TAIL_S) {
         element.currentTime = duration - UNLOCK_TAIL_S;

@@ -47,6 +47,8 @@ class FakeAudio {
   pausedSynchronously = false;
   /** Ahol a lejátszás ténylegesen elindult. */
   startedAt: number | null = null;
+  /** A hangerő a lejátszás PILLANATÁBAN — iOS-en ez dönti el, hallható-e. */
+  volumeAtPlay: number | null = null;
   private settled = false;
 
   constructor(readonly src: string) {
@@ -59,6 +61,7 @@ class FakeAudio {
     this.paused = false;
     this.playCount += 1;
     this.startedAt = this.currentTime;
+    this.volumeAtPlay = this.volume;
     return Promise.resolve().then(() => {
       this.settled = true;
     });
@@ -102,22 +105,20 @@ describe('unlockSounds', () => {
   });
 
   /**
-   * ⚠️ NATÍV iOS-EN CSAK KETTŐ — ÉS EZ MÉRT EREDMÉNY.
+   * ⚠️ NATÍV iOS-EN EGYETLEN, HALLHATÓ LEJÁTSZÁS — MÉRT EREDMÉNY.
    *
-   * MÉRVE (Geri, iPhone, 2026-09-08): egyetlen elem feloldása után a TÖBBI hang
-   * is szólt. A Capacitor tehát tényleg kikapcsolja a WebKit elemenkénti
-   * gesztus-kapuját; a 2026-09-03-i némulás oka kizárólag az volt, hogy NULLA
-   * lejátszás történt, és így a rendszer hangútvonala nem aktiválódott.
+   * A négy mérés (Geri, iPhone) EGYETLEN mechanizmussal magyarázható:
    *
-   * Az 51 elem ára nem elméleti volt: iOS-en a `volume` írása hatástalan, és ha
-   * a `duration` még `NaN`, mind az 51 TELJES hosszban megszólal — ez volt az
-   * „összevissza hangok a Play gombnál".
+   *   51 elem, frissen létrehozva  → `volume = 0` no-op → hangos → AKTIVÁL
+   *    1 elem, frissen létrehozva  → `volume = 0` no-op → hangos → AKTIVÁL
+   *    2 elem, előtöltve (b49)     → `volume = 0` HAT     → néma  → NEM aktivál
+   *    1 elem, előtöltve (b50)     → `volume = 0` HAT     → néma  → NEM aktivál
    *
-   * A második elem a nyomva tartás hangja: az egyetlen poolon KÍVÜLI elem,
-   * amiről a mérésnek nincs adata. Egy plusz, csendes végű lejátszás olcsóbb,
-   * mint egy néma befejezés gomb.
+   * iOS-en a `volume` írása csak addig hatástalan, amíg az elem nincs betöltve.
+   * Amint a `primeSounds()` előrébb került, a némítás érvényre jutott — és egy
+   * néma lejátszás nem aktiválja az AVAudioSessiont.
    */
-  it('natív iOS-en PONTOSAN EGY elemet old fel — a mért minimumot', async () => {
+  it('natív iOS-en PONTOSAN EGY elemet old fel', async () => {
     platform.native = true;
     platform.ios = true;
     vi.stubGlobal('Audio', FakeAudio);
@@ -130,18 +131,14 @@ describe('unlockSounds', () => {
   });
 
   /**
-   * ⚠️ EZ A TESZT A HARMADIK ÉLES NÉMULÁS EMLÉKE (2026-09-08, iOS build 49).
+   * ⚠️ EZ A TESZT A HARMADIK ÉS NEGYEDIK NÉMULÁS EMLÉKE (build 49 és 50).
    *
-   * A feloldás a hang VÉGÉRE ugrott (a `duration` addigra ismert volt, mert a
-   * `primeSounds()` előrébb került) — és az app MINDEN hangja néma maradt. Az
-   * előző buildben ugyanaz az EGYETLEN elem, csak elejétől játszva, mindent
-   * életre keltett.
-   *
-   * A lecsengés csendes vége nem aktiválja a rendszer hangútvonalát: ott
-   * nincs mit lejátszani. iOS-en a feloldásnak a hang ELEJÉRŐL kell indulnia,
-   * akkor is, ha az hallható — a némaság sosem opció.
+   * iOS-en a feloldás NEM lehet néma és nem ugorhat a hang végére: mindkettő
+   * ugyanoda vezet — nincs valódi hang, tehát a rendszer hangútvonala nem
+   * aktiválódik, és az app MINDEN hangja néma marad. A feloldás ára egyetlen
+   * rövid, HALLHATÓ koppanás — a némaság sosem opció.
    */
-  it('natív iOS-en a hang ELEJÉTŐL szól, akkor is, ha a hossz ismert', async () => {
+  it('natív iOS-en HALLHATÓAN és a hang elejéről szól, ismert hossz mellett is', async () => {
     platform.native = true;
     platform.ios = true;
     vi.stubGlobal('Audio', FakeAudio);
@@ -151,7 +148,10 @@ describe('unlockSounds', () => {
 
     const played = FakeAudio.instances.filter((element) => element.playCount > 0);
     expect(played).toHaveLength(1);
+    // A hang ELEJÉRŐL — nem a lecsengés csendes végéről.
     expect(played[0]!.startedAt).toBe(0);
+    // ÉS NEM NÉMÍTVA — ez a b50 némulásának közvetlen oka volt.
+    expect(played[0]!.volumeAtPlay).toBeGreaterThan(0);
   });
 
   /**

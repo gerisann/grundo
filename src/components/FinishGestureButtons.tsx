@@ -38,20 +38,6 @@ export const FINISH_HOLD_MS = 1000;
 const FINISH_RELEASE_MS = 350;
 
 /**
- * MI SZAKÍTOTTA MEG A NYOMVA TARTÁST — a diagnosztika és a javítás közös
- * fogalma.
- *
- * A `'pointerup'` a NORMÁLIS vég (a felhasználó elengedte); a többi az, ami
- * 2026-09-08-án iPhone-on „random" megszakította a töltést.
- */
-export type HoldCancelReason =
-  | 'pointerup'
-  | 'pointercancel'
-  | 'lostpointercapture'
-  | 'blur'
-  | 'keyup';
-
-/**
  * VÉGET ÉR-E A NYOMÁS ETTŐL AZ ESEMÉNYTŐL? TISZTA FÜGGVÉNY.
  *
  * ⚠️ A MÁSODIK UJJ VOLT A CSAPDA. Mutató-eseményt bármelyik ujj kelthet: ha a
@@ -76,23 +62,6 @@ export function endsHold(activePointerId: number | null, eventPointerId: number)
  */
 export function cancelsOnBlur(activePointerId: number | null): boolean {
   return activePointerId === null;
-}
-
-/**
- * IDEIGLENES DIAGNOSZTIKA — az utolsó megszakítás oka és töltöttsége.
- *
- * ⚠️ KI KELL VENNI, ha a javítás készüléken beigazolódik. Azért van, mert
- * kódolvasásból NEM lehetett eldönteni, a négy megszakító esemény közül melyik
- * sül el iPhone-on — a projekt pedig kétszer fizetett már azért, mert egy
- * „nyilvánvaló" javítás készüléken mást csinált (lásd `lib/sound.ts`).
- *
- * Modul-szintű, mert a gomb a megszakítás után újrarendereldik; a következő
- * nyomás visszajelzésén jelenik meg, ahol látszik is.
- */
-let lastCancel: { reason: HoldCancelReason; percent: number } | null = null;
-
-export function lastHoldCancel(): { reason: HoldCancelReason; percent: number } | null {
-  return lastCancel;
 }
 
 export function HoldFinishButton({
@@ -173,10 +142,9 @@ export function HoldFinishButton({
     frame.current = requestAnimationFrame(step);
   }
 
-  function cancel(reason: HoldCancelReason) {
+  function cancel() {
     if (!holding.current) return;
     holding.current = false;
-    lastCancel = { reason, percent: Math.round(progressRef.current * 100) };
     onHoldPause?.();
     cancelAnimationFrame(frame.current);
 
@@ -235,17 +203,14 @@ export function HoldFinishButton({
     start();
   }
 
-  function pointerEnd(reason: HoldCancelReason) {
-    return (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!endsHold(holdPointer.current, event.pointerId)) return;
-      holdPointer.current = null;
-      cancel(reason);
-    };
+  function pointerEnd(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!endsHold(holdPointer.current, event.pointerId)) return;
+    holdPointer.current = null;
+    cancel();
   }
 
   const percent = progress * 100;
   const holdingNow = progress > 0;
-  const diagnostic = lastHoldCancel();
 
   return (
     <>
@@ -282,15 +247,6 @@ export function HoldFinishButton({
                   Befejezés
                 </span>
               </div>
-              {/*
-                ⚠️ IDEIGLENES DIAGNOSZTIKA — az ELŐZŐ nyomás megszakadásának
-                oka. Kivenni, ha a javítás készüléken beigazolódik.
-              */}
-              {diagnostic ? (
-                <div className="finish-overlay__diag">
-                  előző megszakítás: {diagnostic.reason} @ {diagnostic.percent}%
-                </div>
-              ) : null}
             </div>,
             document.body,
           )
@@ -301,10 +257,10 @@ export function HoldFinishButton({
           holdingNow ? ' dock__finish--holding' : ''
         }`}
         onPointerDown={pointerDown}
-        onPointerUp={pointerEnd('pointerup')}
-        onPointerCancel={pointerEnd('pointercancel')}
+        onPointerUp={pointerEnd}
+        onPointerCancel={pointerEnd}
         /* Biztonsági háló: elfogás nélkül maradva a nyomás nem ragadhat be. */
-        onLostPointerCapture={pointerEnd('lostpointercapture')}
+        onLostPointerCapture={pointerEnd}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={(event) => {
           if (event.key === ' ' || event.key === 'Enter') {
@@ -312,12 +268,12 @@ export function HoldFinishButton({
             start();
           }
         }}
-        onKeyUp={() => cancel('keyup')}
+        onKeyUp={() => cancel()}
         /* Ujjal nyomva a fókuszvesztés NEM a felhasználó szándéka — lásd
            `cancelsOnBlur`. Billentyűs nyomásnál viszont ez az egyetlen jelzés,
            hogy a gomb már nem aktív. */
         onBlur={() => {
-          if (cancelsOnBlur(holdPointer.current)) cancel('blur');
+          if (cancelsOnBlur(holdPointer.current)) cancel();
         }}
         aria-label="Befejezés — tartsd nyomva egy másodpercig"
       >

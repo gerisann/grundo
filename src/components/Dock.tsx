@@ -13,7 +13,6 @@ import {
   pauseSoundPlayback,
   playHoldSound,
   playSound,
-  primeSounds,
   unlockSounds,
 } from '@/lib/sound';
 import './Dock.css';
@@ -86,27 +85,17 @@ export function Dock() {
    */
   const [showRajt, setShowRajt] = useState(false);
 
-  /**
-   * A HANGFÁJLOK ELŐKÉSZÍTÉSE MÁR A DOKK MEGJELENÉSEKOR — NEM A PLAY GOMBNÁL.
-   *
-   * ⚠️ EZ A NÉMA FELOLDÁS FELTÉTELE. Az `unlockSounds()` a hallható zavart úgy
-   * kerüli el, hogy a hang UTOLSÓ ezredmásodperceire ugrik (`UNLOCK_TAIL_S`) —
-   * ehhez viszont ismernie kell a hang hosszát. A `duration` csak a metaadat
-   * betöltése után ismert; addig `NaN`, és az ugratás CSENDBEN kimarad.
-   *
-   * Korábban a `primeSounds()` egyedül a `TrackingScreen` mount-effektjében
-   * futott. A Kezdőlapról Play-t nyomva az a képernyő még sosem épült fel,
-   * tehát az elemek ÉPP AKKOR jöttek létre — `duration` nélkül, teljes hosszban
-   * megszólalva. Innen jött az „összevissza hangok a Play gombnál" (mérve,
-   * iPhone, 2026-09-08).
-   *
-   * A dokk a játékos-képernyőkön végig fent van, tehát a metaadat bőven a
-   * gombnyomás előtt megérkezik. A hívás olcsó: néhány `<audio>` elem
-   * `preload="auto"`-val, a letöltés ütemét a böngésző dönti el.
-   */
-  useEffect(() => {
-    primeSounds();
-  }, []);
+  /*
+    ⚠️ ITT NINCS `primeSounds()` — ÉS EZ SZÁNDÉKOS, KÉT NÉMULÁS ÁRÁN TANULVA.
+
+    2026-09-08-án ide került egy `primeSounds()` hívás, azzal a céllal, hogy a
+    hangok hossza már a Play gombnyomás előtt ismert legyen. A következmény két
+    egymás utáni néma iOS build lett (49, 50): az előtöltött elemen a
+    `volume = 0` már ÉRVÉNYRE JUT, a néma lejátszás pedig nem aktiválja a
+    rendszer hangútvonalát. Lásd `lib/sound.ts` → `unlockElement()`.
+
+    Az előkészítés helye a `TrackingScreen` maradt.
+  */
 
   useEffect(() => {
     if (countdown === null) return;
