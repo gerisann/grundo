@@ -1,73 +1,125 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-05** · Menetszám: **#42, lezárva**
-> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · HEAD: **9601b6f**
-> Utoljára dolgozott: **Claude (Sonnet 5)**
-> Átadva: **Claude vagy Codex** — nincs folyamatban lévő munka, bármelyik felveheti
+> Frissítve: **2026-09-08** · Menetszám: **#43, folyamatban**
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · HEAD: **e65093b**
+> Utoljára dolgozott: **Claude (Opus 5)**
+> Átadva: **Claude vagy Codex** — a készülékes visszaigazolás van hátra
 
 ## Jelenlegi cél
 
-A hét teljesítmény-cél (`docs/ai/PERFORMANCE_GOALS.md`) rendszeres mérése és
-javítása. Nincs kényszerítő következő lépés — Geri adja meg, mi jöjjön.
+Három iPhone-os hiba javítása **készüléken mérve**, majd Geri
+funkció-listájának nekiállni (lásd „Következő lépések").
 
-## Elkészült
+## Elkészült ebben a menetben
 
-- **1. cél** (gyors indulás): mérve, 5 minta, medián **3232 ms**.
-- **6–7. cél** (screen-off / ébredés): első valódi minta, könnyű terheléssel,
-  nem fagyott le.
-- **Aktivitás-térkép mélyzoomos ÖSSZEOMLÁSA javítva és készülékesen
-  igazolva** — durva (res8) vödrözés a viewport-szűrés előtt
-  (`mapRender.ts`). Jamal 148 717 cellás aktivitásán tesztelve: hexagon mód
-  + mélyzoom + gyors pásztázás, a folyamat PID-je végig azonos maradt.
-- **PerfOverlay teljes képernyős panelre alakítva** — a korábbi lebegő kártya
-  sem szélességben, sem magasságban nem fért a láthatóság-bontás
-  táblázatának.
-- **Game Loop ramp-lejátszás** (1000×→1×, új scenario 4) — sikeresen
-  lefutott: valós (1×) ütemben, már 17 hurkos/14 799 cellás állapotban is
-  tiszta maradt a főszál (`preview.total` worker szálon, max 194,7 ms).
-- **Gyökérok azonosítva**: a rögzítés/lejátszás közbeni akadás a
-  **térképrajzolásból** (Mapbox GPU) jön, NEM a worker-oldali
-  preview-számításból — élő A/B teszttel igazolva (hexagon réteg ki → ~2×
-  gyorsabb, teljes térkép ki → tovább gyorsul).
+### 1. „Összevissza hangok" a Play gombnál — GYÖKÉROK MEGTALÁLVA ÉS MÉRVE
 
-## Módosított fájlok (16 commit, `6091d5d..HEAD`)
+Nem a térkép cellái okozták (azok szigorúan `running`-ra vannak kapuzva),
+hanem maga a hangzár feloldása. Az `unlockSounds()` **51 `<audio>` elemet**
+szólaltatott meg; iOS-en a `volume` írása hatástalan, a hallható zavart csak a
+hang legvégére ugrás kerülné el — az viszont **csendben kimarad, ha a
+`duration` még `NaN`**. A `primeSounds()` addig csak a `TrackingScreen`
+mount-effektjében futott, tehát a Kezdőlapról indítva az elemek épp akkor
+jöttek létre, és mind teljes hosszban megszólalt.
 
-| Fájl | Mit |
+**MÉRVE (Geri, iPhone, iOS build 48):** egyetlen elem feloldása után a **többi
+hang is hibátlanul szólt**. A Capacitor tehát tényleg kikapcsolja a WebKit
+elemenkénti gesztus-kapuját, és a 2026-09-03-i némulás oka kizárólag az volt,
+hogy **nulla** lejátszás történt (az AVAudioSession attól aktiválódik, hogy
+valami ténylegesen megszólal). Az „51 elem" végig fölösleges volt.
+
+Beégetve: **natív iOS → 2 elem** (a pool első eleme + a nyomva tartás külön
+eleme), **web és Android → változatlan**. Weben nincs Capacitor, ott a
+gesztus-kapu él és elemenkénti — a szűkítés elnémítaná a webes appot (iPhone
+Safari is ide tartozik). A `primeSounds()` mostantól már a `Dock`
+megjelenésekor lefut.
+
+### 2. A Play gomb beragadása a Kezdőlapon
+
+A Home-ról Play-t nyomva a kép nem váltott át, a gomb sárga ↑-re állt,
+mozgásforma-választó sehol, a dokk használhatatlan.
+
+Az ok **nem a lassúság, hanem a kiút hiánya**: a `TrackingScreen` `lazy()`, a
+react-router v7 pedig `startTransition`-be csomagolja a navigációt — amíg a
+chunk töltődik, React szándékosan a Home-ot hagyja kint. Közben a `picking`
+igazzá vált, a gomb `disabled` lett, a `wasOnTrackingScreen` mentőeffekt pedig
+csak a *kilépést* figyeli. A tiltás ezért a rögzítés képernyőjére szűkült.
+
+### 3. A befejezés gomb „random" megszakadása
+
+⚠️ **Az első diagnózisom téves volt.** A gomb négy eseményre hívott
+`cancel()`-t (`pointerup`, `pointerleave`, `pointercancel`, `blur`), és ebből
+három tévesen is elsülhet — de **Geri tünetét nem ez okozta**: a hiba a
+hangbeállítás szűkítésétől múlt el, build 48-on, ahol a mutató-javítás még
+nincs is benne.
+
+A legvalószínűbb kapocs: 51 élő `<audio>` elem terhelése alatt a WebKit nem
+tudta időben feldolgozni az érintést, és `pointercancel`-t küldött. **Ez
+magyarázat, nem mérés.**
+
+A mutató-elfogás (`setPointerCapture`) ettől függetlenül bekerült — a
+`SwipeFinishButton` ugyanabban a fájlban már így csinálja —, és mellette egy
+**ideiglenes diagnosztika**, ami kiírja az előző megszakítás okát.
+
+## Commitok (`f168f4f..e65093b`)
+
+| Commit | Mit |
 |---|---|
-| `src/lib/mapRender.ts` (+105), `.test.ts` (+61) | durva vödrözés, `cellInBounds`/`filterCellsToBounds` |
-| `src/components/MapView.tsx` | a fenti logika kiszervezve, importálva |
-| `src/components/perfOverlay.css` | teljes képernyős panel |
-| `src/hooks/useRecorder.ts` | `tracking.timeToFirstFix` mérőpont |
-| `src/tracking/simulationSource.ts` (+55) | ramp-lejátszás (`twoStagePlaybackRate`) |
-| `src/admin/labE2eSession.ts` (+42), `.test.ts` (ÚJ, +90) | `"gyors>lassú@arány"` séma |
-| `src/admin/gameLoopScenarios.ts`, `LabE2eLauncherScreen.tsx`, `LabE2eTrackingScreen.tsx` | scenario 4, 25 km a LAB launcherben, ramp-címke |
-| `android/app/src/debug/AndroidManifest.xml` + `res/drawable-nodpi/grundo_app_icon.png` (ÚJ) | `com.google.test.loops` 3→4, saját debug-ikon |
+| `c63768e` | Dock: a Play gomb beragadása a Home-on |
+| `35152f3` | ideiglenes mérőkapcsoló a feloldás hatóköréhez (azóta kivéve) |
+| `55afed6` | befejezés gomb: mutató-elfogás + ideiglenes diagnosztika |
+| `e65093b` | a mért minimum beégetve (natív iOS 51 → 2), mérőállás eltávolítva |
 
 ## Élesben fut / telepítetlen
 
-- **A kód a `main`-en van, de 16 commit MÉG NINCS PUSH-OLVA** az
-  `origin/main`-hez képest — Geri kérésére vár.
-- Az éles app (`app.grundo.android`) a telefonon **változatlan**, nem
-  érintettük.
-- A debug app (`app.grundo.android.debug`) a mai javításokkal települt a
-  Samsung SM-G780F-re, és rajta lett tesztelve minden fenti pont.
+- A kód a `main`-en van és **fel van pusholva**.
+- **iOS build 48** = `35152f3` (a mérőállással). A javítások **készüléken még
+  nincsenek visszaigazolva** — új Codemagic build kell `e65093b`-ből.
+- A webes frontend telepítése ebben a menetben történt meg.
 
 ## Ellenőrzések
 
-- `tsc --noEmit` (kliens **és** szerver): zöld.
-- `npm run test`: 815 zöld, 181 skip.
-- Készülékes teszt: a térkép-crash-javítás és a ramp-scenario is sikeresen,
-  hiba nélkül lefutott valódi telefonon.
+- `tsc --noEmit` kliens **és** szerver: zöld.
+- `npm run test`: 847 zöld, 181 skip.
+- Készüléken mérve: a hangzár hatóköre (build 48). A beégetett változat
+  visszaigazolása hátravan.
 
 ## Nyitott ügyek
 
-- **Push még nem történt meg.**
-- A térképrajzolás (Mapbox `setData`/GPU) önálló mérőszáma hiányzik a
-  `perfMeter`-ből — ma csak A/B megfigyelés van rá, nem szám.
-- 2. cél: valódi, nem szimulált hosszú terepi validálás még hiányzik.
-- 4. cél (sima mérés): nincs önálló mérési helyzet.
+- **Készülékes visszaigazolás** az új buildből: nincs hangzavar a Play-nél; a
+  3-2-1 síp, a cellahangok és az aktivitás-hangok szólnak; **szól-e a nyomva
+  tartás hangja** (ez a 2. feloldott elem, erről nincs korábbi adat); a
+  befejezés gomb jó-e.
+- Ha a befejezés gomb rendben, a **diagnosztikai kiírás kivehető**
+  (`finish-overlay__diag`, `lastHoldCancel()`).
+- ⚠️ **Nyitott adatkérdés:** a `8b29f3f0-4785-4116-b4a1-293ab3ecd8bb`
+  aktivitás `startedAt`/`endedAt` mezői nyers számként íródtak vissza
+  (Timestamp helyett), amitől kieshet az idő-alapú lekérdezésekből. A javító
+  szkript a `tmp/fixTimestampFields8b29.ts`-ben van (száraz futás
+  alapértelmezés). **Nem tudjuk, lefutott-e már.**
+- A térképrajzolás (Mapbox `setData`/GPU) önálló mérőszáma továbbra is hiányzik
+  a `perfMeter`-ből.
+- 2. teljesítmény-cél: valódi, nem szimulált hosszú terepi validálás hiányzik.
+
+## Következő lépések — Geri funkció-listája (#43-ban kérve)
+
+Sorrend nincs rögzítve; a hibajavítások mentek előre.
+
+1. **Üres felületek kitöltése:** Közösség → kihívások, útlevél; Profil →
+   statisztika
+2. **Sehova nem vezető menüpontok:** Mértékegységek, Csatlakoztatott appok,
+   Előfizetés
+3. **Adatkezelési tájékoztató és ÁSZF**
+4. **Aktivitás jelentése** — ugyanúgy, mint a felhasználó-jelentés
+5. **Ügyfélszolgálat menü** a Beállításokba: ticket-rendszer, adminban
+   kezelhető, e-mailes állapotfrissítéssel
+6. **Banda törlése** — az alapító törölheti, ha egyedül van benne
+
+⚠️ Egy **teljes kód-audit** is kérésben volt a menet elején; félbeszakadt az
+állapotfelmérés után, amikor a hibajavítások előre kerültek.
 
 ## Modelljavaslat
 
-Sonnet, normál mélység elég a folytatáshoz — méréshez és rutin javításhoz
-nem kell emelt szint.
+A funkció-listához **Sonnet, normál mélység** elég (képernyők, űrlapok, CRUD).
+A ticket-rendszer adatmodellje és jogosultságai, illetve a kód-audit
+**Opus, emelt** szintet kíván.
