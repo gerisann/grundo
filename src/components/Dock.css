@@ -571,6 +571,19 @@
   color: var(--danger);
 }
 
+/* ⚠️ IDEIGLENES — a befejezés-megszakadás diagnosztikája. Lásd
+   `FinishGestureButtons.tsx` `lastHoldCancel()`. Kivenni a méréssel együtt. */
+.finish-overlay__diag {
+  position: relative;
+  z-index: 1;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
 .finish-overlay__fill {
   position: absolute;
   left: 0;

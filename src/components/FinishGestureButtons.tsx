@@ -37,6 +37,64 @@ export const FINISH_HOLD_MS = 1000;
  */
 const FINISH_RELEASE_MS = 350;
 
+/**
+ * MI SZAKÍTOTTA MEG A NYOMVA TARTÁST — a diagnosztika és a javítás közös
+ * fogalma.
+ *
+ * A `'pointerup'` a NORMÁLIS vég (a felhasználó elengedte); a többi az, ami
+ * 2026-09-08-án iPhone-on „random" megszakította a töltést.
+ */
+export type HoldCancelReason =
+  | 'pointerup'
+  | 'pointercancel'
+  | 'lostpointercapture'
+  | 'blur'
+  | 'keyup';
+
+/**
+ * VÉGET ÉR-E A NYOMÁS ETTŐL AZ ESEMÉNYTŐL? TISZTA FÜGGVÉNY.
+ *
+ * ⚠️ A MÁSODIK UJJ VOLT A CSAPDA. Mutató-eseményt bármelyik ujj kelthet: ha a
+ * felhasználó a befejezés gomb nyomva tartása közben bárhol máshol hozzáér a
+ * kijelzőhöz, annak a mutatónak a `pointerup`-ja is a gombra érkezhet. Csak az
+ * az esemény zárhat, amelyik AHHOZ a mutatóhoz tartozik, amelyik elindította.
+ *
+ * @param activePointerId a nyomást indító mutató, vagy `null`, ha billentyűről
+ *                        indult (illetve már véget ért)
+ */
+export function endsHold(activePointerId: number | null, eventPointerId: number): boolean {
+  return activePointerId !== null && activePointerId === eventPointerId;
+}
+
+/**
+ * MEGSZAKÍTJA-E A FÓKUSZVESZTÉS A NYOMÁST?
+ *
+ * ⚠️ CSAK BILLENTYŰRŐL INDÍTOTT NYOMÁSNÁL. Ujjal nyomva a `blur` nem a
+ * felhasználó szándéka: iOS-en a fókusz a nyomás alatt is elmozdulhat, és az
+ * eddigi feltétel nélküli `onBlur={cancel}` emiatt szakította félbe a töltést.
+ * A mutatós nyomás végét a mutató saját eseményei jelzik, nem a fókusz.
+ */
+export function cancelsOnBlur(activePointerId: number | null): boolean {
+  return activePointerId === null;
+}
+
+/**
+ * IDEIGLENES DIAGNOSZTIKA — az utolsó megszakítás oka és töltöttsége.
+ *
+ * ⚠️ KI KELL VENNI, ha a javítás készüléken beigazolódik. Azért van, mert
+ * kódolvasásból NEM lehetett eldönteni, a négy megszakító esemény közül melyik
+ * sül el iPhone-on — a projekt pedig kétszer fizetett már azért, mert egy
+ * „nyilvánvaló" javítás készüléken mást csinált (lásd `lib/sound.ts`).
+ *
+ * Modul-szintű, mert a gomb a megszakítás után újrarendereldik; a következő
+ * nyomás visszajelzésén jelenik meg, ahol látszik is.
+ */
+let lastCancel: { reason: HoldCancelReason; percent: number } | null = null;
+
+export function lastHoldCancel(): { reason: HoldCancelReason; percent: number } | null {
+  return lastCancel;
+}
+
 export function HoldFinishButton({
   onFinish,
   onHoldStart,
@@ -115,9 +173,10 @@ export function HoldFinishButton({
     frame.current = requestAnimationFrame(step);
   }
 
-  function cancel() {
+  function cancel(reason: HoldCancelReason) {
     if (!holding.current) return;
     holding.current = false;
+    lastCancel = { reason, percent: Math.round(progressRef.current * 100) };
     onHoldPause?.();
     cancelAnimationFrame(frame.current);
 
@@ -140,8 +199,53 @@ export function HoldFinishButton({
     frame.current = requestAnimationFrame(step);
   }
 
+  /**
+   * ⚠️ A MUTATÓ ELFOGÁSA — EZ A JAVÍTÁS LÉNYEGE.
+   *
+   * A TÜNET (Geri, iPhone, 2026-09-08): a befejezés gombot nyomva tartva a
+   * piros sáv elindul, majd „random" megszakad.
+   *
+   * A gomb NÉGY eseményre hívott `cancel()`-t: `pointerup`, `pointerleave`,
+   * `pointercancel` és `blur`. Ebből három olyankor is elsülhet, amikor a
+   * felhasználó MÉG NYOMJA a gombot:
+   *
+   *   - `pointerleave` — az ujj néhány pixelt elcsúszik a kis gombról;
+   *   - `blur` — iOS-en a fókusz a nyomás alatt is elmozdulhat;
+   *   - idegen mutató — egy MÁSIK ujj érintése a kijelzőn olyan
+   *     `pointerup`-ot kelt, aminek semmi köze a nyomáshoz.
+   *
+   * A `SwipeFinishButton` ugyanebben a fájlban már helyesen csinálja
+   * (`setPointerCapture`), ez a gomb viszont sosem hívta meg. Elfogással a
+   * mutató minden további eseménye IDE érkezik, akkor is, ha az ujj rég
+   * lecsúszott a gombról — így a `pointerleave` szükségtelen (és káros).
+   *
+   * A biztonsági háló az `onLostPointerCapture`: ha az elfogás bármi miatt
+   * megszűnik (a böngésző elveszi, az elem eltűnik), a nyomás lezárul —
+   * beragadt, magától töltődő sáv nem maradhat.
+   */
+  const holdPointer = useRef<number | null>(null);
+
+  function pointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    holdPointer.current = event.pointerId;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* Elfogás nélkül is működik — a `pointercancel` ilyenkor is lezár. */
+    }
+    start();
+  }
+
+  function pointerEnd(reason: HoldCancelReason) {
+    return (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!endsHold(holdPointer.current, event.pointerId)) return;
+      holdPointer.current = null;
+      cancel(reason);
+    };
+  }
+
   const percent = progress * 100;
   const holdingNow = progress > 0;
+  const diagnostic = lastHoldCancel();
 
   return (
     <>
@@ -178,6 +282,15 @@ export function HoldFinishButton({
                   Befejezés
                 </span>
               </div>
+              {/*
+                ⚠️ IDEIGLENES DIAGNOSZTIKA — az ELŐZŐ nyomás megszakadásának
+                oka. Kivenni, ha a javítás készüléken beigazolódik.
+              */}
+              {diagnostic ? (
+                <div className="finish-overlay__diag">
+                  előző megszakítás: {diagnostic.reason} @ {diagnostic.percent}%
+                </div>
+              ) : null}
             </div>,
             document.body,
           )
@@ -187,10 +300,11 @@ export function HoldFinishButton({
         className={`dock__side dock__side--right dock__finish${
           holdingNow ? ' dock__finish--holding' : ''
         }`}
-        onPointerDown={start}
-        onPointerUp={cancel}
-        onPointerLeave={cancel}
-        onPointerCancel={cancel}
+        onPointerDown={pointerDown}
+        onPointerUp={pointerEnd('pointerup')}
+        onPointerCancel={pointerEnd('pointercancel')}
+        /* Biztonsági háló: elfogás nélkül maradva a nyomás nem ragadhat be. */
+        onLostPointerCapture={pointerEnd('lostpointercapture')}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={(event) => {
           if (event.key === ' ' || event.key === 'Enter') {
@@ -198,8 +312,13 @@ export function HoldFinishButton({
             start();
           }
         }}
-        onKeyUp={cancel}
-        onBlur={cancel}
+        onKeyUp={() => cancel('keyup')}
+        /* Ujjal nyomva a fókuszvesztés NEM a felhasználó szándéka — lásd
+           `cancelsOnBlur`. Billentyűs nyomásnál viszont ez az egyetlen jelzés,
+           hogy a gomb már nem aktív. */
+        onBlur={() => {
+          if (cancelsOnBlur(holdPointer.current)) cancel('blur');
+        }}
         aria-label="Befejezés — tartsd nyomva egy másodpercig"
       >
         <span className="dock__finish-fill" style={{ width: `${percent}%` }} aria-hidden="true" />
