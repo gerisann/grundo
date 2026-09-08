@@ -21,6 +21,12 @@
  */
 
 import { feedbackSettings, type FeedbackSettings } from './feedbackSettings';
+import {
+  soundUnlockMode,
+  unlockCountFor,
+  unlockResumable,
+  type SoundUnlockMode,
+} from './soundUnlockMode';
 
 export type SoundName =
   | 'count-down-beep'
@@ -282,15 +288,54 @@ export function unlockSounds(): void {
   if (unlocked) return;
   unlocked = true;
   primeSounds();
-  for (const name of SOUND_NAMES) {
+
+  /**
+   * ⚠️ A HATÓKÖR MOST MÉRÉS ALATT ÁLL — lásd `lib/soundUnlockMode.ts`.
+   *
+   * Az alapértelmezés a MAI viselkedés (minden elem), tehát ez a sor önmagában
+   * semmit nem változtat. A készüléken mért eredmény után a győztes hatókör
+   * beégetésre kerül, a kapcsoló pedig kikerül.
+   */
+  const mode = soundUnlockMode();
+  let unlockedElements = 0;
+
+  SOUND_NAMES.forEach((name, soundIndex) => {
     const target = pools.get(name);
-    if (!target) continue;
-    for (const element of target.elements) {
-      unlockElement(element);
+    if (!target) return;
+    const count = unlockCountFor(mode, soundIndex, target.elements.length);
+    for (let index = 0; index < count; index += 1) {
+      unlockElement(target.elements[index]!);
+      unlockedElements += 1;
+    }
+  });
+
+  if (unlockResumable(mode)) {
+    const resumable = resumableElements.get('pressing-finish-activity');
+    if (resumable) {
+      unlockElement(resumable);
+      unlockedElements += 1;
     }
   }
-  const resumable = resumableElements.get('pressing-finish-activity');
-  if (resumable) unlockElement(resumable);
+
+  lastUnlock = { mode, elements: unlockedElements };
+}
+
+/**
+ * MI TÖRTÉNT A LEGUTÓBBI FELOLDÁSKOR — a mérőpanel ebből olvas.
+ *
+ * Készüléken nincs fejlesztői konzol kéznél, a feloldás pedig
+ * WebView-életciklusonként EGYSZER fut le: enélkül a mérésnél csak találgatni
+ * lehetne, hogy tényleg a beállított hatókör érvényesült-e.
+ */
+export interface UnlockReport {
+  mode: SoundUnlockMode;
+  elements: number;
+}
+
+let lastUnlock: UnlockReport | null = null;
+
+export function lastUnlockReport(): UnlockReport | null {
+  return lastUnlock;
 }
 
 /**
