@@ -248,8 +248,35 @@ export function Dock() {
     setCountdown(3);
   }
 
-  /** A választóban NINCS kiválasztva semmi — a gomb inaktív, sárga, ↑. */
+  /** A választóban NINCS kiválasztva semmi — a gomb sárga, ↑. */
   const picking = idle && pickerOpen && !pendingType;
+
+  /**
+   * ⚠️ A GOMB CSAK A RÖGZÍTÉS KÉPERNYŐJÉN LEHET INAKTÍV — KÜLÖNBEN CSAPDA.
+   *
+   * MÉRT HIBA (Geri, iPhone): a Home-on a Play gombra a kép NEM váltott át, a
+   * gomb viszont sárga ↑-re állt, mozgásforma-választó sehol, és a dokk
+   * használhatatlanná vált — csak app-újraindítás segített.
+   *
+   * AZ OK NEM A LASSÚSÁG, HANEM A KIÚT HIÁNYA. A `primaryAction` egyetlen
+   * koppintásban állítja a `pickerOpen`-t ÉS indítja a navigációt, a
+   * `TrackingScreen` viszont `lazy()` (App.tsx), a react-router v7 pedig
+   * minden navigációt `startTransition`-be csomagol — amíg a chunk töltődik,
+   * React SZÁNDÉKOSAN a régi képernyőt (a Home-ot) hagyja kint. Az első
+   * navigációnál ez a chunk hidegen töltődik, tehát a köztes állapot NORMÁLIS.
+   *
+   * A baj az, hogy ebből az állapotból nem lehetett kilépni: a `picking`
+   * azonnal igazzá vált, a gomb `disabled` lett, a `wasOnTrackingScreen`
+   * mentőeffekt pedig csak a KILÉPÉST figyeli (lásd fent) — ide sosem
+   * érkeztünk meg, tehát nem oldott ki semmit.
+   *
+   * A mentőág már meg van írva: nyitott választónál a rögzítésen kívülről a
+   * `primaryAction` újra navigál (lásd lent). Eddig csak elérhetetlen volt.
+   * Ezért a tiltás a rögzítés képernyőjére szűkül — ott a választó LÁTSZIK,
+   * tehát az inaktív gomb értelmes visszajelzés („válassz felül"); máshol a
+   * gomb maradjon nyomható, hogy a második koppintás kivezessen.
+   */
+  const primaryDisabled = picking && onTrackingScreen;
   /** Van választott mozgásforma, VAGY fut a visszaszámlálás — piros, kész. */
   const armed = (idle && pickerOpen && !!pendingType) || countdown !== null;
 
@@ -300,7 +327,7 @@ export function Dock() {
           armed ? ' dock__play--armed' : ''
         }${paused ? ' dock__play--paused' : ''}`}
         onClick={primaryAction}
-        disabled={picking}
+        disabled={primaryDisabled}
         aria-label={primaryLabel}
       >
         {countdown !== null ? (
