@@ -117,7 +117,7 @@ describe('unlockSounds', () => {
    * amiről a mérésnek nincs adata. Egy plusz, csendes végű lejátszás olcsóbb,
    * mint egy néma befejezés gomb.
    */
-  it('natív iOS-en CSAK két elemet old fel — a mért minimumot', async () => {
+  it('natív iOS-en PONTOSAN EGY elemet old fel — a mért minimumot', async () => {
     platform.native = true;
     platform.ios = true;
     vi.stubGlobal('Audio', FakeAudio);
@@ -126,9 +126,32 @@ describe('unlockSounds', () => {
     unlockSounds();
 
     const played = FakeAudio.instances.filter((element) => element.playCount > 0);
-    expect(played).toHaveLength(2);
-    // A pooltól külön élő, folytatható elem is köztük van.
-    expect(played.some((element) => element.src.includes('pressing-finish-activity'))).toBe(true);
+    expect(played).toHaveLength(1);
+  });
+
+  /**
+   * ⚠️ EZ A TESZT A HARMADIK ÉLES NÉMULÁS EMLÉKE (2026-09-08, iOS build 49).
+   *
+   * A feloldás a hang VÉGÉRE ugrott (a `duration` addigra ismert volt, mert a
+   * `primeSounds()` előrébb került) — és az app MINDEN hangja néma maradt. Az
+   * előző buildben ugyanaz az EGYETLEN elem, csak elejétől játszva, mindent
+   * életre keltett.
+   *
+   * A lecsengés csendes vége nem aktiválja a rendszer hangútvonalát: ott
+   * nincs mit lejátszani. iOS-en a feloldásnak a hang ELEJÉRŐL kell indulnia,
+   * akkor is, ha az hallható — a némaság sosem opció.
+   */
+  it('natív iOS-en a hang ELEJÉTŐL szól, akkor is, ha a hossz ismert', async () => {
+    platform.native = true;
+    platform.ios = true;
+    vi.stubGlobal('Audio', FakeAudio);
+    const { unlockSounds } = await import('./sound');
+
+    unlockSounds();
+
+    const played = FakeAudio.instances.filter((element) => element.playCount > 0);
+    expect(played).toHaveLength(1);
+    expect(played[0]!.startedAt).toBe(0);
   });
 
   /**

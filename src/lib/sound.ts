@@ -285,7 +285,38 @@ export function unlockSounds(): void {
   primeSounds();
 
   /**
-   * ⚠️ NATÍV iOS-EN KÉT ELEM ELÉG — ÉS EZ MÉRT EREDMÉNY, NEM FELTEVÉS.
+   * ⚠️ NATÍV iOS-EN EGYETLEN, VÉGIGJÁTSZOTT HANG — ÉS A HANGSÚLY A MÁSODIK
+   * SZÓN VAN.
+   *
+   * A TELJES MÉRÉSI SOR, IDŐRENDBEN (mind KÉSZÜLÉKEN, Geri):
+   *
+   *   | # | mit oldottunk fel | hogyan szólalt meg | eredmény |
+   *   |---|---|---|---|
+   *   | 1 | semmit (09-03) | — | NÉMA app |
+   *   | 2 | mindent, szinkron `pause()`-zal (09-04) | el sem indult | NÉMA app |
+   *   | 3 | 51 elemet | teljes hosszban (a `duration` `NaN` volt) | szól, de HANGZAVAR |
+   *   | 4 | 1 elemet | teljes hosszban (`NaN`) | SZÓL, zavar nélkül |
+   *   | 5 | 2 elemet | a hang VÉGÉRE ugorva (a `duration` ismert volt) | NÉMA app |
+   *
+   * AMIT EZ ELDÖNT. Az aktiváló tényező NEM az elemek SZÁMA, hanem hogy
+   * történik-e VALÓDI, VÉGIGFUTÓ lejátszás. A 4. sor bizonyítja, hogy egyetlen
+   * elem elég — és hogy azon keresztül a fel NEM oldott elemek is megszólalnak
+   * (a nyomva tartás hangja is szólt, pedig nem kapott feloldást). Az 5. sor
+   * pedig azt, hogy a végére ugrás magát az aktiválást teszi tönkre: a
+   * lecsengés csendes vége nem „szenteli fel" a hangútvonalat.
+   *
+   * ⚠️ AZ `UNLOCK_TAIL_S` iOS-EN SOSEM MŰKÖDÖTT — csak sosem derült ki. A
+   * `primeSounds()` addig egyedül a `TrackingScreen`-en futott, tehát a
+   * Kezdőlapról indítva a `duration` MINDIG `NaN` volt, és az ugratás CSENDBEN
+   * kimaradt. Abban a pillanatban, hogy a `primeSounds()` előrébb került és a
+   * `duration` ismertté vált, az ugratás életbe lépett — és harmadszor is
+   * elnémította az appot. A védelem, ami sosem futott le, nem védelem.
+   *
+   * EZÉRT iOS-EN: PONTOSAN EGY elem, a hang ELEJÉTŐL, teljes hosszban. Ez egy
+   * rövid koppanás a Play gombnál — a 3-2-1 sípja amúgy is ezredmásodpercekkel
+   * később jön —, cserébe minden más hang életre kel.
+   *
+   * ⚠️ RÉGI SZÖVEG A TELJESSÉG KEDVÉÉRT — a 3. sor magyarázata:
    *
    * MÉRVE (Geri, iPhone, 2026-09-08, iOS build 48): egyetlen elem feloldása
    * után a TÖBBI hang is hibátlanul szólt — a cellahangok, a visszaszámlálás
@@ -310,10 +341,6 @@ export function unlockSounds(): void {
    * ÉL, és elemenként érvényes: egyetlen elem feloldása a webes appot
    * elnémítaná. Androidon nincs tünet, ott sincs mit kockáztatni.
    *
-   * MIÉRT KETTŐ, ÉS NEM EGY. A nyomva tartás hangja (`pressing-finish-activity`)
-   * a pooltól KÜLÖN elem, és a mérés éppen azt hagyta feloldatlanul — a
-   * működéséről tehát nincs adatunk. Egy plusz elem ára egyetlen, a hang
-   * csendes végére ugró lejátszás; a némaság ára egy néma gomb.
    */
   for (const element of elementsToUnlock()) unlockElement(element);
 }
@@ -321,19 +348,22 @@ export function unlockSounds(): void {
 /**
  * MELYIK ELEMEKET KELL FELOLDANI — a hatókör döntése, a lejátszástól külön.
  *
- * Natív iOS-en a legelső hang legelső eleme aktiválja a rendszer
- * hangútvonalát, a nyomva tartás külön eleme pedig azért jön vele, mert az nem
- * része egyetlen poolnak sem. Máshol minden elem feloldást kap.
+ * Natív iOS-en PONTOSAN EGY: a legelső hang legelső eleme. Ez aktiválja a
+ * rendszer hangútvonalát, és ezen keresztül a fel NEM oldott elemek is
+ * megszólalnak — beleértve a nyomva tartás pooltól különálló elemét, amit a
+ * 4. mérés éppen feloldatlanul hagyott, és mégis szólt.
+ *
+ * Máshol minden elem feloldást kap: weben nincs Capacitor, tehát a WebKit
+ * gesztus-kapuja ÉL és elemenként érvényes.
  */
 function elementsToUnlock(): HTMLAudioElement[] {
-  const resumable = resumableElements.get('pressing-finish-activity');
-
   if (isNativeIos()) {
     const first = pools.get(SOUND_NAMES[0]!)?.elements[0];
-    return [first, resumable].filter((element): element is HTMLAudioElement => !!element);
+    return first ? [first] : [];
   }
 
   const all = SOUND_NAMES.flatMap((name) => pools.get(name)?.elements ?? []);
+  const resumable = resumableElements.get('pressing-finish-activity');
   if (resumable) all.push(resumable);
   return all;
 }
@@ -375,9 +405,25 @@ function unlockElement(element: HTMLAudioElement): void {
     element.volume = restore;
   };
   try {
-    const duration = element.duration;
-    if (Number.isFinite(duration) && duration > UNLOCK_TAIL_S) {
-      element.currentTime = duration - UNLOCK_TAIL_S;
+    /**
+     * ⚠️ NATÍV iOS-EN NEM UGRUNK A HANG VÉGÉRE — EZ A HARMADIK NÉMULÁS LECKÉJE.
+     *
+     * MÉRVE (2026-09-08, iOS build 49): a végére ugratott feloldás után az app
+     * MINDEN hangja néma maradt, holott az előző buildben ugyanaz az EGYETLEN
+     * elem — csak elejétől játszva — mindent életre keltett. A lecsengés
+     * csendes vége nem aktiválja a rendszer hangútvonalát (AVAudioSession):
+     * ott gyakorlatilag nincs mit lejátszani.
+     *
+     * Weben marad az ugratás. Ott a `volume = 0` amúgy is hat, tehát a
+     * feloldás némasága nem ezen múlik — viszont a `duration` ismeretében ez
+     * a rövidebb út, és a meglévő viselkedést nem kockáztatjuk meg egy
+     * platformon, ahol nincs is tünet.
+     */
+    if (!isNativeIos()) {
+      const duration = element.duration;
+      if (Number.isFinite(duration) && duration > UNLOCK_TAIL_S) {
+        element.currentTime = duration - UNLOCK_TAIL_S;
+      }
     }
     const started = element.play();
     if (started && typeof started.then === 'function') started.then(settle, settle);
