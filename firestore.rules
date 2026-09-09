@@ -470,6 +470,18 @@ service cloud.firestore {
      */
     match /perfSnapshots/{snapshotId} { allow read, write: if false; }
 
+    /**
+     * Tesztelői hibabejelentések. Ugyanaz az elv, mint a `perfSnapshots`-nál:
+     * kizárólag a backend írja és olvassa (`/api/bugreports`,
+     * `/api/admin/bugreports`).
+     *
+     * ⚠️ A `status`, a `createdAt` és a `uid` hitelessége a triázs alapja —
+     * ezért nem lehet kliensírás. A MÉDIÁT viszont a kliens tölti fel
+     * közvetlenül a Storage-ba (lásd `storage.rules`): ott a bájtoknak nincs
+     * mit hazudniuk, a Cloud Run kérésmérete pedig nem visel el egy videót.
+     */
+    match /bugReports/{reportId} { allow read, write: if false; }
+
     // ── minden más tiltva ─────────────────────────────────────────────────
 
     match /{document=**} {

@@ -378,3 +378,33 @@ Négy éles némulás után mérve (GRUNDO #43, Geri iPhone-ján, iOS build 48�
 - Az egy dokumentumra szóló, egyszeri javítószkriptek **nem verziókövetettek**;
   a helyük a `tmp/`. Írjanak száraz futást alapértelmezésben, és legyenek
   idempotensek, hogy utólag ellenőrizhető legyen, lefutottak-e már.
+
+## Bugreport rendszer — F1 (2026-09-09)
+
+Terv: [`terv-2026-09-09-bugreport-rendszer.md`](terv-2026-09-09-bugreport-rendszer.md).
+
+- **A debug mód NEM jelenhet meg mindenkinek.** A kapu a `users/{uid}.tester`
+  mező (kizárólag adminból, `POST /api/admin/testers`) vagy egy admin
+  szerepkör; helyi fejlesztésben mindig nyitva. Ha az üzemmód-választó minden
+  felhasználónál felugrana, az App Store és a Play felülvizsgálója is látná, és
+  a felhasználók egy része véletlenül debug módban használná az appot.
+- **A bugreport dokumentumot MINDIG a szerver írja** (`bugReports`,
+  `firestore.rules`: `read, write: if false`). A `status`, a `createdAt` és a
+  `uid` hitelessége a triázs egyetlen fogódzója; kliensről érkező időbélyeg a
+  készülék állítható órájáról jönne. A **melléklet** viszont közvetlenül a
+  Storage-ba megy — egy 30 mp-es videó nem fér át a Cloud Run kérésméretén —,
+  és az útvonal-előtagot MINDKÉT oldal ellenőrzi (`storage.rules` és
+  `mediaPathBelongsTo()`). Egyiket sem szabad elhagyni.
+- **A crash-felismerés becslés, nem bizonyíték.** Az app nem kapja el a saját
+  összeomlását; csak azt látja a következő indításkor, hogy az előző menet
+  nyitva maradt. Ugyanígy néz ki a valódi összeomlás, az app-váltóból kihúzás
+  és az OS memória-visszavétele is — a felajánló szöveg ezért **nem
+  állíthatja**, hogy összeomlott. Natív bizonyíték csak az F4-es Crashlytics
+  lesz.
+- **A morzsanapló csak debug módban gyűjt**, és **helyadatot nem tartalmazhat**
+  — se koordinátát, se pontosságot, se cellaazonosítót. Ugyanaz az elv, mint az
+  aktivitás-fotók EXIF-törlésénél: ami egyszer kikerül, azt nem lehet
+  visszavenni.
+- **A képernyőképhez saját natív plugin kell, nem `html2canvas`** (F2). A
+  `html2canvas` a DOM-ot rajzolja újra, tehát a Mapbox GL vászna üresen
+  maradna — pont a térkép hiányozna a bugreportból.

@@ -18,10 +18,13 @@ import { distanceM } from '../../../src/game/geo';
 import type { ModifierKind, ModifierScope } from '../../../src/game/modifiers';
 import type { AuthedRequest } from '../../server';
 import { APP_CONFIG_DOCS, COLLECTIONS, auth, db } from '../lib/firebase';
+import { audit } from '../lib/adminAudit';
 import { badRequest, forbidden, notFound } from '../lib/errors';
+import { adminBugReportsRouter } from './bugreports';
 import { hideUserContentForBan } from '../lib/contentModeration';
 import { getGameplaySnapshot, resetGameplayCache } from '../lib/gameplayConfig';
 import { sendTestPush } from '../lib/notifications';
+import { normalizeUsername } from '../lib/user';
 import { resetModifierCache } from '../lib/modifiers';
 
 export const adminRouter = Router();
@@ -41,6 +44,15 @@ adminRouter.use((req: AuthedRequest, _res, next) => {
   next();
 });
 
+/**
+ * A bugreportok kezelése a szerepkör-kapu MÖGÉ kerül, saját fájlból.
+ *
+ * A beküldő végpontok (`/api/bugreports`) ugyanabban a fájlban élnek, de a
+ * `server.ts`-ből, kapu nélkül vannak bekötve — oda a tesztelő ír, nem az
+ * admin.
+ */
+adminRouter.use('/bugreports', adminBugReportsRouter);
+
 function requireWrite(req: AuthedRequest): void {
   if (!req.role || !WRITE_ROLES.has(req.role)) {
     throw forbidden('A játékszabályok módosítása `owner` vagy `admin` jogosultságot igényel.');
@@ -53,26 +65,10 @@ function requireModeration(req: AuthedRequest): void {
   }
 }
 
-/** Naplóbejegyzés minden íráshoz. A napló nélküli admin művelet nem létezik. */
-async function audit(
-  req: AuthedRequest,
-  action: string,
-  targetType: string,
-  targetId: string,
-  before: unknown,
-  after: unknown,
-): Promise<void> {
-  await db.collection(COLLECTIONS.adminAudit).add({
-    adminUid: req.uid ?? null,
-    adminRole: req.role ?? null,
-    action,
-    targetType,
-    targetId,
-    before: before ?? null,
-    after: after ?? null,
-    at: FieldValue.serverTimestamp(),
-  });
-}
+/**
+ * A naplózó a `lib/adminAudit.ts`-ben él, mert a bugreportok triázsa is admin
+ * művelet, és ugyanabba a naplóba kell írnia.
+ */
 
 /**
  * App-bannolás: az Auth-fiók letiltása és minden publikus tartalom soft-hide-ja.
@@ -174,6 +170,48 @@ async function gameplayState() {
     })),
   };
 }
+
+/**
+ * Tesztelői jog ki-be kapcsolása, felhasználónév alapján.
+ *
+ * A `tester` mező dönti el, kinek jelenik meg az üzemmód-választó és a lebegő
+ * hibabejelentő gomb. NEM játékadat, de ugyanúgy csak szerverről írható: a
+ * kliensről állítható tesztelői jog azt jelentené, hogy a debug felület
+ * bárkinek elérhető.
+ *
+ * docs/ai/terv-2026-09-09-bugreport-rendszer.md → 2. Ki látja a debug módot
+ */
+adminRouter.post('/testers', async (req: AuthedRequest, res, next) => {
+  try {
+    requireWrite(req);
+    const body = (req.body ?? {}) as { username?: unknown; tester?: unknown };
+    const username = typeof body.username === 'string' ? normalizeUsername(body.username) : '';
+    if (!username) throw badRequest('invalid_username', 'Add meg a felhasználónevet.');
+    if (typeof body.tester !== 'boolean') {
+      throw badRequest('invalid_tester', 'A tesztelői jog csak be- vagy kikapcsolható.');
+    }
+
+    const nameDoc = await db.collection(COLLECTIONS.usernames).doc(username).get();
+    const uid = nameDoc.exists ? String((nameDoc.data() as { uid?: string }).uid ?? '') : '';
+    if (!uid) throw notFound('user_not_found', 'Nincs ilyen felhasználó.');
+
+    const userRef = db.collection(COLLECTIONS.users).doc(uid);
+    const before = await userRef.get();
+    await userRef.set({ tester: body.tester }, { merge: true });
+    await audit(
+      req,
+      'user_tester',
+      'user',
+      uid,
+      { tester: (before.data() as { tester?: unknown } | undefined)?.tester ?? false },
+      { tester: body.tester },
+    );
+
+    res.json({ uid, username, tester: body.tester });
+  } catch (error) {
+    next(error);
+  }
+});
 
 adminRouter.get('/gameplay', async (_req, res, next) => {
   try {

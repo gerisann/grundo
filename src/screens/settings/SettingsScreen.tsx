@@ -1,6 +1,15 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useAuth } from '@/hooks/AuthProvider';
+import { useProfile } from '@/hooks/ProfileProvider';
+import {
+  askModeOnStart,
+  debugModeAvailable,
+  getAppMode,
+  setAppMode,
+  setAskModeOnStart,
+} from '@/lib/debugMode';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
@@ -32,9 +41,13 @@ export function SettingsScreen() {
   const navigate = useNavigate();
   const { settings } = useThemeContext();
   const { user, role, signOut, status } = useAuth();
+  const { profile } = useProfile();
   const { finishGesture } = useRecorderContext();
   const feedback = useFeedbackSettings();
   const graphics = useGraphicsSettings();
+  const [mode, setMode] = useState(getAppMode);
+  const [ask, setAsk] = useState(askModeOnStart);
+  const debugAvailable = debugModeAvailable({ tester: profile?.tester, role });
 
   return (
     <>
@@ -121,6 +134,41 @@ export function SettingsScreen() {
                 description="Játékszabályok, akciók, aktivitás-audit"
                 value={role}
                 onClick={() => navigate('/admin')}
+              />
+            </List>
+          </section>
+        ) : null}
+
+        {/**
+          * Tesztelői kapcsolók — csak a tesztelői körnek.
+          *
+          * ⚠️ Ez az EGYETLEN kiút, ha valaki az üzemmód-választón bepipálta a
+          * „ne kérdezd többet"-et: normál módban nincs lebegő gomb, tehát
+          * enélkül csak az app törlésével jutna vissza a debug módba.
+          *
+          * docs/ai/terv-2026-09-09-bugreport-rendszer.md → 2.
+          */}
+        {debugAvailable ? (
+          <section>
+            <div className="label list__group-label">Tesztelés</div>
+            <List>
+              <ListRow
+                label="Üzemmód"
+                description="Debug módban lebegő hibabejelentő gomb és napló"
+                value={mode === 'debug' ? 'Debug' : 'Normál'}
+                onClick={() => {
+                  const next = mode === 'debug' ? 'normal' : 'debug';
+                  setAppMode(next);
+                  setMode(next);
+                }}
+              />
+              <ListRow
+                label="Kérdezzen induláskor"
+                value={ask ? 'Be' : 'Ki'}
+                onClick={() => {
+                  setAskModeOnStart(!ask);
+                  setAsk(!ask);
+                }}
               />
             </List>
           </section>

@@ -31,6 +31,7 @@ type SubjectResolver = (req: Request) => string;
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
 export const RATE_LIMIT_POLICIES = {
   login: { name: 'login', limit: 10, windowMs: 15 * MINUTE },
@@ -43,6 +44,12 @@ export const RATE_LIMIT_POLICIES = {
   weather: { name: 'weather', limit: 60, windowMs: HOUR },
   tiles: { name: 'tiles', limit: 300, windowMs: 10 * MINUTE },
   mutation: { name: 'mutation', limit: 120, windowMs: 10 * MINUTE },
+  /**
+   * Hibabejelentés. Napi ablak, mert egy tesztnapon harminc beküldés bőven
+   * elég — ennél többet csak egy beragadt újrapróbálkozó hurok ír, és az
+   * ezer dokumentumot csinálna, mire észrevesszük.
+   */
+  bugReport: { name: 'bug_report', limit: 30, windowMs: DAY },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export function parseRateLimitMode(value: string | undefined): RateLimitMode {
@@ -132,6 +139,7 @@ export function selectAuthenticatedPolicy(req: Request): RateLimitPolicy | null 
   if (req.method === 'POST' && path === '/api/auth/otp/send') return RATE_LIMIT_POLICIES.otpSend;
   if (req.method === 'POST' && path === '/api/auth/otp/verify') return RATE_LIMIT_POLICIES.otpVerify;
   if (req.method === 'POST' && path === '/api/activities') return RATE_LIMIT_POLICIES.activityUpload;
+  if (req.method === 'POST' && path === '/api/bugreports') return RATE_LIMIT_POLICIES.bugReport;
   if (req.method === 'POST' && path === '/api/missions/generate') return RATE_LIMIT_POLICIES.missionGenerate;
   if (req.method === 'POST' && path === '/api/missions/evaluate') return RATE_LIMIT_POLICIES.missionEvaluate;
   if (req.method === 'GET' && isPathBranch(path, '/api/weather')) return RATE_LIMIT_POLICIES.weather;

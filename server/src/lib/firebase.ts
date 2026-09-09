@@ -75,6 +75,8 @@ export const COLLECTIONS = {
   inviteCodes: 'inviteCodes',
   /** Terepen rögzített főszál-mérések, az admin `PerfOverlay` mentéséből. */
   perfSnapshots: 'perfSnapshots',
+  /** Tesztelői hibabejelentések. Kizárólag szerverről írható. */
+  bugReports: 'bugReports',
 } as const;
 
 /** Az `appConfig` dokumentumainak azonosítói. */

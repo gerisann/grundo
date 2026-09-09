@@ -1,0 +1,281 @@
+/* Tesztelői debug felület — üzemmód-választó, lebegő gomb, bejelentő lap */
+
+/* ── Üzemmód-választó ─────────────────────────────────────────────────────── */
+
+.dbg-mode {
+  position: fixed;
+  inset: 0;
+  /* A lebegő gomb 70-en ül; a választó mindennél feljebb, mert ez az első
+     dolog, ami az indulás után a képernyőn van. */
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  background: var(--bg-primary);
+}
+
+.dbg-mode__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 420px;
+}
+
+.dbg-mode__title {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.dbg-mode__lead {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.dbg-mode__options {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.dbg-mode__option {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dbg-mode__option--on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.dbg-mode__option-name {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dbg-mode__option-help {
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.dbg-mode__ask {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+/* ── Lebegő gomb ──────────────────────────────────────────────────────────── */
+
+.dbg-fab {
+  position: fixed;
+  /* A dokk 40-en, a teljes képernyős térkép 50-en, a lapok 60-on ülnek — a
+     hibabejelentő mindegyik FÖLÖTT kell legyen, különben pont azt nem lehet
+     bejelenteni, ami eltakarja. */
+  z-index: 70;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  box-shadow: 0 4px 16px var(--shadow);
+  font-size: 22px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  /* A húzás ne görgesse a hátteret, és ne induljon el szövegkijelölés. */
+  touch-action: none;
+  user-select: none;
+}
+
+.dbg-fab--dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+/* ── Menü ─────────────────────────────────────────────────────────────────── */
+
+.dbg-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 71;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.dbg-menu__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.dbg-menu__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 520px;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: var(--sp-5) var(--sp-4) calc(var(--sp-4) + var(--safe-bottom));
+  border-top: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--bg-secondary);
+  box-shadow: 0 -8px 32px var(--shadow);
+}
+
+.dbg-menu__title {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.dbg-menu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dbg-menu__row:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.dbg-menu__row-soon {
+  margin-left: auto;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.dbg-menu__note {
+  margin: 0;
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* ── Napló ────────────────────────────────────────────────────────────────── */
+
+.dbg-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 40dvh;
+  overflow-y: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.dbg-log__row {
+  display: flex;
+  gap: var(--sp-2);
+  color: var(--text-secondary);
+  /* Hosszú stack trace ne feszítse szét a lapot. */
+  overflow-wrap: anywhere;
+}
+
+.dbg-log__row--error {
+  color: var(--danger);
+}
+
+.dbg-log__time {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* ── Állapotsor ───────────────────────────────────────────────────────────── */
+
+.dbg-status {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.dbg-status--error {
+  color: var(--danger);
+}
+
+/* ── Súlyosság ────────────────────────────────────────────────────────────── */
+
+.dbg-sev {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.dbg-sev__item {
+  flex: 1;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.dbg-sev__item--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* ── Megjegyzés ───────────────────────────────────────────────────────────── */
+
+.dbg-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dbg-note__textarea {
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r-md);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  resize: vertical;
+}
+
+.dbg-note__textarea:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.dbg-actions {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: flex-end;
+}

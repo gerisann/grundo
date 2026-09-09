@@ -1,0 +1,210 @@
+/* Admin — bugreportok triázsa */
+
+.bug-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.bug-filters label,
+.bug-controls label {
+  display: grid;
+  gap: 4px;
+}
+
+.bug-filters select,
+.bug-controls select,
+.bug-testers input,
+.bug-adminnote textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+.bug-testers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bug-testers input {
+  min-width: 220px;
+}
+
+/*
+  Két oszlop: lista és adatlap. Az admin asztali gépre szánt, sűrű felület
+  (`admin.css` fejléce) — a bejelentés kiválasztása ne dobja el a listát.
+*/
+.bug-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .bug-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bug-list {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.bug-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bug-row--on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.bug-row__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.bug-row__note {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.bug-row__meta {
+  font-size: 11px;
+}
+
+/* Az új bejelentés kiemelve: azt kell először megnézni. */
+.bug-badge--new {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bug-badge--fixed {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.bug-badge--wontfix,
+.bug-badge--duplicate {
+  opacity: 0.7;
+}
+
+.bug-detail__note {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bug-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.bug-adminnote {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.bug-adminnote textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.bug-media {
+  display: grid;
+  gap: 8px;
+}
+
+.bug-media img,
+.bug-media video {
+  max-width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.bug-bag h3,
+.bug-media h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.bug-bag dl {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.bug-bag dl > div {
+  display: contents;
+}
+
+.bug-bag dt {
+  color: var(--text-secondary);
+}
+
+.bug-bag dd {
+  margin: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.bug-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bug-log__row {
+  display: flex;
+  gap: 8px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.bug-log__row--error {
+  color: var(--danger);
+}
+
+.bug-log__time {
+  flex: none;
+  opacity: 0.7;
+}

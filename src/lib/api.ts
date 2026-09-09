@@ -1,6 +1,7 @@
 import { queryClient } from './queryClient';
 import { auth } from './firebase';
 import { appCheckHeader } from './appCheck';
+import { addBreadcrumb } from './breadcrumbs';
 import type { PerfHistoryEntry } from './perfMeter';
 import type { ActivityType } from '@/types';
 
@@ -128,6 +129,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     | null;
 
   if (!response.ok) {
+    /**
+     * A hibás válasz morzsát is hagy a hibabejelentéshez.
+     *
+     * ⚠️ CSAK a státusz, a kód és az ÚTVONAL — a válasz törzse soha. Abban
+     * felhasználónév, e-mail és tokenszerű mező is lehet, a bugreport pedig
+     * kikerül a készülékről. A hívás debug módon kívül no-op
+     * (`src/lib/breadcrumbs.ts`).
+     */
+    addBreadcrumb('api', `${response.status} ${body?.code ?? 'unknown'} ${path}`);
     throw new ApiError(
       response.status,
       body?.code ?? 'unknown',
@@ -252,6 +262,13 @@ export interface Profile {
     distanceKm: { run: number; walk: number; ride: number };
   };
   pro: { active: boolean };
+  /**
+   * Tesztelői kör tagja-e. Ettől függ, megjelenik-e az üzemmód-választó és a
+   * lebegő hibabejelentő gomb. KIZÁRÓLAG adminból állítható
+   * (`POST /api/admin/testers`) — kliensről állítható tesztelői jog azt
+   * jelentené, hogy a debug felület bárkinek elérhető.
+   */
+  tester?: boolean;
   /**
    * A választott cellaszín KULCSA — lásd `src/lib/cellColors.ts`.
    *
@@ -1228,6 +1245,88 @@ export interface WeatherResult {
   windKph: number | null;
 }
 
+/* ── Bugreport ────────────────────────────────────────────────────────────── */
+
+export type BugReportKind = 'report' | 'screenshot' | 'video' | 'crash';
+export type BugReportStatus =
+  | 'new'
+  | 'triaged'
+  | 'in_progress'
+  | 'fixed'
+  | 'wontfix'
+  | 'duplicate';
+export type BugReportSeverity = 'low' | 'normal' | 'high';
+
+export interface BugReportBreadcrumb {
+  /** Unix ms. */
+  t: number;
+  level: string;
+  msg: string;
+}
+
+export interface BugReportInput {
+  kind: BugReportKind;
+  severity: BugReportSeverity;
+  note: string;
+  /** Ugyanaz az alak, mint az aktivitás diagnosztikai eszközadata. */
+  device: DevActivityDeviceInfo;
+  context: Record<string, unknown>;
+  state: Record<string, unknown>;
+  logs: BugReportBreadcrumb[];
+  crash?: Record<string, unknown>;
+}
+
+export interface BugReportCreated {
+  reportId: string;
+  uploadPrefix: string;
+}
+
+export interface BugReportMediaInput {
+  path: string;
+  contentType: string;
+  bytes: number;
+  durationMs?: number;
+}
+
+export interface AdminBugReportListItem {
+  id: string;
+  kind: BugReportKind;
+  status: BugReportStatus;
+  severity: BugReportSeverity;
+  /** Unix ms, SZERVERIDŐ. */
+  createdAt: number;
+  uid: string;
+  username: string;
+  note: string;
+  platform: string;
+  appVersion: string;
+  revision: string;
+  mediaCount: number;
+}
+
+export interface AdminBugReportMedia extends BugReportMediaInput {
+  /** Rövid életű, aláírt olvasó-URL. Tartós download token nincs. */
+  url: string;
+}
+
+export interface AdminBugReportDetail extends AdminBugReportListItem {
+  device: Record<string, unknown>;
+  context: Record<string, unknown>;
+  state: Record<string, unknown>;
+  logs: BugReportBreadcrumb[];
+  crash: Record<string, unknown> | null;
+  adminNote: string;
+  /** Unix ms, 0 ha még nyitott. */
+  resolvedAt: number;
+  media: AdminBugReportMedia[];
+}
+
+export interface AdminBugReportPatch {
+  status?: BugReportStatus;
+  severity?: BugReportSeverity;
+  adminNote?: string;
+}
+
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
 
@@ -1876,5 +1975,51 @@ export const api = {
   adminDeleteModifier: (id: string) =>
     request<{ ok: true }>(`/api/admin/modifiers/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+    }),
+
+  // ── Bugreport ───────────────────────────────────────────────────────────
+
+  /**
+   * Hibabejelentés beküldése. A válasz `uploadPrefix`-e az EGYETLEN hely, ahová
+   * ehhez a bejelentéshez melléklet tölthető — a `storage.rules` és a szerver
+   * ugyanezt az előtagot kényszeríti ki.
+   */
+  submitBugReport: (input: BugReportInput) =>
+    request<BugReportCreated>('/api/bugreports', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /** A már feltöltött melléklet hozzákötése a bejelentéshez. */
+  attachBugReportMedia: (reportId: string, media: BugReportMediaInput) =>
+    request<{ ok: true }>(`/api/bugreports/${encodeURIComponent(reportId)}/media`, {
+      method: 'POST',
+      body: JSON.stringify(media),
+    }),
+
+  adminBugReports: (filter: { status?: string; kind?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (filter.status) params.set('status', filter.status);
+    if (filter.kind) params.set('kind', filter.kind);
+    const query = params.toString();
+    return request<{ reports: AdminBugReportListItem[] }>(
+      `/api/admin/bugreports${query ? `?${query}` : ''}`,
+    );
+  },
+
+  adminBugReport: (id: string) =>
+    request<{ report: AdminBugReportDetail }>(`/api/admin/bugreports/${encodeURIComponent(id)}`),
+
+  adminUpdateBugReport: (id: string, patch: AdminBugReportPatch) =>
+    request<{ ok: true }>(`/api/admin/bugreports/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+
+  /** Tesztelői jog ki-be kapcsolása felhasználónév alapján. */
+  adminSetTester: (username: string, tester: boolean) =>
+    request<{ uid: string; username: string; tester: boolean }>('/api/admin/testers', {
+      method: 'POST',
+      body: JSON.stringify({ username, tester }),
     }),
 };

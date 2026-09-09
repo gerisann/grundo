@@ -12,6 +12,7 @@ import { ResumeActivityPrompt } from './components/ResumeActivityPrompt';
 import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
 import { addNativePushActionListener } from './lib/push';
+import { debugModeAvailable } from './lib/debugMode';
 
 /**
  * MINDEN KÉPERNYŐ LUSTÁN TÖLTŐDIK, A HOME KIVÉTELÉVEL.
@@ -69,6 +70,18 @@ const CompleteProfileScreen = lazy(() => import('./screens/auth/CompleteProfileS
  * belépő csomag azonnal megnő, és a döntés indoka elvész.
  */
 const AdminArea = lazy(() => import('./admin'));
+
+/**
+ * A TESZTELŐI DEBUG RÉTEG — lustán, és csak jogosultnak.
+ *
+ * Ugyanaz az elv, mint az adminnál: a normál felhasználó böngészője egyetlen
+ * bájtot sem tölt le belőle, mert a `lazy` import csak akkor fut le, amikor a
+ * komponens tényleg a fába kerül. A jogosultság (`tester` mező vagy admin
+ * szerepkör) a `debugModeAvailable()`-ben dől el.
+ */
+const DebugLayer = lazy(() =>
+  import('./components/DebugLayer').then((m) => ({ default: m.DebugLayer })),
+);
 
 /**
  * A Game Loop futtató — lustán, ÉS a kapcsoló mögé zárva.
@@ -136,8 +149,8 @@ function NativePushActions() {
 }
 
 function Router() {
-  const { status } = useAuth();
-  const { status: profileStatus } = useProfile();
+  const { status, role } = useAuth();
+  const { status: profileStatus, profile } = useProfile();
   /**
    * A Dock CSAK a mentőlap alatt tűnik el.
    *
@@ -160,8 +173,16 @@ function Router() {
    * mintánál új objektum, tehát a teljes app-fát újrarenderelte volna
    * minden egyes mintánál.
    */
-  const savePanelOpen = useRecorderUploadStatus() === 'done';
+  const uploadStatus = useRecorderUploadStatus();
+  const savePanelOpen = uploadStatus === 'done';
   const { pathname } = useLocation();
+  /**
+   * Jogosult-e a tesztelői debug rétegre. A `tester` mező a szerverről jön,
+   * és kizárólag adminból állítható — a szerepkör-claim ugyanígy. Ez itt
+   * KÉNYELEM, nem védelem: a beküldő végpont maga is ellenőrzi
+   * (`server/src/routes/bugreports.ts` → `assertReporter`).
+   */
+  const debugAvailable = debugModeAvailable({ tester: profile?.tester, role });
 
   /**
    * A GAME LOOP FUTTATÓ — MINDEN KAPU ELŐTT.
@@ -307,6 +328,17 @@ function Router() {
         biztos, hogy oda navigál (GRUNDO #42).
       */}
       <ResumeActivityPrompt />
+      {/*
+        A tesztelői debug réteg — a Dock és a felugró lapok FÖLÖTT, mert pont
+        azt kell tudni bejelenteni, ami eltakarja a felületet. A `Suspense`
+        `null` visszajelzéssel: a betöltése nem villanthat Splash képernyőt a
+        működő app fölé.
+      */}
+      {debugAvailable ? (
+        <Suspense fallback={null}>
+          <DebugLayer recorder={uploadStatus} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

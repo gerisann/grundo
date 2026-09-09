@@ -32,6 +32,7 @@ import { missionsRouter } from './src/routes/missions';
 import { devRouter } from './src/routes/dev';
 import { jobsRouter } from './src/routes/jobs';
 import { adminRouter } from './src/routes/admin';
+import { bugReportsRouter } from './src/routes/bugreports';
 import { rulesRouter } from './src/routes/rules';
 import { usersRouter } from './src/routes/users';
 import { rivalsRouter } from './src/routes/rivals';
@@ -211,6 +212,12 @@ app.use('/api/weather', authenticate, authenticatedRateLimit, weatherRouter);
 app.use('/api/tiles', authenticate, authenticatedRateLimit, tilesRouter);
 app.use('/api/missions', authenticate, authenticatedRateLimit, missionsRouter);
 app.use('/api/dev', authenticate, authenticatedRateLimit, devRouter);
+/**
+ * A tesztelői hibabejelentő. A jogosultságot maga az útvonal ellenőrzi
+ * (`tester` mező vagy admin szerepkör), mert nem admin felület: a beküldő
+ * nem lát bele semmibe, csak ír. A triázs a `/api/admin/bugreports` alatt van.
+ */
+app.use('/api/bugreports', authenticate, authenticatedRateLimit, bugReportsRouter);
 app.use('/api/admin', authenticate, authenticatedRateLimit, adminRouter);
 
 /**

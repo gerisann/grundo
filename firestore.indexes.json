@@ -278,6 +278,34 @@
         { "fieldPath": "from", "order": "ASCENDING" },
         { "fieldPath": "to", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "A bugreport-lista alapértelmezett nézete: nyitott bejelentések, legújabb elöl. Az egyenlőség-szűrő és a `createdAt` szerinti rendezés együtt összetett indexet kíván.",
+      "collectionGroup": "bugReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "Ugyanaz típus szerint szűrve (csak a crash reportok, csak a videók).",
+      "collectionGroup": "bugReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "A két szűrő EGYÜTT is beállítható a felületen (pl. „új összeomlások”), és a Firestore ehhez külön indexet kér — az előző kettő nem szolgálja ki. Enélkül a lekérdezés FAILED_PRECONDITION-nel hasal el, pontosan akkor, amikor a triázs szűkíteni akar.",
+      "collectionGroup": "bugReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -321,6 +349,18 @@
       "//": "Ugyanaz az ok, mint a `cells`-nél: a tulajdonosonkénti darabszám-térkép kulcsai felhasználó-azonosítók, tehát dinamikusak, és soha nem szűrünk rájuk — a ranglista a `users` dokumentumok előszámolt mezőiből megy.",
       "collectionGroup": "grid",
       "fieldPath": "ownerCounts",
+      "indexes": []
+    },
+    {
+      "//": "A morzsanapló 200 bejegyzést tartalmazhat, bejegyzésenként három almezővel — indexelve ez bejelentésenként több száz indexbejegyzés, tiszta írási költségként. Szűrni sosem szűrünk rá: a napló mindig a teljes bejelentéssel együtt olvasódik ki. Ugyanaz az ok, mint a `grid.cells`-nél.",
+      "collectionGroup": "bugReports",
+      "fieldPath": "logs",
+      "indexes": []
+    },
+    {
+      "//": "A mellékletek listája legfeljebb négy elem, de ugyanígy sosem szűrünk rá.",
+      "collectionGroup": "bugReports",
+      "fieldPath": "media",
       "indexes": []
     }
   ]

@@ -89,6 +89,23 @@ service firebase.storage {
       allow write: if false;                     // admin/tulajdonos szerveren át
     }
 
+    // ── Bugreport-melléklet (képernyőkép, videó) ──────────────────────────
+    // A dokumentumot a backend írja (`/api/bugreports`), de a MELLÉKLET
+    // közvetlenül ide jön: egy 30 másodperces videó nem fér át a Cloud Run
+    // kérésméretén. A szerver csak a hivatkozást kapja, és ellenőrzi, hogy a
+    // beküldő saját előtagja alatt van-e — ugyanaz a minta, mint az
+    // aktivitás-fotóknál.
+    //
+    // Az `update` és a `delete` SZÁNDÉKOSAN tiltott: a beküldött melléklet
+    // bizonyíték, amit utólag nem lehet kicserélni.
+    match /bugreports/{uid}/{reportId}/{fileName} {
+      allow read: if false;                      // az admin aláírt URL-en kapja
+      allow create: if isSelf(uid)
+                    && ((isImage() && underMB(10))
+                        || (request.resource.contentType == 'video/mp4' && underMB(50)));
+      allow update, delete: if false;
+    }
+
     // ── Adatexport (GDPR) ─────────────────────────────────────────────────
     match /exports/{uid}/{fileName} {
       allow read: if isSelf(uid);
