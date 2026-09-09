@@ -97,13 +97,39 @@ export function Dock() {
     Az előkészítés helye a `TrackingScreen` maradt.
   */
 
+  /**
+   * ⚠️ A VISSZASZÁMLÁLÁS EFFEKTJE CSAK A SZÁMRA FIGYELHET — MINDEN MÁS REFBŐL.
+   *
+   * MÉRT HIBA (Geri, iPhone, 2026-09-09): „a 3-2-1 hangok furák, nem időben
+   * jönnek, nem követik a képre kiírt számokat".
+   *
+   * Ez az effekt EGYSZERRE játszik hangot ÉS birtokol egy 1000 ms-os időzítőt.
+   * A függőségei közt viszont ott volt a `begin` és a `pendingType` is — a
+   * `begin` pedig `useCallback`, ami a `pendingType`, `attach`, `apply`,
+   * `positionSource`, `persister` és három további érték bármelyikének
+   * változásakor ÚJ azonosságot kap (`useRecorder.ts`). Minden ilyen változás
+   * újrafuttatta az effektet: eldobta a még futó időzítőt, indított egy újat,
+   * és közben LEJÁTSZOTT MÉG EGY SÍPOT — a hang tehát elcsúszott a kiírt
+   * számtól, és többször is megszólalhatott ugyanarra a számra.
+   *
+   * A refek pontosan azt a kettősséget oldják fel, hogy a hívás mindig a
+   * LEGFRISSEBB `begin`-t használja, az ÜTEMEZÉST viszont kizárólag a
+   * `countdown` vezérli. Ugyanaz a minta, mint a `useCellStepSound`
+   * birtokviszony-refje.
+   */
+  const beginRef = useRef(begin);
+  beginRef.current = begin;
+  const pendingTypeRef = useRef(pendingType);
+  pendingTypeRef.current = pendingType;
+
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
       setCountdown(null);
       // A „RAJT!" hangja a felirattal EGYSZERRE — Geri kérése (2026-09-01).
       playSound('count-down-start');
-      if (pendingType) void begin(pendingType);
+      const type = pendingTypeRef.current;
+      if (type) void beginRef.current(type);
       setShowRajt(true);
       return;
     }
@@ -116,7 +142,7 @@ export function Dock() {
     playSound('count-down-beep');
     const timer = window.setTimeout(() => setCountdown(countdown - 1), 1000);
     return () => window.clearTimeout(timer);
-  }, [countdown, pendingType, begin, setCountdown]);
+  }, [countdown, setCountdown]);
 
   /**
    * FUTÓ MÉRÉS KÖZBEN A RÖGZÍTÉS KÉPERNYŐJE RAGADÓS.

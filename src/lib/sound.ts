@@ -348,24 +348,55 @@ export function unlockSounds(): void {
 /**
  * MELYIK ELEMEKET KELL FELOLDANI — a hatókör döntése, a lejátszástól külön.
  *
- * Natív iOS-en PONTOSAN EGY: a legelső hang legelső eleme. Ez aktiválja a
- * rendszer hangútvonalát, és ezen keresztül a fel NEM oldott elemek is
- * megszólalnak — beleértve a nyomva tartás pooltól különálló elemét, amit a
- * 4. mérés éppen feloldatlanul hagyott, és mégis szólt.
+ * Natív iOS-en PONTOSAN EGY, SAJÁT elem (lásd `unlockOnlyElement`). Ez
+ * aktiválja a rendszer hangútvonalát, és ezen keresztül a fel NEM oldott
+ * elemek is megszólalnak — beleértve a nyomva tartás pooltól különálló elemét,
+ * amit a 4. mérés éppen feloldatlanul hagyott, és mégis szólt.
  *
  * Máshol minden elem feloldást kap: weben nincs Capacitor, tehát a WebKit
  * gesztus-kapuja ÉL és elemenként érvényes.
  */
 function elementsToUnlock(): HTMLAudioElement[] {
   if (isNativeIos()) {
-    const first = pools.get(SOUND_NAMES[0]!)?.elements[0];
-    return first ? [first] : [];
+    const only = unlockOnlyElement();
+    return only ? [only] : [];
   }
 
   const all = SOUND_NAMES.flatMap((name) => pools.get(name)?.elements ?? []);
   const resumable = resumableElements.get('pressing-finish-activity');
   if (resumable) all.push(resumable);
   return all;
+}
+
+/**
+ * A FELOLDÁS SAJÁT, KÜLÖN ELEME — nem a poolból való. KÉT OKBÓL.
+ *
+ * ⚠️ 1. ÜTKÖZÉS. A feloldás `play()`-e után a `settle()` a promise
+ * beérkezésekor MEGÁLLÍTJA az elemet és nullázza a `currentTime`-ot. Ha
+ * közben a `playSound()` ugyanazt az elemet vette elő (a `count-down-beep`
+ * pooljának első eleme épp a `next = 0` helyen áll!), akkor a késve érkező
+ * `settle()` a MÁR FUTÓ visszaszámlálás-sípot vágja el, és a hangerőt is
+ * visszaírja. Innen a „3-2-1 hangok nem követik a képre kiírt számokat"
+ * (Geri, iPhone, 2026-09-09). Külön elemmel ez a versenyhelyzet nem
+ * létezik.
+ *
+ * ⚠️ 2. HANGERŐ. iOS-en a feloldás HALLHATÓ (a `volume` írása ott nem hat),
+ * tehát az számít, MELYIK hang szól. A `count-down-beep` egy éles síp, ami
+ * a Play gombnál riasztóan hangos volt. A `cell-captured` a legrövidebb és
+ * leghalkabb fájl (3,2 kB), és a rögzítés hangvilágába is illik — koppanás,
+ * nem sziréna.
+ */
+const UNLOCK_SOUND: SoundName = 'cell-captured';
+
+let unlockAudio: HTMLAudioElement | null = null;
+
+function unlockOnlyElement(): HTMLAudioElement | null {
+  if (typeof Audio === 'undefined') return null;
+  if (unlockAudio) return unlockAudio;
+  unlockAudio = new Audio(sourceUrl(UNLOCK_SOUND));
+  unlockAudio.preload = 'auto';
+  unlockAudio.setAttribute('playsinline', '');
+  return unlockAudio;
 }
 
 /**

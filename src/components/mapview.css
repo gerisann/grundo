@@ -56,12 +56,36 @@
   color: var(--text-primary);
 }
 
-/* A nyíl ugyanabban a színben, mint a doboz — különben fehér csücsök marad. */
-.mapview__popup .mapboxgl-popup-tip {
+/*
+  A nyíl ugyanabban a színben, mint a doboz — különben fehér csücsök marad.
+
+  ⚠️ CSAK A NYÍL IRÁNYÁBA ESŐ SZEGÉLYT SZABAD SZÍNEZNI. A Mapbox a csücsköt
+  átlátszó szegélyekből rajzolja: HÁROM oldal átlátszó, a negyedik adja a
+  háromszöget. Ha mind a négyet kiszínezzük, a háromszögből TÖMÖR NÉGYZET
+  lesz — pontosan ez volt a „lefelé mutató nyíl helyett téglalap" hiba
+  (Geri, 2026-09-09), a Grundon és a rögzítés képernyőn egyaránt.
+
+  A horgony osztályát a Mapbox a popup GYÖKERÉRE teszi, oda, ahol a
+  `mapview__popup` is van — ezért nincs köztük szóköz a szelektorban.
+*/
+.mapview__popup.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip,
+.mapview__popup.mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip,
+.mapview__popup.mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip {
   border-top-color: var(--bg-elevated);
+}
+
+.mapview__popup.mapboxgl-popup-anchor-top .mapboxgl-popup-tip,
+.mapview__popup.mapboxgl-popup-anchor-top-left .mapboxgl-popup-tip,
+.mapview__popup.mapboxgl-popup-anchor-top-right .mapboxgl-popup-tip {
   border-bottom-color: var(--bg-elevated);
-  border-left-color: var(--bg-elevated);
+}
+
+.mapview__popup.mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
   border-right-color: var(--bg-elevated);
+}
+
+.mapview__popup.mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
+  border-left-color: var(--bg-elevated);
 }
 
 /* ── Vissza a pozíciómra ─────────────────────────────────────────────
