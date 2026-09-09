@@ -77,6 +77,8 @@ export const COLLECTIONS = {
   perfSnapshots: 'perfSnapshots',
   /** Tesztelői hibabejelentések. Kizárólag szerverről írható. */
   bugReports: 'bugReports',
+  /** Verziótörténet — a `CHANGELOG.md` szinkronizált tükre, admin felület olvassa. */
+  changelog: 'changelog',
 } as const;
 
 /** Az `appConfig` dokumentumainak azonosítói. */

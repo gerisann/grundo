@@ -898,6 +898,14 @@ export interface GameplayVersion {
   updatedBy: string | null;
 }
 
+export interface ChangelogEntry {
+  version: string;
+  buildNumber: number | null;
+  type: 'patch' | 'minor' | 'major';
+  releasedAt: string | null;
+  changes: string[];
+}
+
 export type ModifierKindName = 'gp_multiplier' | 'claim_multiplier' | 'hold_multiplier';
 export type ModifierScopeName = 'global' | 'area' | 'segment';
 export type ModifierState = 'active' | 'scheduled' | 'expired' | 'cancelled';
@@ -1943,6 +1951,13 @@ export const api = {
 
   adminGameplayVersions: () =>
     request<{ versions: GameplayVersion[] }>('/api/admin/gameplay/versions'),
+
+  /**
+   * A `CHANGELOG.md` szinkronizált tükre — lásd `scripts/sync-changelog.mjs`
+   * és `.claude/rules/versioning.md`.
+   */
+  adminChangelog: (limit = 50) =>
+    request<{ entries: ChangelogEntry[] }>(`/api/admin/changelog?limit=${limit}`),
 
   adminRollbackGameplay: (version: number) =>
     request<GameplayState>('/api/admin/gameplay/rollback', {

@@ -9,6 +9,10 @@ description: GRUNDO menetzárás — CURRENT_STATE.md frissítése, tartós dön
    `git log --oneline -3`. A fájl-táblázat számai innen jönnek, **soha ne
    emlékezetből**.
 
+   Ha a menetben érdemi változás történt és még nem esett szó
+   verzióemelésről, ajánld fel most a commit előtt
+   (`.claude/rules/versioning.md`) — a handoff ne csúsztassa el a döntést.
+
 2. **Írd FELÜL a `docs/ai/CURRENT_STATE.md`-t.** Ne toldd hozzá — a fájl a
    JELENT mutatja, nem a történetet; a történet a git logban van.
 

@@ -1058,3 +1058,90 @@ adminRouter.get('/perf-snapshots', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * GET /api/admin/changelog
+ *
+ * A `CHANGELOG.md` szinkronizált tükre — a `scripts/sync-changelog.mjs` írja
+ * ide verziónkénti dokumentumként (doc id = verziószám). Az admin felület
+ * ezt olvassa, nem a repót; a repó marad a git-történettel követhető,
+ * emberi olvasásra szánt eredeti.
+ */
+adminRouter.get('/changelog', async (_req, res, next) => {
+  try {
+    const limitRaw = Number(_req.query.limit ?? 50);
+    const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 50;
+
+    const snap = await db
+      .collection(COLLECTIONS.changelog)
+      .orderBy('releasedAt', 'desc')
+      .limit(limit)
+      .get();
+
+    res.json({
+      entries: snap.docs.map((doc) => {
+        const data = doc.data() as Record<string, any>;
+        return {
+          version: data.version ?? doc.id,
+          buildNumber: data.buildNumber ?? null,
+          type: data.type ?? 'patch',
+          releasedAt: data.releasedAt?.toDate?.().toISOString() ?? null,
+          changes: Array.isArray(data.changes) ? data.changes : [],
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/changelog
+ *
+ * Egyetlen verzió bejegyzését írja/felülírja (doc id = verziószám), így az
+ * ismételt szinkron nem duplikál. A `scripts/sync-changelog.mjs` hívja
+ * minden bejegyzésre a `CHANGELOG.md` alapján, service-account tokennel.
+ */
+adminRouter.post('/changelog', async (req: AuthedRequest, res, next) => {
+  try {
+    requireWrite(req);
+
+    const body = (req.body ?? {}) as {
+      version?: unknown;
+      buildNumber?: unknown;
+      type?: unknown;
+      releasedAt?: unknown;
+      changes?: unknown;
+    };
+    const version = typeof body.version === 'string' ? body.version.trim() : '';
+    if (!/^\d+\.\d+\.\d+$/.test(version)) {
+      throw badRequest('invalid_version', 'A verziószámnak MAJOR.MINOR.PATCH alakúnak kell lennie.');
+    }
+    const type = body.type === 'major' || body.type === 'minor' ? body.type : 'patch';
+    const changes = Array.isArray(body.changes)
+      ? body.changes.filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+      : [];
+    if (changes.length === 0) {
+      throw badRequest('missing_changes', 'Legalább egy változás-bejegyzés kötelező.');
+    }
+    const buildNumber =
+      typeof body.buildNumber === 'number' && Number.isInteger(body.buildNumber)
+        ? body.buildNumber
+        : null;
+    const releasedAt =
+      typeof body.releasedAt === 'string' && !Number.isNaN(Date.parse(body.releasedAt))
+        ? Timestamp.fromDate(new Date(body.releasedAt))
+        : Timestamp.now();
+
+    const doc = db.collection(COLLECTIONS.changelog).doc(version);
+    const before = (await doc.get()).data() ?? null;
+    const next = { version, buildNumber, type, changes, releasedAt };
+    await doc.set(next);
+
+    await audit(req, 'changelog_sync', 'changelog', version, before, next);
+
+    res.json({ version, buildNumber, type, changes, releasedAt: releasedAt.toDate().toISOString() });
+  } catch (error) {
+    next(error);
+  }
+});

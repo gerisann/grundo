@@ -11,6 +11,7 @@ import { LabE2eLauncherScreen } from './LabE2eLauncherScreen';
 import { LabE2eTrackingScreen } from './LabE2eTrackingScreen';
 import { PerfHistoryScreen } from './PerfHistoryScreen';
 import { BugReportsScreen } from './BugReportsScreen';
+import { ChangelogScreen } from './ChangelogScreen';
 
 export default function AdminArea() {
   return (
@@ -29,6 +30,7 @@ export default function AdminArea() {
         <Route path="lab" element={<SimulationLabScreen />} />
         <Route path="teljesitmeny" element={<PerfHistoryScreen />} />
         <Route path="bugreportok" element={<BugReportsScreen />} />
+        <Route path="verziotortenet" element={<ChangelogScreen />} />
         <Route path="lab/e2e" element={<LabE2eLauncherScreen />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>

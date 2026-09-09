@@ -26,6 +26,9 @@ ettől még a felhőben fut.
 
 ## Telepítés előtt — kötelező
 
+0. **Verzióellenőrzés.** Ha a telepítendő commit(ok) még nem kaptak
+   verziójavaslatot (lásd `.claude/rules/versioning.md`), ajánld fel most —
+   ne menjen ki mérföldkő-build (TestFlight/APK) verzióemelés-döntés nélkül.
 1. **Környezeti változók ellenőrzése.** ⚠️ Az első gépes build Firebase-konfig
    NÉLKÜL ment élesbe (az értékek addig csak a Cloud Shell gitignore-olt
    `.env.local` fájljában éltek) — az oldal bejelentkezés nélkül, hibaüzenettel
@@ -63,3 +66,6 @@ A záró üzenetben **csak a szavakat** írd ki, a parancsokat ne.
   telepített webes, iOS és Android kliensekhez.
 - Részletes pipeline: `docs/07-ios-testflight-codemagic.md`,
   `docs/08-android-codemagic.md`.
+- Mérföldkő-build (TestFlight/APK) után: `node server/scripts/sync-changelog.mjs`
+  Cloud Shellből, hogy az admin felület (`/admin/verziotortenet`) a friss
+  `CHANGELOG.md`-t mutassa. Lásd `.claude/rules/versioning.md`.

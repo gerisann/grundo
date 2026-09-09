@@ -295,6 +295,27 @@
   border: 1px solid var(--border);
 }
 
+.admin-badge--patch {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.admin-badge--minor {
+  background: var(--accent);
+}
+
+.admin-badge--major {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .admin-linkbtn {
   border: 0;
   background: none;

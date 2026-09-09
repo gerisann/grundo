@@ -9,6 +9,7 @@ import {
   type BandaRolloverResult,
 } from '@/lib/api';
 import { formatArea, formatDistance } from '@/lib/format';
+import { buildInfo } from '@/lib/buildInfo';
 import { GAMEPLAY } from '@/config/gameplay';
 
 /**
@@ -95,6 +96,16 @@ export function AdminHomeScreen() {
           <span className="admin-tile__value">★</span>
           <span className="admin-tile__label">Akciók</span>
           <span className="admin-muted">Időszakos szorzók</span>
+        </button>
+
+        <button
+          type="button"
+          className="admin-tile"
+          onClick={() => navigate('/admin/verziotortenet')}
+        >
+          <span className="admin-tile__value">v{buildInfo.version}</span>
+          <span className="admin-tile__label">Verziótörténet</span>
+          <span className="admin-muted">Changelog</span>
         </button>
 
         <div className="admin-tile admin-tile--static">

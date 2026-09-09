@@ -76,6 +76,14 @@ Tartós megvalósítási döntések (**mit nem szabad visszacsinálni**):
 ⚠️ A gyökér `tsc --noEmit` **nem** nézi a `server/` mappát — ez már engedett át
 valódi típushibát.
 
+## Verziókezelés
+
+Szemantikus verzió (`package.json` → `1.0.0` stílus) **és** a zárójeles
+build-szám egyszerre fut, külön célra. **Minden érdemi commit előtt** fel kell
+ajánlani egy verzióemelést (patch/minor/major), indoklással. Részletek,
+végrehajtás és a Changelog (repó + admin felület) szabálya:
+**`.claude/rules/versioning.md`**.
+
 ## Ami magától betöltődik, amikor odanyúlsz
 
 | Útvonal | Szabályfájl |
@@ -86,6 +94,7 @@ valódi típushibát.
 | `android/**`, `ios/**`, `src/tracking/**` | `.claude/rules/native.md` |
 | `firebase.json`, `*.rules`, `.env*`, `src/lib/firebase.ts` | `.claude/rules/firebase-config.md` |
 | `**/*.test.ts` | `.claude/rules/testing.md` |
+| `package.json` (version), `CHANGELOG.md`, `scripts/bump-version.mjs` | `.claude/rules/versioning.md` |
 
 ## Skillek (kézzel hívhatók)
 
