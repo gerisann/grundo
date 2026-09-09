@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui';
 import { BugReportSheet } from '@/components/BugReportSheet';
 import { readBreadcrumbs, type Breadcrumb } from '@/lib/breadcrumbs';
+import { isNativeApp } from '@/lib/platform';
+import { captureScreenshot } from '@/lib/screenshot';
 import './debug.css';
 
 /**
@@ -76,13 +78,18 @@ function fmtTime(t: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
 }
 
-type Panel = 'none' | 'menu' | 'report' | 'log';
+type Panel = 'none' | 'menu' | 'report' | 'log' | 'screenshot';
 
 export function DebugFab({ recorder }: { recorder?: string }) {
   const [position, setPosition] = useState<Position>(readPosition);
   const [dragging, setDragging] = useState(false);
   const [panel, setPanel] = useState<Panel>('none');
   const [log, setLog] = useState<Breadcrumb[]>([]);
+  // A kép rögzítése alatt a gomb is eltűnik — a natív pillanatkép a TELJES
+  // webnézetet menti, tehát a 🐞 gomb is rajta lenne, ha nyitva marad.
+  const [capturing, setCapturing] = useState(false);
+  const [screenshot, setScreenshot] = useState<Blob | null>(null);
+  const [screenshotError, setScreenshotError] = useState('');
 
   /** A húzás állapota refben: a mozgás nem renderelhet minden mintánál. */
   const drag = useRef<{
@@ -162,23 +169,54 @@ export function DebugFab({ recorder }: { recorder?: string }) {
     if (opened) setPanel('menu');
   }, []);
 
+  /**
+   * Képernyőkép: a menüt és a gombot is el kell tüntetni MIELŐTT a natív
+   * plugin lefényképezi a webnézetet — utána visszaállítjuk, a felhasználó
+   * ebből legfeljebb egy villanást lát.
+   */
+  const openScreenshot = useCallback(() => {
+    setPanel('none');
+    setScreenshotError('');
+    setCapturing(true);
+    // Két animációs keret vár, hogy a menü/gomb eltűnése a WebView-ban
+    // ténylegesen kirajzolódjon, mielőtt a pillanatkép elkészül.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        captureScreenshot()
+          .then((blob) => {
+            setScreenshot(blob);
+            setPanel('screenshot');
+          })
+          .catch((cause: unknown) => {
+            setScreenshotError(
+              cause instanceof Error ? cause.message : 'A képernyőkép nem készült el.',
+            );
+            setPanel('menu');
+          })
+          .finally(() => setCapturing(false));
+      });
+    });
+  }, []);
+
   return (
     <>
-      <button
-        type="button"
-        className={`dbg-fab${dragging ? ' dbg-fab--dragging' : ''}`}
-        style={{ left: position.x, top: position.y }}
-        aria-label="Hibabejelentő"
-        title="Hibabejelentő"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={() => endDrag(true)}
-        /* A rendszer által megszakított mutató (pl. bejövő hívás) NEM nyithat
-           menüt — de a húzást le kell zárni, különben a gomb beragad. */
-        onPointerCancel={() => endDrag(false)}
-      >
-        <span aria-hidden="true">🐞</span>
-      </button>
+      {!capturing ? (
+        <button
+          type="button"
+          className={`dbg-fab${dragging ? ' dbg-fab--dragging' : ''}`}
+          style={{ left: position.x, top: position.y }}
+          aria-label="Hibabejelentő"
+          title="Hibabejelentő"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={() => endDrag(true)}
+          /* A rendszer által megszakított mutató (pl. bejövő hívás) NEM nyithat
+             menüt — de a húzást le kell zárni, különben a gomb beragad. */
+          onPointerCancel={() => endDrag(false)}
+        >
+          <span aria-hidden="true">🐞</span>
+        </button>
+      ) : null}
 
       {panel === 'menu' ? (
         <div className="dbg-menu" role="dialog" aria-label="Hibabejelentő menü">
@@ -191,10 +229,16 @@ export function DebugFab({ recorder }: { recorder?: string }) {
           <div className="dbg-menu__panel">
             <span className="dbg-menu__title">Hibabejelentő</span>
 
-            <button type="button" className="dbg-menu__row" disabled>
-              <span aria-hidden="true">📷</span> Képernyőkép
-              <span className="dbg-menu__row-soon">natív rész, F2</span>
-            </button>
+            {isNativeApp() ? (
+              <button type="button" className="dbg-menu__row" onClick={openScreenshot}>
+                <span aria-hidden="true">📷</span> Képernyőkép
+              </button>
+            ) : (
+              <button type="button" className="dbg-menu__row" disabled>
+                <span aria-hidden="true">📷</span> Képernyőkép
+                <span className="dbg-menu__row-soon">csak natívban</span>
+              </button>
+            )}
             <button type="button" className="dbg-menu__row" disabled>
               <span aria-hidden="true">🎬</span> Videó
               <span className="dbg-menu__row-soon">natív rész, F3</span>
@@ -212,6 +256,12 @@ export function DebugFab({ recorder }: { recorder?: string }) {
             >
               <span aria-hidden="true">📜</span> Napló
             </button>
+
+            {screenshotError ? (
+              <p className="dbg-status dbg-status--error" role="alert">
+                {screenshotError}
+              </p>
+            ) : null}
 
             <p className="dbg-menu__note">
               A bejelentéshez a build, az eszköz, az útvonal, az engedélyek és a napló
@@ -262,6 +312,20 @@ export function DebugFab({ recorder }: { recorder?: string }) {
           title="Hiba bejelentése"
           lead="Írd le pár szóban, mi történt. A többit az app hozzáteszi."
           onClose={() => setPanel('none')}
+        />
+      ) : null}
+
+      {panel === 'screenshot' && screenshot ? (
+        <BugReportSheet
+          kind="screenshot"
+          recorder={recorder}
+          media={screenshot}
+          title="Képernyőkép beküldése"
+          lead="Ez a kép megy fel a report mellé. Írhatsz hozzá pár szót, de nem kötelező."
+          onClose={() => {
+            setScreenshot(null);
+            setPanel('none');
+          }}
         />
       ) : null}
     </>

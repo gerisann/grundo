@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui';
 import type { BugReportKind, BugReportSeverity } from '@/lib/api';
 import { submitBugReport } from '@/lib/bugReport';
@@ -28,6 +28,7 @@ export function BugReportSheet({
   kind,
   crash,
   recorder,
+  media,
   title,
   lead,
   onClose,
@@ -35,6 +36,8 @@ export function BugReportSheet({
   kind: BugReportKind;
   crash?: CrashHint;
   recorder?: string;
+  /** Már elkészült melléklet (pl. képernyőkép) — a beküldéssel együtt megy fel. */
+  media?: Blob;
   title: string;
   lead: string;
   onClose: () => void;
@@ -45,10 +48,19 @@ export function BugReportSheet({
   const [error, setError] = useState('');
   const [sentId, setSentId] = useState('');
 
+  // Az előnézet URL-je a mellékleten él, nem az állapoton — így nem generál
+  // újat minden renderkor, csak amikor tényleg más blob érkezik.
+  const mediaPreviewUrl = useMemo(() => (media ? URL.createObjectURL(media) : null), [media]);
+  useEffect(() => {
+    return () => {
+      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    };
+  }, [mediaPreviewUrl]);
+
   function submit() {
     setBusy(true);
     setError('');
-    submitBugReport({ kind, severity, note, crash, recorder })
+    submitBugReport({ kind, severity, note, crash, recorder }, media)
       .then(setSentId)
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : 'A bejelentést nem sikerült elküldeni.');
@@ -79,6 +91,10 @@ export function BugReportSheet({
         ) : (
           <>
             <p className="dbg-menu__note">{lead}</p>
+
+            {mediaPreviewUrl ? (
+              <img className="dbg-shot-preview" src={mediaPreviewUrl} alt="Képernyőkép előnézet" />
+            ) : null}
 
             <div className="dbg-sev">
               {SEVERITIES.map((item) => (
