@@ -1,18 +1,24 @@
 package app.grundo.android;
 
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.webkit.WebView;
 import android.view.PixelCopy;
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.ActivityCallback;
 import java.io.ByteArrayOutputStream;
 
 /**
@@ -71,5 +77,72 @@ public class BugReportPlugin extends Plugin {
             },
             new Handler(Looper.getMainLooper())
         );
+    }
+
+    @PluginMethod
+    public void startVideoRecording(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("A képernyőrögzítés nem indítható el.");
+            return;
+        }
+        MediaProjectionManager manager = (MediaProjectionManager) activity.getSystemService(
+            Context.MEDIA_PROJECTION_SERVICE
+        );
+        startActivityForResult(call, manager.createScreenCaptureIntent(), "videoPermissionResult");
+    }
+
+    @ActivityCallback
+    private void videoPermissionResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        Intent data = result.getData();
+        if (result.getResultCode() != Activity.RESULT_OK || data == null) {
+            call.reject("A képernyőrögzítést nem engedélyezted.");
+            return;
+        }
+        MediaProjectionRecordingService.start(
+            getContext(),
+            result.getResultCode(),
+            data,
+            new MediaProjectionRecordingService.StartCallback() {
+                @Override
+                public void onStarted() {
+                    call.resolve();
+                }
+
+                @Override
+                public void onError(String message) {
+                    call.reject(message);
+                }
+            }
+        );
+    }
+
+    @PluginMethod
+    public void stopVideoRecording(PluginCall call) {
+        MediaProjectionRecordingService.stop(new MediaProjectionRecordingService.StopCallback() {
+            @Override
+            public void onStopped(String uri, long durationMs) {
+                JSObject result = new JSObject();
+                result.put("uri", uri);
+                result.put("durationMs", durationMs);
+                call.resolve(result);
+            }
+
+            @Override
+            public void onError(String message) {
+                call.reject(message);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void deleteVideoRecording(PluginCall call) {
+        String uri = call.getString("uri");
+        if (uri == null || !MediaProjectionRecordingService.deleteCompleted(uri)) {
+            call.reject("A videófájl nem található.");
+            return;
+        }
+        call.resolve();
     }
 }

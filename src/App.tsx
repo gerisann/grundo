@@ -149,7 +149,7 @@ function NativePushActions() {
 }
 
 function Router() {
-  const { status, role } = useAuth();
+  const { status, role, user } = useAuth();
   const { status: profileStatus, profile } = useProfile();
   /**
    * A Dock CSAK a mentőlap alatt tűnik el.
@@ -336,7 +336,7 @@ function Router() {
       */}
       {debugAvailable ? (
         <Suspense fallback={null}>
-          <DebugLayer recorder={uploadStatus} />
+          <DebugLayer recorder={uploadStatus} uid={user?.uid ?? ''} />
         </Suspense>
       ) : null}
     </>

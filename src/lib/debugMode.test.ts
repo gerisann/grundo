@@ -84,6 +84,17 @@ describe('menet és crash-jelzés', () => {
     expect(debugMode.startAppSession('debug', '/')).toBeNull();
   });
 
+  it('a natív Crashlytics-jel rendesen lezártnak látszó debug menetet is igazol', async () => {
+    seedPreviousSession({ open: false, mode: 'debug' });
+    const debugMode = await load();
+    debugMode.startAppSession('debug', '/');
+
+    const hint = debugMode.confirmPreviousSessionCrash();
+
+    expect(hint?.previousSessionId).toBe('elozo-menet');
+    expect(hint?.nativeConfirmed).toBe(true);
+  });
+
   it('normál módú menet után nincs jelzés, akkor sem, ha nyitva maradt', async () => {
     seedPreviousSession({ open: true, mode: 'normal' });
     const debugMode = await load();

@@ -7,6 +7,8 @@ import { armBreadcrumbs, addBreadcrumb, disarmBreadcrumbs } from '@/lib/breadcru
 import {
   askModeOnStart,
   closeAppSession,
+  confirmPreviousSessionCrash,
+  currentSessionId,
   getAppMode,
   noteSessionMode,
   noteSessionRoute,
@@ -19,6 +21,7 @@ import {
   type AppMode,
   type CrashHint,
 } from '@/lib/debugMode';
+import { bindCrashlyticsSession, didNativeCrashPreviously } from '@/lib/crashlytics';
 import './debug.css';
 
 /**
@@ -37,7 +40,7 @@ import './debug.css';
  * docs/ai/terv-2026-09-09-bugreport-rendszer.md
  */
 
-export function DebugLayer({ recorder }: { recorder?: string }) {
+export function DebugLayer({ recorder, uid }: { recorder?: string; uid: string }) {
   const { pathname } = useLocation();
   const [mode, setMode] = useState<AppMode>(getAppMode);
   const [asking, setAsking] = useState(false);
@@ -49,6 +52,15 @@ export function DebugLayer({ recorder }: { recorder?: string }) {
     const hint = startAppSession(getAppMode(), window.location.pathname);
     setCrash(hint);
     setAsking(askModeOnStart());
+    let active = true;
+
+    void didNativeCrashPreviously()
+      .then((crashed) => {
+        if (!active || !crashed) return;
+        const confirmed = confirmPreviousSessionCrash();
+        if (confirmed) setCrash(confirmed);
+      })
+      .catch(() => undefined);
 
     /**
      * ⚠️ A `beforeunload` natív WebView-ban megbízhatatlan — a `pagehide` és a
@@ -70,12 +82,19 @@ export function DebugLayer({ recorder }: { recorder?: string }) {
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
+      active = false;
       window.removeEventListener('pagehide', onHide);
       window.removeEventListener('pageshow', onShow);
       document.removeEventListener('visibilitychange', onVisibility);
       closeAppSession();
     };
   }, []);
+
+  useEffect(() => {
+    // The key stored on a crash points to the session that was active at the
+    // time, while Firebase user ID makes the same event searchable by tester.
+    void bindCrashlyticsSession(currentSessionId(), uid).catch(() => undefined);
+  }, [uid]);
 
   /**
    * Az üzemmód a Beállításokból is átállítható — a réteg onnan is értesül
@@ -136,8 +155,10 @@ export function DebugLayer({ recorder }: { recorder?: string }) {
         kind="crash"
         crash={crash}
         recorder={recorder}
-        title="Az app váratlanul bezárult"
-        lead="Elküldöd, mi történt előtte? A napló és az utolsó képernyő automatikusan hozzákerül. Ha emlékszel rá, írd le, mit csináltál."
+        title={crash.nativeConfirmed ? 'Az app összeomlott' : 'Az app váratlanul bezárult'}
+        lead={crash.nativeConfirmed
+          ? 'A natív hibanyom elkészült. Elküldöd mellé, mi történt előtte? A napló és az utolsó képernyő automatikusan hozzákerül.'
+          : 'Elküldöd, mi történt előtte? A napló és az utolsó képernyő automatikusan hozzákerül. Ha emlékszel rá, írd le, mit csináltál.'}
         onClose={() => {
           setCrashDismissed(true);
           takeCrashHint();

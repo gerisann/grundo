@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faBug } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@/components/ui';
 import { BugReportSheet } from '@/components/BugReportSheet';
 import { readBreadcrumbs, type Breadcrumb } from '@/lib/breadcrumbs';
 import { isNativeApp } from '@/lib/platform';
 import { captureScreenshot } from '@/lib/screenshot';
+import {
+  MAX_VIDEO_DURATION_MS,
+  startVideoRecording,
+  stopVideoRecording,
+  type RecordedVideo,
+} from '@/lib/videoRecording';
 import './debug.css';
 
 /**
@@ -78,7 +86,7 @@ function fmtTime(t: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
 }
 
-type Panel = 'none' | 'menu' | 'report' | 'log' | 'screenshot';
+type Panel = 'none' | 'menu' | 'report' | 'log' | 'screenshot' | 'video';
 
 export function DebugFab({ recorder }: { recorder?: string }) {
   const [position, setPosition] = useState<Position>(readPosition);
@@ -90,6 +98,13 @@ export function DebugFab({ recorder }: { recorder?: string }) {
   const [capturing, setCapturing] = useState(false);
   const [screenshot, setScreenshot] = useState<Blob | null>(null);
   const [screenshotError, setScreenshotError] = useState('');
+  const [video, setVideo] = useState<RecordedVideo | null>(null);
+  const [videoError, setVideoError] = useState('');
+  const [recordingVideo, setRecordingVideo] = useState(false);
+  const [stoppingVideo, setStoppingVideo] = useState(false);
+  const [videoElapsedMs, setVideoElapsedMs] = useState(0);
+  const videoStartedAt = useRef(0);
+  const videoStopInFlight = useRef(false);
 
   /** A húzás állapota refben: a mozgás nem renderelhet minden mintánál. */
   const drag = useRef<{
@@ -198,9 +213,71 @@ export function DebugFab({ recorder }: { recorder?: string }) {
     });
   }, []);
 
+  const finishVideo = useCallback(() => {
+    if (videoStopInFlight.current) return;
+    videoStopInFlight.current = true;
+    setRecordingVideo(false);
+    setStoppingVideo(true);
+    stopVideoRecording()
+      .then((result) => {
+        setVideo(result);
+        setPanel('video');
+      })
+      .catch((cause: unknown) => {
+        setVideoError(cause instanceof Error ? cause.message : 'A videó nem készült el.');
+        setPanel('menu');
+      })
+      .finally(() => {
+        videoStopInFlight.current = false;
+        setStoppingVideo(false);
+      });
+  }, []);
+
+  const openVideo = useCallback(() => {
+    setPanel('none');
+    setVideoError('');
+    setVideoElapsedMs(0);
+    startVideoRecording()
+      .then(() => {
+        videoStartedAt.current = Date.now();
+        setRecordingVideo(true);
+      })
+      .catch((cause: unknown) => {
+        setVideoError(cause instanceof Error ? cause.message : 'A videórögzítés nem indult el.');
+        setPanel('menu');
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!recordingVideo) return;
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - videoStartedAt.current;
+      setVideoElapsedMs(Math.min(MAX_VIDEO_DURATION_MS, elapsed));
+      if (elapsed >= MAX_VIDEO_DURATION_MS) {
+        window.clearInterval(timer);
+        finishVideo();
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [finishVideo, recordingVideo]);
+
   return (
     <>
-      {!capturing ? (
+      {recordingVideo ? (
+        <button
+          type="button"
+          className="dbg-fab dbg-fab--recording"
+          style={{ left: position.x, top: position.y }}
+          aria-label="Videórögzítés leállítása"
+          title="Videórögzítés leállítása"
+          onClick={finishVideo}
+        >
+          <span aria-hidden="true">■</span>
+          <span className="dbg-fab__timer">
+            {Math.max(0, Math.ceil((MAX_VIDEO_DURATION_MS - videoElapsedMs) / 1000))}
+          </span>
+        </button>
+      ) : !capturing && !stoppingVideo ? (
         <button
           type="button"
           className={`dbg-fab${dragging ? ' dbg-fab--dragging' : ''}`}
@@ -214,7 +291,7 @@ export function DebugFab({ recorder }: { recorder?: string }) {
              menüt — de a húzást le kell zárni, különben a gomb beragad. */
           onPointerCancel={() => endDrag(false)}
         >
-          <span aria-hidden="true">🐞</span>
+          <FontAwesomeIcon icon={faBug} aria-hidden="true" />
         </button>
       ) : null}
 
@@ -239,10 +316,17 @@ export function DebugFab({ recorder }: { recorder?: string }) {
                 <span className="dbg-menu__row-soon">csak natívban</span>
               </button>
             )}
-            <button type="button" className="dbg-menu__row" disabled>
-              <span aria-hidden="true">🎬</span> Videó
-              <span className="dbg-menu__row-soon">natív rész, F3</span>
-            </button>
+            {isNativeApp() ? (
+              <button type="button" className="dbg-menu__row" onClick={openVideo}>
+                <span aria-hidden="true">🎬</span> Videó
+                <span className="dbg-menu__row-soon">legfeljebb 30 mp</span>
+              </button>
+            ) : (
+              <button type="button" className="dbg-menu__row" disabled>
+                <span aria-hidden="true">🎬</span> Videó
+                <span className="dbg-menu__row-soon">csak natívban</span>
+              </button>
+            )}
             <button type="button" className="dbg-menu__row" onClick={() => setPanel('report')}>
               <span aria-hidden="true">📝</span> Report
             </button>
@@ -260,6 +344,11 @@ export function DebugFab({ recorder }: { recorder?: string }) {
             {screenshotError ? (
               <p className="dbg-status dbg-status--error" role="alert">
                 {screenshotError}
+              </p>
+            ) : null}
+            {videoError ? (
+              <p className="dbg-status dbg-status--error" role="alert">
+                {videoError}
               </p>
             ) : null}
 
@@ -324,6 +413,21 @@ export function DebugFab({ recorder }: { recorder?: string }) {
           lead="Ez a kép megy fel a report mellé. Írhatsz hozzá pár szót, de nem kötelező."
           onClose={() => {
             setScreenshot(null);
+            setPanel('none');
+          }}
+        />
+      ) : null}
+
+      {panel === 'video' && video ? (
+        <BugReportSheet
+          kind="video"
+          recorder={recorder}
+          media={video.blob}
+          mediaDurationMs={video.durationMs}
+          title="Videó beküldése"
+          lead="Nézd meg a felvételt. Csak akkor kerül fel, ha a Küldésre koppintasz."
+          onClose={() => {
+            setVideo(null);
             setPanel('none');
           }}
         />

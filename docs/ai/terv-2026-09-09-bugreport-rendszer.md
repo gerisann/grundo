@@ -1,7 +1,9 @@
 # Terv — Bugreport rendszer (GRUNDO #44)
 
 > Készült: **2026-09-09** · Menet: **#44** · Modell: Opus, High
-> Állapot: **F1 kész** (megírva és ellenőrizve), F2–F4 tervezve
+> Állapot: **F1 kész és készüléken ellenőrizve; F2 iOS-en készüléken
+> ellenőrizve, Androidon ellenőrizendő; F3–F4 implementálva, új natív
+> buildekben és készüléken ellenőrizendő.**
 
 A tesztelők ma szóban jelentik a hibákat, és minden alkalommal ugyanaz a kör
 megy le: melyik buildben? melyik képernyőn? mi volt előtte? A cél, hogy egy
@@ -235,7 +237,35 @@ van. Kb. 60 sor platformonként.
 
 **A videó a legdrágább tétel.** Az Android `MediaProjection` minden indításkor
 rendszer-engedélykérdést ad (ez nem kerülhető meg), és előtérszolgáltatást
-igényel; az iOS `ReplayKit` a mikrofonra kérdezhet rá. Ezért van a sor végén.
+igényel. Az iOS `ReplayKit` mikrofonját a megvalósítás kikapcsolja: a
+hibabejelentéshez nincs szükség beszéd rögzítésére. Ezért van a sor végén.
+
+### F3–F4 — megvalósítás (2026-09-09)
+
+- A videó natív cache-fájlba készül, nem base64-en megy át a Capacitor
+  bridge-en. A WebView csak a kész MP4-et olvassa Blobbá, majd törli a natív
+  ideiglenes fájlt.
+- Mindkét natív oldal 30 másodpercnél önállóan leáll. Androidon H.264/MP4,
+  legfeljebb 1280 px hosszú él és 4 Mbps bitráta tartja 50 MB alatt a fájlt.
+- Androidon minden indítás rendszerengedélyes `MediaProjection`, és a teljes
+  munkamenet `mediaProjection` típusú foreground service-ben él. iOS-en
+  `RPScreenRecorder`, kikapcsolt mikrofonnal rögzít.
+- A kész videó beküldés előtt lejátszható; csak a kézi Küldés tölti fel. A
+  Storage-hivatkozás `video/mp4`, `.mp4` fájlnév és `durationMs` metaadat.
+- F4 a `@capacitor-firebase/crashlytics` Capacitor 8 plugin. A natív eseményhez
+  `grundo.sessionId` custom key és Firebase UID kerül; az adminban látható
+  előző session ID-val így a Firebase konzolban kereshető a stack trace.
+- iOS-en az App target utolsó build phase-e feltölti a dSYM-et a Crashlytics
+  SPM scriptjével; Androidon a Crashlytics Gradle plugin készíti a mappinget.
+
+### F2 — iOS készülékes ellenőrzés (2026-09-09)
+
+- [x] Elkészül a képernyőkép.
+- [x] A Mapbox térkép látszik a képen.
+- [x] A debug gomb és a nyitott debug menü nem kerül rá a képre.
+- [x] A feltöltött kép megnyílik az adminfelületen.
+
+Az Android `PixelCopy` ág készülékes ellenőrzése továbbra is nyitott.
 
 ---
 

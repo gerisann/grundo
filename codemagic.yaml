@@ -43,6 +43,9 @@ workflows:
           grep -q "CapacitorFirebaseMessaging" ios/App/CapApp-SPM/Package.swift
           grep -q "CapacitorFirebaseAppCheck" ios/App/CapApp-SPM/Package.swift
           grep -q "CapacitorFirebaseAuthentication" ios/App/CapApp-SPM/Package.swift
+          grep -q "CapacitorFirebaseCrashlytics" ios/App/CapApp-SPM/Package.swift
+          grep -q "Crashlytics/run" ios/App/App.xcodeproj/project.pbxproj
+          grep -q '"-ObjC"' ios/App/App.xcodeproj/project.pbxproj
           REVERSED_CLIENT_ID="$(/usr/libexec/PlistBuddy -c 'Print :REVERSED_CLIENT_ID' ios/App/App/GoogleService-Info.plist)"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' ios/App/App/Info.plist \
             | grep -qx "$REVERSED_CLIENT_ID"
@@ -155,6 +158,8 @@ workflows:
           grep -q "applicationId \"$ANDROID_APPLICATION_ID\"" android/app/build.gradle
           grep -q 'targetSdkVersion = 36' android/variables.gradle
           grep -q 'FOREGROUND_SERVICE_LOCATION' android/app/src/main/AndroidManifest.xml
+          grep -q 'FOREGROUND_SERVICE_MEDIA_PROJECTION' android/app/src/main/AndroidManifest.xml
+          grep -q 'com.google.firebase.crashlytics' android/app/build.gradle
           ! grep -q 'ACCESS_BACKGROUND_LOCATION' android/app/src/main/AndroidManifest.xml
           ! grep -q 'ACTIVITY_RECOGNITION' android/app/src/main/AndroidManifest.xml
 

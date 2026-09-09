@@ -41,6 +41,8 @@ export interface CrashHint {
   lastRoute: string;
   startedAt: number;
   seenAt: number;
+  /** Crashlytics confirmed that the previous native process crashed. */
+  nativeConfirmed?: boolean;
 }
 
 /* ── Tároló, ami minden környezetben elviselhető ─────────────────────────── */
@@ -118,6 +120,18 @@ function newId(): string {
 
 let session: SessionRecord | null = null;
 let crashHint: CrashHint | null = null;
+let previousSession: SessionRecord | null = null;
+
+function hintFromPrevious(nativeConfirmed = false): CrashHint | null {
+  if (!previousSession || previousSession.mode !== 'debug') return null;
+  return {
+    previousSessionId: previousSession.id,
+    lastRoute: previousSession.route,
+    startedAt: previousSession.startedAt,
+    seenAt: previousSession.seenAt,
+    ...(nativeConfirmed ? { nativeConfirmed: true } : {}),
+  };
+}
 
 function persist(): void {
   if (!session) return;
@@ -151,20 +165,21 @@ function readPrevious(): SessionRecord | null {
  * lenne azon kívül, hogy „bezárult" — és a felhasználó nem is tesztelő.
  */
 export function startAppSession(currentMode: AppMode, route: string): CrashHint | null {
-  const previous = readPrevious();
-  if (previous && previous.open && previous.mode === 'debug') {
-    crashHint = {
-      previousSessionId: previous.id,
-      lastRoute: previous.route,
-      startedAt: previous.startedAt,
-      seenAt: previous.seenAt,
-    };
-  }
+  crashHint = null;
+  previousSession = readPrevious();
+  if (previousSession?.open) crashHint = hintFromPrevious();
 
   const now = Date.now();
   session = { id: newId(), startedAt: now, mode: currentMode, route, open: true, seenAt: now };
   persist();
   return crashHint;
+}
+
+/** Upgrades the heuristic hint with Crashlytics' native crash evidence. */
+export function confirmPreviousSessionCrash(): CrashHint | null {
+  const confirmed = hintFromPrevious(true);
+  if (confirmed) crashHint = confirmed;
+  return confirmed;
 }
 
 /** A jelzés EGYSZER kérhető le — a felajánlás után nem jöhet vissza. */

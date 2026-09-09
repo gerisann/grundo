@@ -115,12 +115,18 @@ async function attachMedia(
   uploadPrefix: string,
   media: Blob,
   contentType: string,
+  durationMs?: number,
 ): Promise<void> {
   if (!storage) throw new BugReportMediaError('A feltöltés nincs beállítva.');
-  const extension = contentType === 'image/png' ? 'png' : 'bin';
+  const extension = contentType === 'image/png' ? 'png' : contentType === 'video/mp4' ? 'mp4' : 'bin';
   const path = `${uploadPrefix}${Date.now()}.${extension}`;
   await uploadBytes(ref(storage, path), media, { contentType });
-  await api.attachBugReportMedia(reportId, { path, contentType, bytes: media.size });
+  await api.attachBugReportMedia(reportId, {
+    path,
+    contentType,
+    bytes: media.size,
+    ...(durationMs == null ? {} : { durationMs }),
+  });
 }
 
 /**
@@ -130,12 +136,16 @@ async function attachMedia(
  * dokumentum létrehozása UTÁN történik — az `uploadPrefix` a `reportId`-t is
  * tartalmazza, tehát fordítva nem menne.
  */
-export async function submitBugReport(draft: BugReportDraft, media?: Blob): Promise<string> {
+export async function submitBugReport(
+  draft: BugReportDraft,
+  media?: Blob,
+  mediaDurationMs?: number,
+): Promise<string> {
   const input = await buildBugReport(draft);
   const created = await api.submitBugReport(input);
   if (media) {
     const contentType = draft.kind === 'screenshot' ? 'image/png' : media.type || 'application/octet-stream';
-    await attachMedia(created.reportId, created.uploadPrefix, media, contentType);
+    await attachMedia(created.reportId, created.uploadPrefix, media, contentType, mediaDurationMs);
   }
   return created.reportId;
 }

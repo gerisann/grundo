@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'com.google.firebase.crashlytics'
 
 def releaseKeystorePath = System.getenv('CM_KEYSTORE_PATH')
 def releaseVersionCode = (System.getenv('BUILD_NUMBER') ?: '1').toInteger()

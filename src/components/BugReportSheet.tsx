@@ -29,6 +29,7 @@ export function BugReportSheet({
   crash,
   recorder,
   media,
+  mediaDurationMs,
   title,
   lead,
   onClose,
@@ -38,6 +39,8 @@ export function BugReportSheet({
   recorder?: string;
   /** Már elkészült melléklet (pl. képernyőkép) — a beküldéssel együtt megy fel. */
   media?: Blob;
+  /** Video length stored next to the media reference for admin triage. */
+  mediaDurationMs?: number;
   title: string;
   lead: string;
   onClose: () => void;
@@ -60,7 +63,7 @@ export function BugReportSheet({
   function submit() {
     setBusy(true);
     setError('');
-    submitBugReport({ kind, severity, note, crash, recorder }, media)
+    submitBugReport({ kind, severity, note, crash, recorder }, media, mediaDurationMs)
       .then(setSentId)
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : 'A bejelentést nem sikerült elküldeni.');
@@ -92,7 +95,9 @@ export function BugReportSheet({
           <>
             <p className="dbg-menu__note">{lead}</p>
 
-            {mediaPreviewUrl ? (
+            {mediaPreviewUrl && media?.type === 'video/mp4' ? (
+              <video className="dbg-shot-preview" src={mediaPreviewUrl} controls playsInline />
+            ) : mediaPreviewUrl ? (
               <img className="dbg-shot-preview" src={mediaPreviewUrl} alt="Képernyőkép előnézet" />
             ) : null}
 

@@ -15,4 +15,7 @@
     <string name="tracking_metric_distance">TÁV</string>
     <string name="tracking_metric_time">IDŐ</string>
     <string name="tracking_metric_speed">SEBESSÉG</string>
+    <string name="video_channel_name">Hibabejelentő videó</string>
+    <string name="video_notification_title">GRUNDO képernyőrögzítés</string>
+    <string name="video_notification_text">A hibabejelentő videót készít, legfeljebb 30 másodpercig</string>
 </resources>

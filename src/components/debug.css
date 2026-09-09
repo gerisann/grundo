@@ -88,7 +88,8 @@
   height: 48px;
   border: 1px solid var(--border-subtle);
   border-radius: 50%;
-  background: var(--bg-secondary);
+  background: var(--debug-fab-bg);
+  color: var(--debug-fab-icon);
   box-shadow: 0 4px 16px var(--shadow);
   font-size: 22px;
   line-height: 1;
@@ -103,6 +104,21 @@
 .dbg-fab--dragging {
   cursor: grabbing;
   opacity: 0.85;
+}
+
+.dbg-fab--recording {
+  grid-template-columns: auto auto;
+  gap: 4px;
+  width: 64px;
+  border-color: var(--danger);
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.dbg-fab__timer {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 /* ── Menü ─────────────────────────────────────────────────────────────────── */

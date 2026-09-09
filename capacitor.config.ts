@@ -1,6 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 import type {} from '@capacitor-firebase/app-check';
 import type {} from '@capacitor-firebase/authentication';
+import type {} from '@capacitor-firebase/crashlytics';
 import type {} from '@capacitor-firebase/messaging';
 
 const config: CapacitorConfig = {
@@ -47,6 +48,9 @@ const config: CapacitorConfig = {
             symlink: true,
           },
           '@capacitor-firebase/messaging': {
+            symlink: true,
+          },
+          '@capacitor-firebase/crashlytics': {
             symlink: true,
           },
         },
