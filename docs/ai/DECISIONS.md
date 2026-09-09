@@ -327,3 +327,54 @@ szükség, és akkor is célzottan (`grep`-pel a fejezetcímre).
 - A `GameLoopActivity`, a Test Lab intent-filter és a loops metaadat kizárólag
   `android/app/src/debug` alatt létezhet; release-be nem kerülhet. A Game Loop
   webcsomag sem kiadási csomag: az éles webbuildhez a rendes build szükséges.
+
+## iOS hangzár: a feloldás HALLHATÓ, és soha nem némítható (2026-09-09)
+
+Négy éles némulás után mérve (GRUNDO #43, Geri iPhone-ján, iOS build 48–50).
+**Ezt soha ne csináld vissza.**
+
+- iOS-en a `HTMLMediaElement.volume` írása **csak addig hatástalan, amíg az
+  elem nincs betöltve**. Betöltött elemen a `volume = 0` ÉRVÉNYRE JUT — és egy
+  néma lejátszás **nem aktiválja az AVAudioSessiont**, tehát utána az app
+  MINDEN hangja néma marad.
+- A hangzár feloldásához **valódi, hallható, végigfutó** lejátszás kell. Nem az
+  elemek SZÁMA számít: **egyetlen** elem elég, és azon keresztül a fel NEM
+  oldott elemek is megszólalnak.
+- Ezért natív iOS-en a feloldás: **egy saját elem** (`cell-captured`), a hang
+  **elejétől**, `volume` állítása és `currentTime`-ugratás **nélkül**. A
+  `UNLOCK_TAIL_S` (a hang végére ugrás) iOS-en tilos — csak azért „működött"
+  évekig, mert a `duration` mindig `NaN` volt, és csendben kimaradt.
+- ⚠️ A `primeSounds()` **nem futhat a `Dock` mountjában**. Ott előtölti az
+  elemeket, amitől a `volume = 0` hatni kezd — pontosan ez némította el a 49-es
+  és 50-es iOS buildet.
+- **Weben és Androidon nem szabad szűkíteni**: ott nincs Capacitor, a WebKit
+  gesztus-kapuja ÉL és elemenként érvényes, tehát minden elem kap (néma)
+  feloldást. iPhone Safari a WEBES ághoz tartozik, nem a natívhoz.
+- Az `AVAudioSession` `.playback` + `.mixWithOthers` (`AppDelegate.swift`): a
+  hang a némító kapcsolótól függetlenül szól és Bluetooth-ra is kimegy, a zene
+  pedig megy tovább. Mivel így a készülék néma kapcsolója nem állít meg minket,
+  a rögzítés felületén **kötelező** a némító gomb (`.track__mute`).
+
+## iOS helyzet-engedély: az „Always" életünkben egyszer (2026-09-09)
+
+- Az `requestAlwaysAuthorization()` **két külön helyen**, korlátlanul futott
+  (`start()` és `locationManagerDidChangeAuthorization`), egyik sem emlékezett
+  a felhasználó döntésére — egy tesztelőnek háromszor kellett engedélyt adnia.
+- Mostantól `requestAlwaysOnce()` megy mindkét helyen, `UserDefaults` jelzővel.
+  Aki nemet mondott, azt nem zaklatjuk többé; az „Always" a rendszer
+  Beállításaiban bármikor megadható.
+- A rendszerpárbeszéd elé **magyarázó képernyő** kell (`LocationPrimer`): egy
+  elutasított engedélyt az appból többé nem lehet újra kérni.
+
+## Szerver-szkriptek futtatása (2026-09-09)
+
+- A `server/src/scripts/` szkriptjei **csak a `server` mappából** futnak —
+  kívülről nem látják a `firebase-admin`-t.
+- **Kell melléjük `GOOGLE_CLOUD_PROJECT=grundo`**: a fejlesztői gépen nincs
+  beállítva, és a hiányából adódó hiba félrevezető („Unable to detect a Project
+  Id in the current environment"), mert nem a hitelesítésre panaszkodik.
+- A `FIRESTORE_DATABASE_ID` alapértelmezése helyesen `grundo-db`
+  (`server/src/lib/firebase.ts`), azt nem kell megadni.
+- Az egy dokumentumra szóló, egyszeri javítószkriptek **nem verziókövetettek**;
+  a helyük a `tmp/`. Írjanak száraz futást alapértelmezésben, és legyenek
+  idempotensek, hogy utólag ellenőrizhető legyen, lefutottak-e már.

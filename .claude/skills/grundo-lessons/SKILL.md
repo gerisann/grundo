@@ -165,3 +165,35 @@ láthatók maradtak.
 először és a legszűkebb collection scope-ban.** Collection-group queryt csak
 deklarált indexszel használj, és ne tedd ugyanabba az all-or-nothing párhuzamos
 blokkba olyan művelettel, amelynek mindenképp le kell futnia.
+
+## 15. A védelem, ami sosem futott le, nem védelem
+
+A hangzár feloldása „némán" működött: a lejátszás a hang utolsó 50 ms-ára
+ugrott (`UNLOCK_TAIL_S`). Csakhogy ez az ugratás **`duration`-t igényel**, ami
+a metaadat betöltéséig `NaN` — és a `primeSounds()` addig egyedül a
+`TrackingScreen`-en futott, tehát a Kezdőlapról indítva a `duration` MINDIG
+`NaN` volt. A védelem évekig **csendben kimaradt**; a kód „működött", de nem
+attól, amitől hitte.
+
+Amikor a `primeSounds()`-t előrevittem — jó szándékkal, hogy a hangok hossza
+időben ismert legyen —, a védelem életbe lépett, és **két egymás utáni iOS
+buildet elnémított**.
+
+**Ha egy ág feltételhez kötött, nézd meg, hogy a feltétel teljesül-e valaha.**
+Egy `if (Number.isFinite(x))` ág, ami a gyakorlatban sosem fut, nem
+biztonsági háló, hanem rejtett bomba: az első „ártalmatlan" változtatás,
+ami a feltételt igazzá teszi, élesen robban. Írj rá tesztet arra az ágra is,
+amelyikről azt hiszed, sosem aktív.
+
+## 16. A tünet megszűnése nem igazolja a diagnózist
+
+A befejezés gomb „random" megszakadására négy megszakító eseményt találtam
+(`pointerup`, `pointerleave`, `pointercancel`, `blur`), és a mutató-elfogás
+hiányát neveztem meg okként. Geri jelezte, hogy a gomb megjavult — csakhogy a
+javításom **abban a buildben nem is volt benne**: a tünetet a hangterhelés
+csökkenése szüntette meg (51 → 1 `<audio>` elem).
+
+**Mielőtt egy javítást sikeresnek könyvelsz el, ellenőrizd, hogy a tesztelt
+build TARTALMAZZA-E.** Kérdezd meg a build számát/commitját, ne a
+tünetváltozásból következtess. Két egyszerre változó dolog mellett a
+tünetmegszűnés semmit nem bizonyít arról, melyik változás okozta.
