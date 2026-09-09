@@ -197,3 +197,20 @@ csökkenése szüntette meg (51 → 1 `<audio>` elem).
 build TARTALMAZZA-E.** Kérdezd meg a build számát/commitját, ne a
 tünetváltozásból következtess. Két egyszerre változó dolog mellett a
 tünetmegszűnés semmit nem bizonyít arról, melyik változás okozta.
+
+## 17. A magyarázó felület nem gátol semmit magától
+
+A helyengedély elé kért magyarázó képernyőt megcsináltam, és meg is jelent —
+csakhogy a rendszer engedélykérdése **azonnal ráugrott**, mert a
+`TrackingScreen` a mountján kért helyzetet, a magyarázattól függetlenül. A
+felhasználó egy szót sem tudott elolvasni abból, amit épp elé tettem.
+
+A második fele ugyanennek: a magyarázat **kettő** rendszerablakot ígért, a
+valóságban **három** jött, és a második angol nyelvű volt.
+
+**Ha egy képernyőt „valami elé" teszel, mondd meg a kódban is, hogy MIT gátol.**
+A megjelenítés nem sorrend: a gátolt műveletnek ugyanattól a jelzőtől kell
+függenie, amitől a képernyő láthatósága. És **a folyamatot mérni kell, nem
+elképzelni** — a rendszerablakok számát és szövegét a felhasználó jelentéséből
+vagy készülékről vedd, ne az API dokumentációjából. (Vö. 15.: ott a védelem
+sosem futott le; itt lefutott, csak nem védett semmit.)
