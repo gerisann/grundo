@@ -69,8 +69,26 @@ Beállítások → Hangok főkapcsolójával azonos értéket állít.
 - `tsc --noEmit` kliens **és** szerver: zöld.
 - `npm run test`: 848 zöld, 181 skip.
 - `npm run build`: zöld.
+- A `8b29f3f0` aktivitás Timestamp-kérdése **ellenőrizve és lezárva**: a száraz
+  futás szerint a `startedAt`/`endedAt` már `Timestamp` típusú, a javítás tehát
+  korábban megtörtént. A `tmp/fixTimestampFields8b29.ts` elvégezte a dolgát,
+  törölhető.
 - ⚠️ A natív változások (AVAudioSession, `requestAlwaysOnce`) **készüléken
   nincsenek igazolva** — teszt ezt nem is bizonyíthatja.
+
+## Szerver-szkriptek futtatása (mérve, 2026-09-09)
+
+A `server/src/scripts/` alatti egyszeri szkriptek **csak a `server` mappából**
+futnak — kívülről nem látják a `firebase-admin`-t —, és **kell melléjük a
+projektazonosító**, mert a fejlesztői gépen nincs beállítva:
+
+```
+cd server && GOOGLE_CLOUD_PROJECT=grundo npx tsx src/scripts/<nev>.ts
+```
+
+Enélkül a hiba félrevezető: „Unable to detect a Project Id in the current
+environment". A `FIRESTORE_DATABASE_ID` alapértelmezése helyesen `grundo-db`
+(`server/src/lib/firebase.ts`), azt nem kell megadni.
 
 ## Nyitott ügyek
 
@@ -79,10 +97,6 @@ Beállítások → Hangok főkapcsolójával azonos értéket állít.
   is szól** · némító gomb működik · tulajdonos-kártya a rögzítés oldalon is ·
   a kártya nyila háromszög · új telepítésnél **csak két** engedélykérdés, a
   magyarázó képernyő után.
-- ⚠️ **Nyitott adatkérdés:** a `8b29f3f0-4785-4116-b4a1-293ab3ecd8bb`
-  aktivitás `startedAt`/`endedAt` mezői nyers számként íródtak vissza
-  (Timestamp helyett). Javító szkript: `tmp/fixTimestampFields8b29.ts` (száraz
-  futás az alapértelmezés). **Nem tudjuk, lefutott-e már.**
 - A térképrajzolás (Mapbox `setData`/GPU) önálló mérőszáma hiányzik a
   `perfMeter`-ből.
 - 2. teljesítmény-cél: valódi, nem szimulált hosszú terepi validálás hiányzik.
