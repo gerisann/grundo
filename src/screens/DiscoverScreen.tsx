@@ -8,6 +8,7 @@ import { RivalBadge } from '@/components/RivalBadge';
 import { Button, EmptyState, OptionSwitch } from '@/components/ui';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/ProfileProvider';
+import { currentPosition } from '@/lib/currentPosition';
 import { api, ApiError, type DiscoverUser, type FeedActivity, type FollowStatus } from '@/lib/api';
 import '@/screens/search.css';
 import '@/components/feed.css';
@@ -237,15 +238,10 @@ function DiscoverFeed() {
 
   useEffect(() => {
     if (view !== 'local' || position !== null) return;
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setPositionDenied(true);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (p) => setPosition({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => setPositionDenied(true),
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
-    );
+    /* ⚠️ Natívban SOHA nem a `navigator.geolocation` — lásd `currentPosition`. */
+    void currentPosition()
+      .then((fix) => setPosition({ lat: fix.lat, lng: fix.lng }))
+      .catch(() => setPositionDenied(true));
   }, [view, position]);
 
   useEffect(() => {

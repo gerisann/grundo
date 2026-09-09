@@ -17,6 +17,9 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 import java.util.List;
 
 /** Capacitor bridge for the GRUNDO Android location foreground service. */
@@ -131,6 +134,66 @@ public final class BackgroundLocationPlugin extends Plugin {
         // The foreground service may still start after denial, but Android 13+
         // then shows it only in the system task manager instead of the notification drawer.
         startService(call);
+    }
+
+    /**
+     * Egyszeri pozíció a térkép középre igazításához.
+     *
+     * Ezért van egyáltalán: a WebView navigator.geolocation hívása natívban
+     * egy MÁSODIK, oldal-szintű engedélykérdést is felhoz a rendszer
+     * engedélykérése mellé (iOS-en mérve, 2026-09-09, angol nyelvű
+     * "localhost" ablakként). A natív út ezt megkerüli — nincs weboldal,
+     * ami engedélyt kérne. Az Android WebView másképp viselkedik, de a
+     * kliensoldali kód így mindkét platformon ugyanazt hívja.
+     *
+     * A háttér-engedélyt (ACCESS_BACKGROUND_LOCATION) NEM kéri: az a
+     * rögzítés indításának a dolga.
+     */
+    @PluginMethod
+    public void getCurrentPosition(PluginCall call) {
+        if (!locationServicesEnabled()) {
+            call.reject("A helymeghatározás ki van kapcsolva a készüléken.", "location_disabled");
+            return;
+        }
+        if (!hasFineLocationPermission()) {
+            requestPermissionForAlias(LOCATION_PERMISSION, call, "currentPositionPermissionCallback");
+            return;
+        }
+        resolveCurrentPosition(call);
+    }
+
+    @PermissionCallback
+    private void currentPositionPermissionCallback(PluginCall call) {
+        if (!hasFineLocationPermission()) {
+            call.reject("Nincs helyhozzáférés.", "permission_denied");
+            return;
+        }
+        resolveCurrentPosition(call);
+    }
+
+    private void resolveCurrentPosition(PluginCall call) {
+        try {
+            FusedLocationProviderClient client = LocationServices.getFusedLocationProviderClient(getContext());
+            client
+                .getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+                .addOnSuccessListener(location -> {
+                    if (location == null) {
+                        // A rendszer null-t is adhat (kikapcsolt GPS, üres
+                        // gyorsítótár): ez nem hiba, csak nincs fixünk.
+                        call.reject("Nem sikerült helyzetet mérni.", "unavailable");
+                        return;
+                    }
+                    JSObject result = new JSObject();
+                    result.put("lat", location.getLatitude());
+                    result.put("lng", location.getLongitude());
+                    result.put("accuracy", location.getAccuracy());
+                    result.put("t", location.getTime());
+                    call.resolve(result);
+                })
+                .addOnFailureListener(error -> call.reject("Nem sikerült helyzetet mérni.", "unavailable", error));
+        } catch (SecurityException error) {
+            call.reject("Nincs helyhozzáférés.", "permission_denied", error);
+        }
     }
 
     @PluginMethod

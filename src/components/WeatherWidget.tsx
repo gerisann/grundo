@@ -3,6 +3,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { useAuth } from '@/hooks/AuthProvider';
 import { db } from '@/lib/firebase';
+import { currentPosition } from '@/lib/currentPosition';
 import { api, apiConfigured, ApiError, type WeatherResult } from '@/lib/api';
 import './weatherWidget.css';
 
@@ -80,23 +81,19 @@ export function WeatherWidget() {
   /* ── 2. Kérésre: a böngésző helymeghatározása ────────────────── */
 
   const askPosition = useCallback(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setFailed(true);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
+    /*
+      Az időjáráshoz NEM kell pontos fix: egy városnyi pontosság bőven elég,
+      és a `maxAgeMs` miatt egy nemrég mért helyzet azonnal jó — nem kapcsol
+      be a GPS a semmiért.
+
+      ⚠️ Natívban SOHA nem a `navigator.geolocation` — lásd `currentPosition`.
+    */
+    void currentPosition({ maxAgeMs: 600_000 })
+      .then((fix) => {
         setNeedsPosition(false);
-        setPosition({ lat: p.coords.latitude, lon: p.coords.longitude });
-      },
-      () => setFailed(true),
-      /*
-        Az időjáráshoz NEM kell pontos fix: egy városnyi pontosság bőven elég,
-        és a `maximumAge` miatt egy nemrég mért helyzet azonnal jó — nem
-        kapcsol be a GPS a semmiért.
-      */
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 600_000 },
-    );
+        setPosition({ lat: fix.lat, lon: fix.lng });
+      })
+      .catch(() => setFailed(true));
   }, []);
 
   /* ── 3. Az időjárás lekérése ─────────────────────────────────── */

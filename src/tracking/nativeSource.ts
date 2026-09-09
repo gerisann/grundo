@@ -40,6 +40,17 @@ interface BackgroundLocationPlugin {
     notificationPermission?: 'granted' | 'not_granted';
   }>;
   stop(): Promise<void>;
+  /**
+   * Egyszeri fix a térkép középre igazításához — NEM méréshez.
+   *
+   * ⚠️ Ez azért létezik, hogy a natív app SOHA ne hívja a WebView
+   * `navigator.geolocation` API-ját. Az ugyanis a rendszer engedélykérdése
+   * mellé egy MÁSODIK, oldal-szintű kérdést is felhoz, amit a WebKit a saját
+   * processzünkben rajzol — iOS-en angolul, a Capacitor kiszolgálójának
+   * nevével („localhost would like to use your current location”, mérve
+   * 2026-09-09). A natív út ezt megkerüli.
+   */
+  getCurrentPosition(): Promise<{ lat: number; lng: number; accuracy: number; t: number }>;
   syncActivity(options: PositionActivityState): Promise<void>;
   drain(): Promise<{ locations: NativeLocation[] }>;
   addListener(eventName: 'location', listenerFunc: (location: NativeLocation) => void): Promise<PluginListenerHandle>;
@@ -50,6 +61,32 @@ interface BackgroundLocationPlugin {
 }
 
 const BackgroundLocation = registerPlugin<BackgroundLocationPlugin>('BackgroundLocation');
+
+/**
+ * Egyszeri natív fix — a térkép kiindulási középpontjához.
+ *
+ * ⚠️ NEM a méréshez való: az a `NativePositionSource` dolga. Ez a hívás
+ * kizárólag a `navigator.geolocation` KIVÁLTÁSÁRA létezik natív appban, mert
+ * a WebView geolocation API-ja egy fölösleges, oldal-szintű engedélykérdést
+ * is felhoz (lásd a `getCurrentPosition` fejlécét fent).
+ *
+ * A hívó dolga eldönteni, hogy natív-e a platform — itt nem ágazunk el, hogy
+ * a modul tesztelhető maradjon.
+ */
+export async function nativeCurrentPosition(): Promise<{
+  lat: number;
+  lng: number;
+  accuracyM: number;
+  at: number;
+}> {
+  const fix = await BackgroundLocation.getCurrentPosition();
+  return {
+    lat: fix.lat,
+    lng: fix.lng,
+    accuracyM: Number.isFinite(fix.accuracy) ? fix.accuracy : 99_999,
+    at: Number.isFinite(fix.t) && fix.t > 0 ? fix.t : Date.now(),
+  };
+}
 
 export class NativePositionSource implements PositionSource {
   readonly name = 'native';

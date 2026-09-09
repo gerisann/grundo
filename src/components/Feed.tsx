@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, OptionSwitch } from '@/components/ui';
 import { ActivityCard } from '@/components/ActivityCard';
 import { useActivities } from '@/hooks/useActivities';
+import { currentPosition } from '@/lib/currentPosition';
 import type { FeedActivity, FeedResult, FeedScope } from '@/lib/api';
 import './feed.css';
 
@@ -107,15 +108,10 @@ export function Feed() {
 
   useEffect(() => {
     if (tab !== 'global' || view !== 'local' || position !== null) return;
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setPositionDenied(true);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (p) => setPosition({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => setPositionDenied(true),
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
-    );
+    /* ⚠️ Natívban SOHA nem a `navigator.geolocation` — lásd `currentPosition`. */
+    void currentPosition()
+      .then((fix) => setPosition({ lat: fix.lat, lng: fix.lng }))
+      .catch(() => setPositionDenied(true));
   }, [tab, view, position]);
 
   const scope: FeedScope =

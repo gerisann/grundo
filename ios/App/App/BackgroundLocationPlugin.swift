@@ -20,9 +20,39 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drain", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "syncActivity", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getCurrentPosition", returnType: CAPPluginReturnPromise),
     ]
 
     private let locationManager = CLLocationManager()
+
+    /**
+     KÜLÖN MANAGER AZ EGYSZERI FIXHEZ — és ez nem stílus kérdése.
+
+     A `locationManager` `didUpdateLocations` visszahívása MINDEN pontot a
+     rögzítés sorába tesz (`enqueue`). Ha a térkép középre igazításához kért
+     egyetlen fix ugyanazon a manageren jönne, az bekerülne egy éppen futó
+     vagy később induló aktivitás nyomvonalába — egy olyan pont, amit a
+     felhasználó nem is mozogva tett meg. A két forgalmat ezért a delegate is
+     a manager azonossága szerint választja szét.
+     */
+    private lazy var oneShotManager: CLLocationManager = {
+        let manager = CLLocationManager()
+        manager.delegate = self
+        // A térkép középre állításához száz méter bőven elég, és jóval
+        // kevesebb energiába kerül, mint a `kCLLocationAccuracyBest`.
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        return manager
+    }()
+    /**
+     A még válaszra váró `getCurrentPosition` hívások.
+
+     A hívást SAJÁT MAGUNK tartjuk életben: a bridge `keepAlive` jelzője csak
+     a mentett hívások nyilvántartásáról szól, a `resolve` closure enélkül is
+     érvényes marad (`CapacitorBridge.swift`). Így a válasz akkor is megérkezik
+     a JS-hez, ha az engedélykérdés után percekkel jön az első fix.
+     */
+    private var pendingPositionCalls: [CAPPluginCall] = []
+    private var awaitingPositionAuthorization = false
     /** A korábbi, 500 pontos UserDefaults-sor frissítés utáni beolvasásához. */
     private let legacyQueueKey = "grundo.backgroundLocationQueue.v1"
     /** Androiddal azonos, többórás rögzítésre méretezett felső korlát. */
@@ -155,6 +185,58 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
         }
     }
 
+    /**
+     EGYSZERI POZÍCIÓ a térkép középre igazításához.
+
+     ⚠️ EZÉRT VAN EGYÁLTALÁN: a WebView `navigator.geolocation` hívása
+     natívban KÉT rendszerablakot hoz — a CoreLocation magyar kérdését, és a
+     WebKit saját, OLDAL-SZINTŰ kérdését, ami a mi processzünkben rajzolódik,
+     ezért angolul és a Capacitor kiszolgálójának nevével („localhost would
+     like to use your current location"). Mérve: iPhone, 2026-09-09. Ez a
+     natív út a másodikat teljesen megkerüli — nincs weboldal, ami engedélyt
+     kérne.
+
+     A `whenInUse` szintnél többet NEM kér: a „Mindig" a rögzítés indításának
+     a dolga (`start` → `requestAlwaysOnce`).
+     */
+    @objc func getCurrentPosition(_ call: CAPPluginCall) {
+        switch oneShotManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            pendingPositionCalls.append(call)
+            oneShotManager.requestLocation()
+        case .notDetermined:
+            pendingPositionCalls.append(call)
+            awaitingPositionAuthorization = true
+            oneShotManager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            call.reject(
+                "Nincs helyhozzáférés. Engedélyezd a GRUNDO számára a készülék beállításaiban.",
+                "permission_denied"
+            )
+        @unknown default:
+            call.reject("A helyhozzáférés állapota ismeretlen.", "unavailable")
+        }
+    }
+
+    private func resolvePendingPositions(with location: CLLocation) {
+        let calls = pendingPositionCalls
+        pendingPositionCalls.removeAll()
+        for call in calls {
+            call.resolve([
+                "lat": location.coordinate.latitude,
+                "lng": location.coordinate.longitude,
+                "accuracy": location.horizontalAccuracy,
+                "t": Int64(location.timestamp.timeIntervalSince1970 * 1000),
+            ])
+        }
+    }
+
+    private func rejectPendingPositions(_ message: String, _ code: String) {
+        let calls = pendingPositionCalls
+        pendingPositionCalls.removeAll()
+        for call in calls { call.reject(message, code) }
+    }
+
     @objc func stop(_ call: CAPPluginCall) {
         pendingStart = false
         locationManager.stopUpdatingLocation()
@@ -208,6 +290,33 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        /**
+         AZ EGYSZERI FIX ÁGA ELŐSZÖR, ÉS KÜLÖN.
+
+         A delegate mindkét managertől megkapja ezt a hívást. A `pendingStart`
+         a rögzítésé; az egyszeri fix külön jelzőt használ, különben egy
+         térkép-középre-igazítás elindíthatná a rögzítést, vagy fordítva: egy
+         rögzítés-indítás nyelné el az egyszeri fix válaszát.
+         */
+        if awaitingPositionAuthorization {
+            switch manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
+                awaitingPositionAuthorization = false
+                oneShotManager.requestLocation()
+            case .denied, .restricted:
+                awaitingPositionAuthorization = false
+                rejectPendingPositions(
+                    "Nincs helyhozzáférés. Engedélyezd a GRUNDO számára a készülék beállításaiban.",
+                    "permission_denied"
+                )
+            case .notDetermined:
+                break
+            @unknown default:
+                awaitingPositionAuthorization = false
+                rejectPendingPositions("A helyhozzáférés állapota ismeretlen.", "unavailable")
+            }
+        }
+
         guard pendingStart else { return }
         switch manager.authorizationStatus {
         case .authorizedAlways:
@@ -230,6 +339,19 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        /**
+         ⚠️ AZ EGYSZERI FIX NEM KERÜLHET A RÖGZÍTÉS SORÁBA. Egy térkép-középre
+         igazításhoz kért pont nem a felhasználó megtett útja.
+         */
+        if manager === oneShotManager {
+            if let location = locations.last(where: { $0.horizontalAccuracy >= 0 }) {
+                resolvePendingPositions(with: location)
+            } else {
+                rejectPendingPositions("Nem sikerült helyzetet mérni.", "unavailable")
+            }
+            return
+        }
+
         for location in locations where location.horizontalAccuracy >= 0 {
             let payload = locationPayload(location)
             enqueue(payload)
@@ -239,6 +361,15 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
     }
 
     public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        /**
+         ⚠️ A `requestLocation()` MINDIG lezárul: vagy fixszel, vagy ezzel a
+         hibával. Ha itt nem oldanánk fel a várakozó hívásokat, a JS ígérete
+         örökre nyitva maradna, és a térkép a betöltő állapotában ragadna.
+         */
+        if manager === oneShotManager {
+            rejectPendingPositions(error.localizedDescription, "unavailable")
+            return
+        }
         notifyListeners("error", data: ["code": "unavailable", "message": error.localizedDescription])
     }
 

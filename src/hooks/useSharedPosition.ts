@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { currentPosition } from '@/lib/currentPosition';
 import { useTrackingEnvironment } from '@/tracking/environment';
 
 export interface SharedPosition {
@@ -36,18 +37,31 @@ export function useSharedPosition(uid: string | undefined, enabled = true) {
   const [shared, setShared] = useState<SharedPosition | null>(null);
   const published = useRef(0);
 
+  /**
+   * ⚠️ NATÍV APPBAN NEM A BÖNGÉSZŐ API-JÁT HÍVJUK.
+   *
+   * MÉRT HIBA (iPhone, 2026-09-09): a `navigator.geolocation` a WebView-ban
+   * KÉT rendszerablakot hoz fel egymás után. Az első a CoreLocation magyar
+   * kérdése; a második a WebKit SAJÁT, oldal-szintű engedélykérése, amit a
+   * saját processzünkben rajzol — ezért angolul, és a Capacitor
+   * kiszolgálójának nevével: „localhost would like to use your current
+   * location". A felhasználónak ez érthetetlen és gyanús.
+   *
+   * A natív plugin egyszeri fixe ugyanazt adja, weboldal nélkül — tehát
+   * második kérdés nélkül. Böngészőben marad a `navigator.geolocation`, ott
+   * nincs miből választani.
+   */
   useEffect(() => {
-    if (!active || typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (p) => setOwn({
-        lat: p.coords.latitude,
-        lng: p.coords.longitude,
-        accuracyM: Number.isFinite(p.coords.accuracy) ? p.coords.accuracy : 99_999,
-        at: p.timestamp || Date.now(),
-      }),
-      () => undefined,
-      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
-    );
+    if (!active) return;
+    let alive = true;
+    void currentPosition({ highAccuracy: true, timeoutMs: 20_000, maxAgeMs: 60_000 })
+      .then((fix) => {
+        if (alive) setOwn(fix);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
   }, [active]);
 
   useEffect(() => {

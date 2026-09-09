@@ -24,7 +24,7 @@ import { decodePolyline } from '@/game/polyline';
 import type { OwnershipMap } from '@/types';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
-import { isNativeApp, isNativeIos } from '@/lib/platform';
+import { isNativeApp } from '@/lib/platform';
 import { PerfOverlay } from '@/components/PerfOverlay';
 import { useCellOwnerCard } from '@/components/CellOwnerCard';
 import { LocationPrimer, useLocationPrimerSeen } from '@/components/LocationPrimer';
@@ -597,7 +597,21 @@ export function TrackingScreen() {
    * GPS-fixe viszont a közös dokumentumban van, és a `useSharedPosition` azt
    * választja, amelyik pontosabb.
    */
-  const sharedPosition = useSharedPosition(profileUid);
+  /**
+   * ⚠️ A MAGYARÁZÓ KÉPERNYŐ UTÁN, NEM ELŐTTE.
+   *
+   * MÉRT HIBA (Geri, iPhone, 2026-09-09): a `useSharedPosition` a képernyő
+   * MOUNTJÁN kért helyzetet, a magyarázó képernyő viszont a választóval
+   * együtt jelenik meg — a rendszer engedélykérése ezért azonnal RÁUGROTT a
+   * magyarázatra, és a felhasználónak esélye sem volt elolvasni, mire mond
+   * igent. Egy elutasított engedélyt pedig az appból többé nem lehet újra
+   * kérni.
+   *
+   * A `primerSeen` így nem csak azt dönti el, LÁTSZIK-e a magyarázat, hanem
+   * azt is, hogy egyáltalán KÉRÜNK-e helyzetet. Aki még nem nyugtázta, annak
+   * a térkép középre igazítása vár — a rögzítés úgysem indulhat előbb.
+   */
+  const sharedPosition = useSharedPosition(profileUid, primerSeen);
 
   /**
    * MEMOIZÁLVA — és ez nem apróság.
@@ -738,7 +752,17 @@ export function TrackingScreen() {
           sosem látta volna, ha nem épp erre a képernyőre navigál (GRUNDO #42).
         */}
 
-        {(running || paused) && !recorder.supportsBackground && showWakeNote ? (
+        {/*
+          ⚠️ CSAK A WEBES ESET MARADT.
+
+          A natív ág korábban azt kérte, hogy a felhasználó adja meg a
+          „Mindig” szintű helyengedélyt — de ezt az iOS a rögzítés indításakor
+          amúgy is megkérdezi (`BackgroundLocationPlugin.requestAlwaysOnce()`),
+          és a magyarázó képernyő is előre elmondja. Három helyen ugyanaz az
+          üzenet: a felesleges kettő elveszi a hitelét a harmadiknak
+          (Geri, 2026-09-09).
+        */}
+        {!isNativeApp() && (running || paused) && !recorder.supportsBackground && showWakeNote ? (
           <div className="track__note track__note--warn track__note--closable">
             <button
               type="button"
@@ -751,30 +775,11 @@ export function TrackingScreen() {
             >
               ✕
             </button>
-            {/*
-              A NATÍV ÉS A WEBES ESET KÉT KÜLÖN ÜZENET.
-
-              Natív appban a mérést a `BackgroundLocationPlugin` végzi, a
-              képernyő elalvása nem szakítja meg — a hiányzó darab kizárólag
-              az engedély. A régi szöveg („tartsd bekapcsolva a képernyőt")
-              ott félrevezetett, és a képernyőzár-tiltás óta (GRUNDO #21, B1)
-              a natív ágon amúgy sincs mit jelenteni róla.
-            */}
-            {isNativeApp() ? (
-              <>
-                A lezárt képernyős méréshez add meg a helyhasználati engedélyt
-                {isNativeIos() ? ' „Mindig”' : ' „Mindig engedélyezve”'} szinten. Enélkül a
-                mérés csak addig pontos, amíg az app előtérben van.
-              </>
-            ) : (
-              <>
-                Tartsd bekapcsolva a képernyőt. Böngészőben a rögzítés megáll, ha a telefon
-                lezáródik vagy másik appra váltasz.
-                {recorder.wakeLockActive
-                  ? ' A képernyőt ébren tartjuk.'
-                  : ' A képernyő ébren tartása nem sikerült — állítsd hosszabbra a képernyő-időkorlátot.'}
-              </>
-            )}
+            Tartsd bekapcsolva a képernyőt. Böngészőben a rögzítés megáll, ha a telefon
+            lezáródik vagy másik appra váltasz.
+            {recorder.wakeLockActive
+              ? ' A képernyőt ébren tartjuk.'
+              : ' A képernyő ébren tartása nem sikerült — állítsd hosszabbra a képernyő-időkorlátot.'}
           </div>
         ) : null}
 

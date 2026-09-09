@@ -6,6 +6,7 @@ import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
+import { currentPosition } from '@/lib/currentPosition';
 import { routeImageUrl } from '@/lib/staticMap';
 import { readDailyMissionResult, rememberDailyMission } from '@/lib/dailyMission';
 import { rememberGhostRoute } from '@/lib/ghostRoute';
@@ -195,26 +196,17 @@ export function MissionsScreen() {
    * el. Ez felhasználói gesztusra történik, nem az app indulásakor — lásd a
    * `WeatherWidget` fejlécében ugyanezt az indoklást.
    */
-  function askPosition(): Promise<{ lat: number; lng: number } | null> {
-    return new Promise((resolve) => {
-      if (position) {
-        resolve(position);
-        return;
-      }
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        resolve(null);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (fix) => {
-          const next = { lat: fix.coords.latitude, lng: fix.coords.longitude };
-          setPosition(next);
-          resolve(next);
-        },
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
-      );
-    });
+  async function askPosition(): Promise<{ lat: number; lng: number } | null> {
+    if (position) return position;
+    try {
+      /* ⚠️ Natívban SOHA nem a `navigator.geolocation` — lásd `currentPosition`. */
+      const fix = await currentPosition({ highAccuracy: true, maxAgeMs: 60_000 });
+      const next = { lat: fix.lat, lng: fix.lng };
+      setPosition(next);
+      return next;
+    } catch {
+      return null;
+    }
   }
 
   async function generate() {

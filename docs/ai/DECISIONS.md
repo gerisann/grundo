@@ -408,3 +408,32 @@ Terv: [`terv-2026-09-09-bugreport-rendszer.md`](terv-2026-09-09-bugreport-rendsz
 - **A képernyőképhez saját natív plugin kell, nem `html2canvas`** (F2). A
   `html2canvas` a DOM-ot rajzolja újra, tehát a Mapbox GL vászna üresen
   maradna — pont a térkép hiányozna a bugreportból.
+
+## Helyzetlekérdezés natívban: a `navigator.geolocation` tilos (2026-09-09)
+
+- **Natív appban SOHA nem hívunk `navigator.geolocation`-t.** Mérve (iPhone,
+  2026-09-09): a WebView geolocation API-ja KÉT rendszerablakot hoz fel
+  egymás után. Az első a CoreLocation kérdése, a rendszer folyamatából, a
+  készülék nyelvén. A második a **WebKit saját, oldal-szintű engedélykérése**,
+  amit a WebKit a mi processzünkben rajzol — ezért **angolul** (az app
+  bundle-ben nincs magyar lokalizáció, `CFBundleDevelopmentRegion: en`), és
+  ezért hivatkozik a **`localhost`** névre (`capacitor.config.ts` →
+  `server.hostname`). A felhasználónak ez érthetetlen és gyanús: pont abban a
+  pillanatban, amikor igent mondana.
+- Az egyetlen belépési pont a **`src/lib/currentPosition.ts`**: natívon a
+  `BackgroundLocation.getCurrentPosition()` plugin-metódus, weben a böngésző
+  API-ja. Aki új helyzetlekérdezést ír, ezt hívja — **egyetlen** közvetlen
+  `navigator.geolocation` hívás visszahozza az angol ablakot az egész appban.
+  Regressziós teszt: `src/lib/currentPosition.test.ts`.
+- iOS-en az egyszeri fix **külön `CLLocationManager`-en** megy
+  (`oneShotManager`). A rögzítés managerének `didUpdateLocations` visszahívása
+  minden pontot a nyomvonal sorába tesz — egy térkép-középre igazításhoz kért
+  fix nem kerülhet bele a felhasználó megtett útjába.
+- **Engedélyt magyarázat nélkül nem kérünk.** A magyarázó képernyő
+  (`LocationPrimer`) csak akkor ér valamit, ha a helyzetkérés IS a nyugtázás
+  mögött van: korábban a `TrackingScreen` a mountján kért helyzetet, és a
+  rendszerablak ráugrott az el nem olvasott magyarázatra. A `primerSeen` ezért
+  nem csak azt dönti el, mi LÁTSZIK, hanem azt is, mi FUT.
+- A „Mindig" szintű engedélyről **egy helyen** beszélünk: a magyarázó
+  képernyőn. A rögzítés alatti figyelmeztető sáv natív ága törölve — három
+  helyen ugyanaz az üzenet elveszi a hitelét mindháromnak.
