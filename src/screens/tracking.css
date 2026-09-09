@@ -1036,3 +1036,32 @@
 .track__panel--upload .save__actions {
   margin-top: var(--sp-3);
 }
+
+/*
+  NÉMÍTÁS a rögzítés felületén — Geri kérése (2026-09-09).
+
+  Azért kell felületi gomb, mert az iOS hangútvonala mostantól szándékosan
+  átveszi a szót (a koppanások a némító kapcsoló állásától függetlenül, és
+  fülhallgatón is szólnak). Aki nem akarja hallani, itt kapcsolja ki — nem a
+  Beállításokban kell keresnie.
+
+  A jobb szélen ül, a saját sorában: a bal oldal a körök gombjáé
+  (`.track__laps-open`, `align-self: flex-start`), így a kettő sosem ütközik.
+*/
+.track__mute {
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.28);
+  color: var(--text-primary);
+}
+
+/* Némítva halványabb — egy pillantásra látszik, hogy nincs visszajelzés. */
+.track__mute[aria-pressed='true'] {
+  color: var(--text-tertiary);
+}

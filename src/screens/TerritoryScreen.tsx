@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useCellOwnerCard } from '@/components/CellOwnerCard';
 import { RivalBadge } from '@/components/RivalBadge';
 import { cellToChildren } from 'h3-js';
 import type { HexRole } from '@/components/HexMap';
@@ -12,7 +13,6 @@ import {
   type LeaderboardEntry,
   type LeaderboardWindow,
   type TerritoryBlobsResult,
-  type TileOwner,
   type TilesResult,
 } from '@/lib/api';
 import { useProfile } from '@/hooks/ProfileProvider';
@@ -128,8 +128,6 @@ export function TerritoryScreen() {
    */
   const [cellsVisible, setCellsVisible] = useState(true);
   /** A megkoppintott mező tulajdonosa. `null` = nincs nyitva kártya. */
-  const [ownerCard, setOwnerCard] = useState<TileOwner | null>(null);
-  const [ownerLoading, setOwnerLoading] = useState(false);
   // Alapból ZÁRVA: a jelmagyarázat egyszer hasznos, utána helyet foglal.
   const [legendOpen, setLegendOpen] = useState(() => read(LEGEND_KEY) === 'open');
   const [helpOpen, setHelpOpen] = useState(() => read(HELP_KEY) !== 'closed');
@@ -199,27 +197,10 @@ export function TerritoryScreen() {
   /**
    * Koppintás egy foglalt mezőre → a tulajdonos kártyája.
    *
-   * A kártya adatát KOPPINTÁSKOR kérjük le, nem a csempékkel együtt: a
-   * profilkép, a rang és az összesítők minden csempe-lekérésnél átvinni
-   * pazarlás lenne, hiszen egyszerre legfeljebb egy kártya látszik.
+   * A kártya és a lekérése a `useCellOwnerCard` hookban él, mert a rögzítés
+   * képernyő is ugyanezt mutatja (lásd `components/CellOwnerCard.tsx`).
    */
-  const onCellPress = useCallback(
-    async ({ owner }: { cell: string; owner: string }) => {
-      if (!apiConfigured || !owner) return;
-      setOwnerLoading(true);
-      setOwnerCard(null);
-      try {
-        const result = await api.tileOwner(owner, layer);
-        setOwnerCard(result.owner);
-      } catch {
-        // A tulajdonos időközben törölhette a fiókját — ilyenkor nincs kártya.
-        setOwnerCard(null);
-      } finally {
-        setOwnerLoading(false);
-      }
-    },
-    [layer],
-  );
+  const { cellPopup: ownerPopup, onCellPress } = useCellOwnerCard(layer);
 
   /**
    * A cellák három csoportba kerülnek, mert a felhasználót három kérdés
@@ -287,53 +268,6 @@ export function TerritoryScreen() {
     () => ({ ...blobs?.ownerColors, ...tiles?.ownerColors }),
     [blobs?.ownerColors, tiles?.ownerColors],
   );
-
-  /**
-   * A tulajdonos kártyája — a MEGKOPPINTOTT MEZŐHÖZ horgonyozva.
-   *
-   * A térkép popupjába megy, nem a felületi rétegbe: így pontosan ott jelenik
-   * meg, ahova koppintottál, pásztázáskor a mezővel együtt mozog, és a Mapbox
-   * gondoskodik arról, hogy a képernyő szélén befelé forduljon. Korábban a
-   * képernyő aljára volt kötve, ahol a Dock takarta.
-   */
-  const ownerPopup =
-    ownerLoading || ownerCard ? (
-      <div className="terr__owner" role="dialog" aria-label="A mező tulajdonosa">
-        {ownerCard ? (
-          <>
-            <div className="terr__owner-avatar">
-              {ownerCard.photoURL ? (
-                <img src={ownerCard.photoURL} alt="" />
-              ) : (
-                <span>{ownerCard.username.slice(0, 1).toUpperCase()}</span>
-              )}
-            </div>
-            <div className="terr__owner-body">
-              <strong className="terr__owner-name">
-                {ownerCard.username} <RivalBadge uid={ownerCard.uid} />
-              </strong>
-              <span className="terr__owner-rank">{ownerCard.rankName}</span>
-              <span className="terr__owner-stats">
-                {formatArea(ownerCard.areaM2)} · {ownerCard.gpTotal.toLocaleString('hu-HU')} GP
-              </span>
-            </div>
-          </>
-        ) : (
-          <span className="terr__owner-loading">Betöltés…</span>
-        )}
-        <button
-          type="button"
-          className="terr__owner-close"
-          aria-label="Bezárás"
-          onClick={() => {
-            setOwnerCard(null);
-            setOwnerLoading(false);
-          }}
-        >
-          ×
-        </button>
-      </div>
-    ) : null;
 
   return (
     <div className="terr">

@@ -26,6 +26,10 @@ import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type Tiles
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import { isNativeApp, isNativeIos } from '@/lib/platform';
 import { PerfOverlay } from '@/components/PerfOverlay';
+import { useCellOwnerCard } from '@/components/CellOwnerCard';
+import { LocationPrimer, useLocationPrimerSeen } from '@/components/LocationPrimer';
+import { useFeedbackSettings } from '@/hooks/useFeedbackSettings';
+import { updateFeedbackSettings } from '@/lib/feedbackSettings';
 import { useAuth } from '@/hooks/AuthProvider';
 import {
   currentSpeedMps,
@@ -415,6 +419,19 @@ export function TrackingScreen() {
     primeSounds();
   }, []);
 
+  /** A némító kapcsoló állása — a felületi gomb ebből rajzolódik. */
+  const feedback = useFeedbackSettings();
+
+  /** Látta már a felhasználó az engedélykérés magyarázatát ezen az eszközön? */
+  const primerSeen = useLocationPrimerSeen();
+
+  /**
+   * A megkoppintott mező tulajdonosának kártyája — UGYANAZ a komponens, mint a
+   * Grundon (`components/CellOwnerCard.tsx`). A réteg a mozgásformából jön,
+   * hogy a kártya a helyes (gyalogos/bringás) birtokviszonyt mutassa.
+   */
+  const { cellPopup: ownerPopup, onCellPress } = useCellOwnerCard(layerOf(displayType));
+
   /**
    * A FOGLALÁS-VISSZAJELZÉS — „Grund megszerezve!" + hang + konfetti.
    *
@@ -656,6 +673,8 @@ export function TrackingScreen() {
           ownerColors={mapOwnerColors}
           trailColor={captureAccent}
           plainCells={cells}
+          cellPopup={ownerPopup}
+          onCellPress={onCellPress}
         />
       ) : null}
 
@@ -670,6 +689,28 @@ export function TrackingScreen() {
       */}
 
       <div className="track__overlay">
+        {/*
+          NÉMÍTÁS — a rögzítés felületén, egy koppintásra.
+
+          Geri kérése (2026-09-09). Az iOS hangútvonala mostantól SZÁNDÉKOSAN
+          átveszi a szót: a koppanások fülhallgatón is szólnak, a némító
+          kapcsoló állásától függetlenül, és a zene sem áll meg tőlük (lásd
+          `AppDelegate.swift`). Épp ezért kell ide egy kapcsoló — aki nem akarja
+          hallani, itt tudja elhallgattatni, nem a Beállításokban kell keresnie.
+
+          Ugyanaz a `soundEnabled`, amit a Beállítások → Hangok főkapcsolója
+          állít: egy igazságforrás, eszközhöz kötve.
+        */}
+        <button
+          type="button"
+          className="track__mute"
+          aria-pressed={!feedback.soundEnabled}
+          aria-label={feedback.soundEnabled ? 'Hangok némítása' : 'Hangok bekapcsolása'}
+          title={feedback.soundEnabled ? 'Hangok némítása' : 'Hangok bekapcsolása'}
+          onClick={() => updateFeedbackSettings({ soundEnabled: !feedback.soundEnabled })}
+        >
+          {feedback.soundEnabled ? <SoundOnIcon /> : <SoundOffIcon />}
+        </button>
         {remoteState !== null ? (
           <div className="track__note track__note--sync track__note--closable">
             <button
@@ -831,6 +872,19 @@ export function TrackingScreen() {
         választás után marad nyitva, a MÁSODIK koppintásra zár és indul a
         visszaszámlálás.
       */}
+      {/*
+        MAGYARÁZAT A RENDSZER ENGEDÉLYKÉRÉSE ELŐTT — Geri kérése (2026-09-09),
+        Jeff visszajelzése nyomán: az első használatnál többször is engedélyt
+        kellett adnia, és nem tudta, mire számítson.
+
+        A választó ELŐTT áll: a felhasználó előbb megérti, mi jön, és csak
+        utána indíthat rögzítést — vagyis a rendszerpárbeszédre már felkészülve
+        érkezik. Eszközönként egyszer jelenik meg.
+      */}
+      {idle && pickerOpen && !primerSeen ? (
+        <LocationPrimer onContinue={() => undefined} />
+      ) : null}
+
       {idle && pickerOpen ? (
         <div className="track__type-picker">
           {/*
@@ -1186,6 +1240,8 @@ const MapPane = memo(function MapPane({
   ownerColors,
   trailColor,
   plainCells,
+  cellPopup,
+  onCellPress,
 }: {
   layers: NonNullable<MapViewProps['layers']>;
   track: MapViewProps['track'];
@@ -1201,6 +1257,9 @@ const MapPane = memo(function MapPane({
   trailColor: MapViewProps['trailColor'];
   /** A Mapbox nélküli visszaesési ág (`HexMap`) cellái. */
   plainCells: string[];
+  /** A megkoppintott mező tulajdonos-kártyája — lásd `useCellOwnerCard`. */
+  cellPopup: MapViewProps['cellPopup'];
+  onCellPress: MapViewProps['onCellPress'];
 }) {
   return (
     <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
@@ -1228,6 +1287,11 @@ const MapPane = memo(function MapPane({
             /* A saját út és a saját mezők a választott színben — ne az
                általános szerep-lilában (Geri, 2026-09-01). */
             trailColor={trailColor}
+            /* A tulajdonos-kártya a Grundon és itt UGYANAZ a komponens. Enélkül
+               a koppintás létrehozta a Mapbox popupját, de üresen — a
+               felhasználó egy kis fekete pöttyöt látott (Geri, 2026-09-09). */
+            cellPopup={cellPopup}
+            onCellPress={onCellPress}
             fill
           />
         </Suspense>
@@ -1688,4 +1752,24 @@ function UploadPanel({ recorder, uid }: { recorder: RecorderApi; uid: string }) 
   }
 
   return null;
+}
+
+/** Hang bekapcsolva — hangszóró hullámokkal. */
+function SoundOnIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />
+      <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />
+    </svg>
+  );
+}
+
+/** Némítva — a hullámok helyén kereszt. */
+function SoundOffIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" />
+      <path d="M16 9.5l5 5M21 9.5l-5 5" />
+    </svg>
+  );
 }

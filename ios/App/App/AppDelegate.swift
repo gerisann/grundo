@@ -1,3 +1,4 @@
+import AVFoundation
 import UIKit
 import Capacitor
 
@@ -7,8 +8,47 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        configureAudioSession()
         return true
+    }
+
+    /// A rendszer hangútvonalának beállítása — ENÉLKÜL BLUETOOTH-ON NEM SZÓLT
+    /// SEMMI.
+    ///
+    /// A projektben eddig EGYETLEN sor AVAudioSession-konfiguráció sem volt: a
+    /// WebView alapértelmezésére hagyatkoztunk. Ennek két mért következménye
+    /// lett (Geri, iPhone, 2026-09-09): csatlakoztatott Bluetooth-fülhallgatóval
+    /// egyetlen hangeffekt sem szólalt meg.
+    ///
+    /// A választott kategória Geri döntése:
+    ///
+    ///   - `.playback` — a hang a NÉMÍTÓ KAPCSOLÓ állásától függetlenül
+    ///     megszólal, és a rendszer a csatlakoztatott kimenetre (fülhallgató,
+    ///     autó, hangszóró) irányítja. Futás közben a telefon jellemzően néma
+    ///     kapcsolón van a zsebben; egy elfoglalt mező visszajelzése viszont
+    ///     pont ilyenkor kell.
+    ///   - `.mixWithOthers` — a felhasználó zenéje MEGY TOVÁBB, a koppanások
+    ///     ráülnek. Nem `.duckOthers`: a rövid koppanás miatt lehalkítani a
+    ///     zenét zavaróbb lenne, mint maga a koppanás.
+    ///
+    /// ⚠️ AKI NEM AKARJA HALLANI, AZ APPBAN NÉMÍTJA. Mivel a `.playback` a
+    /// készülék néma kapcsolóját szándékosan figyelmen kívül hagyja, a rögzítés
+    /// felületén külön némító gomb van (`TrackingScreen` → `.track__mute`), és a
+    /// Beállítások → Hangok főkapcsolója ugyanazt az értéket állítja.
+    ///
+    /// A hibát elnyeljük: egy sikertelen hangbeállítás miatt az app nem
+    /// indulhat el hibásan — legrosszabb esetben marad a régi, néma viselkedés.
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback,
+                mode: .default,
+                options: [.mixWithOthers]
+            )
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            // Szándékosan néma ág: a rögzítés sosem múlhat a hangeszközön.
+        }
     }
 
     // Az APNs regisztráció eredményét a Capacitor Firebase Messaging pluginnek

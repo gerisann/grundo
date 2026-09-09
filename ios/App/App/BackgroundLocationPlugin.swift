@@ -141,7 +141,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
             // „Always” jogosultságot is kérünk. A rendszer ezt a kezdeti
             // „Használat közben” döntés után, saját ütemében jelenítheti meg;
             // előtérben addig is elindítható a mérés.
-            locationManager.requestAlwaysAuthorization()
+            requestAlwaysOnce()
             startUpdates()
             call.resolve(["permission": "granted", "backgroundPermission": "not_granted"])
         case .notDetermined:
@@ -182,6 +182,31 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
         call.resolve(["locations": locations])
     }
 
+    /// Az „Always” jogosultságot ÉLETÜNKBEN EGYSZER kérjük.
+    ///
+    /// ⚠️ MÉRT HIBA (Jeff, iPhone 17 Pro Max, 2026-09-09): az első használatnál
+    /// HÁROMSZOR kellett helyzet-engedélyt adnia. A lánc a következő volt:
+    ///
+    ///   1. `notDetermined` → `requestWhenInUseAuthorization()` → 1. rendszerkérdés
+    ///   2. a válasz beérkezik → `locationManagerDidChangeAuthorization` az
+    ///      `.authorizedWhenInUse` ágon AZONNAL `requestAlwaysAuthorization()`-t
+    ///      hívott → 2. rendszerkérdés
+    ///   3. a következő rögzítés indításakor a `start()` megint
+    ///      `.authorizedWhenInUse`-t látott, és ÚJRA kérte → 3. rendszerkérdés
+    ///
+    /// Két külön helyen kértük ugyanazt, és egyik sem emlékezett arra, hogy a
+    /// felhasználó már döntött. Ez a jelző a teljes telepítés élettartamára
+    /// megjegyzi a kérést; aki nemet mondott, azt nem zaklatjuk többé — az
+    /// „Always” a rendszer Beállításaiban bármikor megadható.
+    private static let alwaysRequestedKey = "grundo.locationAlwaysRequested"
+
+    private func requestAlwaysOnce() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.alwaysRequestedKey) else { return }
+        defaults.set(true, forKey: Self.alwaysRequestedKey)
+        locationManager.requestAlwaysAuthorization()
+    }
+
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         guard pendingStart else { return }
         switch manager.authorizationStatus {
@@ -190,7 +215,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationMa
             startUpdates()
         case .authorizedWhenInUse:
             pendingStart = false
-            manager.requestAlwaysAuthorization()
+            requestAlwaysOnce()
             startUpdates()
             notifyListeners("backgroundPermission", data: ["granted": false])
         case .denied, .restricted:
