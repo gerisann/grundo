@@ -34,6 +34,11 @@ import { GAMEPLAY, type GameplayConfig } from '../../../src/config/gameplay';
 import { distanceM, type LatLng } from '../../../src/game/geo';
 import { loopWaypoints } from '../../../src/game/missions';
 import { decodePolyline } from '../../../src/game/polyline';
+import type {
+  RouteManeuver,
+  RouteManeuverModifier,
+  RouteManeuverType,
+} from '../../../src/types';
 import {
   countShortDetours,
   countUTurns,
@@ -59,12 +64,26 @@ export interface DirectionsRoute {
   durationS: number;
   /** Kódolt vonallánc, 5 tizedes pontossággal (`decodePolyline` érti). */
   polyline: string;
+  /** Provider-independent semantic instructions for lightweight navigation. */
+  maneuvers?: RouteManeuver[];
 }
 
 interface MapboxRoute {
   distance?: number;
   duration?: number;
   geometry?: string;
+  legs?: Array<{
+    steps?: Array<{
+      distance?: number;
+      name?: string;
+      maneuver?: {
+        type?: string;
+        modifier?: string;
+        location?: number[];
+        exit?: number;
+      };
+    }>;
+  }>;
 }
 
 export function mapboxToken(): string {
@@ -264,7 +283,7 @@ async function requestRoutes(
 ): Promise<DirectionsRoute[]> {
   const url =
     `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinates}` +
-    `?geometries=polyline&overview=full&alternatives=true${constraintQuery}` +
+    `?geometries=polyline&overview=full&alternatives=true&steps=true${constraintQuery}` +
     `&access_token=${encodeURIComponent(token)}`;
 
   const controller = new AbortController();
@@ -281,10 +300,12 @@ async function requestRoutes(
     for (const route of body.routes ?? []) {
       if (typeof route.geometry !== 'string' || seen.has(route.geometry)) continue;
       seen.add(route.geometry);
+      const maneuvers = normalizeMapboxManeuvers(route);
       routes.push({
         distanceM: Number(route.distance ?? 0),
         durationS: Number(route.duration ?? 0),
         polyline: route.geometry,
+        ...(maneuvers.length > 0 ? { maneuvers } : {}),
       });
     }
     return routes;
@@ -294,6 +315,106 @@ async function requestRoutes(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function normalizeMapboxManeuvers(route: MapboxRoute): RouteManeuver[] {
+  const legs = route.legs ?? [];
+  const maneuvers: RouteManeuver[] = [];
+  let routeOffsetM = 0;
+  let instructionIndex = 0;
+
+  for (let legIndex = 0; legIndex < legs.length; legIndex += 1) {
+    const steps = legs[legIndex]?.steps ?? [];
+    for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
+      const step = steps[stepIndex]!;
+      const raw = step.maneuver;
+      const location = raw?.location;
+      const isFirst = legIndex === 0 && stepIndex === 0;
+      const isLast = legIndex === legs.length - 1 && stepIndex === steps.length - 1;
+
+      // Intermediate Mapbox legs are shaping waypoints, not user destinations.
+      const skipIntermediateArrival = raw?.type === 'arrive' && !isLast;
+      if (
+        !skipIntermediateArrival &&
+        Array.isArray(location) &&
+        Number.isFinite(location[0]) &&
+        Number.isFinite(location[1])
+      ) {
+        const type = isFirst
+          ? 'depart'
+          : raw?.type === 'depart'
+            ? 'continue'
+            : mapMapboxManeuverType(raw?.type);
+        const modifier = mapManeuverModifier(raw?.modifier);
+        const streetName = cleanStreetName(step.name);
+        const exitNumber = Number(raw?.exit);
+        maneuvers.push({
+          id: `mapbox:${instructionIndex}`,
+          routeOffsetM: Math.max(0, Math.round(routeOffsetM)),
+          type,
+          ...(modifier ? { modifier } : {}),
+          ...(streetName ? { streetName } : {}),
+          ...(Number.isInteger(exitNumber) && exitNumber > 0 ? { exitNumber } : {}),
+          position: [Number(location[0]), Number(location[1])],
+        });
+        instructionIndex += 1;
+      }
+
+      const stepDistance = Number(step.distance);
+      if (Number.isFinite(stepDistance) && stepDistance > 0) routeOffsetM += stepDistance;
+    }
+  }
+
+  return maneuvers;
+}
+
+function mapMapboxManeuverType(type: string | undefined): RouteManeuverType {
+  switch (type) {
+    case 'depart':
+      return 'depart';
+    case 'arrive':
+      return 'arrive';
+    case 'fork':
+    case 'merge':
+    case 'on ramp':
+    case 'off ramp':
+      return 'fork';
+    case 'roundabout':
+    case 'rotary':
+    case 'roundabout turn':
+      return 'roundabout';
+    case 'turn':
+    case 'end of road':
+      return 'turn';
+    default:
+      return 'continue';
+  }
+}
+
+function mapManeuverModifier(modifier: string | undefined): RouteManeuverModifier | undefined {
+  switch (modifier) {
+    case 'left':
+    case 'sharp left':
+      return 'left';
+    case 'slight left':
+      return 'slight_left';
+    case 'right':
+    case 'sharp right':
+      return 'right';
+    case 'slight right':
+      return 'slight_right';
+    case 'straight':
+      return 'straight';
+    case 'uturn':
+      return 'uturn';
+    default:
+      return undefined;
+  }
+}
+
+function cleanStreetName(value: string | undefined): string | undefined {
+  const name = value?.trim();
+  return name ? name : undefined;
 }
 
 function uniqueRoutes(routes: readonly DirectionsRoute[]): DirectionsRoute[] {
@@ -480,6 +601,12 @@ interface GraphHopperPath {
   distance?: number;
   time?: number;
   points?: string;
+  instructions?: Array<{
+    sign?: number;
+    interval?: number[];
+    street_name?: string;
+    exit_number?: number;
+  }>;
 }
 
 /**
@@ -517,7 +644,7 @@ async function requestGraphHopperRoundTrip(
         headings: [headingDeg],
         custom_model: customModel,
         points_encoded: true,
-        instructions: false,
+        instructions: true,
         elevation: false,
       }),
     });
@@ -527,6 +654,7 @@ async function requestGraphHopperRoundTrip(
     const path = body.paths?.[0];
     if (!path || typeof path.points !== 'string') return null;
 
+    const maneuvers = normalizeGraphHopperManeuvers(path);
     return {
       distanceM: Number(path.distance ?? 0),
       // A GraphHopper `time` mezője MILLISZEKUNDUM, a `DirectionsRoute.durationS`
@@ -534,6 +662,7 @@ async function requestGraphHopperRoundTrip(
       // gyorsnak tűnne, mint amennyi idő alatt valóban végigmenne rajta.
       durationS: Number(path.time ?? 0) / 1000,
       polyline: path.points,
+      ...(maneuvers.length > 0 ? { maneuvers } : {}),
     };
   } catch {
     // Időtúllépés vagy hálózati hiba — ez a jelölt egyszerűen kimarad.
@@ -541,6 +670,64 @@ async function requestGraphHopperRoundTrip(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function normalizeGraphHopperManeuvers(path: GraphHopperPath): RouteManeuver[] {
+  if (typeof path.points !== 'string' || !Array.isArray(path.instructions)) return [];
+
+  const points = decodePolyline(path.points);
+  if (points.length === 0) return [];
+  const offsets = cumulativeOffsets(points);
+  const lastInstructionIndex = path.instructions.length - 1;
+  const maneuvers: RouteManeuver[] = [];
+
+  for (let index = 0; index < path.instructions.length; index += 1) {
+    const instruction = path.instructions[index]!;
+    const pointIndex = Number(instruction.interval?.[0]);
+    if (!Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= points.length) continue;
+
+    const point = points[pointIndex]!;
+    const mapped = mapGraphHopperSign(instruction.sign, index, lastInstructionIndex);
+    const streetName = cleanStreetName(instruction.street_name);
+    const exitNumber = Number(instruction.exit_number);
+    maneuvers.push({
+      id: `graphhopper:${index}`,
+      routeOffsetM: Math.max(0, Math.round(offsets[pointIndex] ?? 0)),
+      type: mapped.type,
+      ...(mapped.modifier ? { modifier: mapped.modifier } : {}),
+      ...(streetName ? { streetName } : {}),
+      ...(Number.isInteger(exitNumber) && exitNumber > 0 ? { exitNumber } : {}),
+      position: [point.lng, point.lat],
+    });
+  }
+
+  return maneuvers;
+}
+
+function cumulativeOffsets(points: readonly LatLng[]): number[] {
+  const offsets = [0];
+  for (let index = 1; index < points.length; index += 1) {
+    offsets.push(offsets[index - 1]! + distanceM(points[index - 1]!, points[index]!));
+  }
+  return offsets;
+}
+
+function mapGraphHopperSign(
+  sign: number | undefined,
+  index: number,
+  lastInstructionIndex: number,
+): { type: RouteManeuverType; modifier?: RouteManeuverModifier } {
+  if (index === 0) return { type: 'depart' };
+  if (sign === 4 || index === lastInstructionIndex) return { type: 'arrive' };
+  if (sign === 6) return { type: 'roundabout' };
+  if (sign === -7) return { type: 'fork', modifier: 'slight_left' };
+  if (sign === 7) return { type: 'fork', modifier: 'slight_right' };
+  if (sign === -8 || sign === 8) return { type: 'turn', modifier: 'uturn' };
+  if (sign === -3 || sign === -2) return { type: 'turn', modifier: 'left' };
+  if (sign === -1) return { type: 'turn', modifier: 'slight_left' };
+  if (sign === 3 || sign === 2) return { type: 'turn', modifier: 'right' };
+  if (sign === 1) return { type: 'turn', modifier: 'slight_right' };
+  return { type: 'continue', modifier: 'straight' };
 }
 
 /** Egy irányra több mag — a párhuzamos kérések mindegyike ingyenes és ~15 ms. */

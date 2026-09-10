@@ -53,6 +53,10 @@
   display: none;
 }
 
+.track[data-recording-view='navigation'] .track__map .mapview__hex-toggle {
+  display: none;
+}
+
 /* ── A rárétegzett felület ───────────────────────────────────────── */
 
 .track__overlay {
@@ -79,6 +83,182 @@
 
 .track__overlay > * {
   pointer-events: auto;
+}
+
+/* ── Guided recording views ─────────────────────────────────────── */
+
+.track__guidance,
+.track__guidance-line {
+  width: 100%;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+}
+
+.track__guidance-line {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 10px;
+  border-radius: var(--r-lg);
+  text-align: left;
+}
+
+/* Az admin teljesítménymérő gombja ugyanebben a sarokban ül. */
+.track--perf .track__guidance,
+.track--perf .track__guidance-line {
+  width: calc(100% - 44px);
+}
+
+.track__guidance-line-arrow {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-on);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.track__guidance-line strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.track__guidance-line-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.track__guidance-line-open {
+  padding: 4px 7px;
+  border-radius: var(--r-pill);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.track__guidance {
+  display: grid;
+  gap: var(--sp-3);
+  padding: 10px;
+  border-radius: var(--r-xl);
+}
+
+.track__view-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+}
+
+.track__view-switch button {
+  min-height: 34px;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.track__view-switch .track__view-switch-active {
+  color: var(--accent-on);
+  background: var(--accent);
+}
+
+.track__maneuver {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 2px var(--sp-2) var(--sp-1);
+}
+
+.track__maneuver-arrow {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--accent-on);
+  font-size: 42px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.track__maneuver-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.track__maneuver-copy strong {
+  font-size: clamp(28px, 8vw, 38px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.track__maneuver-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.track__route-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.track__route-summary div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 9px 6px 2px;
+  text-align: center;
+}
+
+.track__route-summary div + div {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.track__route-summary dt {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.track__route-summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Befejezés után a Dock eltűnik, ezért az űrlap megkapja a teljes képernyőt.

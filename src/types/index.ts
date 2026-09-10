@@ -5,6 +5,36 @@ export type ActivityType = 'run' | 'walk' | 'ride';
 export type Visibility = 'everyone' | 'followers' | 'only_me';
 export type TrustVerdict = 'trusted' | 'pending_review' | 'rejected';
 
+export type RouteManeuverType =
+  | 'depart'
+  | 'continue'
+  | 'turn'
+  | 'fork'
+  | 'roundabout'
+  | 'arrive';
+
+export type RouteManeuverModifier =
+  | 'left'
+  | 'slight_left'
+  | 'right'
+  | 'slight_right'
+  | 'straight'
+  | 'uturn';
+
+/** Provider-independent route instruction used by both the API and the recorder. */
+export interface RouteManeuver {
+  /** Stable within one route response; not a database identifier. */
+  id: string;
+  /** Distance from the start of the route geometry. */
+  routeOffsetM: number;
+  type: RouteManeuverType;
+  modifier?: RouteManeuverModifier;
+  streetName?: string;
+  exitNumber?: number;
+  /** GeoJSON coordinate order: longitude, latitude. */
+  position: [number, number];
+}
+
 /** Egy H3 cella azonosítója. A normál játékrács res 12; compact geometriában parent is lehet. */
 export type CellId = string;
 

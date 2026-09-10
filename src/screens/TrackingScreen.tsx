@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { cellToChildren, latLngToCell } from 'h3-js';
 import { Button, OptionSwitch } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
@@ -21,9 +21,14 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { IncrementalCellPath, layerOf } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
-import type { OwnershipMap } from '@/types';
+import type { OwnershipMap, RouteManeuver } from '@/types';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
+import {
+  prepareRoute,
+  updateRouteProgress,
+  type RouteProgressState,
+} from '@/lib/routeProgress';
 import { isNativeApp } from '@/lib/platform';
 import { PerfOverlay } from '@/components/PerfOverlay';
 import { useCellOwnerCard } from '@/components/CellOwnerCard';
@@ -67,6 +72,7 @@ const WAKE_NOTE_KEY = 'grundo.hint.wakelock';
  * háttér-helymeghatározásra.
  */
 export function TrackingScreen() {
+  const location = useLocation();
   const recorder = useRecorderContext();
   const profile = useProfile().profile;
   const profileUid = profile?.uid ?? '';
@@ -121,11 +127,28 @@ export function TrackingScreen() {
    * küldetést generálnának egy másik lapon, ez a rögzítés a sajátjához
    * ragaszkodik, nem cserél alattunk útvonalat félúton.
    */
-  const [ghostRoute, setGhostRoute] = useState(() => readGhostRoute());
+  const guidedEntry = (location.state as { recordingIntent?: unknown } | null)?.recordingIntent === 'guided';
+  const [guidance, setGuidance] = useState(() => {
+    const route = readGhostRoute();
+    return {
+      route,
+      view: route && guidedEntry ? 'navigation' as const : 'grundo' as const,
+    };
+  });
+  const ghostRoute = guidance.route;
+  const recordingView = guidance.view;
   const ghostTrack = useMemo(
     () => (ghostRoute ? decodePolyline(ghostRoute.polyline) : []),
     [ghostRoute],
   );
+  const preparedGuidanceRoute = useMemo(() => {
+    if (ghostTrack.length < 2 || !ghostRoute) return null;
+    try {
+      return prepareRoute(ghostTrack, ghostRoute.maneuvers);
+    } catch {
+      return null;
+    }
+  }, [ghostRoute, ghostTrack]);
   const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
   const [showHexes, setShowHexes] = useState(true);
   /**
@@ -157,8 +180,7 @@ export function TrackingScreen() {
    * nincs navigáció, csak a szellemvonal cseréje élőben.
    */
   function selectSavedRoute(mission: Mission) {
-    rememberGhostRoute(mission);
-    setGhostRoute({ polyline: mission.polyline, kind: mission.kind });
+    setGuidance({ route: rememberGhostRoute(mission), view: 'navigation' });
     setSavedRoutesOpen(false);
   }
 
@@ -541,8 +563,9 @@ export function TrackingScreen() {
    * rövid idő alatt memória-/GPU-nyomást és WebContent újraindulást tudott
    * okozni — pontosan ekkor jelent meg tévesen a félbehagyott rögzítés.
    */
+  const navigationMap = ghostRoute !== null && recordingView === 'navigation';
   const mapHexLayers = useMemo<NonNullable<MapViewProps['layers']>>(
-    () => showHexes ? [
+    () => showHexes && !navigationMap ? [
       { role: 'free', cells: nearbyFree },
       { role: 'rival', cells: nearbyOthers },
       { role: 'interior', cells: nearbyMine },
@@ -550,7 +573,7 @@ export function TrackingScreen() {
       { role: 'stolen', cells: preview.stolen },
       { role: 'trail', cells: trailCells },
     ] : [],
-    [showHexes, nearbyFree, nearbyOthers, nearbyMine, preview.own, preview.stolen, trailCells],
+    [showHexes, navigationMap, nearbyFree, nearbyOthers, nearbyMine, preview.own, preview.stolen, trailCells],
   );
 
   /**
@@ -638,6 +661,29 @@ export function TrackingScreen() {
    */
   const mapPosition = liveFix ?? lastPoint ?? (state.status === 'idle' ? homeFix : null);
 
+  const [routeProgress, setRouteProgress] = useState<RouteProgressState | null>(null);
+  const progressRouteKey = useRef<string | null>(null);
+  const averageSpeedMps = displayDistanceM > 0 && elapsed > 0 ? displayDistanceM / elapsed : undefined;
+  const navigationPosition = remoteState === null && (running || paused) ? mapPosition : null;
+  useEffect(() => {
+    if (!preparedGuidanceRoute || !navigationPosition || !ghostRoute) {
+      setRouteProgress(null);
+      progressRouteKey.current = ghostRoute?.polyline ?? null;
+      return;
+    }
+
+    const sameRoute = progressRouteKey.current === ghostRoute.polyline;
+    progressRouteKey.current = ghostRoute.polyline;
+    setRouteProgress((previous) => updateRouteProgress({
+      route: preparedGuidanceRoute,
+      position: navigationPosition,
+      ...(sameRoute && previous ? { previous } : {}),
+      options: {},
+      ...(averageSpeedMps === undefined ? {} : { averageSpeedMps }),
+      sampledAt: now,
+    }));
+  }, [averageSpeedMps, ghostRoute, navigationPosition, now, preparedGuidanceRoute]);
+
   /**
    * Az „Indítás" nyíl — MINDEN tétlen állapotban.
    *
@@ -665,7 +711,8 @@ export function TrackingScreen() {
     <div
       className={`track${done ? ' track--finished' : ''}${savePanelOpen ? ' track--save-open' : ''}${
         pickerOpen ? ' track--picker-open' : ''
-      }${statsView === 'full' ? ' track--stats-full' : ''}`}
+      }${statsView === 'full' ? ' track--stats-full' : ''}${role ? ' track--perf' : ''}`}
+      data-recording-view={recordingView}
     >
       {/*
         TELJES NÉZETBEN A TÉRKÉP EGYÁLTALÁN NINCS KIRENDERELVE — Geri kérése
@@ -679,11 +726,11 @@ export function TrackingScreen() {
           track={displayPoints}
           ghostTrack={ghostTrack}
           position={mapPosition}
-          hexesVisible={showHexes}
+          hexesVisible={showHexes && !navigationMap}
           onToggleHexes={toggleHexes}
           follow={running || remoteState?.status === 'recording'}
           onViewport={setNearbyView}
-          blobs={showHexes ? nearbyBlobs?.blobs : undefined}
+          blobs={showHexes && !navigationMap ? nearbyBlobs?.blobs : undefined}
           ownerColors={mapOwnerColors}
           trailColor={captureAccent}
           plainCells={cells}
@@ -703,6 +750,15 @@ export function TrackingScreen() {
       */}
 
       <div className="track__overlay">
+        {ghostRoute && preparedGuidanceRoute && !savePanelOpen && statsView !== 'full' ? (
+          <RouteGuidancePanel
+            view={recordingView}
+            onViewChange={(view) => setGuidance((current) => ({ ...current, view }))}
+            progress={routeProgress}
+            routeDistanceM={ghostRoute.plannedDistanceM ?? preparedGuidanceRoute.totalDistanceM}
+            maneuvers={ghostRoute.maneuvers}
+          />
+        ) : null}
         {/*
           NÉMÍTÁS — a rögzítés felületén, egy koppintásra.
 
@@ -798,7 +854,7 @@ export function TrackingScreen() {
               megismételné őket — és felül is fedte a mentés-űrlapot. Ekkor
               elrejtjük.
             */}
-            {!savePanelOpen ? (
+            {!savePanelOpen && recordingView === 'grundo' ? (
               <div className="track__panel-wrap">
                 <StatsPanel
                   view={statsView}
@@ -1311,6 +1367,99 @@ const MapPane = memo(function MapPane({
     </div>
   );
 });
+
+function RouteGuidancePanel({
+  view,
+  onViewChange,
+  progress,
+  routeDistanceM,
+  maneuvers,
+}: {
+  view: 'grundo' | 'navigation';
+  onViewChange: (view: 'grundo' | 'navigation') => void;
+  progress: RouteProgressState | null;
+  routeDistanceM: number;
+  maneuvers: readonly RouteManeuver[];
+}) {
+  const maneuver = progress?.nextManeuver
+    ?? maneuvers.find((candidate) => candidate.type !== 'depart')
+    ?? maneuvers[0];
+  const fallbackDistanceM = progress ? progress.remainingDistanceM : routeDistanceM;
+  const maneuverDistanceM = progress?.distanceToNextManeuverM ?? maneuver?.routeOffsetM;
+  const title = guidanceTitle(maneuver);
+  const arrow = guidanceArrow(maneuver);
+
+  if (view === 'grundo') {
+    return (
+      <button
+        type="button"
+        className="track__guidance-line"
+        onClick={() => onViewChange('navigation')}
+        aria-label={`${title}. Navigáció megnyitása.`}
+      >
+        <span className="track__guidance-line-arrow" aria-hidden="true">{arrow}</span>
+        <strong>{formatGuidanceDistance(maneuverDistanceM ?? fallbackDistanceM)}</strong>
+        <span className="track__guidance-line-title">{title}</span>
+        <span className="track__guidance-line-open" aria-hidden="true">NAV</span>
+      </button>
+    );
+  }
+
+  const completedM = Math.max(0, routeDistanceM - (progress?.remainingDistanceM ?? routeDistanceM));
+  return (
+    <section className="track__guidance" aria-label="Útvonal-navigáció">
+      <div className="track__view-switch" role="group" aria-label="Rögzítési nézet">
+        <button type="button" onClick={() => onViewChange('grundo')}>GRUNDO</button>
+        <button type="button" className="track__view-switch-active" aria-pressed="true">
+          Navigáció
+        </button>
+      </div>
+      <div className="track__maneuver">
+        <span className="track__maneuver-arrow" aria-hidden="true">{arrow}</span>
+        <span className="track__maneuver-copy">
+          <strong>{formatGuidanceDistance(maneuverDistanceM ?? fallbackDistanceM)}</strong>
+          <span>{title}</span>
+        </span>
+      </div>
+      <dl className="track__route-summary">
+        <div><dt>Megtett</dt><dd>{formatGuidanceDistance(completedM)}</dd></div>
+        <div><dt>Hátra</dt><dd>{formatGuidanceDistance(progress?.remainingDistanceM ?? routeDistanceM)}</dd></div>
+        <div><dt>Érkezés</dt><dd>{formatArrival(progress?.estimatedArrivalAt)}</dd></div>
+      </dl>
+    </section>
+  );
+}
+
+function guidanceTitle(maneuver: RouteProgressState['nextManeuver']): string {
+  if (!maneuver) return 'Útvonal követése';
+  if (maneuver.type === 'arrive') return 'Érkezés a célhoz';
+  if (maneuver.type === 'depart') return maneuver.streetName || 'Indulás';
+  return maneuver.streetName || 'Haladj tovább';
+}
+
+function guidanceArrow(maneuver: RouteProgressState['nextManeuver']): string {
+  if (maneuver?.type === 'arrive') return '◎';
+  if (maneuver?.type === 'roundabout') return '↻';
+  switch (maneuver?.modifier) {
+    case 'left': return '←';
+    case 'slight_left': return '↖';
+    case 'right': return '→';
+    case 'slight_right': return '↗';
+    case 'uturn': return '↶';
+    default: return '↑';
+  }
+}
+
+function formatGuidanceDistance(meters: number): string {
+  const safeMeters = Math.max(0, meters);
+  if (safeMeters < 1_000) return `${Math.round(safeMeters)} m`;
+  return formatDistance(safeMeters);
+}
+
+function formatArrival(timestamp: number | undefined): string {
+  if (timestamp === undefined) return '—';
+  return new Date(timestamp).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
+}
 
 /**
  * Az élő adatok panelje — koppintásra kinyílik.

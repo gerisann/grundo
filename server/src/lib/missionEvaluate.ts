@@ -25,7 +25,14 @@ import {
   type ActivityGeometry,
 } from '../../../src/game';
 import { blockIdFor } from './gridMath';
-import type { ActivityType, CellId, Layer, OwnershipMap, TracePoint } from '../../../src/types';
+import type {
+  ActivityType,
+  CellId,
+  Layer,
+  OwnershipMap,
+  RouteManeuver,
+  TracePoint,
+} from '../../../src/types';
 import type { MissionCandidate } from '../../../src/game/missions';
 
 /** Egy jelölt, amit már geometriává alakítottunk. */
@@ -33,6 +40,7 @@ export interface ShapedCandidate {
   bearing: number;
   distanceKm: number;
   polyline: string;
+  maneuvers?: RouteManeuver[];
   points: TracePoint[];
   /** A bezárások összes cellája — a birtokviszony-betöltés ebből dolgozik. */
   cells: Set<CellId>;

@@ -36,7 +36,7 @@ import {
 } from '../../../src/game/missions';
 import { distanceM } from '../../../src/game/geo';
 import type { GameplayConfig } from '../../../src/config/gameplay';
-import type { ActivityType, CellId, Layer, TracePoint } from '../../../src/types';
+import type { ActivityType, CellId, Layer, RouteManeuver, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
 
 export const missionsRouter = Router();
@@ -291,6 +291,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
       bearing: number;
       distanceKm: number;
       polyline: string;
+      maneuvers?: RouteManeuver[];
       points: TracePoint[];
       uTurns: number;
       shortDetours: number;
@@ -310,6 +311,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
         bearing: entry.bearing,
         distanceKm,
         polyline: entry.route.polyline,
+        ...(entry.route.maneuvers ? { maneuvers: entry.route.maneuvers } : {}),
         points: routeToTracePoints(entry.route, coordinates),
         // Az útvonal ALAKJA — ezzel bontja fel a válogatás a döntetlent, hogy
         // ne egy mellékutcákba beszaladgáló kör kerüljön a kártyára.
@@ -373,6 +375,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           polyline: candidate.polyline,
           distanceKm: round2(candidate.distanceKm),
           bearing: candidate.bearing,
+          ...(candidate.maneuvers ? { maneuvers: candidate.maneuvers } : {}),
         })),
         /*
           A `no_loops` ITT NEM ÁLLAPÍTHATÓ MEG: azt csak a geometria tudná
@@ -405,6 +408,7 @@ missionsRouter.post('/generate', async (req: AuthedRequest, res: Response, next)
           bearing: candidate.bearing,
           distanceKm: candidate.distanceKm,
           polyline: candidate.polyline,
+          ...(candidate.maneuvers ? { maneuvers: candidate.maneuvers } : {}),
           points: candidate.points,
           cells,
           // Az `evaluateCandidate` ezt kapja meg, hogy a hurokdetektálás ne
@@ -545,6 +549,7 @@ missionsRouter.post('/evaluate', async (req: AuthedRequest, res: Response, next)
           bearing: route.bearing,
           distanceKm,
           polyline: route.polyline,
+          ...(route.maneuvers ? { maneuvers: route.maneuvers } : {}),
           points,
           cells,
           geometry,
@@ -589,6 +594,7 @@ interface MissionPayload {
   kind: string;
   distanceKm: number;
   polyline: string;
+  maneuvers?: RouteManeuver[];
   areaM2: number;
   estimatedGp: number;
   cellCount: number;
@@ -656,20 +662,25 @@ async function evaluateShapedCandidates(args: {
 
   const missions = prioritizeMissions(pickMissions(candidates, { limit, priority }), priority);
   const named = await resolveVictimNames(uid, missions, today);
+  const maneuversByPolyline = new Map(shaped.map((candidate) => [candidate.polyline, candidate.maneuvers]));
 
-  return missions.map((mission) => ({
-    kind: mission.kind,
-    distanceKm: round2(mission.distanceKm),
-    polyline: mission.polyline,
-    areaM2: mission.gainedM2,
-    estimatedGp: mission.estimatedGp,
-    cellCount: mission.cells.size,
-    counts: mission.claim?.counts ?? null,
-    newBlocks: mission.newBlocks,
-    /** A célpont neve CSAK publikus fióknál — lásd `resolveVictimNames`. */
-    victimName: named.get(mission) ?? null,
-    victimAreaM2: Math.round(mission.topVictimCells * cfg.CELL_AREA_M2),
-  }));
+  return missions.map((mission) => {
+    const maneuvers = maneuversByPolyline.get(mission.polyline);
+    return {
+      kind: mission.kind,
+      distanceKm: round2(mission.distanceKm),
+      polyline: mission.polyline,
+      ...(maneuvers ? { maneuvers } : {}),
+      areaM2: mission.gainedM2,
+      estimatedGp: mission.estimatedGp,
+      cellCount: mission.cells.size,
+      counts: mission.claim?.counts ?? null,
+      newBlocks: mission.newBlocks,
+      /** A célpont neve CSAK publikus fióknál — lásd `resolveVictimNames`. */
+      victimName: named.get(mission) ?? null,
+      victimAreaM2: Math.round(mission.topVictimCells * cfg.CELL_AREA_M2),
+    };
+  });
 }
 
 /** Egy vonallánc hossza méterben — a kliens számát nem vesszük készpénznek. */
@@ -685,7 +696,7 @@ interface EvaluateInput {
   type: ActivityType;
   priority: MissionInput['priority'];
   limit: number;
-  routes: { polyline: string; bearing: number }[];
+  routes: { polyline: string; bearing: number; maneuvers?: RouteManeuver[] }[];
 }
 
 /**
@@ -721,10 +732,67 @@ function parseEvaluateInput(body: unknown): EvaluateInput {
     return {
       polyline,
       bearing: Number.isFinite(bearing) ? bearing : 0,
+      ...parseRouteManeuvers(route.maneuvers),
     };
   });
 
   return { type, priority, limit, routes };
+}
+
+const ROUTE_MANEUVER_TYPES = new Set<RouteManeuver['type']>([
+  'depart',
+  'continue',
+  'turn',
+  'fork',
+  'roundabout',
+  'arrive',
+]);
+
+const ROUTE_MANEUVER_MODIFIERS = new Set<NonNullable<RouteManeuver['modifier']>>([
+  'left',
+  'slight_left',
+  'right',
+  'slight_right',
+  'straight',
+  'uturn',
+]);
+
+function parseRouteManeuvers(value: unknown): { maneuvers?: RouteManeuver[] } {
+  if (!Array.isArray(value)) return {};
+
+  const maneuvers: RouteManeuver[] = [];
+  for (const entry of value) {
+    const raw = (entry ?? {}) as Record<string, unknown>;
+    const type = String(raw.type ?? '') as RouteManeuver['type'];
+    const routeOffsetM = Number(raw.routeOffsetM);
+    const position = raw.position;
+    if (
+      !ROUTE_MANEUVER_TYPES.has(type) ||
+      typeof raw.routeOffsetM !== 'number' ||
+      !Number.isFinite(routeOffsetM) ||
+      routeOffsetM < 0 ||
+      !Array.isArray(position) ||
+      !Number.isFinite(position[0]) ||
+      !Number.isFinite(position[1])
+    ) {
+      continue;
+    }
+
+    const modifier = String(raw.modifier ?? '') as NonNullable<RouteManeuver['modifier']>;
+    const streetName = typeof raw.streetName === 'string' ? raw.streetName.trim() : '';
+    const exitNumber = Number(raw.exitNumber);
+    maneuvers.push({
+      id: typeof raw.id === 'string' && raw.id ? raw.id : `client:${maneuvers.length}`,
+      routeOffsetM,
+      type,
+      ...(ROUTE_MANEUVER_MODIFIERS.has(modifier) ? { modifier } : {}),
+      ...(streetName ? { streetName } : {}),
+      ...(Number.isInteger(exitNumber) && exitNumber > 0 ? { exitNumber } : {}),
+      position: [Number(position[0]), Number(position[1])],
+    });
+  }
+
+  return maneuvers.length > 0 ? { maneuvers } : {};
 }
 
 interface MissionInput {

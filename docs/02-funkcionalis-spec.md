@@ -200,6 +200,10 @@ A GRUNDO szíve (képek #49, #21).
 - Nagy play gomb + **Mentett útvonalak** gomb.
 
 ### Aktív rögzítés (kép #48)
+- A közvetlen play gomb **szabad rögzítést** indít: csak GRUNDO nézet van, navigációs fül vagy üres útvonalpanel nélkül. A Küldetések `Indítás most` gombja **vezetett rögzítést** indít, amely alapból Navigáció nézetben nyílik meg.
+- Vezetett rögzítéskor a GRUNDO és a Navigáció nézet ugyanannak az aktivitásnak két megjelenése. A GRUNDO nézetben a cellák és statisztikák dominálnak, de megmarad az egysoros következőutasítás (például `↱ 120 m · Bartók Béla út`); erre koppintva a teljes Navigáció nézet nyílik. A Navigáció nézet a következő kanyart, irányt, utcanévet, megtett és hátralévő távot, valamint az átlagsebességből becsült érkezést mutatja.
+- A két nézet ugyanazt a térképpéldányt használja, ezért a váltás nem indíthat új Mapbox map loadot, nem nullázhatja a kamerát és nem szakíthatja meg a rögzítést. A statisztikapanel összecsukható; a szünet és a befejezés mindig elérhető marad.
+- A vezetés csak segítség: útvonalelhagyáskor is a tényleges GPS-nyomvonal adja a GP-t és a cellafoglalást. A részletes rendszerterv: [Route Intelligence architektúra](routing/architecture.md).
 - Élő: távolság, idő, aktuális és átlag tempó/sebesség, szintemelkedés, lépésfrekvencia/pedálfordulat, pulzus (ha van szenzor), teljesítmény (becsült vagy mért).
 - **Élő területjelzés**: a nyom hexagonjai világítanak a térképen; amint bezárul egy hurok, a belső cellák azonnal kitöltődnek és megjelenik a szerzett m² + GP. Bezárás előtt: „Zárd be: még 120 m".
 - A rögzítés térképe ugyanazt a saját/rivális/szabad mezőképet és ugyanazokat a védettségi szinteket mutatja, mint a Grund oldal. A nézet frissítése alatt a legutóbbi pillanatkép marad látható; a mezők nem villoghatnak ki.

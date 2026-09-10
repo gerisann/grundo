@@ -19,6 +19,15 @@ Ez a mappa a GRUNDO funkcionális és technikai gerince. A `../*.jpg` (49 db) re
 | 07 | [iOS és TestFlight](07-ios-testflight-codemagic.md) | Capacitor/WKWebView döntések, Codemagic pipeline és az első belső TestFlight build kézi lépései |
 | 08 | [Android és Codemagic](08-android-codemagic.md) | Natív foreground GPS, Firebase Android, upload-key signing, APK/AAB pipeline és az első készülékes build lépései |
 
+### Route Intelligence tervezés
+
+| Fájl | Tartalom |
+|---|---|
+| [Rendszerarchitektúra](routing/architecture.md) | Útminősítési pipeline, GraphHopper, könnyű navigáció, domborzat és rögzítési módok |
+| [Adatmodell](routing/data-model.md) | Irányított útszakaszok, minőségi metrikák, manőverek, útvonalterv és rögzítési állapot |
+| [Adatforrások és Mapbox-költségek](routing/data-sources.md) | Forrás-PoC-k, eredet/licenc, kiadási kapu, 2026-09-10-i Mapbox-limitek |
+| [Megvalósítási terv](routing/implementation-plan.md) | Fázisok, mérési kapuk, UX-elfogadási mátrix és az első implementációs csomag |
+
 ## A GRUNDO egy mondatban
 
 > Fuss, sétálj vagy bringázz → zárd a kört → urald a területet → védd meg, ami a tiéd.

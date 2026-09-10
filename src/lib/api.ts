@@ -3,7 +3,7 @@ import { auth } from './firebase';
 import { appCheckHeader } from './appCheck';
 import { addBreadcrumb } from './breadcrumbs';
 import type { PerfHistoryEntry } from './perfMeter';
-import type { ActivityType } from '@/types';
+import type { ActivityType, RouteManeuver } from '@/types';
 
 /**
  * A GRUNDO backend kliense.
@@ -617,6 +617,8 @@ export interface Mission {
   distanceKm: number;
   /** Kódolt vonallánc — a Mapbox statikus térképképe közvetlenül érti. */
   polyline: string;
+  /** Optional for compatibility with missions saved before route guidance. */
+  maneuvers?: RouteManeuver[];
   /** A megszerezhető ÚJ terület (szabad + elvett). */
   areaM2: number;
   estimatedGp: number;
@@ -650,6 +652,7 @@ export interface MissionResult {
  */
 export interface PlannedRoute {
   polyline: string;
+  maneuvers?: RouteManeuver[];
   distanceKm: number;
   /** Csak diagnosztikához és a kiértékelő kéréshez — a felület nem mutatja. */
   bearing: number;
@@ -1879,7 +1882,7 @@ export const api = {
     type: ActivityType;
     priority?: MissionPriority;
     limit?: number;
-    routes: { polyline: string; bearing: number }[];
+    routes: { polyline: string; bearing: number; maneuvers?: RouteManeuver[] }[];
   }) =>
     request<{ missions: Mission[]; reason?: string }>('/api/missions/evaluate', {
       method: 'POST',

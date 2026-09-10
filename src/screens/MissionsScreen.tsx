@@ -294,6 +294,7 @@ export function MissionsScreen() {
         routes: plan.routes.map((route) => ({
           polyline: route.polyline,
           bearing: route.bearing,
+          ...(route.maneuvers ? { maneuvers: route.maneuvers } : {}),
         })),
       });
 
@@ -553,7 +554,7 @@ export function MissionsScreen() {
               // A vonal a rögzítés térképén „szellemvonalként" jelenik meg —
               // a küldetés ígér egy útvonalat, ez viszi el oda a rajzot.
               rememberGhostRoute(mission);
-              navigate('/rogzites');
+              navigate('/rogzites', { state: { recordingIntent: 'guided' } });
             }}
           />
         ) : null}
@@ -563,7 +564,7 @@ export function MissionsScreen() {
           onClose={() => setSavedOpen(false)}
           onSelect={(mission) => {
             rememberGhostRoute(mission);
-            navigate('/rogzites');
+            navigate('/rogzites', { state: { recordingIntent: 'guided' } });
           }}
         />
       ) : null}
