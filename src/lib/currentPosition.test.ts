@@ -14,6 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 const platform = { native: false };
 const nativeFix = {
@@ -54,6 +55,21 @@ async function load() {
 }
 
 describe('currentPosition', () => {
+  it('iOS-en a helyi plugineket regisztráló bridge controller indul', () => {
+    const storyboard = readFileSync(
+      new URL('../../ios/App/App/Base.lproj/Main.storyboard', import.meta.url),
+      'utf8',
+    );
+    const bridgeController = readFileSync(
+      new URL('../../ios/App/App/GRUNDOBridgeViewController.swift', import.meta.url),
+      'utf8',
+    );
+
+    expect(storyboard).toContain('customClass="GRUNDOBridgeViewController"');
+    expect(storyboard).not.toContain('customClass="CAPBridgeViewController"');
+    expect(bridgeController).toContain('registerPluginInstance(BackgroundLocationPlugin())');
+  });
+
   it('natívban a plugint hívja, a böngésző API-ját SOHA', async () => {
     platform.native = true;
     const { currentPosition } = await load();
