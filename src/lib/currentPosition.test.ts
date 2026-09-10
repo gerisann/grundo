@@ -45,6 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -62,6 +63,20 @@ describe('currentPosition', () => {
     expect(nativeCurrentPosition).toHaveBeenCalledTimes(1);
     // ⚠️ EZ A LÉNYEG: egyetlen böngészős hívás is visszahozza az angol,
     // „localhost" nevű rendszerablakot.
+    expect(browserGetCurrentPosition).not.toHaveBeenCalled();
+  });
+
+  it('natívban is lezárja a hívást a kért időkorlátnál', async () => {
+    vi.useFakeTimers();
+    platform.native = true;
+    nativeCurrentPosition.mockImplementationOnce(() => new Promise(() => undefined));
+    const { currentPosition, PositionUnavailableError } = await load();
+
+    const pending = currentPosition({ timeoutMs: 1_500 });
+    const assertion = expect(pending).rejects.toBeInstanceOf(PositionUnavailableError);
+    await vi.advanceTimersByTimeAsync(1_500);
+    await assertion;
+
     expect(browserGetCurrentPosition).not.toHaveBeenCalled();
   });
 

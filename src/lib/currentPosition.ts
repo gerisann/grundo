@@ -48,6 +48,28 @@ export interface CurrentPositionOptions {
 
 export class PositionUnavailableError extends Error {}
 
+async function nativePositionWithTimeout(timeoutMs: number): Promise<CurrentFix> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      nativeCurrentPosition(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new PositionUnavailableError('Nem érkezett helyadat. Ellenőrizd, hogy a helymeghatározás be van-e kapcsolva.')),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } catch (error) {
+    if (error instanceof PositionUnavailableError) throw error;
+    throw new PositionUnavailableError(
+      error instanceof Error && error.message ? error.message : 'Nem sikerült helyzetet mérni.',
+    );
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /**
  * A jelenlegi helyzet, vagy hiba.
  *
@@ -55,7 +77,12 @@ export class PositionUnavailableError extends Error {}
  * „nem engedélyezted", van, ahol egyszerűen nincs helyi tartalom.
  */
 export async function currentPosition(options: CurrentPositionOptions = {}): Promise<CurrentFix> {
-  if (isNativeApp()) return nativeCurrentPosition();
+  /*
+   * A Capacitor plugin ígérete platformhibánál nyitva maradhat. Böngészőben
+   * maga a Geolocation API kezeli a timeoutot, natívban nekünk kell ugyanazt
+   * a szerződést garantálnunk, különben a hívó felülete örökké tölt.
+   */
+  if (isNativeApp()) return nativePositionWithTimeout(options.timeoutMs ?? 10_000);
 
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     throw new PositionUnavailableError('Ez a böngésző nem tud helyet meghatározni.');

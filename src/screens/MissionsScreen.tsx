@@ -6,7 +6,7 @@ import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useThemeContext } from '@/hooks/ThemeProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
-import { currentPosition } from '@/lib/currentPosition';
+import { currentPosition, PositionUnavailableError } from '@/lib/currentPosition';
 import { routeImageUrl } from '@/lib/staticMap';
 import { readDailyMissionResult, rememberDailyMission } from '@/lib/dailyMission';
 import { rememberGhostRoute } from '@/lib/ghostRoute';
@@ -196,17 +196,13 @@ export function MissionsScreen() {
    * el. Ez felhasználói gesztusra történik, nem az app indulásakor — lásd a
    * `WeatherWidget` fejlécében ugyanezt az indoklást.
    */
-  async function askPosition(): Promise<{ lat: number; lng: number } | null> {
+  async function askPosition(): Promise<{ lat: number; lng: number }> {
     if (position) return position;
-    try {
-      /* ⚠️ Natívban SOHA nem a `navigator.geolocation` — lásd `currentPosition`. */
-      const fix = await currentPosition({ highAccuracy: true, maxAgeMs: 60_000 });
-      const next = { lat: fix.lat, lng: fix.lng };
-      setPosition(next);
-      return next;
-    } catch {
-      return null;
-    }
+    /* ⚠️ Natívban SOHA nem a `navigator.geolocation` — lásd `currentPosition`. */
+    const fix = await currentPosition({ highAccuracy: true, timeoutMs: 20_000, maxAgeMs: 60_000 });
+    const next = { lat: fix.lat, lng: fix.lng };
+    setPosition(next);
+    return next;
   }
 
   async function generate() {
@@ -240,10 +236,6 @@ export function MissionsScreen() {
     setError('');
     try {
       const where = await askPosition();
-      if (!where) {
-        setError('A küldetéshez tudnunk kell, hol vagy. Engedélyezd a helymeghatározást.');
-        return;
-      }
 
       /*
         KÉT FÁZIS — a kártya nem várja meg a területszámítást.
@@ -313,7 +305,9 @@ export function MissionsScreen() {
       setResult(null);
       setFromToday(false);
       setError(
-        problem instanceof ApiError ? problem.message : 'A küldetés-generálás most nem működik.',
+        problem instanceof ApiError || problem instanceof PositionUnavailableError
+          ? problem.message
+          : 'A küldetés-generálás most nem működik.',
       );
     } finally {
       setPlan(null);
