@@ -96,6 +96,11 @@
   box-shadow: var(--shadow-card);
 }
 
+.track__guidance-wrap {
+  position: relative;
+  width: 100%;
+}
+
 .track__guidance-line {
   min-height: 52px;
   display: grid;
@@ -115,8 +120,11 @@
   border-radius: 10px;
   background: var(--accent);
   color: var(--accent-on);
-  font-size: 22px;
-  font-weight: 900;
+}
+
+.track__guidance-line-arrow svg {
+  width: 22px;
+  height: 22px;
 }
 
 .track__guidance-line strong {
@@ -145,10 +153,13 @@
 }
 
 .track__guidance {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: var(--sp-3);
   padding: 10px;
-  border-radius: var(--r-xl);
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 
 .track__view-switch {
@@ -190,9 +201,11 @@
   border-radius: 20px;
   background: var(--accent);
   color: var(--accent-on);
-  font-size: 42px;
-  font-weight: 900;
-  line-height: 1;
+}
+
+.track__maneuver-arrow svg {
+  width: 44px;
+  height: 44px;
 }
 
 .track__maneuver-copy {
@@ -221,7 +234,6 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 0;
-  border-top: 1px solid var(--border-subtle);
 }
 
 .track__route-summary div {
@@ -230,10 +242,6 @@
   gap: 2px;
   padding: 9px 6px 2px;
   text-align: center;
-}
-
-.track__route-summary div + div {
-  border-left: 1px solid var(--border-subtle);
 }
 
 .track__route-summary dt {
@@ -679,7 +687,21 @@
   transition:
     max-height 400ms cubic-bezier(.22, 1, .36, 1),
     padding-top 400ms cubic-bezier(.22, 1, .36, 1),
-    padding-bottom 400ms cubic-bezier(.22, 1, .36, 1);
+    padding-bottom 400ms cubic-bezier(.22, 1, .36, 1),
+    margin-top 400ms cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Navigációban nincs statisztikapanel, amihez abszolút pozicionálhatnánk.
+   Itt a szünetjelzés a navigációs kártya után, a normál elrendezésben nő ki,
+   így az alatta lévő gyorsvezérlőket sem takarja el. */
+.track__pause--inline {
+  position: relative;
+  top: auto;
+  margin-top: 0;
+}
+
+.track__pause--inline.track__pause--shown {
+  margin-top: -20px;
 }
 
 .track__pause--shown {

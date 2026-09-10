@@ -694,15 +694,15 @@ export function MapView({
           type="button"
           className={`mapview__tilt${tilted ? ' mapview__tilt--on' : ''}`}
           aria-pressed={tilted}
-          aria-label={tilted ? 'Felülnézet (2D)' : 'Bedöntött nézet (3D)'}
-          title={tilted ? 'Felülnézet' : 'Bedöntött nézet'}
+          aria-label={tilted ? '3D nézet, váltás 2D-re' : '2D nézet, váltás 3D-re'}
+          title={tilted ? '3D nézet · váltás 2D-re' : '2D nézet · váltás 3D-re'}
           onClick={() => {
             const next = !tilted;
             setTilted(next);
             writeTiltPreference(next);
           }}
         >
-          {tilted ? '2D' : '3D'}
+          {tilted ? '3D' : '2D'}
         </button>
       ) : null}
       {navigationModeControl ? (

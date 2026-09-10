@@ -749,13 +749,18 @@ export function TrackingScreen() {
 
       <div className="track__overlay">
         {ghostRoute && preparedGuidanceRoute && !savePanelOpen && statsView !== 'full' ? (
-          <RouteGuidancePanel
-            view={recordingView}
-            onViewChange={(view) => setGuidance((current) => ({ ...current, view }))}
-            progress={routeProgress}
-            routeDistanceM={ghostRoute.plannedDistanceM ?? preparedGuidanceRoute.totalDistanceM}
-            maneuvers={ghostRoute.maneuvers}
-          />
+          <div className="track__guidance-wrap">
+            <RouteGuidancePanel
+              view={recordingView}
+              onViewChange={(view) => setGuidance((current) => ({ ...current, view }))}
+              progress={routeProgress}
+              routeDistanceM={ghostRoute.plannedDistanceM ?? preparedGuidanceRoute.totalDistanceM}
+              maneuvers={ghostRoute.maneuvers}
+            />
+            {recordingView === 'navigation' && (running || paused) ? (
+              <PausePanel shown={paused} inline />
+            ) : null}
+          </div>
         ) : null}
         {remoteState !== null ? (
           <div className="track__note track__note--sync track__note--closable">
@@ -1385,7 +1390,6 @@ function RouteGuidancePanel({
   const fallbackDistanceM = progress ? progress.remainingDistanceM : routeDistanceM;
   const maneuverDistanceM = progress?.distanceToNextManeuverM ?? maneuver?.routeOffsetM;
   const title = guidanceTitle(maneuver);
-  const arrow = guidanceArrow(maneuver);
 
   if (view === 'grundo') {
     return (
@@ -1395,7 +1399,9 @@ function RouteGuidancePanel({
         onClick={() => onViewChange('navigation')}
         aria-label={`${title}. Navigáció megnyitása.`}
       >
-        <span className="track__guidance-line-arrow" aria-hidden="true">{arrow}</span>
+        <span className="track__guidance-line-arrow" aria-hidden="true">
+          <GuidanceArrowIcon maneuver={maneuver} />
+        </span>
         <strong>{formatGuidanceDistance(maneuverDistanceM ?? fallbackDistanceM)}</strong>
         <span className="track__guidance-line-title">{title}</span>
         <span className="track__guidance-line-open" aria-hidden="true">NAV</span>
@@ -1413,7 +1419,9 @@ function RouteGuidancePanel({
         </button>
       </div>
       <div className="track__maneuver">
-        <span className="track__maneuver-arrow" aria-hidden="true">{arrow}</span>
+        <span className="track__maneuver-arrow" aria-hidden="true">
+          <GuidanceArrowIcon maneuver={maneuver} />
+        </span>
         <span className="track__maneuver-copy">
           <strong>{formatGuidanceDistance(maneuverDistanceM ?? fallbackDistanceM)}</strong>
           <span>{title}</span>
@@ -1435,17 +1443,49 @@ function guidanceTitle(maneuver: RouteProgressState['nextManeuver']): string {
   return maneuver.streetName || 'Haladj tovább';
 }
 
-function guidanceArrow(maneuver: RouteProgressState['nextManeuver']): string {
-  if (maneuver?.type === 'arrive') return '◎';
-  if (maneuver?.type === 'roundabout') return '↻';
-  switch (maneuver?.modifier) {
-    case 'left': return '←';
-    case 'slight_left': return '↖';
-    case 'right': return '→';
-    case 'slight_right': return '↗';
-    case 'uturn': return '↶';
-    default: return '↑';
+function GuidanceArrowIcon({
+  maneuver,
+}: {
+  maneuver: RouteProgressState['nextManeuver'];
+}) {
+  const common = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2.4,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  if (maneuver?.type === 'arrive') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="7" />
+        <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+      </svg>
+    );
   }
+  if (maneuver?.type === 'roundabout') {
+    return (
+      <svg {...common}>
+        <path d="M6.5 8.5A6.5 6.5 0 1 1 6 16" />
+        <path d="m6.5 8.5.2-5M6.5 8.5l4.7-.7" />
+      </svg>
+    );
+  }
+
+  const path = (() => {
+    switch (maneuver?.modifier) {
+      case 'left': return 'M19 18v-5a5 5 0 0 0-5-5H5m0 0 5-5M5 8l5 5';
+      case 'slight_left': return 'M18 19 6 7m0 0h7M6 7v7';
+      case 'right': return 'M5 18v-5a5 5 0 0 1 5-5h9m0 0-5-5m5 5-5 5';
+      case 'slight_right': return 'M6 19 18 7m0 0h-7m7 0v7';
+      case 'uturn': return 'M17 19v-8a5 5 0 0 0-10 0v2m0 0-4-4m4 4 4-4';
+      default: return 'M12 20V4m0 0L7 9m5-5 5 5';
+    }
+  })();
+
+  return <svg {...common}><path d={path} /></svg>;
 }
 
 function formatGuidanceDistance(meters: number): string {
@@ -1664,6 +1704,8 @@ function StatsPanel({
  * közvetlen szülője) alján, ANNAK RÉSZEKÉNT jelenik meg: a teteje szögletes
  * és 20 px-et ALÁJA nyúlik a statisztika-panelnek, hogy annak lekerekített
  * alsó sarkai mögött is sárga legyen, ne a térkép látsszon át.
+ * Navigációs nézetben az `inline` változat ugyanezt a navigációs kártya után,
+ * a normál elrendezésben teszi, mert ott nincs statisztikapanel.
  *
  * ⚠️ MINDIG KI VAN RENDERELVE (amíg fut vagy szünetel a mérés), csak
  * felfelé eltolva — így a visszacsukódás is animált, nem csak eltűnik.
@@ -1671,10 +1713,12 @@ function StatsPanel({
  * ⚠️ `aria-hidden` REJTETT ÁLLAPOTBAN. A képernyőolvasó különben folyamatosan
  * bemondaná a szünet-szöveget rögzítés közben is, amikor nincs is szünet.
  */
-function PausePanel({ shown }: { shown: boolean }) {
+function PausePanel({ shown, inline = false }: { shown: boolean; inline?: boolean }) {
   return (
     <div
-      className={`track__pause${shown ? ' track__pause--shown' : ''}`}
+      className={`track__pause${inline ? ' track__pause--inline' : ''}${
+        shown ? ' track__pause--shown' : ''
+      }`}
       role="status"
       aria-hidden={!shown}
     >
