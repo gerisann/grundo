@@ -864,6 +864,20 @@ export interface AdminMetrics {
   series: MetricsDailyPoint[];
 }
 
+export interface UsagePeriodSummary {
+  durationMs: number;
+  activeUsers: number;
+}
+
+export interface AdminUsageOverview {
+  generatedAt: string;
+  today: number;
+  periods: Record<'day' | 'week' | 'month' | 'all', UsagePeriodSummary>;
+  daily: Array<{ day: number; durationMs: number; activeUsers: number }>;
+  todayHours: Array<{ hour: number; durationMs: number; activeUsers: number }>;
+  todayUsers: Array<{ uid: string; name: string; durationMs: number; hours: number[] }>;
+}
+
 export interface TunableItem {
   path: string;
   kind: 'number' | 'integer' | 'boolean';
@@ -1905,6 +1919,14 @@ export const api = {
   adminStatus: () => request<AdminStatus>('/api/admin/status'),
 
   adminMetrics: (days = 14) => request<AdminMetrics>(`/api/admin/metrics?days=${days}`),
+
+  adminUsage: () => request<AdminUsageOverview>('/api/admin/usage'),
+
+  appUsageHeartbeat: (input: { sessionId: string; totalActiveMs: number; platform: string }) =>
+    request<{ ok: true; acceptedMs: number }>('/api/usage/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   /**
    * Teszt-értesítés a saját eszközökre, eszközönkénti nyers FCM hibakóddal.

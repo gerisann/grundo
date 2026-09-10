@@ -622,6 +622,10 @@ A funkció bevezetése előtti kapcsolatokat a `territoryEvents` teljes történ
 | `appConfig/gameplay/versions/{n}` | a konfiguráció verziótörténete, visszavonáshoz |
 | `modifiers/{id}` | időszakos szorzók — lásd lent |
 | `metricsDaily/{day}` | napi használati aggregátum az admin áttekintőhöz |
+| `appUsageHourly/{day}_{hour}_{uid}` | felhasználónkénti, órás előtéridő az admin mai diagramjához |
+| `appUsageDaily/{day}_{uid}` | felhasználónkénti napi előtéridő, 30 napos történethez |
+| `appUsageTotals/{uid}` | felhasználónkénti mindenkori előtéridő |
+| `appUsageReceipts/{uid}_{sessionId}` | a monoton kliensszámláló idempotencia-állapota |
 | `adminAudit/{id}` | `adminUid, action, targetType, targetId, before, after, at` |
 | `activityAudits/{activityId}` | szerveroldali foglalás-, szint-, tulajdonos- és hurokdiagnosztika |
 | `rateLimits/{hmac}` | szerveroldali, tranzakciós visszaélés-megelőző számláló; kliens nem olvashatja |
@@ -669,6 +673,19 @@ Területi modifier **arányosan** hat: az érintett cellák aránya szerint (lá
   computedAt: Timestamp }
 ```
 Az admin áttekintő ebből olvas, hogy azonnali választ adjon — a Firebase Analytics / BigQuery a hosszabb távú terméki elemzés helye marad. A napi forduló job írja, `Europe/Budapest` szerinti 00:05-kor.
+
+### `appUsage*` — előtérben töltött használati idő
+
+A bejelentkezett kliens percenként és háttérbe kerüléskor egy munkameneten
+belül monoton növekvő előtéridő-számlálót küld. A szerver tranzakcióban csak
+az előző receipt óta nőtt részt számolja el, ezért az újraküldés nem dupláz.
+Az órás és napi dokumentumok `durationMs`, `uid`, `platform`, `lastSeenAt`
+mezőket tartalmaznak; az órás dokumentum ezen felül `hour` és `sessions`, a
+napi pedig `day` mezőt. Nyers képernyő- vagy interakcióesemény nem készül.
+
+Ez a mérés az app **látható, előtérben töltött idejét** jelenti. Nem azonos a
+rögzített aktivitás mozgásidejével, és a bevezetés előtti időszakra nem
+rekonstruálható visszamenőleg.
 
 ### `activityTrust/{activityId}` — a bizalmi pontszám naplója
 

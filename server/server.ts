@@ -35,6 +35,7 @@ import { adminRouter } from './src/routes/admin';
 import { bugReportsRouter } from './src/routes/bugreports';
 import { rulesRouter } from './src/routes/rules';
 import { usersRouter } from './src/routes/users';
+import { usageRouter } from './src/routes/usage';
 import { rivalsRouter } from './src/routes/rivals';
 import { bandasRouter } from './src/routes/bandas';
 import { weatherRouter } from './src/routes/weather';
@@ -200,6 +201,7 @@ app.use('/api/rules', rulesRouter);
 app.use('/api/auth', authenticate, authenticatedRateLimit, authRouter);
 app.use('/api/activities', authenticate, authenticatedRateLimit, activitiesRouter);
 app.use('/api/users', authenticate, authenticatedRateLimit, usersRouter);
+app.use('/api/usage', authenticate, authenticatedRateLimit, usageRouter);
 app.use('/api/rivals', authenticate, authenticatedRateLimit, rivalsRouter);
 app.use('/api/bandas', authenticate, authenticatedRateLimit, bandasRouter);
 /**

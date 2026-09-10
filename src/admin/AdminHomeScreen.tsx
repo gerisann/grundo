@@ -4,6 +4,7 @@ import { Button } from '@/components/ui';
 import {
   api,
   type AdminMetrics,
+  type AdminUsageOverview,
   type AdminPushTest,
   type AdminStatus,
   type BandaRolloverResult,
@@ -26,6 +27,7 @@ export function AdminHomeScreen() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
+  const [usage, setUsage] = useState<AdminUsageOverview | null>(null);
   const [pushTest, setPushTest] = useState<AdminPushTest | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
@@ -36,6 +38,10 @@ export function AdminHomeScreen() {
   useEffect(() => {
     api.adminStatus().then(setStatus).catch(() => setStatus(null));
     api.adminMetrics().then(setMetrics).catch(() => setMetrics(null));
+    const refreshUsage = () => api.adminUsage().then(setUsage).catch(() => undefined);
+    void refreshUsage();
+    const timer = window.setInterval(refreshUsage, 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const latest = metrics?.latest ?? null;
@@ -166,6 +172,66 @@ export function AdminHomeScreen() {
         )}
       </section>
 
+      <section className="admin-card admin-usage">
+        <div className="admin-usage__heading">
+          <div>
+            <h2>Apphasználat</h2>
+            <p className="admin-muted">Ténylegesen előtérben töltött idő, Europe/Budapest szerint.</p>
+          </div>
+          {usage ? <span className="admin-muted">Frissítve: {new Date(usage.generatedAt).toLocaleTimeString('hu-HU')}</span> : null}
+        </div>
+        {usage ? (
+          <>
+            <div className="admin-tiles admin-usage__periods">
+              <UsageTile label="Ma" value={usage.periods.day} />
+              <UsageTile label="Elmúlt 7 nap" value={usage.periods.week} />
+              <UsageTile label="Elmúlt 30 nap" value={usage.periods.month} />
+              <UsageTile label="Mindenkor" value={usage.periods.all} />
+            </div>
+
+            <h3>Elmúlt 30 nap</h3>
+            <UsageBars
+              points={usage.daily.map((point) => ({
+                key: String(point.day),
+                label: shortDay(point.day),
+                value: point.durationMs,
+                title: `${formatDay(point.day)}: ${formatUsage(point.durationMs)}, ${point.activeUsers} fő`,
+              }))}
+            />
+
+            <h3>Mai használat óránként</h3>
+            <UsageBars
+              points={usage.todayHours.map((point) => ({
+                key: String(point.hour),
+                label: point.hour % 3 === 0 ? `${point.hour}` : '',
+                value: point.durationMs,
+                title: `${String(point.hour).padStart(2, '0')}:00–${String(point.hour + 1).padStart(2, '0')}:00: ${formatUsage(point.durationMs)}, ${point.activeUsers} fő`,
+              }))}
+            />
+
+            <div className="admin-table-wrap">
+              <table className="admin-usage-table">
+                <thead><tr><th>Felhasználó</th><th>Mai használat</th><th>Óránként</th></tr></thead>
+                <tbody>
+                  {usage.todayUsers.map((entry) => (
+                    <tr key={entry.uid}>
+                      <td><strong>{entry.name}</strong><small>{entry.uid}</small></td>
+                      <td>{formatUsage(entry.durationMs)}<small>{usageWindow(entry.hours)}</small></td>
+                      <td><UserHourStrip hours={entry.hours} /></td>
+                    </tr>
+                  ))}
+                  {usage.todayUsers.length === 0 ? (
+                    <tr><td colSpan={3} className="admin-muted">Ma még nincs mért használat.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <p className="admin-muted">A használati statisztika még nem érhető el.</p>
+        )}
+      </section>
+
       <section className="admin-card">
         <h2>Push-diagnosztika</h2>
         <p className="admin-muted">
@@ -272,4 +338,70 @@ function pushHint(code: string | null): string | null {
 /** A napszámból olvasható dátum — a napszám UTC `Date.UTC(y,m,d)`-ből jön, tehát UTC-ben formázva helyes. */
 function formatDay(day: number): string {
   return new Date(day * 86_400_000).toLocaleDateString('hu-HU', { timeZone: 'UTC' });
+}
+
+function shortDay(day: number): string {
+  return new Date(day * 86_400_000).toLocaleDateString('hu-HU', {
+    month: 'numeric', day: 'numeric', timeZone: 'UTC',
+  });
+}
+
+function formatUsage(durationMs: number): string {
+  const minutes = Math.round(durationMs / 60_000);
+  if (minutes < 60) return `${minutes} perc`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} ó ${rest} p` : `${hours} ó`;
+}
+
+function UsageTile({ label, value }: {
+  label: string;
+  value: { durationMs: number; activeUsers: number };
+}) {
+  return (
+    <div className="admin-tile admin-tile--static">
+      <span className="admin-tile__value">{formatUsage(value.durationMs)}</span>
+      <span className="admin-tile__label">{label}</span>
+      <span className="admin-muted">{value.activeUsers} aktív felhasználó</span>
+    </div>
+  );
+}
+
+function UsageBars({ points }: {
+  points: Array<{ key: string; label: string; value: number; title: string }>;
+}) {
+  const max = Math.max(1, ...points.map((point) => point.value));
+  return (
+    <div className="admin-usage-chart">
+      {points.map((point) => (
+        <div className="admin-usage-chart__column" key={point.key} title={point.title}>
+          <div className="admin-usage-chart__track">
+            <span style={{ height: `${Math.max(point.value > 0 ? 3 : 0, point.value / max * 100)}%` }} />
+          </div>
+          <small>{point.label}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UserHourStrip({ hours }: { hours: number[] }) {
+  const max = Math.max(1, ...hours);
+  return (
+    <div className="admin-hour-strip" aria-label="Mai óránkénti használat">
+      {hours.map((value, hour) => (
+        <span
+          key={hour}
+          title={`${hour}:00 — ${formatUsage(value)}`}
+          style={{ opacity: value === 0 ? 0.08 : Math.max(0.25, value / max) }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function usageWindow(hours: number[]): string {
+  const active = hours.map((value, hour) => value > 0 ? hour : -1).filter((hour) => hour >= 0);
+  if (active.length === 0) return '—';
+  return `${String(active[0]).padStart(2, '0')}:00–${String(active.at(-1)! + 1).padStart(2, '0')}:00`;
 }

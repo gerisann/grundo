@@ -66,6 +66,11 @@ export const COLLECTIONS = {
   appConfig: 'appConfig',
   modifiers: 'modifiers',
   metricsDaily: 'metricsDaily',
+  /** Előtérben töltött app-idő: idempotencia, órás/napi és mindenkori aggregátum. */
+  appUsageReceipts: 'appUsageReceipts',
+  appUsageHourly: 'appUsageHourly',
+  appUsageDaily: 'appUsageDaily',
+  appUsageTotals: 'appUsageTotals',
   rolloverRuns: 'rolloverRuns',
   /** Server-only, transactionally updated abuse-prevention counters. */
   rateLimits: 'rateLimits',

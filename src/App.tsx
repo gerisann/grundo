@@ -13,6 +13,7 @@ import { Button } from './components/ui';
 import { HomeScreen } from './screens/HomeScreen';
 import { addNativePushActionListener } from './lib/push';
 import { debugModeAvailable } from './lib/debugMode';
+import { startAppUsageTracking } from './lib/appUsage';
 
 /**
  * MINDEN KÉPERNYŐ LUSTÁN TÖLTŐDIK, A HOME KIVÉTELÉVEL.
@@ -148,6 +149,14 @@ function NativePushActions() {
   return null;
 }
 
+function AppUsageHeartbeat({ uid }: { uid: string }) {
+  useEffect(() => {
+    if (!uid) return;
+    return startAppUsageTracking();
+  }, [uid]);
+  return null;
+}
+
 function Router() {
   const { status, role, user } = useAuth();
   const { status: profileStatus, profile } = useProfile();
@@ -249,6 +258,7 @@ function Router() {
 
   return (
     <>
+      <AppUsageHeartbeat uid={user?.uid ?? ''} />
       {/*
         AZ ADMIN TELJES SZÉLESSÉGŰ — Geri kérése (2026-09-01).
 

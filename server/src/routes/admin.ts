@@ -26,6 +26,7 @@ import { getGameplaySnapshot, resetGameplayCache } from '../lib/gameplayConfig';
 import { sendTestPush } from '../lib/notifications';
 import { normalizeUsername } from '../lib/user';
 import { resetModifierCache } from '../lib/modifiers';
+import { readAdminUsageOverview } from './usage';
 
 export const adminRouter = Router();
 
@@ -777,6 +778,15 @@ adminRouter.get('/metrics', async (req, res, next) => {
     });
 
     res.json({ latest: series[0] ?? null, series });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Előtérben töltött idő: ma óránként/felhasználónként, plusz 1/7/30 nap és mindenkor. */
+adminRouter.get('/usage', async (_req, res, next) => {
+  try {
+    res.json(await readAdminUsageOverview());
   } catch (error) {
     next(error);
   }
