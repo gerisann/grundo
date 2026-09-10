@@ -711,7 +711,7 @@ export function TrackingScreen() {
     <div
       className={`track${done ? ' track--finished' : ''}${savePanelOpen ? ' track--save-open' : ''}${
         pickerOpen ? ' track--picker-open' : ''
-      }${statsView === 'full' ? ' track--stats-full' : ''}${role ? ' track--perf' : ''}`}
+      }${statsView === 'full' ? ' track--stats-full' : ''}`}
       data-recording-view={recordingView}
     >
       {/*
@@ -739,8 +739,6 @@ export function TrackingScreen() {
         />
       ) : null}
 
-      {role ? <PerfOverlay /> : null}
-
       {/*
         A SZÜNET JELZÉSE A DOKKHOZ KÖLTÖZÖTT (Geri, 2026-08-26). Korábban itt
         egy lüktető doboz ült a képernyő közepén, ami épp a térképet takarta
@@ -759,28 +757,6 @@ export function TrackingScreen() {
             maneuvers={ghostRoute.maneuvers}
           />
         ) : null}
-        {/*
-          NÉMÍTÁS — a rögzítés felületén, egy koppintásra.
-
-          Geri kérése (2026-09-09). Az iOS hangútvonala mostantól SZÁNDÉKOSAN
-          átveszi a szót: a koppanások fülhallgatón is szólnak, a némító
-          kapcsoló állásától függetlenül, és a zene sem áll meg tőlük (lásd
-          `AppDelegate.swift`). Épp ezért kell ide egy kapcsoló — aki nem akarja
-          hallani, itt tudja elhallgattatni, nem a Beállításokban kell keresnie.
-
-          Ugyanaz a `soundEnabled`, amit a Beállítások → Hangok főkapcsolója
-          állít: egy igazságforrás, eszközhöz kötve.
-        */}
-        <button
-          type="button"
-          className="track__mute"
-          aria-pressed={!feedback.soundEnabled}
-          aria-label={feedback.soundEnabled ? 'Hangok némítása' : 'Hangok bekapcsolása'}
-          title={feedback.soundEnabled ? 'Hangok némítása' : 'Hangok bekapcsolása'}
-          onClick={() => updateFeedbackSettings({ soundEnabled: !feedback.soundEnabled })}
-        >
-          {feedback.soundEnabled ? <SoundOnIcon /> : <SoundOffIcon />}
-        </button>
         {remoteState !== null ? (
           <div className="track__note track__note--sync track__note--closable">
             <button
@@ -907,6 +883,28 @@ export function TrackingScreen() {
             ) : null}
           </>
         ) : null}
+
+        {/*
+          A két gyorsvezérlő együtt mozog a nézet tartalmával. GRUNDO módban
+          a statisztikapanel UTÁN, Navigáció módban a navigációs kártya alatt
+          jelennek meg — egyik sem lebeg többé a panelek fölött.
+
+          A némítás ugyanazt a `soundEnabled` beállítást kezeli, mint a
+          Beállítások → Hangok főkapcsoló. A főszál-mérő csak adminnak látszik.
+        */}
+        <div className="track__utility-actions">
+          <button
+            type="button"
+            className="track__mute"
+            aria-pressed={!feedback.soundEnabled}
+            aria-label={feedback.soundEnabled ? 'Hangok némítása' : 'Hangok bekapcsolása'}
+            title={feedback.soundEnabled ? 'Hangok némítása' : 'Hangok bekapcsolása'}
+            onClick={() => updateFeedbackSettings({ soundEnabled: !feedback.soundEnabled })}
+          >
+            {feedback.soundEnabled ? <SoundOnIcon /> : <SoundOffIcon />}
+          </button>
+          {role ? <PerfOverlay /> : null}
+        </div>
       </div>
 
       {idle && remoteState === null && showStartHint && !pickerOpen && countdown === null ? (

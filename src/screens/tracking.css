@@ -107,12 +107,6 @@
   text-align: left;
 }
 
-/* Az admin teljesítménymérő gombja ugyanebben a sarokban ül. */
-.track--perf .track__guidance,
-.track--perf .track__guidance-line {
-  width: calc(100% - 44px);
-}
-
 .track__guidance-line-arrow {
   width: 34px;
   height: 34px;
@@ -1225,11 +1219,16 @@
   fülhallgatón is szólnak). Aki nem akarja hallani, itt kapcsolja ki — nem a
   Beállításokban kell keresnie.
 
-  A jobb szélen ül, a saját sorában: a bal oldal a körök gombjáé
-  (`.track__laps-open`, `align-self: flex-start`), így a kettő sosem ütközik.
+  A gyorsvezérlők közös oszlopa a statisztikapanel után, a jobb szélen ül.
 */
-.track__mute {
+.track__utility-actions {
   align-self: flex-end;
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+}
+
+.track__mute {
   display: grid;
   place-items: center;
   width: 40px;

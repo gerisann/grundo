@@ -5,11 +5,9 @@
  * esztétikai elem. A pozíció a biztonságos zóna alatt marad, hogy iPhone-on
  * se csússzon a bevágás alá.
  *
- * A `--perf-overlay-top` alapértéke a képernyő tetejéhez tapasztja. A LAB E2E
- * sandbox viszont egy 82 px magas, teljes szélességű sávot tesz oda
- * (`lab-e2e-tracking.css`, z-index 10020) — és a mérés PONT ott zajlik, tehát
- * ott lejjebb kell csúsznia. A magas z-index ugyanezért kell: enélkül a
- * sandbox sávja alá kerülne.
+ * A becsukott gomb a TrackingScreen gyorsvezérlő-oszlopában ül. A változó a
+ * megnyitott, teljes képernyős panel biztonságos felső térközét adja; a LAB
+ * E2E sávja miatt ott továbbra is nagyobb hely szükséges.
  */
 
 :root {
@@ -21,12 +19,8 @@
 }
 
 .perf-overlay__pill {
-  position: absolute;
-  top: var(--perf-overlay-top);
-  right: var(--sp-3);
-  z-index: 10030;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border-default);
   background: var(--bg-elevated);
