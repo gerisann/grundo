@@ -58,6 +58,54 @@
 
 **Kilépési feltétel:** szabad indításkor nincs navigációs UI; vezetett indítás Navigáció nézetbe érkezik; a GRUNDO nézet egysoros utasítása működik; a nézetváltás nem hoz létre új Mapbox map loadot és nem szakítja meg a rögzítést.
 
+### 1D. Útvonalpreferencia-szűrő és konfliktusmodell *(külön feladat, 2026-09-11)*
+
+**Cél:** a felhasználó egyszerű kapcsolókat lásson, miközben a szerver egyértelmű,
+verziózott és az elérhető adatokkal igazolható tervezési szándékot kap. A címkék
+munkaanyagok, nem végleges termékígéretek.
+
+A felület három, eltérő jelentésű szintet kezel:
+
+1. **Elsődleges stratégia — pontosan egy választható:**
+   - `Kiegyensúlyozott`;
+   - `Nyugodtabb` — zaj, útkategória és forgalmi konfliktusok súlyozott csökkentése;
+   - `Védettebb` — kevesebb nagy forgalmú út és kellemetlen keresztezés,
+     bringán védettebb infrastruktúra előnyben;
+   - `Felfedező` — korábban nem járt szakaszok és alacsony átfedés előnyben.
+2. **Terep — pontosan egy választható:** `Sík · Kiegyensúlyozott · Dombos`.
+3. **Kombinálható útjellemzők:** `Csendesebb`, `Zöldebb`, `Jobb burkolat`,
+   `Jobban kivilágított`, `Kevesebb forgalmas keresztezés`, kerékpárnál
+   `Védett kerékpáros infrastruktúra`, valamint saját adatokból
+   `Kedvelt szakaszaim előnyben` és `Nem kedvelt szakaszaim kerülése`.
+
+Konfliktuskezelés:
+
+- az elsődleges stratégiák rádióválasztók, ezért egymást automatikusan leváltják;
+- a `Sík` és `Dombos` ugyanennek megfelelően nem lehet egyszerre aktív;
+- a `Felfedező` kikapcsolja a `Kedvelt szakaszaim előnyben` kapcsolót, mert az
+  egyik új, a másik már ismert útszakaszokat kér;
+- a kerékpáros infrastruktúra csak `bike` módban jelenik meg;
+- a világítási preferencia nappal elrejthető vagy esti ajánlásként magyarázható;
+- a többi jellemző nem kemény kizárás: együtt is választhatók, a lefedettségük
+  és a kerülő mértéke látható marad;
+- ismeretlen adat nem számít rossz útnak, és nem teljesítheti bizonyítatlanul a
+  kiválasztott igényt sem.
+
+A `Legrövidebb` és `Gyors` nem kerül be a jelenlegi körútvonalas felületre:
+idő- vagy távcélnál a kívánt hossz már bemenet. Ezek csak egy későbbi A→B
+tervezőben értelmezhetők külön stratégiaként. A `Legbiztonságosabb` felirat
+helyett `Védettebb` használható, mert a rendelkezésre álló adatok közlekedési
+kitettséget becsülnek, személyes biztonságot nem garantálnak.
+
+**Megvalósítási sorrend:** először statikus UI- és kérésmodell PoC, utána OSM +
+saját előzmény alapú árnyékrangsor, végül csak sikeres forrás-PoC után zaj- és
+forgalmi dimenzió. A kapcsoló csak akkor válhat éles ígéretté, ha a válaszban a
+dimenzió lefedettsége és magyarázata is megjelenik.
+
+**Kilépési feltétel:** a konfliktusmátrix determinisztikus és tesztelt; minden
+látható opcióhoz van aktív adatforrás vagy őszinte „kevés adat” állapot; ugyanaz
+a kérés ugyanazzal a `scoringModelVersion` értékkel reprodukálható.
+
 ### 2. Első külső útminőségi adat
 
 - PZU vagy a legjobb jogilag és technikailag elérhető egyetlen partnerforrás PoC-ja.
@@ -120,5 +168,7 @@
 4. `RouteProgressEngine` tiszta függvényként, rögzített GPS-sorozatos tesztekkel.
 5. Tracking UI `RecordingIntent` és egy MapView-on belüli két nézete, benne a GRUNDO egysoros navigációval.
 6. Natív heading bridge és készülékes mérési jegyzőkönyv.
+7. Preferenciaszűrő statikus UX-prototípusa és konfliktusmodellje (1D); az
+   útminőségi súlyozás csak a forrás-PoC-k után kapcsolható rá.
 
 Ez a sorrend használható navigációs szeletet ad még az útminőségi adatpipeline elkészülte előtt, és nem köti össze idő előtt a játékszabályt a tervező bizonytalan adataival.

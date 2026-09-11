@@ -18,6 +18,49 @@
 | GRUNDO közösségi jelzés | útszakaszra adott friss tapasztalat | meglévő visszajelzés aggregációs terve | manipuláció, kis elemszám, adatvédelem |
 | Strava Metro vagy hasonló | opcionális népszerűségi/használati jel | üzleti és licencvizsgálat | nem egyenlő biztonsággal; költség |
 
+## Preferenciaszűrő: mit tudunk ténylegesen alátámasztani? *(2026-09-11)*
+
+| Felhasználói igény | Első használható forrás | Első kiadás | Korlát |
+|---|---|---|---|
+| Sík / Dombos | Copernicus DEM GLO-30 + GraphHopper elevation | **igen, PoC után** | a 30 m-es DSM hidaknál, épületeknél és rövid rámpáknál külön validálandó |
+| Kerékpáros infrastruktúra | OSM `cycleway`, `highway=cycleway`, `bicycle`, `segregated` | **igen** | címke-lefedettség és sáv/út minősége területenként eltér |
+| Jó burkolat | OSM `surface`, `smoothness`, `tracktype`, mód-specifikus surface tagek | **igen, lefedettséggel** | a burkolat anyaga nem mindig azonos az aktuális állapotával |
+| Jobban kivilágított | OSM `lit` és keresztezési tagek | **óvatosan** | a hiányzó `lit` nem jelenti, hogy nincs világítás; erős állítás nem tehető |
+| Kevesebb forgalmas keresztezés | OSM csomópont, útkategória, jelzőlámpa és crossing tagek | **igen, proxyként** | valós forgalmi intenzitás nélkül ez közlekedési konfliktusbecslés |
+| Zöldebb | OSM `leisure`, `landuse`, `natural` és fa/zöldterület-közelség | **igen, proxyként** | a zöldterület közelsége nem bizonyít árnyékot vagy jó levegőt |
+| Csendesebb | OSM útkategória mint gyenge proxy; később Budapest stratégiai zajtérkép | **először árnyékmódban** | a hivatalos zajtérkép lassan frissül és gépi GIS-hozzáférése/licence még döntési kapu |
+| Kedvelt / kerülendő | GRUNDO saját szakasz-visszajelzés és aktivitáselőzmény | **igen** | minimum elemszám, időbeli halványítás és manipulációvédelem kell |
+| Felfedező | saját korábbi aktivitások H3-cellái + irányítottél-átfedés | **igen** | az új szakasz nem automatikusan jobb vagy biztonságosabb |
+| „Biztonságos” | nincs egyetlen hiteles forrás | **nem ilyen néven** | csak külön közlekedési dimenziók és bizonytalanság mutatható |
+
+### Forrásdöntések
+
+- **OpenStreetMap az elsődleges hálózati adat.** Ugyanaz a forrás táplálja a
+  GraphHopper-gráfot, ezért a `cycleway`, `surface`, `smoothness`, `lit` és
+  crossing jellemzők verziózottan, útélen/csomóponton pontozhatók. Dokumentáció:
+  [cycleway](https://wiki.openstreetmap.org/wiki/Key:cycleway),
+  [surface](https://wiki.openstreetmap.org/wiki/Key:surface),
+  [smoothness](https://wiki.openstreetmap.org/wiki/Key:smoothness),
+  [lit](https://wiki.openstreetmap.org/wiki/Key:lit),
+  [crossing](https://wiki.openstreetmap.org/wiki/Key:crossing).
+- **A BKK kerékpárforgalmi főhálózati terve ellenőrzési és tervezési referencia,**
+  nem automatikusan frissülő routing feed. A konkrét infrastruktúra első
+  gépi forrása ezért OSM; a BKK anyag külön licenc- és formátum-PoC után lehet
+  validáló réteg. Forrás: [Kerékpárforgalmi főhálózati terv (2022)](https://bkk.hu/downloads/19660/).
+- **A Google Maps nem kerül a GRUNDO pontozó adatbázisába.** A tartalom tömeges
+  kinyerése, tartós gyorsítótárazása és nem Google-térképpel való használata
+  korlátozott; a GRUNDO Mapboxot és saját GraphHoppert használ. A Google legfeljebb
+  kézi, nem betanító/deriváló összehasonlítási referencia lehet, külön jogi
+  ellenőrzéssel. Forrás: [Google Maps Platform feltételek](https://cloud.google.com/maps-platform/terms/maps-service-terms/).
+- **Domborzati PoC első jelöltje a Copernicus DEM GLO-30.** Világszintű 30 m-es
+  adat, letölthető és adaptálható, kötelező forrásmegjelöléssel; 2026 júliusától
+  a hozzáférési kategóriát/regisztrációt is ellenőrizni kell. Forrás:
+  [Copernicus DEM](https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM).
+- **A budapesti stratégiai zajtérkép alkalmas lehet lassan változó háttérrétegnek,**
+  de nem élő zajmérés. Az import előtt géppel letölthető raszter/WMS, licenc,
+  referenciaév és nappali/éjszakai rétegek külön igazolandók a
+  [Budapest Térinformatikai Portálon](https://geoportal.budapest.hu/).
+
 Az esti „jobban kivilágított” ajánlás első verziója OSM-jelből és annak lefedettségéből indulhat, de nem állíthatja tényként, hogy egy utca biztonságos. A baleseti, forgalmi és közösségi adatok külön dimenziók maradnak; nem mossuk őket egy bizonyíthatatlan „biztonság” mezőbe.
 
 ## Feldolgozási és frissítési szerződés

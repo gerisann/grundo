@@ -17,6 +17,7 @@
 		A0B100010000000000000001 /* BackgroundLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B100010000000000000002 /* BackgroundLocationPlugin.swift */; };
 		A0B100010000000000000003 /* GRUNDOBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B100010000000000000004 /* GRUNDOBridgeViewController.swift */; };
 		A0B100010000000000000005 /* BugReportPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B100010000000000000006 /* BugReportPlugin.swift */; };
+		A0B100010000000000000007 /* DeviceHeadingPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B100010000000000000008 /* DeviceHeadingPlugin.swift */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A0B200010000000000000001 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A0B200010000000000000002 /* GoogleService-Info.plist */; };
@@ -64,6 +65,7 @@
 		A0B100010000000000000002 /* BackgroundLocationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundLocationPlugin.swift; sourceTree = "<group>"; };
 		A0B100010000000000000004 /* GRUNDOBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GRUNDOBridgeViewController.swift; sourceTree = "<group>"; };
 		A0B100010000000000000006 /* BugReportPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugReportPlugin.swift; sourceTree = "<group>"; };
+		A0B100010000000000000008 /* DeviceHeadingPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceHeadingPlugin.swift; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
@@ -122,6 +124,7 @@
 				A0B100010000000000000002 /* BackgroundLocationPlugin.swift */,
 				A0B100010000000000000004 /* GRUNDOBridgeViewController.swift */,
 				A0B100010000000000000006 /* BugReportPlugin.swift */,
+				A0B100010000000000000008 /* DeviceHeadingPlugin.swift */,
 				A0C300000000000000000101 /* GrundoLiveActivityController.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -306,6 +309,7 @@
 				A0B100010000000000000001 /* BackgroundLocationPlugin.swift in Sources */,
 				A0B100010000000000000003 /* GRUNDOBridgeViewController.swift in Sources */,
 				A0B100010000000000000005 /* BugReportPlugin.swift in Sources */,
+				A0B100010000000000000007 /* DeviceHeadingPlugin.swift in Sources */,
 				A0C300000000000000000001 /* GrundoLiveActivityController.swift in Sources */,
 				A0C300000000000000000002 /* GrundoTrackingAttributes.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,

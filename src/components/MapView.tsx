@@ -16,6 +16,7 @@ import {
 import { cellsToAreaPolygons } from '@/lib/hexAreas';
 import { cellColorHex } from '@/lib/cellColors';
 import { useGraphicsSettings } from '@/hooks/useGraphicsSettings';
+import { useDeviceHeading } from '@/hooks/useDeviceHeading';
 import { GRAPHICS_PROFILES, type GraphicsProfile } from '@/lib/graphicsSettings';
 import {
   cellInBounds,
@@ -205,9 +206,11 @@ export function MapView({
   const { theme } = useThemeContext();
   const graphicsSettings = useGraphicsSettings();
   const graphicsProfile = GRAPHICS_PROFILES[graphicsSettings.quality];
+  const deviceHeading = useDeviceHeading(navigationModeControl && position != null);
   const container = useRef<HTMLDivElement | null>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
+  const headingIndicator = useRef<HTMLDivElement | null>(null);
   const markerPosition = useRef<MapPosition | null>(null);
   const markerAnimation = useRef(0);
   const ready = useRef(false);
@@ -252,6 +255,8 @@ export function MapView({
   tiltedRef.current = tilted;
   const [headingUp, setHeadingUp] = useState(() => readHeadingUpPreference());
   const bearingRef = useRef<number | null>(null);
+  const deviceHeadingRef = useRef(deviceHeading);
+  deviceHeadingRef.current = deviceHeading;
   const lastTrackSyncAt = useRef(0);
   const lastTrackSyncLength = useRef(0);
 
@@ -393,6 +398,7 @@ export function MapView({
       ready.current = false;
       marker.current?.remove();
       marker.current = null;
+      headingIndicator.current = null;
       markerPosition.current = null;
       renderBoundsRef.current = null;
       baseFogRef.current = null;
@@ -516,6 +522,11 @@ export function MapView({
     if (marker.current === null) {
       const dot = document.createElement('div');
       dot.className = 'mapview__dot';
+      const indicator = document.createElement('div');
+      indicator.className = 'mapview__heading';
+      indicator.hidden = true;
+      dot.appendChild(indicator);
+      headingIndicator.current = indicator;
       marker.current = new mapboxgl.Marker({ element: dot })
         .setLngLat([position.lng, position.lat])
         .addTo(instance);
@@ -570,6 +581,11 @@ export function MapView({
             bearingRef.current === null
               ? measured
               : smoothBearing(bearingRef.current, measured, BEARING_SMOOTHING);
+        } else if (deviceHeadingRef.current !== null) {
+          bearingRef.current =
+            bearingRef.current === null
+              ? deviceHeadingRef.current.degrees
+              : smoothBearing(bearingRef.current, deviceHeadingRef.current.degrees, BEARING_SMOOTHING);
         }
       }
       const bearing = headingUp ? bearingRef.current : null;
@@ -583,7 +599,53 @@ export function MapView({
         ...(bearing !== null ? { bearing } : {}),
       });
     }
+    syncHeadingIndicator(
+      headingIndicator.current,
+      deviceHeadingRef.current?.degrees ?? bearingRef.current,
+      instance.getBearing(),
+    );
   }, [position, follow, headingUp, graphicsProfile, graphicsSettings.viewingDistanceM, tilted]);
+
+  useEffect(() => {
+    const instance = map.current;
+    const currentPosition = positionRef.current;
+    if (
+      instance === null
+      || deviceHeading === null
+      || !headingUp
+      || !follow
+      || followPaused.current
+      || currentPosition == null
+    ) return;
+    const movingHeading = trackBearing(
+      bearingTrack(trackRef.current, currentPosition),
+      NAVIGATION_BEARING_BASE_M,
+    );
+    if (movingHeading !== null) return;
+
+    bearingRef.current = bearingRef.current === null
+      ? deviceHeading.degrees
+      : smoothBearing(bearingRef.current, deviceHeading.degrees, BEARING_SMOOTHING);
+    instance.easeTo({
+      bearing: bearingRef.current,
+      duration: prefersReducedMotion() ? 0 : 180 * graphicsProfile.motionScale,
+    });
+  }, [deviceHeading, follow, headingUp, graphicsProfile]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null) return;
+    const update = () => syncHeadingIndicator(
+      headingIndicator.current,
+      deviceHeadingRef.current?.degrees ?? bearingRef.current,
+      instance.getBearing(),
+    );
+    update();
+    instance.on('rotate', update);
+    return () => {
+      instance.off('rotate', update);
+    };
+  }, [deviceHeading]);
 
   useEffect(() => {
     const instance = map.current;
@@ -761,6 +823,20 @@ function linearEasing(progress: number): number {
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+function syncHeadingIndicator(
+  indicator: HTMLDivElement | null,
+  heading: number | null | undefined,
+  mapBearing: number,
+): void {
+  if (indicator === null) return;
+  if (heading === null || heading === undefined) {
+    indicator.hidden = true;
+    return;
+  }
+  indicator.hidden = false;
+  indicator.style.setProperty('--mapview-device-heading', `${heading - mapBearing}deg`);
 }
 
 /** A programozott zoom nem kap DOM `originalEvent`-et, így a követés aktív marad. */

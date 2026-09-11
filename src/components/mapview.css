@@ -17,6 +17,26 @@
   position: relative;
 }
 
+/* The device-facing direction stays meaningful while standing still. */
+.mapview__heading {
+  --mapview-device-heading: 0deg;
+  position: absolute;
+  left: calc(50% - 9px);
+  top: calc(50% - 28px);
+  width: 18px;
+  height: 28px;
+  transform: rotate(var(--mapview-device-heading));
+  transform-origin: 50% 28px;
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+  background: color-mix(in srgb, var(--accent) 58%, transparent);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.28));
+  pointer-events: none;
+}
+
+.mapview__heading[hidden] {
+  display: none;
+}
+
 .mapview__dot::after {
   content: '';
   position: absolute;

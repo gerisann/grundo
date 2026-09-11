@@ -5,5 +5,6 @@ class GRUNDOBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(BackgroundLocationPlugin())
         bridge?.registerPluginInstance(BugReportPlugin())
+        bridge?.registerPluginInstance(DeviceHeadingPlugin())
     }
 }
