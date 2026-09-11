@@ -437,3 +437,22 @@ Terv: [`terv-2026-09-09-bugreport-rendszer.md`](terv-2026-09-09-bugreport-rendsz
 - A „Mindig" szintű engedélyről **egy helyen** beszélünk: a magyarázó
   képernyőn. A rögzítés alatti figyelmeztető sáv natív ága törölve — három
   helyen ugyanaz az üzenet elveszi a hitelét mindháromnak.
+
+## Route Intelligence: preferenciák és forráshatárok (2026-09-11)
+
+- Az útvonalválasztás három külön fogalmat kezel: **pontosan egy elsődleges
+  stratégia**, **pontosan egy terepprofil**, valamint több kombinálható
+  útjellemző. Az egymással versengő célokat nem független kapcsolókként
+  mutatjuk; a `Felfedező` és a `Kedvelt szakaszaim` kölcsönösen kizárja egymást.
+- A jelenlegi idő-/távcélos körútvonalaknál nincs külön `Legrövidebb` vagy
+  `Gyors` stratégia: a kívánt hossz már bemenet. Ezek csak későbbi A→B
+  tervezésnél kapnak külön jelentést.
+- **Biztonságot nem ígérünk.** A UI `Védettebb` útvonalat és külön mérhető
+  közlekedési dimenziókat mutathat; minden minősítéshez lefedettség,
+  bizonytalanság és magyarázat tartozik.
+- A hálózati pontozás elsődleges forrása OSM + saját GRUNDO-előzmény; a
+  domborzat külön DEM-ből érkezik. A Google Maps tartalmából nem építünk saját
+  pontozó adatbázist, és nem keverjük a Mapbox-térképpel.
+- A készülékirány natív szenzorból jön (`CLHeading` / rotation vector), webes
+  geolokációs fallback nélkül. Mozgáskor a GPS-nyomvonal iránya vezetheti a
+  kamerát; álló helyzetben a pozíciójel iránynyila a készülék tájolását mutatja.
