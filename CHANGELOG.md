@@ -23,6 +23,14 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.2.0] - 2026-09-12 (Új funkció)
+
+- A→B útvonaltervezés API-végpontja (POST /api/routes/plan): hitelesítés, a küldetés-ajánlóval közös heti keret, 100 km-es plafon, őszinte nemleges válasz
+- Zsákmány-előnézet a tervhez: hány cellát szerzel, ebből mennyi új és mennyi elvett, mekkora terület, mennyi GP, és a top 3 rivális
+- A geometria-számítás külön szálon fut, 8 másodperces időkorláttal — így egy nagy kör nem blokkolja a kiszolgálót a többi felhasználó elől
+- Címkeresés az útvonaltervezéshez (GET /api/routes/geocode): két Mapbox-forrás összefésülve, távolság szerint rendezve, gyorsítótárral; a címet nem tároljuk
+- Az útvonal Jelleg „Védett út” beállítása mostantól valóban más útvonalat ad — a korábbi szabálya mérés szerint ugyanazt adta, mint a Gyors
+
 ## [1.1.2] - 2026-09-12 (Javítás)
 
 - Útvonal-labor: nagy körnél a terület szétszórt foltokban jelent meg (konfetti) — a tömör belsőt egy 200 000-es plafonig bontottuk ki előre, nem térbeli sorrendben; mostantól nincs előre-kibontás

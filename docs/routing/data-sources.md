@@ -116,3 +116,72 @@ Hivatalos források:
 ## Kötelező forrás-PoC eredménye
 
 Minden új adatforrásról rövid döntési lap készül: minta, lefedettség, frissesség, licenc, mezőtérkép, tárolási méret, importidő, útvonalra vetítési hiba, ismert torzítás, becsült havi költség és `beépít / később / elvet` döntés. Enélkül az adat nem kerülhet éles pontozásba.
+
+## A Jelleg-választó mérése és a nyitott források *(2026-09-12)*
+
+A `Jelleg` (Gyors / Védett út / Nyugalom) tényleges hatását megmértük: 5 budapesti
+páron, GraphHopper `road_class` és `bike_network` részletekkel, a megtett méterek
+arányában (`tmp/measure-preference.mjs`, `tmp/measure-protected.mjs`).
+
+### Bringa — mindhárom jelleg megkülönböztethető
+
+| Jelleg | Mit tesz | Mért hatás |
+|---|---|---|
+| Gyors | csak az alapsúlyozás | referencia |
+| Védett út | `TERTIARY` ×0,8 + `bike_network` ×1,8 | a kettő közé esik; pl. Óbuda → Belváros 74% → 78% nyugodt út +1% hosszért, Blaha → Népliget kerékpáros hálózat 15% → 30% |
+| Nyugalom | `PRIMARY/SECONDARY/TERTIARY` ×0,25 | erős: 44% → 98% nyugodt út, ~13–29% hosszabbítás |
+
+⚠️ A „Védett út" **korábbi** szabálya semmit nem csinált: csak a
+`PRIMARY`/`SECONDARY` osztályt büntette, amit a bringa alapsúlyozása már 0,35-tel
+lenyom — 4 párból 3-nál bitre ugyanaz az útvonal jött ki, mint a „Gyors"-nál.
+A `TERTIARY` szorzó **mért** érték: 0,7-nél és 0,6-nál a jelölt már a
+„Nyugalom"-mal azonos útvonalra ugrik, tehát megszűnik külön jellegnek lenni.
+
+### Séta/futás — egyik jelleg sem hat, és ez nem hiba
+
+Mind az öt páron mindhárom jelleg gyakorlatilag azonos útvonalat ad (92–99%
+nyugodt út **már alapból**). Oka: a `foot` profil eleve járdán és gyalogúton megy,
+és a `preferenceRules` gyalogos ága a `TERTIARY`-t mindig 0,7-tel bünteti — az
+alapszabály tehát már elvégzi, amit a jelleg ígérne.
+
+**Ezért a felületen gyalogos módban a Jelleg kiszürkítve, „Hamarosan" felirattal
+jelenik meg.** Nem ígérünk hatást, ami nincs.
+
+Ahhoz, hogy gyalogosan is legyen értelme, MÁS adat kell, nem út-osztály. Amit meg
+kell nézni (Geri, 2026-09-12) — egyik sincs megvizsgálva, licenc és felbontás
+egyelőre ismeretlen:
+
+- **EEA ArcGIS REST / WMS** és a **magyar stratégiai zajtérképek** — a „Nyugalom"
+  gyalogos megfelelője valós zajadatból, nem útkategória-proxyból;
+- **Copernicus Urban Atlas** (városi felszínborítás) és **Sentinel-2 NDVI**
+  zöldfelület-index — a „zöldebb útvonal" igényhez, ami a fenti táblázatban ma
+  csak OSM-proxyként szerepel.
+
+### PZU — „ajánlott biciklis útvonalak Budapesten"
+
+Geri Google My Maps rétege (`mid=1spCv_EqsUQL6wTdavum6v_GjTg37430c`,
+[pestizoldut.hu](https://pestizoldut.hu)) letöltve és megmérve (1,5 MB KML):
+
+| Réteg | Szakasz | Hossz | Koordinátapont |
+|---|---|---|---|
+| Ajánlott | 302 | 191,6 km | 4 507 |
+| Elfogadható | 317 | 140,8 km | 2 368 |
+| Problémás | 235 | 117,0 km | 1 454 |
+| Nem ajánlott | 18 | 4,3 km | 87 |
+
+Összesen 8 457 koordinátapont — kezelhető méret. Ez **emberi értékelés arról,
+melyik szakasz jó biciklivel**, tehát minőségileg más, mint az OSM út-osztály, és
+pont a „Védett út" jellegnek adna valódi alapot.
+
+⚠️ **Felhasználás előtt tisztázandó**, ki az adat jogosultja és mit enged a
+továbbfelhasználás — a fenti táblázat „PZU/partneradat" sora erről szól.
+
+Beépítési lehetőségek, növekvő költséggel:
+1. **Utólagos jelöltpontozás** — a tervező már több jelöltet pontoz; a PZU-val
+   való átfedés egy további pontszám lenne. Nem tereli az útvonalat, csak választ.
+   A meglévő architektúrába illik, gráf-újraépítés nélkül.
+2. **GraphHopper `areas`** a custom modelben — ténylegesen terelne, de a 874
+   szakaszt bufferelni és kategóriánként egyesíteni kell, és a kérésenkénti
+   modellméret korlátos.
+3. **Saját encoded value a gráfban** — a leggyorsabb futásidőben, de
+   gráf-újraépítést és import-bővítést igényel.

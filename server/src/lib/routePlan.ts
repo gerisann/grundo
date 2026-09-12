@@ -372,11 +372,38 @@ function preferenceRules(
     }
   }
 
+  /*
+    „VÉDETT ÚT" — a Gyors és a Nyugalom KÖZÉ kell esnie.
+
+    ⚠️ A KORÁBBI SZABÁLY NEM CSINÁLT SEMMIT (mérve, 2026-09-12, 5 budapesti
+    páron, `road_class` bontással). Csak a PRIMARY/SECONDARY osztályt büntette,
+    amit a bringa ALAPSÚLYOZÁSA már 0,35-tel lenyom (`directions.ts`
+    `GH_PRIORITY.bike`) — a főút-arány emiatt alapból 0–1%, tehát nem volt mit
+    javítani: 4 párból 3-nál bitre ugyanaz jött ki, mint a „Gyors"-nál.
+
+    A különbséget a TERTIARY (mellékút) enyhe büntetése hozza, plusz a kijelölt
+    kerékpáros hálózat erősítése. A 0,8-as szorzó MÉRT érték, nem becslés:
+    0,7-nél és 0,6-nál a jelölt már a „Nyugalom"-mal AZONOS útvonalra ugrik,
+    tehát megszűnik külön jellegnek lenni. A 0,8-nál mind a négy valódi esetben
+    a kettő közé esik (pl. Óbuda → Belváros: 74% → 78% → 100% nyugodt út,
+    +1% hosszért; Blaha → Népliget: a kerékpáros hálózat aránya 15% → 30%).
+
+    Ha ezt bárki hangolja, a mérést futtassa újra — a szorzó és a „Nyugalom"
+    0,25-e együtt határozza meg, marad-e három megkülönböztethető jelleg.
+  */
   if (preference === 'protected') {
     rules.push(
       { if: 'road_class == PRIMARY || road_class == SECONDARY', multiply_by: '0.2' },
       { if: 'road_class == CYCLEWAY || road_class == FOOTWAY || road_class == PATH', multiply_by: '1.4' },
     );
+    if (ghProfile === 'bike') {
+      rules.push(
+        // Kijelölt kerékpáros hálózat (LCN/RCN/NCN) — az alap 1,6 fölé.
+        { if: 'bike_network != MISSING', multiply_by: '1.8' },
+        // Enyhe: a „Nyugalom" ugyanezt 0,25-tel bünteti.
+        { if: 'road_class == TERTIARY', multiply_by: '0.8' },
+      );
+    }
   } else if (preference === 'quiet') {
     rules.push(
       { if: 'road_class == PRIMARY || road_class == SECONDARY || road_class == TERTIARY', multiply_by: '0.25' },

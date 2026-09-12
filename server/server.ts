@@ -29,6 +29,7 @@ import {
 import { activitiesRouter } from './src/routes/activities';
 import { tilesRouter } from './src/routes/tiles';
 import { missionsRouter } from './src/routes/missions';
+import { routesRouter } from './src/routes/routes';
 import { devRouter } from './src/routes/dev';
 import { jobsRouter } from './src/routes/jobs';
 import { adminRouter } from './src/routes/admin';
@@ -213,6 +214,12 @@ app.use('/api/bandas', authenticate, authenticatedRateLimit, bandasRouter);
 app.use('/api/weather', authenticate, authenticatedRateLimit, weatherRouter);
 app.use('/api/tiles', authenticate, authenticatedRateLimit, tilesRouter);
 app.use('/api/missions', authenticate, authenticatedRateLimit, missionsRouter);
+/*
+  A→B útvonaltervezés. Ugyanaz a kapu, mint a küldetés-ajánlónál: hitelesítés,
+  rate limit, és UGYANAZ a heti generálási keret — enélkül a tervező
+  megkerülné a küldetés-ajánló korlátját.
+*/
+app.use('/api/routes', authenticate, authenticatedRateLimit, routesRouter);
 app.use('/api/dev', authenticate, authenticatedRateLimit, devRouter);
 /**
  * A tesztelői hibabejelentő. A jogosultságot maga az útvonal ellenőrzi
