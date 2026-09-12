@@ -16,11 +16,16 @@ import type { GeometryJob, GeometryResult } from './geometryWorker';
  * hossz tehát ROSSZ PREDIKTOR, a költséget az alak adja. Ezért nem a kérést
  * tiltjuk méret alapján, hanem a tényleges munkát vágjuk el.
  *
- * A 8 s a városi tartomány mért 90. percentilisének (335 ms) sokszorosa, tehát
- * a normál használatot nem érinti; ami ennél tovább tart, ott a terv úgyis
- * elkészült, csak az előnézet marad el.
+ * ⚠️ A 8 MÁSODPERC KEVÉS VOLT, ÉS ÉLESBEN BUKOTT KI (2026-09-12). A városi
+ * tartomány mért 90. percentiliséhez (335 ms) szabtam, csakhogy a tervezés
+ * plafonja 100 km légvonal — egy 40 km-es kör zsákmánya rendszeresen elvérzett
+ * rajta („nem tudtuk időben kiértékelni”). Helyben mérve egy 42 km-es kör
+ * hurokdetektálása 11 417 ms, és a Cloud Run kevesebb CPU-val számol.
+ *
+ * A 30 s ezt is átengedi. Hogy a várakozás elviselhető legyen, a felület addig
+ * a hatszöges betöltőt mutatja, ami az eltelt idő szerint vált szöveget.
  */
-const TIMEOUT_MS = 8_000;
+const TIMEOUT_MS = 30_000;
 
 /**
  * A worker fájl helye — FEJLESZTÉSBEN ÉS ÉLESBEN MÁS.
