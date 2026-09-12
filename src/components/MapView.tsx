@@ -41,6 +41,14 @@ import './mapview.css';
 export interface MapViewProps {
   track?: readonly { lat: number; lng: number }[];
   ghostTrack?: readonly { lat: number; lng: number }[];
+  /**
+   * Hány pont tartozik a `ghostTrack` ODAÚTJÁHOZ.
+   *
+   * Ennyinél vált a vonal színt: az odaút rózsaszín, a visszaút cián — ugyanaz
+   * a pár, amit az Útvonal-laborban hangoltunk. Enélkül (küldetésnél, ahol
+   * nincs értelmezhető oda/vissza) a vonal EGYSZÍNŰ marad.
+   */
+  ghostSplitIndex?: number | null;
   layers?: { role: HexRole; cells: Iterable<CellId | MapHexCell> }[];
   /**
    * AZ ÖSSZEFÜGGŐ TERÜLETFOLTOK — a térkép fő területrétege.
@@ -193,6 +201,7 @@ function writeHeadingUpPreference(headingUp: boolean): void {
 export function MapView({
   track,
   ghostTrack,
+  ghostSplitIndex,
   layers,
   blobs,
   ownerColors,
@@ -229,6 +238,7 @@ export function MapView({
   const fitted = useRef(false);
   const trackRef = useRef(track);
   const ghostTrackRef = useRef(ghostTrack);
+  const ghostSplitRef = useRef(ghostSplitIndex);
   const layersRef = useRef(layers);
   const ownerColorsRef = useRef(ownerColors);
   const trailColorRef = useRef(trailColor);
@@ -243,6 +253,7 @@ export function MapView({
   const baseFogRef = useRef<FogSpecification | null>(null);
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
+  ghostSplitRef.current = ghostSplitIndex;
   layersRef.current = layers;
   ownerColorsRef.current = ownerColors;
   trailColorRef.current = trailColor;
@@ -298,6 +309,7 @@ export function MapView({
       target,
       trackRef.current,
       ghostTrackRef.current,
+      ghostSplitRef.current,
       layersRef.current,
       ownerColorsRef.current,
       trailColorRef.current,
@@ -497,7 +509,7 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncGhostData(instance, ghostTrack, renderBoundsRef.current, graphicsProfile);
+    syncGhostData(instance, ghostTrack, renderBoundsRef.current, graphicsProfile, ghostSplitIndex);
   }, [ghostTrack, graphicsProfile]);
 
   useEffect(() => {
@@ -1162,10 +1174,20 @@ function addLayers(
       source: GHOST_SOURCE,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': cssColor('var(--territory-stolen)'),
+        /*
+          KÉT SZÍN EGY FORRÁSBÓL. A szakaszok `leg` tulajdonságot kapnak
+          (`syncGhostData`), és a réteg abból választ: odaút rózsaszín,
+          visszaút cián. Egyszínű marad, ha nincs értelmezhető oda/vissza.
+        */
+        'line-color': [
+          'match',
+          ['get', 'leg'],
+          'inbound',
+          cssColor('var(--route-inbound)'),
+          cssColor('var(--territory-stolen)'),
+        ],
         'line-width': 4,
-        'line-dasharray': [0.6, 1.6],
-        'line-opacity': 0.85,
+        'line-opacity': 0.9,
       },
     });
   }
@@ -1209,6 +1231,7 @@ function syncData(
   instance: mapboxgl.Map,
   track: MapViewProps['track'],
   ghostTrack: MapViewProps['ghostTrack'],
+  ghostSplitIndex: MapViewProps['ghostSplitIndex'],
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
   trailColor: string | null,
@@ -1220,7 +1243,7 @@ function syncData(
   syncAreaData(instance, visibleLayers, ownerColors, null);
   syncCellData(instance, visibleLayers, ownerColors, trailColor, null);
   syncTrackData(instance, track, bounds, profile);
-  syncGhostData(instance, ghostTrack, bounds, profile);
+  syncGhostData(instance, ghostTrack, bounds, profile, ghostSplitIndex);
 }
 
 /**
@@ -1441,15 +1464,33 @@ function syncGhostData(
   ghostTrack: MapViewProps['ghostTrack'],
   bounds: RenderBounds | null,
   profile: GraphicsProfile,
+  splitIndex?: number | null,
 ): void {
   const ghostSource = instance.getSource(GHOST_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   if (ghostSource) {
-    const segments = visibleTrackSegments(ghostTrack ?? [], bounds, profile.routePointStride);
+    /*
+      ⚠️ A KÉT LEGET KÜLÖN SZŰRJÜK, nem utólag címkézzük. A láthatósági
+      darabolás (`visibleTrackSegments`) saját szakaszhatárokat képez, tehát a
+      kimenetéből már nem lehet megmondani, melyik eredeti pont hol volt — a
+      bontásnak ELŐTTE kell megtörténnie.
+
+      Az odaút UTOLSÓ pontja a visszaút első pontja is: enélkül egy pixelnyi
+      rés villanna a két szín között a fordulónál.
+    */
+    const points = ghostTrack ?? [];
+    const split = splitIndex && splitIndex > 1 && splitIndex < points.length ? splitIndex : null;
+    const stride = profile.routePointStride;
+    const segments = split
+      ? [
+          ...visibleTrackSegments(points.slice(0, split), bounds, stride).map((s) => ({ s, leg: 'outbound' })),
+          ...visibleTrackSegments(points.slice(split - 1), bounds, stride).map((s) => ({ s, leg: 'inbound' })),
+        ]
+      : visibleTrackSegments(points, bounds, stride).map((s) => ({ s, leg: 'outbound' }));
     ghostSource.setData({
       type: 'FeatureCollection',
-      features: segments.map((segment) => ({
+      features: segments.map(({ s: segment, leg }) => ({
         type: 'Feature' as const,
-        properties: {},
+        properties: { leg },
         geometry: {
           type: 'LineString' as const,
           coordinates: segment.map((point) => [point.lng, point.lat]),

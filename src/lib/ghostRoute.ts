@@ -22,6 +22,14 @@ export interface GhostRoute {
   kind: Mission['kind'];
   plannedDistanceM?: number;
   maneuvers: RouteManeuver[];
+  /**
+   * Hány pont tartozik az ODAÚTHOZ a `polyline`-ban.
+   *
+   * Ebből tudja a térkép, hol váltson színt: az odaút és a visszaút KÉT külön
+   * szakasz, és a tervezőben is így látszik. Küldetésnél nincs értelme (az egy
+   * összefüggő kör), ezért elhagyható — enélkül a vonal egyszínű marad.
+   */
+  outboundPoints?: number;
 }
 
 /**
@@ -41,6 +49,8 @@ export function rememberPlannedRoute(plan: {
   maneuvers: RouteManeuver[];
   stolenCells?: number;
   newCells?: number;
+  /** Az odaút pontjainak száma — ebből lesz a kétszínű vonal. */
+  outboundPoints?: number;
 }): GhostRoute {
   const raid = (plan.stolenCells ?? 0) > (plan.newCells ?? 0);
   const route: GhostRoute = {
@@ -49,6 +59,9 @@ export function rememberPlannedRoute(plan: {
     kind: raid ? 'raid' : 'conquest',
     plannedDistanceM: Math.max(0, plan.totalDistanceM),
     maneuvers: plan.maneuvers,
+    ...(plan.outboundPoints && plan.outboundPoints > 1
+      ? { outboundPoints: plan.outboundPoints }
+      : {}),
   };
   try {
     localStorage.setItem(KEY, JSON.stringify(route));
@@ -91,6 +104,10 @@ export function readGhostRoute(): GhostRoute | null {
       polyline,
       kind,
       ...(Number.isFinite(plannedDistanceM) && plannedDistanceM >= 0 ? { plannedDistanceM } : {}),
+      /* Régi (küldetésből mentett) rekordban nincs — akkor egyszínű a vonal. */
+      ...(Number.isFinite(Number(stored.outboundPoints)) && Number(stored.outboundPoints) > 1
+        ? { outboundPoints: Number(stored.outboundPoints) }
+        : {}),
       maneuvers: parseManeuvers(stored.maneuvers),
     };
   } catch {

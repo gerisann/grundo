@@ -194,6 +194,8 @@ export function useRoutePlanner(activityType: ActivityType) {
       maneuvers: state.plan.maneuvers,
       stolenCells: state.plan.reward?.stolenCells,
       newCells: state.plan.reward?.newCells,
+      /* A törésponthoz: a válasz külön adja az odautat és a visszautat. */
+      outboundPoints: state.plan.outbound.length,
     });
     setState((prev) => ({ ...prev, stage: 'closed' }));
     return ghost;

@@ -155,6 +155,12 @@
   --territory-rival-max:  #5f1020;
   --territory-rival-fill: rgba(239, 68, 68, 0.2);
   --territory-stolen:      #fa5f73;
+  /*
+    A TERVEZETT ÚTVONAL KÉT FELE. Az odaút a `--territory-stolen` rózsaszíne,
+    a visszaút ez a cián — ugyanaz a pár, amit az Útvonal-laborban hangoltunk,
+    és amiből egy pillantásra látszik, merre megy ki és merre jön vissza a kör.
+  */
+  --route-inbound:         #2fd3e1;
   --territory-stolen-fill: rgba(250, 95, 115, 0.22);
   --territory-neutral:      #8e8a97;
   --territory-neutral-fill: rgba(142, 138, 151, 0.14);
@@ -288,6 +294,8 @@
   --territory-rival-max:  #6f1023;
   --territory-rival-fill: rgba(255, 95, 109, 0.22);
   --territory-stolen:      #fa5f73;
+  /* A tervezett útvonal visszaútja — lásd a világos témánál. */
+  --route-inbound:         #2fd3e1;
   --territory-stolen-fill: rgba(250, 95, 115, 0.24);
   --territory-neutral:      #6a6577;
   --territory-neutral-fill: rgba(106, 101, 119, 0.18);
