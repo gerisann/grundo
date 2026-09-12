@@ -1,5 +1,7 @@
+import { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '@/components/Icon';
+import { flyToPlayButton } from '@/lib/flyToPlay';
 import { formatArea, formatGp } from '@/lib/format';
 import type { RouteReward } from '@/lib/api';
 import './routeRewardPanel.css';
@@ -33,6 +35,7 @@ export function RouteRewardPanel({
 }) {
   const km = (distanceM / 1000).toFixed(1).replace('.', ',');
   const minutes = Math.round(durationS / 60);
+  const goRef = useRef<HTMLButtonElement | null>(null);
 
   /* ⚠️ PORTÁLBAN — lásd `RoutePlannerSheet`: a dokk különben fölé kerül. */
   return createPortal(
@@ -111,7 +114,20 @@ export function RouteRewardPanel({
           </div>
         )}
 
-        <button type="button" className="rrp__go" onClick={onStart}>
+        {/*
+          ⚠️ ELŐBB A REPÜLÉS, UTÁNA A BEZÁRÁS. A `flyToPlayButton` a gomb
+          AKTUÁLIS helyzetéből indul; ha az `onStart` előbb futna le, a panel
+          már eltűnt volna, és nem lenne honnan elindulni.
+        */}
+        <button
+          ref={goRef}
+          type="button"
+          className="rrp__go"
+          onClick={() => {
+            flyToPlayButton(goRef.current);
+            onStart();
+          }}
+        >
           Gyerünk!
         </button>
       </div>

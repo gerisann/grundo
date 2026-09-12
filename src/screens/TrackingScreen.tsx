@@ -1037,7 +1037,16 @@ export function TrackingScreen() {
                 {Math.round(planner.state.plan.totalDurationS / 60)} perc
               </strong>
               <p className="track__route-ready-hint">
-                Indítsd a <strong>Play</strong> gombbal.
+                {/*
+                  ⚠️ IKON, NEM SZÓ. A kártya és a dokk gombja így vizuálisan
+                  UGYANAZ a dolog — a „Play" szót előbb le kellene fordítani a
+                  fejben arra, hogy melyik gombot keresse.
+                */}
+                Indítsd a{' '}
+                <span className="track__route-ready-play">
+                  <Icon name="play" size={14} />
+                </span>{' '}
+                gombbal.
               </p>
               <div className="track__route-ready-actions">
                 <Button variant="ghost" size="sm" onClick={planner.reopenSettings}>

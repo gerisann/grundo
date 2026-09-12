@@ -695,3 +695,48 @@
   a felső statisztika-panel alól nő ki, nem a dokk mögül. Lásd
   `src/screens/tracking.css` → `.track__pause*`.
 */
+
+/*
+  A PLAY FELVILLANÁSA a tervezés elfogadása után.
+
+  ⚠️ Külön az `--idle` gyűrűtől, mert más a dolga: az `--idle` azt mondja, hogy
+  „innen indulhatsz", ez pedig azt, hogy „MOST ide gyere". Erősebb és rövidebb
+  — három lüktetés, aztán megáll (lásd `flyToPlay.ts`).
+*/
+.dock__play--beckon::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  border: 3px solid var(--accent);
+  /* Díszítés — soha ne fogja el a koppintást a gomb elől. */
+  pointer-events: none;
+  animation: dock-beckon 2.4s ease-out 3;
+}
+
+@keyframes dock-beckon {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.9;
+  }
+  60% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+    Mozgás helyett állandó keret: a figyelemfelhívás megmarad, csak nem
+    mozog — aki kikapcsolta az animációkat, annak is tudnia kell, hova nyúljon.
+  */
+  .dock__play--beckon::before {
+    animation: none;
+    opacity: 0.85;
+    transform: scale(1.12);
+  }
+}

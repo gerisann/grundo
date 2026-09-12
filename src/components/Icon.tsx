@@ -18,7 +18,9 @@ export type IconName =
   | 'gp'
   /* Útvonaltervező */
   | 'pin'
-  | 'locate';
+  | 'locate'
+  /* Vezérlés */
+  | 'play';
 
 export function Icon({ name, size = 28 }: { name: IconName; size?: number }) {
   const common = {
@@ -88,11 +90,25 @@ export function Icon({ name, size = 28 }: { name: IconName; size?: number }) {
   }
 
   /* JELENLEGI POZÍCIÓ — célkereszt, a térképek szokásos jele. */
+  if (name === 'locate') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="6.5" />
+        <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+      </svg>
+    );
+  }
+
+  /*
+    PLAY — a dokk indítógombjának jele.
+
+    TÖLTVE, nem körvonalasan: a szövegben apró méretben áll (lásd a tervezett
+    útvonal kártyáját), és ott a vonalas rajz szétesne.
+  */
   return (
     <svg {...common}>
-      <circle cx="12" cy="12" r="6.5" />
-      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+      <path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

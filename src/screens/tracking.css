@@ -1298,3 +1298,45 @@
   gap: var(--sp-2);
   margin-top: var(--sp-1);
 }
+
+/*
+  A Play jele a kártya szövegében — ugyanaz a forma, mint a dokk gombján,
+  hogy a kettő EGY dolognak látszódjon.
+*/
+.track__route-ready-play {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  vertical-align: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+/*
+  A kártya ALULRÓL ÚSZIK BE, a Play gomb felől.
+
+  ⚠️ Az irány nem mindegy: a mozgás onnan indul, ahova a következő koppintás
+  esik. Fentről leúszva a szemet EL vinné a gombtól.
+*/
+.track__route-ready {
+  animation: route-ready-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes route-ready-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track__route-ready {
+    animation: none;
+  }
+}
