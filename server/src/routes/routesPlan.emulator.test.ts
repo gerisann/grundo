@@ -186,6 +186,21 @@ describe.skipIf(!EMULATOR)('POST /api/routes/plan — kapu valódi Firestore ell
     expect(response.body.closesLoop).toBe(false);
   });
 
+  it('a válasz VEZETHETŐ: van vonallánc és manőverlista', async () => {
+    /*
+      A rögzítés a küldetésekből ismert `GhostRoute` alakot várja. Enélkül a
+      tervezett útvonalon nem indulna el a Play gomb — a terv megvolna, de
+      nem lehetne végigmenni rajta.
+    */
+    const loop = await plan();
+    expect(typeof loop.body.polyline).toBe('string');
+    expect((loop.body.polyline as string).length).toBeGreaterThan(0);
+    expect(Array.isArray(loop.body.maneuvers)).toBe(true);
+
+    const direct = await plan({ mode: 'direct' });
+    expect(typeof direct.body.polyline).toBe('string');
+  });
+
   it('elutasítja a hibás vagy értelmetlen bemenetet', async () => {
     expect((await plan({ from: null })).status).toBe(400);
     expect((await plan({ to: { lat: 200, lng: 19 } })).status).toBe(400);

@@ -26,10 +26,10 @@ import { MAX_OWNERSHIP_BLOCKS } from '../lib/missionEvaluate';
 import { computeGeometryOffThread, GeometryTimeout } from '../lib/geometryOffThread';
 import { blocksFor } from '../lib/gridMath';
 import { areaToGp } from '../../../src/game/scoring';
-import { decodePolyline } from '../../../src/game/polyline';
+import { decodePolyline, encodePolyline } from '../../../src/game/polyline';
 import { distanceM, type LatLng } from '../../../src/game/geo';
 import { GAMEPLAY, type GameplayConfig } from '../../../src/config/gameplay';
-import type { Layer, TracePoint } from '../../../src/types';
+import type { Layer, RouteManeuver, TracePoint } from '../../../src/types';
 import type { AuthedRequest } from '../../server';
 
 export const routesRouter = Router();
@@ -266,6 +266,9 @@ routesRouter.post('/plan', async (req: AuthedRequest, res: Response, next) => {
           (spec: `point-to-point.md` → Játékszabályi következmények).
         */
         closesLoop: false,
+        /* Lásd a loop ágat: a vezetett navigáció bemenete. */
+        polyline: route.polyline,
+        maneuvers: route.maneuvers ?? [],
         quotaLeft: isPro ? null : cfg.FREE_ROUTE_GENERATIONS_PER_WEEK - usedThisWeek - 1,
         elapsedMs: Date.now() - started,
       });
@@ -310,6 +313,14 @@ routesRouter.post('/plan', async (req: AuthedRequest, res: Response, next) => {
       directDistanceM: loop.directDistanceM,
       totalDurationS: loop.totalDurationS,
       closesLoop: true,
+      /*
+        A VEZETETT NAVIGÁCIÓ BEMENETE. A rögzítés ugyanazt a `GhostRoute`
+        alakot várja, amit a küldetésekből ismer (`src/lib/ghostRoute.ts`):
+        egyetlen kódolt vonallánc és a hozzá tartozó manőverek. Enélkül a
+        tervezett útvonalon nem indulna el a Play gomb.
+      */
+      polyline: encodePolyline([...loop.outbound.points, ...loop.inbound.points]),
+      maneuvers: joinManeuvers(loop.outbound, loop.inbound),
       requestedOffsetM: Math.min(
         GAMEPLAY.ROUTE_DETOUR_OFFSET_M[input.detour],
         distanceM(input.from, input.to) * 0.45,
@@ -475,4 +486,26 @@ async function rewardOrReason(
     }
     throw error;
   }
+}
+
+/**
+ * A két leg manővereinek összefűzése EGY útvonalra.
+ *
+ * ⚠️ AZ ELTOLÁS NEM ELHAGYHATÓ. A `routeOffsetM` az útvonal ELEJÉTŐL mért
+ * távolság; ha a visszaút manővereit eltolás nélkül fűznénk hozzá, a navigáció
+ * a kör második felét az elejére vetítené, és minden kanyart rossz helyen
+ * jelezne. Az azonosítókat is előtagozzuk, mert a két leg külön válaszból jön,
+ * és az `id` csak EGY válaszon belül egyedi.
+ */
+function joinManeuvers(
+  outbound: { route: { distanceM: number; maneuvers?: RouteManeuver[] } },
+  inbound: { route: { maneuvers?: RouteManeuver[] } },
+): RouteManeuver[] {
+  const first = (outbound.route.maneuvers ?? []).map((m) => ({ ...m, id: `o:${m.id}` }));
+  const second = (inbound.route.maneuvers ?? []).map((m) => ({
+    ...m,
+    id: `i:${m.id}`,
+    routeOffsetM: m.routeOffsetM + outbound.route.distanceM,
+  }));
+  return [...first, ...second];
 }
