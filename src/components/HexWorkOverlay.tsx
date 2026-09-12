@@ -66,10 +66,10 @@ const GAP = 1.09;
  * egyik sem állítja, hogy „most épp X fut”.
  */
 export const PLANNING_MESSAGES: readonly OverlayMessage[] = [
-  { after: 0, text: 'Útvonalakat keresünk…' },
-  { after: 4000, text: 'Összevetjük a lehetőségeket…' },
-  { after: 9000, text: 'Kiszámoljuk, mennyi területet zár be…' },
-  { after: 20000, text: 'Ez most hosszabb kör — még dolgozunk rajta.' },
+  { after: 0, text: 'Térkép leporolása…' },
+  { after: 4000, text: 'Ötszögek hatszögesítése…' },
+  { after: 9000, text: 'Próbálunk nem beküldeni egy bokorba…' },
+  { after: 20000, text: 'Aszfalt-molekulák elemzése…' },
 ];
 
 /** A küldetés-ajánló szövegei. */
@@ -209,7 +209,7 @@ export function RoutePlanningOverlay() {
   return (
     <HexWorkOverlay
       messages={PLANNING_MESSAGES}
-      sub="A tervezés valódi útvonalakat számol, nem egyenest húz."
+      sub="Az útvonaltervezés a valós úthálózatot követi."
     />
   );
 }

@@ -23,6 +23,13 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.3.2] - 2026-09-12 (Javítás)
+
+- A tervezett útvonal az odautat és a visszautat külön színnel rajzolja, és az utca szélességét követi nagyításkor
+- A tervezett útvonal pontjai nem ritkulnak a térképen — alacsony grafikai profilon a kanyarok eddig levágódtak
+- A címkeresés kiemeli a találatban az egyező szavakat, ékezet nélkül gépelve is
+- Barátságosabb szövegek a hosszú tervezés alatt
+
 ## [1.3.1] - 2026-09-12 (Javítás)
 
 - Az útvonaltervezés valódi végponton is ellenőrizve; javítva a címkeresés közelsége, ami üres paraméternél a Föld nullpontjára esett (a Deák tér 1427 km-re látszott Budapesttől)

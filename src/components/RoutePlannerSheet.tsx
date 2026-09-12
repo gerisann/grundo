@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@/components/Icon';
 import { OptionSwitch } from '@/components/ui/OptionSwitch';
@@ -403,7 +403,7 @@ function PointRow({
                   setHits([]);
                 }}
               >
-                <span className="rps__hit-label">{hit.label}</span>
+                <span className="rps__hit-label">{highlight(hit.label, query)}</span>
                 <span className="rps__hit-distance">{(hit.distanceM / 1000).toFixed(1)} km</span>
               </button>
             </li>
@@ -435,4 +435,59 @@ export function toPlanInput(
     terrain: settings.terrain,
     preferCycleways: activityType === 'ride' && settings.preferCycleways,
   };
+}
+
+/**
+ * A keresett szavak kiemelése a találatban.
+ *
+ * MIÉRT KELL? Mert a lista hosszú, és a találatok egymáshoz hasonlók („Etele
+ * tér", „Etele út", „Kiss & Ride Etele tér”) — kiemelés nélkül a szem nem
+ * találja meg, melyik miért került be.
+ *
+ * ⚠️ SZAVANKÉNT, ÉKEZETRE ÉRZÉKETLENÜL. A „etele ter” is emelje ki az „Etele
+ * tér"-t: magyar címeknél a felhasználó gyakran ékezet nélkül gépel. A
+ * kiemelés az EREDETI szöveget mutatja, csak a találat helyét jelöli.
+ */
+function highlight(text: string, query: string): ReactNode {
+  const words = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word.length >= 2);
+  if (words.length === 0) return text;
+
+  /* Az összehasonlításhoz ékezet nélküli másolat — a HOSSZA azonos marad,
+     tehát az indexek az eredeti szövegre is érvényesek. */
+  const plain = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const hits: [number, number][] = [];
+  for (const word of words) {
+    const needle = word.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    let from = 0;
+    for (;;) {
+      const at = plain.indexOf(needle, from);
+      if (at < 0) break;
+      hits.push([at, at + needle.length]);
+      from = at + needle.length;
+    }
+  }
+  if (hits.length === 0) return text;
+
+  /* Átfedő találatok összevonása, hogy ne szabdaljuk fölöslegesen a szöveget. */
+  hits.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [start, end] of hits) {
+    const last = merged[merged.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  merged.forEach(([start, end], index) => {
+    if (start > cursor) parts.push(text.slice(cursor, start));
+    parts.push(<mark key={index}>{text.slice(start, end)}</mark>);
+    cursor = end;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
 }

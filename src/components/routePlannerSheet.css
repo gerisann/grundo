@@ -308,3 +308,14 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/*
+  A TALÁLAT EGYEZŐ RÉSZE. A böngésző alapértelmezett `mark` festése sárga
+  háttér fekete szöveggel — az a sötét témában kiabál, ezért saját színt kap:
+  a márkaszín, háttér nélkül.
+*/
+.rps__hit-label mark {
+  background: transparent;
+  color: var(--brand-400);
+  font-weight: 700;
+}

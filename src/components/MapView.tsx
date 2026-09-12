@@ -509,7 +509,7 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncGhostData(instance, ghostTrack, renderBoundsRef.current, graphicsProfile, ghostSplitIndex);
+    syncGhostData(instance, ghostTrack, renderBoundsRef.current, ghostSplitIndex);
   }, [ghostTrack, graphicsProfile]);
 
   useEffect(() => {
@@ -1186,7 +1186,24 @@ function addLayers(
           cssColor('var(--route-inbound)'),
           cssColor('var(--territory-stolen)'),
         ],
-        'line-width': 4,
+        /*
+          AZ ÚT SZÉLESSÉGÉT KÖVETI, NEM FIX PIXELT. A `line-width` képpontban
+          van, a térképen látszó útszélesség viszont a nagyítással nő — fix
+          4 px-es vonal ezért közelről cérnavékony, távolról meg túl vastag.
+          Az exponenciális interpoláció (base 2, mert a zoom logaritmikus)
+          ezt követi: Budapest szélességén egy ~10 m-es utca nagyjából 3 px
+          zoom 15-ön, 12 px zoom 17-en és 50 px zoom 19-en. A vonal ennél
+          valamivel keskenyebb, hogy alatta látszódjon maga az út.
+        */
+        'line-width': [
+          'interpolate',
+          ['exponential', 2],
+          ['zoom'],
+          12, 2.5,
+          15, 5,
+          17, 13,
+          19, 40,
+        ],
         'line-opacity': 0.9,
       },
     });
@@ -1243,7 +1260,7 @@ function syncData(
   syncAreaData(instance, visibleLayers, ownerColors, null);
   syncCellData(instance, visibleLayers, ownerColors, trailColor, null);
   syncTrackData(instance, track, bounds, profile);
-  syncGhostData(instance, ghostTrack, bounds, profile, ghostSplitIndex);
+  syncGhostData(instance, ghostTrack, bounds, ghostSplitIndex);
 }
 
 /**
@@ -1463,7 +1480,6 @@ function syncGhostData(
   instance: mapboxgl.Map,
   ghostTrack: MapViewProps['ghostTrack'],
   bounds: RenderBounds | null,
-  profile: GraphicsProfile,
   splitIndex?: number | null,
 ): void {
   const ghostSource = instance.getSource(GHOST_SOURCE) as mapboxgl.GeoJSONSource | undefined;
@@ -1479,7 +1495,15 @@ function syncGhostData(
     */
     const points = ghostTrack ?? [];
     const split = splitIndex && splitIndex > 1 && splitIndex < points.length ? splitIndex : null;
-    const stride = profile.routePointStride;
+    /*
+      ⚠️ A TERVEZETT ÚTVONALAT NEM RITKÍTJUK. A grafikai profil `low` állásán
+      minden NEGYEDIK pont maradna meg — mérve: egy derékszögű kanyarnál ez
+      30 métert vág le a sarokból, tehát a vonal láthatóan elválik az utcától.
+      A ritkítás a SAJÁT nyomvonalra való (több ezer pont, GRUNDO #21
+      energiaelemzés); egy tervezett útvonal néhány száz pont, azon nem nyerünk
+      vele mérhetőt, cserébe pont a pontosságot veszítenénk el.
+    */
+    const stride = 1;
     const segments = split
       ? [
           ...visibleTrackSegments(points.slice(0, split), bounds, stride).map((s) => ({ s, leg: 'outbound' })),
