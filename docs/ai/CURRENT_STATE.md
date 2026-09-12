@@ -1,96 +1,105 @@
 # Jelenlegi állapot
 
-> Frissítve: **2026-09-12** · Menetszám: **#47 · lezárva**
-> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · funkció-HEAD: **3c92d4d**
+> Frissítve: **2026-09-12** · Menetszám: **#48 · lezárva**
+> Repo: `C:\Users\Geri\Documents\GitHub\grundo` · ág: **main** · HEAD: **e100e50**
 > Utoljára dolgozott: **Claude (Opus, High)**
 > Átadva: **Claude**
 
 ## Jelenlegi cél
 
-Az **A→B útvonaltervező motorja (`1F`) kész és vizuális visszajelzés alapján
-hangolt**, és van hozzá kézi próbapad. A következő lépés az **API-végpont és a
-felület**: `POST /api/routes/plan`, majd a `Barangolás | Útvonal` választó a
-Rögzítés panelen.
+Az **A→B útvonaltervezés végig elkészült és élesben fut**: backend, felület,
+navigáció. Verzió **1.3.5**, frontend és backend telepítve, a Changelog
+szinkronizálva.
 
-Spec: [`../02-funkcionalis-spec.md`](../02-funkcionalis-spec.md) → *Útvonaltervezés
-a rögzítés előtt* · terv és mérések:
-[`../routing/point-to-point.md`](../routing/point-to-point.md).
+A következő lépés a **készülékes ellenőrzés** (TestFlight / Android Release) —
+a menet több platform-érzékeny dolgot érintett (térképi koppintás,
+helymeghatározás a tervezőben, mentés-panel átfedések), amit böngészőben nem
+lehet igazolni.
 
-Nyitva marad az **útvonal-könyvtár** is
-([`../routing/route-library.md`](../routing/route-library.md)): a küldetés-ajánló
-lassúságára válasz, és a mérés szerint nem a GraphHopper a szűk keresztmetszet,
-hanem a bezárt cellahalmaz kiszámítása.
+Spec: [`../routing/point-to-point.md`](../routing/point-to-point.md) ·
+adatforrások és mérések:
+[`../routing/data-sources.md`](../routing/data-sources.md).
 
 ## Elkészült
 
-- **Tervezőmotor**: `planDirectRoute` (A→B, megállókkal) és `planTwoSidedLoop`
-  (A→B→A kétoldali kör) a `server/src/lib/routePlan.ts`-ben; a tiszta geometria
-  a `src/game/routeCorridor.ts`-ben.
-- **Két új alakmérték** a közös motorban: `sharedPathRatio` (irányfüggetlen
-  közös szakasz) és `countSelfRevisits` (önmagába visszatérés).
-- **A kerülő mérete játékkonstans**: `ROUTE_DETOUR_OFFSET_M` ±500 m / ±1 km /
-  ±2 km, a közvetlen táv 45%-ára vágva.
-- **Kézi próbapad**: `server/src/scripts/routeLab.ts`, `npm run lab:routes`,
-  `http://localhost:8787`. Címkereső (két Mapbox-végpont összefésülve),
-  megállók, terep- és kerékpárút-preferencia, domborzat-színek, 2D/3D,
-  geometria- és birtokviszony-kapcsoló, stopper, mentett pontkészletek.
-- **Domborzat a HELYI gráfban** (`config-grundo.yml`: SRTM, `average_slope`),
-  hogy a sík/dombos preferencia kipróbálható legyen.
-- **Mérőpad** a `#46` menetből commitolva (`routeBenchmark.ts`,
-  `benchmarkRoutes.ts`, budapesti fixture, verziózott baseline).
+- **`POST /api/routes/plan`** — hitelesítés, a küldetés-ajánlóval KÖZÖS heti
+  keret (`missionQuota`), 100 km-es légvonal-plafon, őszinte nemleges válasz.
+  A válasz vezethető: vonallánc + manőverek, `outboundPoints` (oda/vissza
+  töréspont) és `roadClasses` (vonalvastagsághoz).
+- **Zsákmány-előnézet** minden tervhez: cellaszám új/elvett bontásban, terület,
+  GP, top 3 rivális. ⚠️ Felső határ, nem ígéret — a felület ezt ki is mondja.
+- **`GET /api/routes/geocode`** — két Mapbox-forrás uniója, távolság szerint
+  rendezve, gyorsítótárral. A találatot NEM tároljuk el.
+- **Geometria külön szálon** (`lib/geometryOffThread.ts`), 30 s időkorláttal.
+  A `grundo-api` mostantól `--cpu=2`, a `grundo-graphhopper` pedig
+  `min-instances=1` (lásd Nyitott ügyek → miért).
+- **Felület**: `Barangolás | Útvonal` választó, teljesképernyős tervező
+  (címkereső kiemeléssel, térképi kijelölés, jelenlegi pozíció), „Zsákmány"
+  panel, hatszöges betöltő, átvezető animáció a Play gombig.
+- **Útvonalrajz**: kétszínű (odaút/visszaút), ritkítás nélkül, út-osztályhoz
+  igazított vastagsággal.
+- **Banda-képfeltöltés 2 MB → 5 MB.**
 
 ## Módosított fájlok
 
-| Fájlcsoport | Állapot | Tartalom |
-|---|---|---|
-| `server/src/lib/routePlan.ts` + teszt | ÚJ | a kétoldali kör tervezője |
-| `server/src/scripts/routeLab.ts` | ÚJ | kézi próbapad |
-| `src/game/routeCorridor.ts` + teszt | ÚJ | köztes pont, zónák, kerülendő foltok |
-| `src/game/routeShape.ts` + teszt | M +250/−10 | `sharedPathRatio`, `countSelfRevisits` |
-| `server/src/lib/directions.ts` | M +110/−40 | pont-pont hívás, `snapped_waypoints`, `pass_through` |
-| `src/config/gameplay.ts`, `src/game/geo.ts` | M +39 | kerülő-konstans, közös `bearingDeg` |
-| `docs/02*`, `docs/routing/*`, `docs/ai/*` | ÚJ/M +420 | spec, terv, mérések, tartós döntések |
-| `graphhopper/config-grundo.yml`, `README.md` | M +20 | helyi domborzat |
-| `server/src/lib/routeBenchmark*`, `fixtures/` | ÚJ | a `#46` mérőpadja |
+`git diff --stat 7a57bc8..e100e50` — 37 fájl, +5010 / −265 sor. A főbbek:
+`server/src/routes/routes.ts` (új végpontok), `src/components/RoutePlannerSheet.tsx`,
+`RouteRewardPanel.tsx`, `HexWorkOverlay.tsx`, `Icon.tsx`,
+`src/hooks/useRoutePlanner.ts`, `src/screens/TrackingScreen.tsx`,
+`src/components/MapView.tsx`.
 
 ## Élesben fut / telepítetlen
 
-- **Ebből a menetből semmi nincs telepítve.** A tervezőmotor csak a laborból
-  hívható; API-végpont nincs, tehát a kliensek nem érik el.
-- ⚠️ A domborzat **csak a helyi gráfban** van bekapcsolva. A
-  `config-cloudrun.yml` szándékosan érintetlen: az éles DEM-forrás (licenc,
-  frissítés, konténerméret) külön döntés.
-- A `d2bdcd0` natív heading commitból továbbra sincs visszaigazolt
-  iOS/Android készülékes build.
+**Élesben fut minden** (verzió 1.3.5): frontend, backend, Cloud Run-beállítások.
+Telepítetlen változás nincs.
+
+⚠️ **Natív build NEM készült** ebből a menetből — a TestFlight/APK a `e100e50`
+commitról indítható.
 
 ## Ellenőrzések
 
-- `npm run test`: **959 zöld**, 181 skip.
-- `npx tsc --noEmit` gyökér és `server/` külön: zöld.
-- A tervező minősége **7 budapesti páron × 3 kerülőméreten** mérve, több körben.
-- **NEM ellenőrzött:** emulátoros készlet; produkciós build; a `routeLab.ts`
-  nincs teszttel fedve (kézi eszköz).
-- **NEM mért:** a tervező viselkedése Budapesten kívül; a Cloud Run 1 vCPU
-  hatása a tervezési időre.
+- `npm run test`: **966 zöld**, 189 kihagyva.
+- `npx tsc --noEmit` gyökér és `server/` külön: **zöld**.
+- Emulátoros készlet (`routesPlan.emulator`): **8/8 zöld**.
+- **Valódi végponti próba**: kliens → helyi backend → éles Firestore →
+  GraphHopper. Mérve egy Deák tér → Hősök tere körön: 10,6 km, 9109 mező,
+  2,797 km², 201 GP, valódi riválisnevekkel; a tulajdonosi fiók nem fogyasztott
+  keretet.
 
-## Nyitott ügyek — javasolt sorrend
+**Amit NEM ellenőriztem:**
+- **készüléken semmit** (iOS/Android) — a menet platform-érzékeny részeit
+  (térképi koppintás, helymeghatározás, safe area) csak böngészőben láttam;
+- a **kihívások oldalán a betöltő animációt** működés közben (a böngésző
+  megtagadta a helymeghatározást, a generálás el sem indult);
+- a **`prefers-reduced-motion`** ágat élesben (a kód kezeli, de nem kapcsoltam
+  be a rendszerbeállítást);
+- a **beszívódás-animáció látványát** a valódi folyamatban (a böngésző-
+  munkamenet elvesztette a bejelentkezést; a CSS bekerült a bundle-be).
 
-1. `POST /api/routes/plan` végpont: hitelesítés, heti keret, őszinte nemleges
-   válasz.
-2. `Barangolás | Útvonal` választó a Rögzítés panelen, cél térképi pinnel.
-3. Geocoding éles bekötése — ⚠️ a Mapbox **tartós tárolási** jogosultságát
-   kódírás előtt tisztázni kell.
-4. Útvonal-könyvtár írási oldala, majd előtöltés, olvasás, felület.
-5. `--cpu=2` a `grundo-api` Cloud Run szolgáltatásra (ma nincs megadva).
-6. A `shapedCandidateLimit` lépcsőjének újrahangolása (ma 30 km, a mérés
-   szerint a szakadék 15–20 km között jön).
-7. Éles DEM-forrás döntése, majd `config-cloudrun.yml` és gráf-újraépítés.
-8. Új iOS és Android build a `d2bdcd0` commitból; heading készülékes mátrix.
-9. `1D` preferenciaszűrő UI; DEM-es terepprofil éles rangsorban.
-10. Éles GraphHopper URL és fallback arány ellenőrzése backend deploy előtt.
+## Nyitott ügyek
+
+1. **A hurokdetektálás a valódi szűk keresztmetszet.** Mérve: ugyanaz a
+   Balaton-kör 3 megállóval 778 s, 4 megállóval 50 s; egy 42 km-es budapesti
+   körön a kerékpárút-preferencia 171 ms → 11 417 ms. A költség az ALAKTÓL függ,
+   nem a hossztól. Ez `src/game/loopDetection.ts`, nem a labor. Külön menet,
+   Opus/High.
+2. **A `min-instances=1` folyamatos költség** (2 vCPU / 2 GiB állandóan fut).
+   Ez szüntette meg a körtervezés élesbeli elhasalását (hidegindítás + 20
+   párhuzamos hívás). Ha a számla soknak bizonyul, előbb mérni kell, mielőtt
+   visszavesszük.
+3. **A Codemagic `grundo_ios` env-csoportjában ellenőrizni kell a
+   `VITE_MAPBOX_TOKEN`-t**: a WEBES token kell (`grundo-web`,
+   `cmt4k1tg00ehh2zs97coz0gpq`), NEM a szerveroldali
+   (`grundo-server-directions`, `cmt4jw2111cid30qtgzmfam14`). A böngésző-bundle
+   már a webest viszi; a natív buildek a Codemagic saját változóiból kapják.
+4. **Gyalogos „Jelleg"** — mérve egyik állás sem változtat az útvonalon, ezért
+   kiszürkítve, „Hamarosan" felirattal. Más adatforrás kell hozzá (EEA
+   zajtérképek, Copernicus/Sentinel-2); a PZU-térkép mérése is a
+   `data-sources.md`-ben.
+5. **Útvonal-könyvtár** ([`../routing/route-library.md`](../routing/route-library.md))
+   — változatlanul nyitva.
 
 ## Modelljavaslat
 
-API-végpont és felület: **Claude (Sonnet, Medium)** — a motor kész, ez
-illesztés. Az útvonal-könyvtár adatmodellje és a DEM-pipeline: **Claude (Opus,
-High)**.
+Készülékes ellenőrzés és apró UI-javítás → **Sonnet**. A hurokdetektálás
+gyökérok-vizsgálata (1. pont) → **Opus, emelt**.

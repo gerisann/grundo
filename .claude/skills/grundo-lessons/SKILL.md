@@ -214,3 +214,39 @@ függenie, amitől a képernyő láthatósága. És **a folyamatot mérni kell, 
 elképzelni** — a rendszerablakok számát és szövegét a felhasználó jelentéséből
 vagy készülékről vedd, ne az API dokumentációjából. (Vö. 15.: ott a védelem
 sosem futott le; itt lefutott, csak nem védett semmit.)
+
+## 18. A saját dokumentált csapdába másodszor is beleléptem
+
+A `MapView` egy kommentben kimondja: **„a zoom-kifejezés csak legkülső lehet a
+Mapboxban — szorzat belsejébe téve a réteg némán nem jön létre"**. Ezt a fájl a
+`levelOpacity`-nál már megtanulta. Pár órával később pontosan ezt írtam:
+`['*', match, ['interpolate', … ['zoom'] …]]` — és a tervezett útvonal
+nyomtalanul eltűnt a térképről.
+
+Sem a typecheck, sem a 966 teszt nem jelezte. **A vizuális ellenőrzés fogta
+meg**, és csak azért, mert megnéztem a képernyőt, nem csak a konzolt.
+
+Ugyanebben a menetben megsértettem a **saját, aznap feljegyzett memóriámat** is
+(flat SVG ikon, soha emoji): a kártyára `▶` karaktert tettem.
+
+**Mielőtt egy fájlban olyasmihez nyúlsz, amihez van ⚠️-jelölt komment,
+olvasd el azt a kommentet** — a projekt saját tanulságai pont ott vannak, ahol
+a hiba keletkezik. És ha egy változás a képernyőn látszik, **nézd meg a
+képernyőt**: a zöld teszt itt semmit nem bizonyított.
+
+## 19. A mockolt válasz nem bizonyít végponti működést
+
+A tervező felületét mockolt `fetch`-csel vittem végig — minden zöld volt. A
+VALÓDI végponti próba azonnal talált egy hibát, amit a mock elrejtett: a
+`Number('')` **nem `NaN`, hanem 0**, ezért az üres `near` paraméter a Föld
+nullpontjára esett, és a „Deák Ferenc tér" **1427 km-re** látszott Budapesttől.
+
+Élesben ugyanez a minta még kétszer ismétlődött: a körtervezés csak éles
+környezetben hasalt el (hidegindítás + 20 párhuzamos hívás), és a
+zsákmány-időkorlát is csak ott bukott ki.
+
+**A mock a UI-folyamatot bizonyítja, nem a rendszert.** Ha egy funkció külső
+szolgáltatástól, valódi adattól vagy az éles környezet erőforrásaitól függ,
+addig ne mondd késznek, amíg végponttól végpontig le nem futott — és számíts
+rá, hogy a különbség nem a logikában lesz, hanem az időzítésben, a
+párhuzamosságban és a peremértékekben.

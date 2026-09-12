@@ -654,3 +654,36 @@ a rögzítés előtt* · terv és mérés:
   GraphHopper járhatónak veszi, mert tolva teljesíthető. A `get_off_bike`
   jelzés 0,1-es büntetése ezt megszünteti; a legnagyobb egyszeri javulás a
   bringás eseteken (Újpest kis kerülő 7 → 3 visszafordulás).
+
+## Útvonaltervezés — élesbeli tanulságok *(2026-09-12, #48)*
+
+- ⚠️ **A `grundo-graphhopper` `min-instances=1`-en fut, és ez nem takarítható
+  meg gondolkodás nélkül.** Egy kör tervezése HÚSZ párhuzamos hívást indít (10
+  jelölt × 2 leg); hidegen ennyi kérésre a Cloud Run új példányt indít, annak
+  pedig be kell töltenie a teljes magyar gráfot. A jelöltek eközben sorra
+  túllépték az időkorlátot, és a tervezés „nem tudtunk kört tervezni"
+  üzenettel hasalt el — miközben a „Csak oda" (EGY hívás) működött. Ez a
+  különbség adta a nyomot. A hívás-időkorlát 25 s csak ENYHÍTÉS; az okot a
+  meleg példány szünteti meg.
+- ⚠️ **A geometria-számítás KÜLÖN SZÁLON fut** (`server/src/lib/geometryOffThread.ts`),
+  mert a hurokdetektálás mérve 158 ms és 778 000 ms között szór, és a költség
+  a nyomvonal ALAKJÁTÓL függ, nem a hosszától — előre nem becsülhető. Egy
+  szálon ez az event loopot foglalja, és a kiszolgáló addig SENKI mást nem
+  szolgál ki. Emiatt a korlát IDŐ (30 s), nem távolság: a hossz rossz
+  prediktor. A `grundo-api` ezért kapott `--cpu=2`-t is — egy vCPU-n a szál és
+  az event loop ugyanazon a magon osztozott.
+- ⚠️ **A kliensoldali bundle-be CSAK URL-korlátozott Mapbox token kerülhet.**
+  A `grundo-server-directions` szándékosan korlátozás nélküli (a Cloud Run nem
+  küld Referert) — az ilyen tokent a böngészőből bárki kiolvassa és a saját
+  oldalán használja. A token nem kerül a repóba sem: a GitHub push protection
+  minden Mapbox tokent titoknak vesz, a publikus `pk.` előtagút is.
+- ⚠️ **A Mapbox `line-width`-ben a ZOOM-KIFEJEZÉS CSAK LEGKÜLSŐ LEHET.** A
+  `['*', match, ['interpolate', … ['zoom'] …]]` alakban a réteg NÉMÁN nem jön
+  létre, a vonal pedig nyomtalanul eltűnik — typecheck és teszt nem jelzi, csak
+  a szem. Az `interpolate` legyen kívül, a szorzó a megállók kimenetében. (A
+  `MapView` ezt a `levelOpacity`-nál már dokumentálta; másodszor is
+  belefutottunk.)
+- ⚠️ **A tervezett útvonalat NEM ritkítjuk a térképen.** A grafikai profil
+  `low` állásán minden negyedik pont maradna meg — mérve: egy derékszögű
+  kanyarnál ez 30 métert vág le a sarokból. A ritkítás a SAJÁT nyomvonalra
+  való (több ezer pont), nem a tervezettre (néhány száz).
