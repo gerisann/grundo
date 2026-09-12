@@ -23,6 +23,13 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.1.2] - 2026-09-12 (Javítás)
+
+- Útvonal-labor: nagy körnél a terület szétszórt foltokban jelent meg (konfetti) — a tömör belsőt egy 200 000-es plafonig bontottuk ki előre, nem térbeli sorrendben; mostantól nincs előre-kibontás
+- Útvonal-labor: a távoli nézet foltja a tömör belső parentjeiből épül, durva felbontáson — egy Balaton-kör 2,1 millió cellája így 1 poligon, 122 KB
+- Útvonal-labor: a cellarács a látható nézetre töltődik, a tömör belső csak ott bomlik ki
+- Útvonal-labor: a birtokviszony-lekérdezés az éles MAX_OWNERSHIP_BLOCKS (400) plafont használja — enélkül egy Balaton-kör lefagyasztotta a labort
+
 ## [1.1.1] - 2026-09-12 (Javítás)
 
 - Útvonal-labor: a bezárt terület némán eltűnt a térképről, ha a rajzolandó cellahalmazban ismétlődő cella volt (h3-js: Duplicate input) — a halmaz mostantól deduplikált

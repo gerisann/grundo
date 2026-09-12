@@ -144,7 +144,37 @@ async function measureOwnership(
   const started = performance.now();
   try {
     const { loadOwnership } = await import('../lib/grid');
+    const { blocksFor } = await import('../lib/gridMath');
+    const { MAX_OWNERSHIP_BLOCKS } = await import('../lib/missionEvaluate');
     const layer = profile === 'cycling' ? 'bike' : 'foot';
+
+    /*
+      ⚠️ PLAFON A BLOKKSZÁMRA — ez HIBAJAVÍTÁS, nem óvatoskodás (mérve,
+      2026-09-12). A `loadOwnership` EGYETLEN `db.getAll(...refs)`-szel kéri az
+      összes res9 blokkot, kötegelés nélkül. Egy Balaton-méretű kör több ezer
+      blokkot jelent: a labor 11+ percig lógott nyitott Firestore-kapcsolattal,
+      0% CPU-val, és a folyamat annyira beragadt, hogy utána egy BUDAPESTI
+      kérést sem szolgált ki.
+
+      Az éles kód ezt a hibát nem tudja elkövetni: a küldetés-ajánló
+      `limitByBlocks(…, MAX_OWNERSHIP_BLOCKS)`-szal vág, a foglalás pedig
+      `BLOCKS_PER_GROUP = 200`-as kötegekben olvas. A labor UGYANAZT a plafont
+      használja, hogy amit itt látsz, az élesben is érvényes legyen.
+    */
+    const blocks = blocksFor(layer, cells as Iterable<never>);
+    if (blocks.size > MAX_OWNERSHIP_BLOCKS) {
+      return {
+        available: false,
+        reason:
+          `Túl nagy kör a birtokviszony-lekérdezéshez: ${blocks.size.toLocaleString('hu-HU')} ` +
+          `blokk, a plafon ${MAX_OWNERSHIP_BLOCKS}. Élesben a küldetés-ajánló ` +
+          'ugyanennél a határnál vág. A geometria birtokviszony nélkül továbbra is megy.',
+        blocks: blocks.size,
+        maxBlocks: MAX_OWNERSHIP_BLOCKS,
+        elapsedMs: Math.round(performance.now() - started),
+      };
+    }
+
     const ownership = await loadOwnership(layer, cells as Iterable<never>);
 
     const byLevel = new Map<number, number>();
@@ -163,6 +193,9 @@ async function measureOwnership(
     const total = [...cells].length;
     return {
       available: true,
+      /* A blokkszám a lekérdezés VALÓDI ára — ezen múlik, belefér-e. */
+      blocks: blocks.size,
+      maxBlocks: MAX_OWNERSHIP_BLOCKS,
       total,
       free: total - owned,
       owned,
@@ -253,13 +286,30 @@ const CELL_BUCKET_RES = 8;
 const VISIBLE_CELL_LIMIT = 60_000;
 
 /**
- * A LEGUTÓBBI tervezés kirajzolható cellái, bucketelve.
+ * A LEGUTÓBBI tervezés kirajzolható területe.
+ *
+ * ⚠️ A TÖMÖR BELSŐT NEM BONTJUK KI ELŐRE. Ez hibajavítás (mérve, 2026-09-12):
+ * a korábbi megoldás a parenteket egy 200 000-es plafonig bontotta res12-re,
+ * és mivel a `fullParents` bejárási sorrendje NEM térbeli, a plafon fölött
+ * véletlenszerűen szétszórt foltok maradtak — a térképen KONFETTI, egybefüggő
+ * terület helyett. Egy Balaton-kör 2,1 millió cellája sosem fér bele.
+ *
+ * Helyette: a pontos cellák (fal + határsáv) bucketelve maradnak, a tömör
+ * belső pedig PARENTKÉNT — és csak akkor bomlik ki, amikor egy konkrét
+ * nézetre tényleg kell (`cellsInBbox`).
  *
  * ⚠️ EGY FELHASZNÁLÓRA MÉRETEZVE. A labor kézi eszköz, egy folyamat, egy fül:
- * szándékosan nincs munkamenet-azonosító, a következő tervezés felülírja ezt.
- * Ez a megoldás így NEM emelhető át az éles kiszolgálóba.
+ * szándékosan nincs munkamenet-azonosító, a következő tervezés felülírja.
  */
-let lastDrawing: Map<string, { cell: string; level: number }[]> | null = null;
+interface Drawing {
+  /** A pontos res12 cellák (fal + határsáv), res8 bucketekben, szinttel. */
+  fine: Map<string, { cell: string; level: number }[]>;
+  /** A tömör belső parentjei, kibontatlanul. */
+  parents: Set<string>;
+  /** A parentek H3 felbontása (a motortól, jellemzően res10). */
+  parentRes: number;
+}
+let lastDrawing: Drawing | null = null;
 
 /** A bucketelt rajz felépítése — a tervezés végén, egyszer. */
 function indexDrawing(byLevel: ReadonlyMap<number, string[]>) {
@@ -306,30 +356,47 @@ function cellsInBbox(bbox: { w: number; s: number; e: number; n: number }) {
   for (const seed of seeds) for (const near of gridDisk(seed, 1)) parents.add(near);
 
   const byLevel = new Map<number, string[]>();
+  const seen = new Set<string>();
   let count = 0;
+  const add = (cell: string, level: number) => {
+    if (count >= VISIBLE_CELL_LIMIT || seen.has(cell)) return;
+    seen.add(cell);
+    const list = byLevel.get(level);
+    if (list) list.push(cell);
+    else byLevel.set(level, [cell]);
+    count += 1;
+  };
+
+  // 1) A pontos cellák (fal + határsáv) a metsző bucketekből.
   for (const parent of parents) {
-    const bucket = lastDrawing.get(parent);
+    const bucket = lastDrawing.fine.get(parent);
     if (!bucket) continue;
-    for (const { cell, level } of bucket) {
+    for (const { cell, level } of bucket) add(cell, level);
+  }
+
+  /*
+    2) A TÖMÖR BELSŐ — csak a nézetbe eső parentek, ÉS csak most kibontva.
+    Ugyanaz a magvetés, mint fent: a bbox parentjei plusz egy gyűrű, hogy a
+    szélen belógó szülők se maradjanak ki. A belső cellák szintje 1 — a
+    körüljárás csak a falra ad magasabbat.
+  */
+  if (lastDrawing.parents.size > 0) {
+    const interiorSeeds = polygonToCells(ring, lastDrawing.parentRes, true);
+    for (const [lng, lat] of [...ring, centre]) {
+      interiorSeeds.push(latLngToCell(lat, lng, lastDrawing.parentRes));
+    }
+    const wanted = new Set<string>();
+    for (const seed of interiorSeeds) for (const near of gridDisk(seed, 1)) wanted.add(near);
+
+    for (const parent of wanted) {
       if (count >= VISIBLE_CELL_LIMIT) break;
-      const list = byLevel.get(level);
-      if (list) list.push(cell);
-      else byLevel.set(level, [cell]);
-      count += 1;
+      if (!lastDrawing.parents.has(parent)) continue;
+      for (const child of cellToChildren(parent, GAMEPLAY.H3_RESOLUTION)) add(child, 1);
     }
   }
 
   return { geojson: cellsToGeoJson(byLevel), cells: count };
 }
-
-/**
- * A tömör belső kibontásának plafonja.
- *
- * ⚠️ A motor épp azért tart tömör belsőt, hogy egy Balaton-méretű hurok ne
- * váljon több millió cellává (lásd DECISIONS → „Compact"). A kibontás csak a
- * MEGJELENÍTÉSÉRT történik, és eddig a határig.
- */
-const EXPAND_LIMIT = 200_000;
 
 /**
  * ÖSSZEVONT területpoligonok szintenként — a távoli nézethez.
@@ -343,6 +410,45 @@ const EXPAND_LIMIT = 200_000;
  * ⚠️ KIZÁRÓLAG MEGJELENÍTÉS. A terület továbbra is cellahalmazból számolódik;
  * ebből a poligonból soha nem kerülhet vissza érték az elszámolásba.
  */
+/**
+ * A TERÜLET EGYBEFÜGGŐ FOLTJA a távoli nézethez — DURVA felbontáson.
+ *
+ * ⚠️ EZ NEM A CELLÁKBÓL ÉPÜL. Egy Balaton-kör 2,1 millió res12 cellája sem
+ * összevonható, sem átküldhető; a korábbi megoldás ezért egy plafonig bontotta
+ * ki a tömör belsőt, és a maradékból szétszórt foltok lettek (KONFETTI).
+ *
+ * A tömör belső PARENTJEI viszont pont azt írják le, amit távolról látni
+ * akarunk: a terület kitöltött magját. Ezeket a fal durva szülőivel együtt
+ * egyetlen poligonná vonjuk össze — 2,1 millió cella helyett néhány tízezer
+ * parentből. Amit veszítünk, az a határ pár száz méteres pontossága; azon a
+ * nagyításon, ahol ez a réteg látszik, az egy képpont alatt van. Közelről
+ * úgyis a pontos cellarács veszi át (`cellsInBbox`).
+ */
+function compactAreaGeoJson(
+  parents: ReadonlySet<string>,
+  wall: Iterable<string>,
+  parentRes: number,
+): Record<string, unknown> {
+  const coarse = new Set<string>(parents);
+  for (const cell of wall) coarse.add(cellToParent(cell, parentRes));
+  try {
+    const coordinates = cellsToMultiPolygon([...coarse], true);
+    if (coordinates.length === 0) return { type: 'FeatureCollection', features: [] };
+    return {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        // Egyetlen folt, szint nélkül: távolról a birtoklás ténye számít.
+        properties: { level: 1 },
+        geometry: { type: 'MultiPolygon', coordinates },
+      }],
+    };
+  } catch (error) {
+    console.warn(`⚠️  durva területösszevonás elhasalt: ${(error as Error).message}`);
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
 function cellsToAreaGeoJson(byLevel: ReadonlyMap<number, string[]>): Record<string, unknown> {
   const features: Record<string, unknown>[] = [];
   for (const [level, cells] of byLevel) {
@@ -458,40 +564,28 @@ function measureGeometry(
   const expandAt = performance.now();
 
   /*
-    ⚠️ A TÖMÖR BELSŐT KIBONTJUK A KIRAJZOLÁSHOZ. Az éles app a szerverről
-    res12 cellákat kap, és azokból von össze EGY alakzatot
-    (`src/lib/hexAreas.ts` → `cellsToAreaPolygons`); tömör parenttel sosem
-    találkozik. Ha a parenteket rajzolnánk ki, nagy hatszögek jelennének meg a
-    terület belsejében — ez volt a korábbi, elvetett megjelenítés.
+    ⚠️ A TÖMÖR BELSŐT NEM BONTJUK KI. Korábban igen, egy 200 000-es plafonig —
+    és mivel a `fullParents` bejárási sorrendje nem térbeli, a plafon fölött
+    szétszórt foltok maradtak a térképen (KONFETTI) egybefüggő terület helyett.
+    Egy Balaton-kör 2,1 millió cellája amúgy sem férne bele.
 
-    A kibontás PLAFONOS: a motor épp azért tart tömör belsőt, hogy egy
-    Balaton-méretű hurok ne váljon több millió cellává.
+    Helyette a parentek ÉRINTETLENÜL mennek a rajz-indexbe, és csak arra a
+    nézetre bomlanak ki, amit a felhasználó tényleg néz (`cellsInBbox`). A
+    távoli nézet foltját a `compactAreaGeoJson` adja, durva felbontáson.
+
+    ⚠️ HALMAZ, NEM TÖMB — ez is hibajavítás (mérve, 2026-09-12): a
+    `cellsToMultiPolygon` ISMÉTLŐDŐ cellára `Duplicate input (code: 10)` hibát
+    dob, és attól a lila területréteg NÉMÁN eltűnt a térképről.
   */
-  /*
-    ⚠️ HALMAZ, NEM TÖMB — ez nem stílus kérdése, hanem HIBAJAVÍTÁS (mérve,
-    2026-09-12). A `cellsToMultiPolygon` ISMÉTLŐDŐ cellára `Duplicate input
-    (code: 10)` hibát dob, és attól a lila területréteg NÉMÁN eltűnt a
-    térképről, miközben a telemetria 58 493 cellát írt ki. Duplikátum két
-    helyről jött: a compact parentek gyerekei között ott vannak a `shaped.cells`
-    határsáv-cellái is, és KÉT ÁTFEDŐ HUROKNÁL ugyanaz a parent kétszer bomlik
-    ki. A cellánkénti rajz ezt túlélte (cellánként rajzol), az összevont nem —
-    ezért látszott hol a rács, hol semmi.
-  */
-  const drawable = new Set<string>(shaped.cells);
-  let expanded = 0;
+  const parents = new Set<string>();
+  let parentRes: number = GAMEPLAY.H3_RESOLUTION;
   for (const loop of shaped.geometry.loops) {
     const compact = loop.compactInterior;
     if (!compact) continue;
-    for (const parent of compact.fullParents) {
-      if (drawable.size >= EXPAND_LIMIT) break;
-      for (const child of cellToChildren(parent, GAMEPLAY.H3_RESOLUTION)) {
-        if (drawable.has(child)) continue;
-        drawable.add(child);
-        expanded += 1;
-      }
-    }
+    parentRes = compact.parentResolution;
+    for (const parent of compact.fullParents) parents.add(parent);
   }
-  const truncated = drawable.size >= EXPAND_LIMIT;
+  const drawable = new Set<string>(shaped.cells);
 
   const byLevel = new Map<number, string[]>();
   for (const cell of drawable) {
@@ -501,19 +595,28 @@ function measureGeometry(
     else byLevel.set(level, [cell]);
   }
   /*
-    A bucket-index MINDIG felépül, a plafontól függetlenül: a nézet szerinti
-    lekérdezés akkor is jól jön, ha a teljes halmaz belefért a válaszba (a
-    Mapbox a csempe méretkorlátja fölött csendben eldob feature-öket).
+    A rajz-index MINDIG felépül: a nézet szerinti lekérdezés akkor is jól jön,
+    ha a pontos halmaz belefért a válaszba (a Mapbox a csempe méretkorlátja
+    fölött csendben eldob feature-öket).
   */
-  lastDrawing = indexDrawing(byLevel);
+  lastDrawing = { fine: indexDrawing(byLevel), parents, parentRes };
   const expandMs = Math.round(performance.now() - expandAt);
 
   const distanceKm = legs.reduce((sum, leg) => sum + leg.route.distanceM, 0) / 1000;
   const perKm = GAMEPLAY.BASE_GP_PER_KM[profile === 'cycling' ? 'ride' : 'run'];
 
   const geoJsonAt = performance.now();
-  const areaGeoJson = cellsToAreaGeoJson(byLevel);
-  const cellsGeoJson = drawable.size <= CELL_RENDER_LIMIT ? cellsToGeoJson(byLevel) : null;
+  /*
+    KÉT ÚT A TÁVOLI FOLTHOZ. Tömör belső nélkül a pontos cellákból vonjuk össze
+    (pontos határ, olcsó). Tömör belsővel a parentekből, durván — mert a pontos
+    út ott sem nem összevonható, sem nem átküldhető.
+  */
+  const areaGeoJson = parents.size > 0
+    ? compactAreaGeoJson(parents, drawable, parentRes)
+    : cellsToAreaGeoJson(byLevel);
+  const cellsGeoJson = parents.size === 0 && drawable.size <= CELL_RENDER_LIMIT
+    ? cellsToGeoJson(byLevel)
+    : null;
   const geoJsonMs = Math.round(performance.now() - geoJsonAt);
 
   return {
@@ -529,15 +632,15 @@ function measureGeometry(
     /* Távoli nézethez összevonva, közelihez cellánként. */
     areaGeoJson,
     cellsGeoJson,
-    /* A plafon fölött a lap a látható nézetre kéri a cellákat (`/cells`). */
-    cellsOnDemand: drawable.size > CELL_RENDER_LIMIT,
+    /* Ha nem ment cellarajz a válaszban, a lap a látható nézetre kéri. */
+    cellsOnDemand: cellsGeoJson === null,
     drawnCells: drawable.size,
+    /* Hány parent képviseli a tömör belsőt — ennyit NEM kellett kibontani. */
+    compactParents: parents.size,
     /* Ok szerint, hogy a némán eldobott hurok LÁTHATÓ legyen — lásd fent. */
     rejected,
     /* A geometria fázisai külön — ez a „Számítás” bontása. */
     phases: { shape: shapeMs, winding: windingMs, expand: expandMs, geojson: geoJsonMs },
-    expandedCells: expanded,
-    truncated,
     /* Csak a birtokviszony-lekérdezéshez kell; a válaszból kimarad. */
     cellIds: [...shaped.cells] as string[],
     areaM2,
@@ -1933,7 +2036,10 @@ document.getElementById('go').addEventListener('click', async () => {
           (data.geometry.cellsOnDemand
             ? row('Cellánkénti rajz', 'a látható nézetre — zoomolj rá')
             : '') +
-          (data.geometry.truncated ? row('Kirajzolás', 'csonkolva a plafonnál', true) : '') +
+          (data.geometry.compactParents
+            ? row('Tömör belső', data.geometry.compactParents.toLocaleString('hu-HU') +
+                ' parent — távolról egy folt')
+            : '') +
           row('GP területből', data.geometry.claimGp) +
           row('GP távból', data.geometry.distanceGp) +
           row('Számítás', data.geometry.elapsedMs + ' ms', data.geometry.elapsedMs > 3000)
@@ -1952,7 +2058,10 @@ document.getElementById('go').addEventListener('click', async () => {
                 .join('') +
               row('Foglalt szintek', [1,2,3,4,5]
                 .map((l) => (data.ownership.ownedByLevel ?? {})[l] ?? 0).join(' · ')) +
-              row('Lekérdezés', data.ownership.elapsedMs + ' ms')
+              row('Lekérdezés', data.ownership.elapsedMs + ' ms') +
+              /* A blokkszám a plafonhoz mérve — ezen múlik, belefér-e. */
+              row('Blokk', data.ownership.blocks + ' / ' + data.ownership.maxBlocks,
+                data.ownership.blocks > data.ownership.maxBlocks * 0.8)
             : row('Nem elérhető', data.ownership.reason, true))
         : '') +
       '</table>';
