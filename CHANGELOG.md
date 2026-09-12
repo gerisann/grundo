@@ -23,6 +23,11 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.3.5] - 2026-09-12 (Javítás)
+
+- A Gyerünk gomb után maga a zsákmány-panel szívódik be a Play gombba, egyetlen folyamatos mozdulattal
+- Javítva egy zsákutca: a terv kártyáját bezárva a Play gomb sárga nyílra váltott és nem indított semmit
+
 ## [1.3.4] - 2026-09-12 (Javítás)
 
 - A tervezett útvonal vastagsága az út típusához igazodik: egy körút szélesebb, egy gyalogút keskenyebb

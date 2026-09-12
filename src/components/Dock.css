@@ -701,7 +701,7 @@
 
   ⚠️ Külön az `--idle` gyűrűtől, mert más a dolga: az `--idle` azt mondja, hogy
   „innen indulhatsz", ez pedig azt, hogy „MOST ide gyere". Erősebb és rövidebb
-  — három lüktetés, aztán megáll (lásd `flyToPlay.ts`).
+  — három lüktetés, aztán megáll (lásd `suckIntoPlay.ts`).
 */
 .dock__play--beckon::before {
   content: '';

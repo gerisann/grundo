@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '@/components/Icon';
-import { flyToPlayButton } from '@/lib/flyToPlay';
+import { suckPanelIntoPlay } from '@/lib/suckIntoPlay';
 import { formatArea, formatGp } from '@/lib/format';
 import type { RouteReward } from '@/lib/api';
 import './routeRewardPanel.css';
@@ -35,12 +35,12 @@ export function RouteRewardPanel({
 }) {
   const km = (distanceM / 1000).toFixed(1).replace('.', ',');
   const minutes = Math.round(durationS / 60);
-  const goRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   /* ⚠️ PORTÁLBAN — lásd `RoutePlannerSheet`: a dokk különben fölé kerül. */
   return createPortal(
     <div className="rrp" role="dialog" aria-modal="true" aria-labelledby="rrp-title">
-      <div className="rrp__panel">
+      <div className="rrp__panel" ref={panelRef}>
         <header className="rrp__head">
           <h2 id="rrp-title">Zsákmány</h2>
           <p className="rrp__route">
@@ -115,18 +115,15 @@ export function RouteRewardPanel({
         )}
 
         {/*
-          ⚠️ ELŐBB A REPÜLÉS, UTÁNA A BEZÁRÁS. A `flyToPlayButton` a gomb
-          AKTUÁLIS helyzetéből indul; ha az `onStart` előbb futna le, a panel
-          már eltűnt volna, és nem lenne honnan elindulni.
+          ⚠️ AZ `onStart` CSAK AZ ANIMÁCIÓ VÉGÉN FUT. Ha előbb futna le, a panel
+          azonnal eltűnne, és nem lenne mit beszívni a gombba — a mozdulat
+          pont attól folyamatos, hogy a felhasználó VÉGIG ugyanazt a panelt
+          látja, amíg az a Play gombba ér.
         */}
         <button
-          ref={goRef}
           type="button"
           className="rrp__go"
-          onClick={() => {
-            flyToPlayButton(goRef.current);
-            onStart();
-          }}
+          onClick={() => suckPanelIntoPlay(panelRef.current, onStart)}
         >
           Gyerünk!
         </button>

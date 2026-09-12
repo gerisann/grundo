@@ -217,3 +217,67 @@
 .rrp__go:active {
   background: var(--brand-600);
 }
+
+/* ── Beszívódás a Play gombba ───────────────────────────────────── */
+
+/*
+  A PANEL MEGY BE A GOMBBA, egyetlen folyamatos mozdulattal.
+
+  ⚠️ A HÁROM VÁLTOZÁS EGYSZERRE FUT — mozgás, zsugorodás, kerekedés —, mert
+  külön-külön lépcsősnek látszana. A macOS dokk „genie" mozdulatában is az
+  ABLAK szívódik be az ikonba; az igazi genie nem-lineáris deformáció (a felső
+  él még széles, mikor az alja már a célban van), amit CSS-ben nem lehet
+  pontosan megcsinálni — a lényeg viszont átvehető.
+
+  ⚠️ GYORSULÓ ÜTEM (`cubic-bezier(0.5, 0, 0.9, 0.55)`, vagyis ease-in). A
+  lineáris mozgás mechanikusnak hat; így viszont a panel „elindul, aztán
+  beszalad" — ettől érződik szívásnak, nem csúsztatásnak.
+
+  Az `opacity` SZÁNDÉKOSAN későn esik: ha korán halványulna, a panel eltűnne,
+  mielőtt odaér, és a szemnek megint nem lenne mit követnie.
+*/
+.rrp__panel--sucking {
+  animation: rrp-suck 460ms cubic-bezier(0.5, 0, 0.9, 0.55) forwards;
+  /* A tartalom ne tördelődjön újra menet közben — csak a doboz mozogjon. */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@keyframes rrp-suck {
+  0% {
+    transform: translate(0, 0) scale(1);
+    border-radius: var(--r-lg);
+    opacity: 1;
+  }
+  70% {
+    border-radius: 40%;
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(var(--suck-dx, 0), var(--suck-dy, 0)) scale(var(--suck-scale, 0.05));
+    border-radius: 50%;
+    opacity: 0;
+  }
+}
+
+/*
+  A SÖTÉTÍTÉS a panellel EGYÜTT tűnik el, de gyorsabban: mire a panel a gombhoz
+  ér, a térkép már szabadon látszik alatta. Fordítva a gomb egy sötét lapon
+  villanna fel, és nem derülne ki, hova is kerültünk.
+*/
+.rrp:has(.rrp__panel--sucking) {
+  animation: rrp-scrim-out 320ms ease-out forwards;
+}
+
+@keyframes rrp-scrim-out {
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rrp__panel--sucking,
+  .rrp:has(.rrp__panel--sucking) {
+    animation: none;
+  }
+}

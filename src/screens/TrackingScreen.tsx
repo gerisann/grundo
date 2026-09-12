@@ -1006,19 +1006,39 @@ export function TrackingScreen() {
             a Play gomb visszaáll az eredeti (gradiens, lüktető) állapotra,
             mintha az egész nem indult volna el.
           */}
-          <button
-            type="button"
-            className="track__type-picker-close"
-            aria-label={planner.state.plan ? 'Bezárás' : 'Mozgásforma-választó bezárása'}
-            onClick={() => {
-              setPickerOpen(false);
-              if (!planner.state.plan) setPendingType(null);
-            }}
-          >
-            ✕
-          </button>
+          {/*
+            ⚠️ A TERV-KÁRTYÁN NINCS BEZÁRÁS, és ez ZSÁKUTCA-JAVÍTÁS. Az ✕ csak
+            elrejtette a kártyát, a tervet viszont meghagyta — a következő
+            Play-koppintás pedig (`Dock.tsx` → `primaryAction`) törli a
+            mozgásformát és újranyitja a panelt. Így a kártya azt mondta,
+            hogy „indítsd a Play gombbal", miközben a gomb sárga ↑ volt, és
+            nem indított semmit. A kártyáról a Módosítás és az Elvetés vezet
+            ki — bezárásra nincs is szükség.
+          */}
+          {planner.state.plan ? null : (
+            <button
+              type="button"
+              className="track__type-picker-close"
+              aria-label="Mozgásforma-választó bezárása"
+              onClick={() => {
+                setPickerOpen(false);
+                setPendingType(null);
+              }}
+            >
+              ✕
+            </button>
+          )}
 
-          {planner.state.plan ? (
+          {/*
+            ⚠️ A KÁRTYA CSAK MOZGÁSFORMÁVAL EGYÜTT ÉRVÉNYES. A `pendingType`
+            több úton is elveszhet, miközben a terv megmarad: a Play gomb
+            szándékosan nullázza (a választó mindig üresen nyíljon — Geri,
+            2026-08-27), és a rögzítés képernyő elhagyása is törli. Ilyenkor a
+            kártya olyat ígérne, amit a gomb nem tud teljesíteni. Mozgásforma
+            nélkül tehát a VÁLASZTÓ jön, és ha ugyanazt választja újra, a terv
+            érintetlenül visszatér.
+          */}
+          {planner.state.plan && type ? (
             /*
               ⚠️ TERV UTÁN NEM VÁLASZTÓ KELL, HANEM VISSZAJELZÉS. A „Gyerünk!"
               után a felhasználó már döntött: mozgásformát és útvonalat is

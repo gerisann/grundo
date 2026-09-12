@@ -120,16 +120,3 @@ a {
   display: block;
 }
 
-/*
-  A „Gyerünk!" gomb mása, ami a Play gombra száll le (`lib/flyToPlay.ts`).
-  A `body`-ban él, ezért itt a helye, nem egy komponens fájljában.
-*/
-.fly-to-play {
-  position: fixed;
-  z-index: 80;
-  border-radius: var(--r-pill);
-  background: var(--brand-500);
-  /* Díszítés: sem koppintást, sem görgetést ne fogjon el. */
-  pointer-events: none;
-  will-change: transform, opacity;
-}
