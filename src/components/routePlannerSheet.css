@@ -1,0 +1,276 @@
+/**
+ * Útvonaltervező — teljes képernyős beállító lap.
+ *
+ * Teljes képernyő, mert sok beállítás van, és mobilon a félmagas lapon
+ * görgetni kellene hozzá. A fejléc és a gomb rögzített: a „Tervezés" mindig
+ * elérhető, akárhol tartasz a listában.
+ */
+
+.rps {
+  position: fixed;
+  inset: 0;
+  /* A teljes képernyős térkép 50-en, a dokk 40-en ül — ez mindkettő fölé. */
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  max-width: var(--app-max-width);
+  margin-inline: auto;
+  background: var(--bg-primary);
+}
+
+.rps__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-4) var(--sp-3);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rps__head h2 {
+  margin: 0;
+  font-size: var(--fs-heading);
+  color: var(--text-primary);
+}
+
+.rps__close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.rps__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.rps__section h3 {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+/* ── Pontok ─────────────────────────────────────────────────────── */
+
+.rps__point {
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  background: var(--bg-secondary);
+  border-radius: var(--r-md);
+}
+
+.rps__point-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rps__point-title {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.rps__point-remove {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rps__point-value {
+  margin: var(--sp-1) 0 var(--sp-2);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  /* Hosszú cím ne tolja szét a kártyát. */
+  overflow-wrap: anywhere;
+}
+
+.rps__point-value--empty {
+  font-weight: 400;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
+.rps__search {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+}
+
+.rps__hits {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Sok találatnál se nőjön a kártya a képernyő fölé. */
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.rps__hits button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--fs-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rps__hit-label {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.rps__hit-distance {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rps__point-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.rps__ghost {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+.rps__add {
+  width: 100%;
+  margin-top: var(--sp-1);
+}
+
+/* ── Beállítás-blokkok ──────────────────────────────────────────── */
+
+.rps__field {
+  margin-bottom: var(--sp-4);
+}
+
+.rps__label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/*
+  A LETILTOTT BLOKK. Gyalog a Jelleg nem hat (mérve), ezért látszik, de nem
+  választható — a „Hamarosan" megmondja, hogy ez nem hiba, hanem még nincs kész.
+*/
+.rps__field--off .rps__control {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.rps__field--off .rps__label {
+  color: var(--text-secondary);
+}
+
+.rps__soon {
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rps__hint {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.rps__hint--center {
+  text-align: center;
+}
+
+.rps__error {
+  margin: 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font-size: var(--fs-small);
+  line-height: 1.4;
+}
+
+/* ── Lábléc ─────────────────────────────────────────────────────── */
+
+.rps__foot {
+  flex: 0 0 auto;
+  padding: var(--sp-3) var(--sp-4) calc(var(--safe-bottom) + var(--sp-4));
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.rps__plan {
+  display: block;
+  width: 100%;
+  padding: var(--sp-4);
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--brand-500);
+  color: #fff;
+  font-family: var(--font);
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rps__plan:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

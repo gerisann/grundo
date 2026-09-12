@@ -1,11 +1,15 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { cellToChildren, latLngToCell } from 'h3-js';
+import { cellToChildren, cellToLatLng, latLngToCell } from 'h3-js';
 import { Button, OptionSwitch } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import type { MapViewProps } from '@/components/MapView';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
 import { SavedRoutesSheet } from '@/components/SavedRoutesSheet';
+import { RoutePlannerSheet } from '@/components/RoutePlannerSheet';
+import { RouteRewardPanel } from '@/components/RouteRewardPanel';
+import { RoutePlanningOverlay, HexWorkOverlay, SAVING_MESSAGES } from '@/components/HexWorkOverlay';
+import { useRoutePlanner } from '@/hooks/useRoutePlanner';
 import { useRecorderContext } from '@/hooks/RecorderProvider';
 import { useProfile } from '@/hooks/ProfileProvider';
 import { useSharedPosition } from '@/hooks/useSharedPosition';
@@ -21,7 +25,7 @@ import { mapboxConfigured } from '@/lib/mapbox';
 import { GAMEPLAY } from '@/config/gameplay';
 import { IncrementalCellPath, layerOf } from '@/game/cells';
 import { decodePolyline } from '@/game/polyline';
-import type { OwnershipMap, RouteManeuver } from '@/types';
+import type { ActivityType, OwnershipMap, RouteManeuver } from '@/types';
 import { api, apiConfigured, type Mission, type TerritoryBlobsResult, type TilesResult } from '@/lib/api';
 import { readGhostRoute, rememberGhostRoute } from '@/lib/ghostRoute';
 import {
@@ -150,6 +154,37 @@ export function TrackingScreen() {
     }
   }, [ghostRoute, ghostTrack]);
   const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
+
+  /*
+    ÚTVONALTERVEZÉS.
+
+    ⚠️ A MOZGÁSFORMA ELŐFELTÉTEL, NEM ALAPÉRTELMEZÉS. A `type` indításig `null`
+    lehet (lásd a `displayType` magyarázatát fent), és a tervezés eredménye
+    ATTÓL FÜGG: a bringás és a gyalogos útvonal más úthálózaton megy, más a
+    kerülő és más a terep-súlyozás. Ha itt csendben `?? 'run'`-t vennénk, a
+    felhasználó bringázni indulna egy gyalogosnak tervezett útvonalon — ezért a
+    választó tiltva marad, amíg nincs mozgásforma.
+  */
+  const planner = useRoutePlanner(type ?? 'run');
+
+  /*
+    ⚠️ MOZGÁSFORMA-VÁLTÁS ÉRVÉNYTELENÍTI A TERVET. A meglévő útvonal a KORÁBBI
+    mozgásformához készült; ha valaki bringás terv után Sétára vált, az az
+    útvonal neki már nem jó (kerékpárúton, körforgalmon át vezetne). Inkább
+    elvetjük, mint hogy rosszat mutassunk.
+  */
+  const plannedFor = useRef<ActivityType | null>(null);
+  useEffect(() => {
+    if (!planner.state.plan) {
+      plannedFor.current = type ?? null;
+      return;
+    }
+    if (plannedFor.current && type && plannedFor.current !== type) {
+      planner.discardPlan();
+      setGuidance({ route: null, view: 'grundo' });
+      plannedFor.current = type;
+    }
+  }, [type, planner, setGuidance]);
   const [showHexes, setShowHexes] = useState(true);
   /**
    * MEMOIZÁLVA — a `MapPane` (lent) `React.memo`-jának ez a feltétele.
@@ -735,7 +770,20 @@ export function TrackingScreen() {
           trailColor={captureAccent}
           plainCells={cells}
           cellPopup={ownerPopup}
-          onCellPress={onCellPress}
+          /*
+            ⚠️ KIJELÖLÉS KÖZBEN A KOPPINTÁS A TERVEZŐÉ. Egyébként a birtokos
+            kártyáját nyitja; ha viszont pontot várunk, a koppintás a pont
+            kijelölése — különben a felhasználó a kártyát kapná, és nem
+            értené, miért nem történik semmi.
+          */
+          onCellPress={
+            planner.state.picking !== null
+              ? (info) => {
+                  const [lat, lng] = cellToLatLng(info.cell);
+                  planner.acceptMapPick(lat, lng);
+                }
+              : onCellPress
+          }
         />
       ) : null}
 
@@ -977,6 +1025,43 @@ export function TrackingScreen() {
               { value: 'ride', label: 'Bringa' },
             ]}
           />
+          {/*
+            ⚠️ A SORREND SZÁNDÉKOS: előbb a mozgásforma, utána ez. A tervező a
+            mozgásformától függ (a kerékpárút-preferencia csak bringánál
+            értelmes), tehát fordítva nem is lenne értelmezhető a kérdés.
+          */}
+          <div className={type ? undefined : 'track__mode-locked'} aria-disabled={!type}>
+          <OptionSwitch
+            label="Hogyan indulsz"
+            value={planner.state.plan ? 'route' : 'roam'}
+            onChange={(value) => {
+              /*
+                MINDKÉT IRÁNY MŰKÖDJÖN. A „Barangolás" nem csak a választó
+                állását állítja vissza: elveti a tervet ÉS a szellemvonalat is,
+                különben a tervezett útvonal ottmaradna a térképen, miközben a
+                felhasználó már szabad barangolást választott.
+              */
+              if (value === 'route') planner.open();
+              else {
+                planner.discardPlan();
+                setGuidance({ route: null, view: 'grundo' });
+              }
+            }}
+            options={[
+              { value: 'roam', label: 'Barangolás' },
+              { value: 'route', label: 'Útvonal' },
+            ]}
+          />
+          </div>
+          {/*
+            Nem néma tiltás: megmondjuk, MIÉRT nem választható még. A tervező
+            a mozgásformától függ, nem tudja kitalálni.
+          */}
+          {!type ? (
+            <p className="track__mode-hint">
+              Előbb válassz mozgásformát — az útvonal ettől függ.
+            </p>
+          ) : null}
           <Button block variant="ghost" size="sm" onClick={() => setSavedRoutesOpen(true)}>
             Mentett útvonalak
           </Button>
@@ -988,6 +1073,82 @@ export function TrackingScreen() {
           onSelect={selectSavedRoute}
           onClose={() => setSavedRoutesOpen(false)}
         />
+      ) : null}
+
+      {/* ── Útvonaltervező: beállítások ─────────────────────────────── */}
+      {planner.state.stage === 'settings' ? (
+        <RoutePlannerSheet
+          activityType={type ?? 'run'}
+          from={planner.state.from}
+          to={planner.state.to}
+          stops={planner.state.stops}
+          settings={planner.state.settings}
+          busy={planner.state.busy}
+          error={planner.state.error}
+          onChangePoint={planner.setPoint}
+          onAddStop={planner.addStop}
+          onRemoveStop={planner.removeStop}
+          onUseCurrentPosition={() => void planner.useCurrentPositionAsStart()}
+          onPickOnMap={planner.pickOnMap}
+          onChangeSettings={planner.setSettings}
+          onPlan={() => void planner.runPlan()}
+          onClose={planner.close}
+        />
+      ) : null}
+
+      {/*
+        ── Tervezés közben ───────────────────────────────────────────
+        A tervezés akár egy percig is tarthat; addig ez az EGYETLEN kép, hogy
+        ne tűnjön elakadásnak. A beállító lap fölé kerül, nem helyette.
+      */}
+      {planner.state.busy ? <RoutePlanningOverlay /> : null}
+
+      {/* ── Útvonaltervező: a zsákmány, indulás előtt ───────────────── */}
+      {planner.state.stage === 'reward' && planner.state.plan ? (
+        <RouteRewardPanel
+          reward={planner.state.plan.reward}
+          skippedReason={planner.state.plan.rewardSkipped}
+          distanceM={planner.state.plan.totalDistanceM}
+          durationS={planner.state.plan.totalDurationS}
+          closesLoop={planner.state.plan.closesLoop}
+          onStart={() => {
+            /*
+              A „Gyerünk!" ugyanoda vezet, mint a küldetés „Indítás most"-ja:
+              szellemvonal + navigációs nézet. A Play gomb innentől a
+              megszokott módon indítja a rögzítést.
+            */
+            const ghost = planner.startPlanned();
+            if (ghost) setGuidance({ route: ghost, view: 'navigation' });
+          }}
+        />
+      ) : null}
+
+      {/*
+        TÉRKÉPI KIJELÖLÉS. A lap ilyenkor el van rejtve, hogy látszódjon a
+        térkép — enélkül a felhasználó nem tudná, mit vár tőle a rendszer.
+      */}
+      {planner.state.picking !== null ? (
+        <div className="track__map-pick" role="status">
+          <span>Koppints a térképre a pont kijelöléséhez</span>
+          <button type="button" onClick={planner.close}>
+            Mégse
+          </button>
+        </div>
+      ) : null}
+
+      {/*
+        FOGASKERÉK — vissza a beállításokhoz, ha a tervet módosítanád. Csak
+        akkor látszik, ha van mire visszatérni.
+      */}
+      {planner.state.stage === 'closed' && planner.state.plan && planner.state.picking === null ? (
+        <button
+          type="button"
+          className="track__planner-gear"
+          aria-label="Útvonal beállításai"
+          onClick={planner.reopenSettings}
+        >
+          ⚙️
+        </button>
       ) : null}
 
       {/*
@@ -1037,66 +1198,32 @@ function SavingPanel({
   const chunked = progress !== null && progress.total > 1;
   const ratio = chunked ? progress.done / progress.total : 0;
 
-  /** Tizenkét hatszög — ennyi elég a látványhoz, és bármennyi szakaszra igaz. */
-  const HEXES = 12;
-  const filled = chunked ? Math.round(ratio * HEXES) : 0;
+  /*
+    ⚠️ A VALÓDI HALADÁS FONTOSABB AZ ANIMÁCIÓNÁL. Nagy körnél a szerver
+    szakaszonként számol el, és ezt vissza is jelzi — a „3 / 7 szakasz” többet
+    mond, mint bármilyen szép mozgás, ezért azt adjuk át az overlaynek. Ahol
+    nincs mérhető haladás (rendes méretű kör), ott marad a hatszög-animáció.
+
+    A „nyugodtan bezárhatod” mondat NEM DÍSZ: a mentés túléli az app bezárását,
+    és ha ezt nem mondjuk ki, a felhasználó feleslegesen vár.
+  */
+  const safety = locallySaved
+    ? 'Nyugodtan bezárhatod az appot — az aktivitás megmarad ezen az eszközön, és értesítünk, ha elkészült.'
+    : 'A helyi biztonsági mentés még készül — egy pillanatig ne zárd be az appot.';
 
   return (
-    <div className="track__panel track__saving" role="status" aria-live="polite">
-      <div className="track__saving-hexes" aria-hidden="true">
-        {Array.from({ length: HEXES }, (_, index) => (
-          <span
-            key={index}
-            className={
-              'track__saving-hex' +
-              (chunked
-                ? index < filled
-                  ? ' track__saving-hex--on'
-                  : ''
-                : ' track__saving-hex--pulse')
-            }
-            /* Lépcsőzetes késleltetés: a hatszögek egymás után lélegzenek,
-               ettől lesz mozgás akkor is, ha nincs mérhető haladás. */
-            style={chunked ? undefined : { animationDelay: `${index * 90}ms` }}
-          />
-        ))}
-      </div>
-
-      <strong className="track__saving-title">
-        {reconnecting
-          ? 'A mentést biztonságban tartjuk'
-          : chunked
-            ? 'Területek mentése'
-            : 'Mentés folyamatban'}
-      </strong>
-
-      {chunked ? (
-        <>
-          <div className="track__saving-bar">
-            <div
-              className="track__saving-fill"
-              style={{ width: `${Math.round(ratio * 100)}%` }}
-            />
-          </div>
-          <span className="track__saving-note">
-            {progress.done} / {progress.total} szakasz · nagy kör, ez eltarthat egy kicsit
-          </span>
-        </>
-      ) : (
-        <span className="track__saving-note">Az útvonal feltöltése és a terület elszámolása…</span>
-      )}
-      {locallySaved ? (
-        <span className="track__saving-safe">
-          <strong>Nyugodtan bezárhatod az appot.</strong>{' '}
-          Az aktivitás megmarad ezen az eszközön, és az értesítések között is
-          megjelenik, amikor elkészült.
-        </span>
-      ) : (
-        <span className="track__saving-safe track__saving-safe--pending">
-          A helyi biztonsági mentés még készül — egy pillanatig ne zárd be az appot.
-        </span>
-      )}
-    </div>
+    <HexWorkOverlay
+      messages={
+        reconnecting
+          ? [{ after: 0, text: 'A mentést biztonságban tartjuk…' }]
+          : SAVING_MESSAGES
+      }
+      progress={chunked ? ratio : null}
+      note={chunked ? `${progress.done} / ${progress.total} szakasz` : null}
+      sub={safety}
+      /* Panelként: a mentés jelzése más elemek mellett áll — lásd a propot. */
+      inline
+    />
   );
 }
 

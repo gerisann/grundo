@@ -1,0 +1,186 @@
+/**
+ * Az útvonaltervezés várakozó képernyője.
+ *
+ * A hatszög ugyanaz a `clip-path`, amit a rögzítés mentés-jelzője használ —
+ * egy formanyelv, nem kettő.
+ */
+
+.rpo {
+  position: fixed;
+  inset: 0;
+  /* A tervező lap (60) FÖLÉ: amíg számolunk, ez az egyetlen érvényes kép. */
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+/* ── Háttér: lélegző mezők ──────────────────────────────────────── */
+
+.rpo__backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rpo__drift {
+  position: absolute;
+  /* A saját méretéhez képest középre, hogy a `left/top` a KÖZEPÉT adja. */
+  translate: -50% -50%;
+  background: var(--brand-500);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  opacity: 0;
+  animation-name: rpo-breathe;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes rpo-breathe {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    /* Halvány: háttér, nem tartalom. */
+    opacity: 0.14;
+  }
+}
+
+/* ── A középső ábra: egy mező, majd a hat szomszédja ────────────── */
+
+.rpo__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  /* Akkora, hogy a három hatszög széles ábra elférjen. */
+  width: calc(34px * 3.3);
+  height: calc(34px * 3.3);
+}
+
+.rpo__cell {
+  position: absolute;
+  background: var(--brand-500);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  opacity: 0;
+  /*
+    EGYETLEN KEYFRAME MINDEGYIKEN, csak a késleltetés más. Ezért jelenik meg
+    sorban mind a hét, és ezért tűnik el ugyanabban a sorrendben — a ciklus
+    végén mindegyik visszatér a láthatatlanba, mielőtt újraindul.
+  */
+  animation: rpo-fill 2.6s ease-in-out infinite;
+}
+
+@keyframes rpo-fill {
+  0% {
+    opacity: 0;
+    scale: 0.55;
+  }
+  /* Megjelenés: gyors, kis túllövéssel — így „bekattan", nem beúszik. */
+  10% {
+    opacity: 1;
+    scale: 1.08;
+  }
+  16% {
+    scale: 1;
+  }
+  /* Kitart, amíg a többi is felépül. */
+  55% {
+    opacity: 1;
+    scale: 1;
+  }
+  /* Eltűnés: ugyanolyan tempóban, ahogy jött. */
+  68% {
+    opacity: 0;
+    scale: 0.55;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.55;
+  }
+}
+
+/* ── Szöveg ─────────────────────────────────────────────────────── */
+
+.rpo__message {
+  position: relative;
+  margin: var(--sp-4) 0 0;
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.rpo__sub {
+  position: relative;
+  margin: 0;
+  max-width: 28ch;
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/*
+  ⚠️ AKADÁLYMENTESSÉG. Aki csökkentett mozgást kért a rendszerében, annak a
+  villogó-pulzáló kép rosszullétet okozhat. A visszajelzés nem tűnik el: a
+  mezők ilyenkor MOZDULATLANUL, halványan látszanak, és a szöveg viszi az
+  információt — az úgyis váltakozik.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .rpo__drift {
+    animation: none;
+    opacity: 0.1;
+  }
+
+  .rpo__cell {
+    animation: none;
+    opacity: 0.55;
+    scale: 1;
+  }
+}
+
+/* ── Valódi haladás, ha van ─────────────────────────────────────── */
+
+.rpo__bar {
+  position: relative;
+  width: min(260px, 70vw);
+  height: 6px;
+  margin-top: var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.rpo__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--brand-500);
+  transition: width 300ms ease-out;
+}
+
+/*
+  PANEL VÁLTOZAT — a helyén marad, nem takarja a képernyőt.
+
+  A rögzítés mentésénél ez kell: ott a jelzés más elemek MELLETT áll, és teljes
+  képernyőssé téve azokat elrejtenénk.
+*/
+.rpo--inline {
+  position: static;
+  z-index: auto;
+  min-height: 260px;
+  padding: var(--sp-5) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
+}
+
+.rpo--inline .rpo__message {
+  font-size: var(--fs-body);
+  margin-top: var(--sp-3);
+}

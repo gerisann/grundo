@@ -1352,6 +1352,66 @@ export interface AdminBugReportPatch {
   adminNote?: string;
 }
 
+
+/** Egy címkeresési találat — lásd `server/src/lib/geocode.ts`. */
+export interface PlaceHit {
+  label: string;
+  lat: number;
+  lng: number;
+  distanceM: number;
+}
+
+/**
+ * A tervezett útvonalon SZEREZHETŐ zsákmány.
+ *
+ * ⚠️ FELSŐ HATÁR, NEM ÍGÉRET. A tervezett és a ténylegesen megtett út nem
+ * ugyanaz (GPS, kitérők), a birtokviszony pedig a tervezés pillanatában igaz —
+ * mire odaérsz, más is mozoghatott ugyanott. A felületnek ezt ki kell mondania.
+ */
+export interface RouteReward {
+  closesArea: boolean;
+  cells?: number;
+  newCells?: number;
+  stolenCells?: number;
+  /** Hamis, ha a kör túl nagy volt a birtokviszony beolvasásához. */
+  ownershipKnown?: boolean;
+  areaM2?: number;
+  gp?: number;
+  topRivals?: { name: string; cells: number; areaM2: number }[];
+}
+
+export interface RoutePlanResult {
+  ok: true;
+  mode: 'loop' | 'direct';
+  outbound: [number, number][];
+  inbound: [number, number][];
+  totalDistanceM: number;
+  directDistanceM: number;
+  totalDurationS: number;
+  /** „Csak oda" módban hamis: nem zár kört, tehát NEM ad területet. */
+  closesLoop: boolean;
+  /** A vezetett navigáció bemenete — lásd `ghostRoute.ts`. */
+  polyline: string;
+  maneuvers: RouteManeuver[];
+  /** Hány tervezés maradt a héten; Pro és admin esetén `null`. */
+  quotaLeft: number | null;
+  reward: RouteReward | null;
+  /** Ha a zsákmány-számítás időkorlátba futott, itt az őszinte indoklás. */
+  rewardSkipped: string | null;
+}
+
+export type RoutePlanInput = {
+  from: { lat: number; lng: number };
+  to: { lat: number; lng: number };
+  stops?: { lat: number; lng: number }[];
+  profile: 'walking' | 'cycling';
+  mode: 'loop' | 'direct';
+  detour?: 'small' | 'medium' | 'large';
+  preference?: 'fast' | 'protected' | 'quiet';
+  terrain?: 'flat' | 'balanced' | 'hilly';
+  preferCycleways?: boolean;
+};
+
 export const api = {
   me: () => request<{ profile: Profile }>('/api/me'),
 
@@ -1888,6 +1948,38 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  /**
+   * A→B útvonal tervezése.
+   *
+   * ⚠️ KVÓTÁS: ugyanabból a heti keretből fogy, mint a küldetés-generálás
+   * (`FREE_ROUTE_GENERATIONS_PER_WEEK`), Pro előfizetéssel korlátlan. A válasz
+   * `quotaLeft` mezője megmondja, mennyi maradt.
+   *
+   * ⚠️ LASSÚ: a tervezés mérve 3,6–7 másodperc, mert valódi útvonalakat
+   * számol, nem egyenest húz. A felületnek ezt türelmesen kell kezelnie.
+   */
+  routesPlan: (input: RoutePlanInput) =>
+    request<RoutePlanResult>('/api/routes/plan', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /**
+   * Címkeresés a rajt/cél/megálló kijelöléséhez.
+   *
+   * A `near` a térkép közepe — a találatok TÁVOLSÁG szerint jönnek, nem a
+   * szolgáltató relevanciája szerint (mérve: a „Blaha Lujza tér" budapesti
+   * nézetből is Kiskunfélegyházát hozta elsőnek).
+   *
+   * ⚠️ Három karakter alatt a szerver nem is hív külső szolgáltatást — a
+   * geocoding külön számlázódik.
+   */
+  routesGeocode: (query: string, near?: { lat: number; lng: number }) =>
+    request<{ results: PlaceHit[] }>(
+      `/api/routes/geocode?q=${encodeURIComponent(query)}` +
+        (near ? `&near=${near.lng},${near.lat}` : ''),
+    ),
 
   otpSend: () => request<OtpSendResult>('/api/auth/otp/send', { method: 'POST' }),
 

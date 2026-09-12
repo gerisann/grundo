@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { HexWorkOverlay, MISSION_MESSAGES } from '@/components/HexWorkOverlay';
 import { useNavigate } from 'react-router-dom';
 import { Button, SegmentedControl, OptionSwitch } from '@/components/ui';
 import { ProfileHeader } from '@/components/ProfileHeader';
@@ -511,6 +512,18 @@ export function MissionsScreen() {
           <Button block onClick={() => void generate()} loading={loading}>
             {result ? 'Újragenerálás' : 'Küldetéseket kérek'}
           </Button>
+
+          {/*
+            A GENERÁLÁS HOSSZÚ: valódi útvonalakat számol, és mindegyikre
+            kiszámolja a bezárt területet. Amíg fut, ez az egyetlen kép — a
+            gomb pörgő ikonja ennyi idő alatt elakadásnak látszana.
+          */}
+          {loading ? (
+            <HexWorkOverlay
+              messages={MISSION_MESSAGES}
+              sub="Valódi útvonalakat keresünk a környéken, nem köröket rajzolunk a térképre."
+            />
+          ) : null}
           <div className="mission__utilities">
             <Button variant="ghost" onClick={() => setSavedOpen(true)}>Mentett küldetések</Button>
             <Button variant="secondary" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>

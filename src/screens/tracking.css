@@ -1078,106 +1078,14 @@
 }
 
 /* ── Mentés folyamatban ──────────────────────────────────────────────
-   A hatszögek nem díszítés: egy Balaton-méretű mentés ~25 másodperc, és
-   enélkül a felhasználó egy néma feliratot néz. Ha a szerver mérhető haladást
-   ad (darabolt mentés), a hatszögek BALRÓL JOBBRA telnek meg a valódi
-   állapot szerint; ha nincs mit mérni, csak lélegzenek. */
+   A jelzés a közös `HexWorkOverlay` PANEL változatára költözött
+   (`hexWorkOverlay.css`, `.rpo--inline`), hogy az útvonaltervezés, a
+   küldetés-ajánló és a mentés ugyanazt a hatszög-nyelvet beszélje.
 
-.track__saving {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-3);
-  text-align: center;
-}
-
-.track__saving-hexes {
-  display: flex;
-  gap: 4px;
-}
-
-.track__saving-hex {
-  width: 16px;
-  height: 18px;
-  background: var(--bg-tertiary);
-  /* Hatszög — ugyanaz az alak, mint a játék mezője. */
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-  transition: background-color 260ms ease;
-}
-
-.track__saving-hex--on {
-  background: var(--accent);
-}
-
-.track__saving-hex--pulse {
-  animation: track-hex-breathe 1.4s ease-in-out infinite;
-}
-
-@keyframes track-hex-breathe {
-  0%, 100% { background-color: var(--bg-tertiary); }
-  50%      { background-color: var(--accent); }
-}
-
-.track__saving-title {
-  font-size: 15px;
-  color: var(--text-primary);
-}
-
-.track__saving-bar {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--bg-tertiary);
-  overflow: hidden;
-}
-
-.track__saving-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--accent);
-  transition: width 320ms ease;
-}
-
-.track__saving-note {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.track__saving-safe {
-  max-width: 32rem;
-  padding: var(--sp-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.track__saving-safe strong {
-  color: var(--text-primary);
-}
-
-.track__saving-safe--pending {
-  border-color: var(--warning);
-  background: var(--accent-soft);
-  color: var(--text-primary);
-}
-
-/* A folyamatos animáció mozgásérzékenységre kikapcsolható — a haladást a
-   számok és a sáv akkor is mutatják. */
-@media (prefers-reduced-motion: reduce) {
-  .track__saving-hex--pulse {
-    animation: none;
-    background: var(--accent);
-    opacity: 0.5;
-  }
-  .track__saving-fill,
-  .track__saving-hex {
-    transition: none;
-  }
-}
+   A régi, itteni hatszög-rács ezzel halott kóddá vált, ezért törölve — a
+   viselkedés viszont megmaradt: ha a szerver mérhető haladást ad (darabolt
+   mentés), a sáv a VALÓDI állapot szerint telik, és a „3 / 7 szakasz" is
+   kiíródik; ha nincs mit mérni, csak az animáció fut. */
 
 /* ── A rögzítés utáni panel: kötött magasság, belül görgő mezők ──────
  *
@@ -1265,4 +1173,80 @@
 /* Némítva halványabb — egy pillantásra látszik, hogy nincs visszajelzés. */
 .track__mute[aria-pressed='true'] {
   color: var(--text-tertiary);
+}
+
+/*
+  ÚTVONALTERVEZŐ — a térképen maradó két elem.
+
+  A tervező lapjai saját fájlban élnek (`routePlannerSheet.css`,
+  `routeRewardPanel.css`); itt csak az van, ami a RÖGZÍTÉS térképére kerül.
+*/
+
+/* „Koppints a térképre" — kijelölés közben, a lap elrejtve. */
+.track__map-pick {
+  position: fixed;
+  /* A dokk fölé, de a lapok alá: ez nem párbeszéd, csak jelzés. */
+  z-index: 45;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3));
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: calc(var(--app-max-width) - var(--sp-5));
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-secondary);
+  border-radius: var(--r-pill);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font-size: var(--fs-small);
+  color: var(--text-primary);
+}
+
+.track__map-pick button {
+  flex: 0 0 auto;
+  padding: var(--sp-1) var(--sp-3);
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+
+/* Fogaskerék: vissza a tervező beállításaihoz. */
+.track__planner-gear {
+  position: fixed;
+  z-index: 45;
+  right: var(--sp-4);
+  bottom: calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/*
+  A „Barangolás | Útvonal" választó tiltva, amíg nincs mozgásforma.
+
+  ⚠️ Nem kényelmi kérdés: a tervezés eredménye a mozgásformától FÜGG (más
+  úthálózat, más kerülő, más terep-súlyozás). Mozgásforma nélkül a tervező
+  csak találgatni tudna.
+*/
+.track__mode-locked {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.track__mode-hint {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-small);
+  text-align: center;
+  color: var(--text-secondary);
 }

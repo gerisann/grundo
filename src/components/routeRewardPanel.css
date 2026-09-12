@@ -1,0 +1,219 @@
+/**
+ * „Zsákmány” — a tervezett útvonalon szerezhető nyereség, indulás előtt.
+ *
+ * A panel célja a KEDVCSINÁLÁS, ezért nagy számok és levegő. A rácsot
+ * szándékosan nem zsúfoljuk: négy adat fér el, több már táblázat lenne.
+ */
+
+.rrp {
+  position: fixed;
+  inset: 0;
+  /* A teljes képernyős térkép 50-en, a dokk 40-en ül — ez mindkettő fölé. */
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.rrp__panel {
+  width: 100%;
+  max-width: var(--app-max-width);
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: var(--sp-5) var(--sp-4) var(--sp-4);
+  background: var(--bg-secondary);
+  border-radius: var(--r-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.rrp__head {
+  text-align: center;
+  margin-bottom: var(--sp-5);
+}
+
+.rrp__head h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+  color: var(--text-primary);
+}
+
+.rrp__route {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+/* ── A 2×2 rács ─────────────────────────────────────────────────── */
+
+.rrp__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+.rrp__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-4) var(--sp-2);
+  background: var(--bg-primary);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+
+.rrp__tile-icon {
+  display: grid;
+  place-items: center;
+  /* Az ikon a MÁRKASZÍNT veszi fel (`currentColor`), nem a szövegét. */
+  color: var(--brand-500);
+  margin-bottom: 2px;
+}
+
+.rrp__tile-value {
+  /*
+    A SZÁM A FŐSZEREPLŐ. Táblázatos számjegyekkel, hogy a panel ne ugráljon,
+    amikor egy hosszabb érték kerül bele.
+  */
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.rrp__tile-label {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.rrp__tile-sub {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+/* ── Riválisok ──────────────────────────────────────────────────── */
+
+.rrp__rivals {
+  margin-top: var(--sp-4);
+}
+
+.rrp__rivals h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.rrp__rivals ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.rrp__rivals li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-primary);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-small);
+}
+
+.rrp__rival-rank {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--brand-500);
+  color: #fff;
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.rrp__rival-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Hosszú felhasználónév ne tolja szét a sort. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.rrp__rival-stat {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Őszinteségi sor ────────────────────────────────────────────── */
+
+.rrp__note {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  text-align: center;
+  color: var(--text-secondary);
+  /* Halk: ne vonja el a figyelmet, de legyen elolvasható. */
+  opacity: 0.8;
+}
+
+/* ── Terület nélküli eset ───────────────────────────────────────── */
+
+.rrp__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  background: var(--bg-primary);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+
+.rrp__empty-icon {
+  display: grid;
+  place-items: center;
+  color: var(--brand-500);
+}
+
+.rrp__empty p {
+  margin: 0;
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* ── A gomb ─────────────────────────────────────────────────────── */
+
+.rrp__go {
+  display: block;
+  width: 100%;
+  margin-top: var(--sp-5);
+  padding: var(--sp-4);
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--brand-500);
+  color: #fff;
+  font-family: var(--font);
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rrp__go:active {
+  background: var(--brand-600);
+}

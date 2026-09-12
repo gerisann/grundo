@@ -24,6 +24,40 @@ export interface GhostRoute {
   maneuvers: RouteManeuver[];
 }
 
+/**
+ * A TERVEZETT útvonal eltétele — ugyanabba a tárba, ugyanabban az alakban.
+ *
+ * A rögzítés nem tesz különbséget küldetés és saját terv között: mindkettő
+ * egy vonal, amin végig kell menni. Ezért nem új mechanizmus, csak egy másik
+ * bemenet ugyanahhoz.
+ *
+ * A `kind` a zsákmány összetételéből következik: ha többet veszünk el, mint
+ * amennyi szabad mezőt foglalunk, az rajtaütés — különben hódítás. Ez ma csak
+ * a szöveges színezésre szolgál, játékszabályt nem érint.
+ */
+export function rememberPlannedRoute(plan: {
+  polyline: string;
+  totalDistanceM: number;
+  maneuvers: RouteManeuver[];
+  stolenCells?: number;
+  newCells?: number;
+}): GhostRoute {
+  const raid = (plan.stolenCells ?? 0) > (plan.newCells ?? 0);
+  const route: GhostRoute = {
+    schemaVersion: 2,
+    polyline: plan.polyline,
+    kind: raid ? 'raid' : 'conquest',
+    plannedDistanceM: Math.max(0, plan.totalDistanceM),
+    maneuvers: plan.maneuvers,
+  };
+  try {
+    localStorage.setItem(KEY, JSON.stringify(route));
+  } catch {
+    /* privát böngészés — a rögzítés útvonal-segédlet nélkül indul */
+  }
+  return route;
+}
+
 /** A kiválasztott küldetés útvonalának eltétele a rögzítés számára. */
 export function rememberGhostRoute(mission: Mission): GhostRoute {
   const route: GhostRoute = {

@@ -23,6 +23,14 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.3.0] - 2026-09-12 (Új funkció)
+
+- Útvonaltervezés a Rögzítés képernyőn: Barangolás | Útvonal választó, teljesképernyős tervező (rajt, cél, megállók, címkereső, jelenlegi pozíció, térképi kijelölés)
+- Zsákmány panel indulás előtt: mennyi mezőt szerzel, ebből mennyi új és mennyi elvett, mekkora terület, mennyi GP, és a top 3 rivális — egy Gyerünk! gombbal
+- Hatszöges betöltő animáció a hosszú műveletekhez (útvonaltervezés, küldetés-ajánló, mentés): egy mező, majd sorban a hat szomszédja
+- A mozgásformát az útvonaltervezés előtt ki kell választani — enélkül a tervező nem tudná, gyalog vagy bringával mész
+- A Jelleg beállítás gyalogos módban kiszürkítve, Hamarosan felirattal: mérés szerint gyalog egyik állás sem változtat az útvonalon
+
 ## [1.2.0] - 2026-09-12 (Új funkció)
 
 - A→B útvonaltervezés API-végpontja (POST /api/routes/plan): hitelesítés, a küldetés-ajánlóval közös heti keret, 100 km-es plafon, őszinte nemleges válasz
