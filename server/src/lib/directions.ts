@@ -91,6 +91,15 @@ export interface DirectionsRoute {
   polyline: string;
   /** Provider-independent semantic instructions for lightweight navigation. */
   maneuvers?: RouteManeuver[];
+  /**
+   * Szakaszonkénti út-osztály: `[kezdőPontIndex, végPontIndex, osztály]`.
+   *
+   * A MEGJELENÍTÉSHEZ van: ebből tudja a térkép, milyen vastagon rajzolja a
+   * vonalat — egy lakóutca és egy körút nem egyforma széles. Csak a
+   * GraphHopper-ág adja; a Mapbox-tartaléknál hiányzik, és akkor a vonal
+   * egyenletes vastagságú marad.
+   */
+  roadClasses?: [number, number, string][];
 }
 
 interface MapboxRoute {
@@ -627,6 +636,13 @@ interface GraphHopperPath {
   time?: number;
   points?: string;
   snapped_waypoints?: string;
+  /**
+   * Szakaszonkénti út-osztály: `[kezdőIndex, végIndex, osztály]`.
+   *
+   * Az indexek a `points` PONTJAIRA mutatnak, nem méterre — összefűzésnél
+   * ezért el kell tolni őket (lásd `routes.ts` → `shiftRoadClasses`).
+   */
+  details?: { road_class?: [number, number, string][] };
   instructions?: Array<{
     sign?: number;
     interval?: number[];
@@ -687,6 +703,12 @@ async function postGraphHopperRoute(
         points_encoded: true,
         instructions: true,
         elevation: false,
+        /*
+          AZ ÚT-OSZTÁLY A MEGJELENÍTÉSHEZ KELL: a tervezett vonal annyira
+          legyen vastag a térképen, amilyen széles maga az út. Egy lakóutca és
+          egy körút ma azonos vastagsággal rajzolódna.
+        */
+        details: ['road_class'],
         ...body,
       }),
     });
@@ -708,6 +730,9 @@ async function postGraphHopperRoute(
       durationS: Number(path.time ?? 0) / 1000,
       polyline: path.points,
       ...(maneuvers.length > 0 ? { maneuvers } : {}),
+      ...(Array.isArray(path.details?.road_class) && path.details.road_class.length > 0
+        ? { roadClasses: path.details.road_class }
+        : {}),
     };
   } catch {
     // Időtúllépés vagy hálózati hiba — ez a jelölt egyszerűen kimarad.

@@ -30,6 +30,13 @@ export interface GhostRoute {
    * összefüggő kör), ezért elhagyható — enélkül a vonal egyszínű marad.
    */
   outboundPoints?: number;
+  /**
+   * Szakaszonkénti út-osztály: `[kezdőPontIndex, végPontIndex, osztály]`.
+   *
+   * Ebből rajzolja a térkép az utca szélességéhez igazított vonalat. Hiánya
+   * nem hiba (küldetésnél nincs): a vonal olyankor egyenletes vastagságú.
+   */
+  roadClasses?: [number, number, string][];
 }
 
 /**
@@ -51,6 +58,8 @@ export function rememberPlannedRoute(plan: {
   newCells?: number;
   /** Az odaút pontjainak száma — ebből lesz a kétszínű vonal. */
   outboundPoints?: number;
+  /** Szakaszonkénti út-osztály a vonalvastagsághoz. */
+  roadClasses?: [number, number, string][];
 }): GhostRoute {
   const raid = (plan.stolenCells ?? 0) > (plan.newCells ?? 0);
   const route: GhostRoute = {
@@ -61,6 +70,9 @@ export function rememberPlannedRoute(plan: {
     maneuvers: plan.maneuvers,
     ...(plan.outboundPoints && plan.outboundPoints > 1
       ? { outboundPoints: plan.outboundPoints }
+      : {}),
+    ...(plan.roadClasses && plan.roadClasses.length > 0
+      ? { roadClasses: plan.roadClasses }
       : {}),
   };
   try {
@@ -107,6 +119,9 @@ export function readGhostRoute(): GhostRoute | null {
       /* Régi (küldetésből mentett) rekordban nincs — akkor egyszínű a vonal. */
       ...(Number.isFinite(Number(stored.outboundPoints)) && Number(stored.outboundPoints) > 1
         ? { outboundPoints: Number(stored.outboundPoints) }
+        : {}),
+      ...(Array.isArray(stored.roadClasses) && stored.roadClasses.length > 0
+        ? { roadClasses: stored.roadClasses as [number, number, string][] }
         : {}),
       maneuvers: parseManeuvers(stored.maneuvers),
     };

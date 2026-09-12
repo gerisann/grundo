@@ -23,6 +23,10 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.3.4] - 2026-09-12 (Javítás)
+
+- A tervezett útvonal vastagsága az út típusához igazodik: egy körút szélesebb, egy gyalogút keskenyebb
+
 ## [1.3.3] - 2026-09-12 (Javítás)
 
 - Átvezető animáció a tervezéstől az indításig: a Gyerünk gomb leszáll a Play-re, az felvillan, és a kártya alulról úszik be

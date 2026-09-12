@@ -275,6 +275,7 @@ routesRouter.post('/plan', async (req: AuthedRequest, res: Response, next) => {
         /* Lásd a loop ágat: a vezetett navigáció bemenete. */
         polyline: route.polyline,
         maneuvers: route.maneuvers ?? [],
+        roadClasses: route.roadClasses ?? [],
         quotaLeft: isPro ? null : cfg.FREE_ROUTE_GENERATIONS_PER_WEEK - usedThisWeek - 1,
         elapsedMs: Date.now() - started,
       });
@@ -327,6 +328,8 @@ routesRouter.post('/plan', async (req: AuthedRequest, res: Response, next) => {
       */
       polyline: encodePolyline([...loop.outbound.points, ...loop.inbound.points]),
       maneuvers: joinManeuvers(loop.outbound, loop.inbound),
+      /* A vonal vastagságához: melyik szakasz milyen úton megy. */
+      roadClasses: joinRoadClasses(loop.outbound, loop.inbound),
       requestedOffsetM: Math.min(
         GAMEPLAY.ROUTE_DETOUR_OFFSET_M[input.detour],
         distanceM(input.from, input.to) * 0.45,
@@ -513,5 +516,25 @@ function joinManeuvers(
     id: `i:${m.id}`,
     routeOffsetM: m.routeOffsetM + outbound.route.distanceM,
   }));
+  return [...first, ...second];
+}
+
+/**
+ * A két leg út-osztályainak összefűzése EGY útvonalra.
+ *
+ * ⚠️ AZ ELTOLÁS ITT IS KÖTELEZŐ, ugyanazért, mint a manővereknél: az
+ * intervallumok a saját leg PONTJAIRA mutatnak. Eltolás nélkül a visszaút
+ * osztályai az odaút elejére vetülnének, és a vonal rossz helyeken
+ * vastagodna-vékonyodna.
+ */
+function joinRoadClasses(
+  outbound: { route: { roadClasses?: [number, number, string][] }; points: readonly LatLng[] },
+  inbound: { route: { roadClasses?: [number, number, string][] } },
+): [number, number, string][] {
+  const first = outbound.route.roadClasses ?? [];
+  const offset = outbound.points.length;
+  const second = (inbound.route.roadClasses ?? []).map(
+    ([from, to, cls]) => [from + offset, to + offset, cls] as [number, number, string],
+  );
   return [...first, ...second];
 }

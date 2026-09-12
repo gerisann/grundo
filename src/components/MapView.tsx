@@ -49,6 +49,14 @@ export interface MapViewProps {
    * nincs értelmezhető oda/vissza) a vonal EGYSZÍNŰ marad.
    */
   ghostSplitIndex?: number | null;
+  /**
+   * Szakaszonkénti út-osztály: `[kezdőPontIndex, végPontIndex, osztály]`.
+   *
+   * Ebből lesz a vonal vastagsága: egy lakóutca keskenyebb, mint egy körút.
+   * Hiánya nem hiba — akkor minden szakasz az `unclassified` alapvastagságot
+   * kapja, vagyis a vonal egyenletes marad, ahogy korábban.
+   */
+  ghostRoadClasses?: readonly [number, number, string][] | null;
   layers?: { role: HexRole; cells: Iterable<CellId | MapHexCell> }[];
   /**
    * AZ ÖSSZEFÜGGŐ TERÜLETFOLTOK — a térkép fő területrétege.
@@ -202,6 +210,7 @@ export function MapView({
   track,
   ghostTrack,
   ghostSplitIndex,
+  ghostRoadClasses,
   layers,
   blobs,
   ownerColors,
@@ -239,6 +248,7 @@ export function MapView({
   const trackRef = useRef(track);
   const ghostTrackRef = useRef(ghostTrack);
   const ghostSplitRef = useRef(ghostSplitIndex);
+  const ghostClassRef = useRef(ghostRoadClasses);
   const layersRef = useRef(layers);
   const ownerColorsRef = useRef(ownerColors);
   const trailColorRef = useRef(trailColor);
@@ -254,6 +264,7 @@ export function MapView({
   trackRef.current = track;
   ghostTrackRef.current = ghostTrack;
   ghostSplitRef.current = ghostSplitIndex;
+  ghostClassRef.current = ghostRoadClasses;
   layersRef.current = layers;
   ownerColorsRef.current = ownerColors;
   trailColorRef.current = trailColor;
@@ -310,6 +321,7 @@ export function MapView({
       trackRef.current,
       ghostTrackRef.current,
       ghostSplitRef.current,
+      ghostClassRef.current,
       layersRef.current,
       ownerColorsRef.current,
       trailColorRef.current,
@@ -509,7 +521,7 @@ export function MapView({
   useEffect(() => {
     const instance = map.current;
     if (instance === null || !ready.current) return;
-    syncGhostData(instance, ghostTrack, renderBoundsRef.current, ghostSplitIndex);
+    syncGhostData(instance, ghostTrack, renderBoundsRef.current, ghostSplitIndex, ghostRoadClasses);
   }, [ghostTrack, graphicsProfile]);
 
   useEffect(() => {
@@ -1195,14 +1207,22 @@ function addLayers(
           zoom 15-ön, 12 px zoom 17-en és 50 px zoom 19-en. A vonal ennél
           valamivel keskenyebb, hogy alatta látszódjon maga az út.
         */
+        /*
+          AZ OSZTÁLY SZORZÓ, A ZOOM AZ ALAP. A `match` a szakasz út-osztályát
+          nézi (`rc`), az `interpolate` pedig a nagyítást — a kettő szorzata
+          adja a vastagságot. Az arányok a Mapbox saját útrétegeit követik:
+          egy körút láthatóan szélesebb, mint egy lakóutca, egy gyalogút pedig
+          a legkeskenyebb. Ismeretlen vagy hiányzó osztály az `unclassified`
+          alapértéket kapja, tehát a vonal akkor sem tűnik el.
+        */
         'line-width': [
           'interpolate',
           ['exponential', 2],
           ['zoom'],
-          12, 2.5,
-          15, 5,
-          17, 13,
-          19, 40,
+          12, roadClassWidth(2.5),
+          15, roadClassWidth(5),
+          17, roadClassWidth(13),
+          19, roadClassWidth(40),
         ],
         'line-opacity': 0.9,
       },
@@ -1249,6 +1269,7 @@ function syncData(
   track: MapViewProps['track'],
   ghostTrack: MapViewProps['ghostTrack'],
   ghostSplitIndex: MapViewProps['ghostSplitIndex'],
+  ghostRoadClasses: MapViewProps['ghostRoadClasses'],
   layers: MapViewProps['layers'],
   ownerColors: MapViewProps['ownerColors'],
   trailColor: string | null,
@@ -1260,7 +1281,7 @@ function syncData(
   syncAreaData(instance, visibleLayers, ownerColors, null);
   syncCellData(instance, visibleLayers, ownerColors, trailColor, null);
   syncTrackData(instance, track, bounds, profile);
-  syncGhostData(instance, ghostTrack, bounds, ghostSplitIndex);
+  syncGhostData(instance, ghostTrack, bounds, ghostSplitIndex, ghostRoadClasses);
 }
 
 /**
@@ -1481,47 +1502,70 @@ function syncGhostData(
   ghostTrack: MapViewProps['ghostTrack'],
   bounds: RenderBounds | null,
   splitIndex?: number | null,
+  roadClasses?: MapViewProps['ghostRoadClasses'],
 ): void {
   const ghostSource = instance.getSource(GHOST_SOURCE) as mapboxgl.GeoJSONSource | undefined;
-  if (ghostSource) {
-    /*
-      ⚠️ A KÉT LEGET KÜLÖN SZŰRJÜK, nem utólag címkézzük. A láthatósági
-      darabolás (`visibleTrackSegments`) saját szakaszhatárokat képez, tehát a
-      kimenetéből már nem lehet megmondani, melyik eredeti pont hol volt — a
-      bontásnak ELŐTTE kell megtörténnie.
+  if (!ghostSource) return;
 
-      Az odaút UTOLSÓ pontja a visszaút első pontja is: enélkül egy pixelnyi
-      rés villanna a két szín között a fordulónál.
-    */
-    const points = ghostTrack ?? [];
-    const split = splitIndex && splitIndex > 1 && splitIndex < points.length ? splitIndex : null;
+  const points = ghostTrack ?? [];
+
+  /*
+    ⚠️ A DARABOLÁS SORRENDJE NEM MINDEGY. A vonalat három dolog szabdalja:
+    a leg (oda/vissza → szín), az út-osztály (→ vastagság), és a láthatóság
+    (`visibleTrackSegments`). Az elsőt kettőt az EREDETI indexeken kell
+    elvégezni, mert a láthatósági darabolás saját szakaszhatárokat képez, és a
+    kimenetéből már nem derül ki, melyik pont hol volt.
+
+    Minden szakasz az ELŐZŐ utolsó pontjával kezdődik, különben egy pixelnyi
+    rés villanna a színek és a vastagságok határán.
+  */
+  const cuts = new Set<number>([0, points.length]);
+  const split = splitIndex && splitIndex > 1 && splitIndex < points.length ? splitIndex : null;
+  if (split) cuts.add(split);
+  for (const [from] of roadClasses ?? []) {
+    if (from > 0 && from < points.length) cuts.add(from);
+  }
+  const bounds2 = [...cuts].sort((a, b) => a - b);
+
+  /** Melyik út-osztályba esik az adott pontindex? */
+  const classAt = (index: number): string => {
+    for (const [from, to, cls] of roadClasses ?? []) {
+      if (index >= from && index < to) return cls;
+    }
+    return 'unclassified';
+  };
+
+  const features: GeoJSON.Feature<GeoJSON.LineString>[] = [];
+  for (let i = 0; i + 1 < bounds2.length; i += 1) {
+    const from = bounds2[i]!;
+    const to = bounds2[i + 1]!;
+    /* Egy ponttal visszanyúlunk, hogy a szakaszok összeérjenek. */
+    const slice = points.slice(Math.max(0, from === 0 ? 0 : from - 1), to);
+    if (slice.length < 2) continue;
+
+    const leg = split && from >= split ? 'inbound' : 'outbound';
+    const rc = classAt(from);
     /*
-      ⚠️ A TERVEZETT ÚTVONALAT NEM RITKÍTJUK. A grafikai profil `low` állásán
-      minden NEGYEDIK pont maradna meg — mérve: egy derékszögű kanyarnál ez
-      30 métert vág le a sarokból, tehát a vonal láthatóan elválik az utcától.
-      A ritkítás a SAJÁT nyomvonalra való (több ezer pont, GRUNDO #21
-      energiaelemzés); egy tervezett útvonal néhány száz pont, azon nem nyerünk
-      vele mérhetőt, cserébe pont a pontosságot veszítenénk el.
+      ⚠️ A TERVEZETT ÚTVONALAT NEM RITKÍTJUK (a stride fixen 1). A grafikai
+      profil `low` állásán minden NEGYEDIK pont maradna meg — mérve: egy
+      derékszögű kanyarnál ez 30 métert vág le a sarokból, tehát a vonal
+      láthatóan elválik az utcától. A ritkítás a SAJÁT nyomvonalra való (több
+      ezer pont, GRUNDO #21 energiaelemzés); egy tervezett útvonal néhány száz
+      pont, azon nem nyerünk vele mérhetőt.
     */
-    const stride = 1;
-    const segments = split
-      ? [
-          ...visibleTrackSegments(points.slice(0, split), bounds, stride).map((s) => ({ s, leg: 'outbound' })),
-          ...visibleTrackSegments(points.slice(split - 1), bounds, stride).map((s) => ({ s, leg: 'inbound' })),
-        ]
-      : visibleTrackSegments(points, bounds, stride).map((s) => ({ s, leg: 'outbound' }));
-    ghostSource.setData({
-      type: 'FeatureCollection',
-      features: segments.map(({ s: segment, leg }) => ({
-        type: 'Feature' as const,
-        properties: { leg },
+    for (const segment of visibleTrackSegments(slice, bounds, 1)) {
+      features.push({
+        type: 'Feature',
+        properties: { leg, rc },
         geometry: {
-          type: 'LineString' as const,
+          type: 'LineString',
           coordinates: segment.map((point) => [point.lng, point.lat]),
         },
-      })),
-    });
+      });
+    }
   }
+
+  ghostSource.setData({ type: 'FeatureCollection', features });
 }
 
 function isTerritoryRole(role: HexRole): boolean {
@@ -1607,4 +1651,32 @@ function closedRing(cell: CellId): [number, number][] {
 
 function emptyCollection(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] };
+}
+
+/**
+ * A vonal vastagsága EGY nagyításon, út-osztály szerint.
+ *
+ * ⚠️ A ZOOM-KIFEJEZÉS CSAK LEGKÜLSŐ LEHET a Mapboxban — ezt a fájl a
+ * `levelOpacity`-nál már megtanulta, és mégis beleszaladtam: a
+ * `['*', match, ['interpolate', … ['zoom'] …]]` alakban a réteg NÉMÁN nem jön
+ * létre, a vonal pedig nyomtalanul eltűnik. Ezért az `interpolate` van kívül,
+ * és az OSZTÁLY-SZORZÓ kerül a megállók kimenetébe.
+ *
+ * Az arányok a Mapbox saját útrétegeit követik: egy körút láthatóan szélesebb,
+ * mint egy lakóutca, a gyalogút a legkeskenyebb. Ismeretlen vagy hiányzó
+ * osztály az `unclassified` alapértéket kapja, tehát a vonal akkor sem tűnik el.
+ */
+function roadClassWidth(base: number): unknown {
+  return [
+    'match',
+    ['get', 'rc'],
+    ['motorway', 'trunk'], base * 1.6,
+    ['primary'], base * 1.35,
+    ['secondary'], base * 1.2,
+    ['tertiary'], base * 1.05,
+    ['residential', 'unclassified', 'living_street', 'road'], base * 0.9,
+    ['service', 'track'], base * 0.72,
+    ['path', 'cycleway', 'footway', 'steps', 'pedestrian'], base * 0.62,
+    base * 0.9,
+  ];
 }

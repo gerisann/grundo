@@ -1,7 +1,7 @@
 {
   "name": "grundo",
   "private": true,
-  "version": "1.3.3",
+  "version": "1.3.4",
   "type": "module",
   "description": "GRUNDO — közösségi mozgás- és területfoglaló app",
   "scripts": {

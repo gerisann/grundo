@@ -196,6 +196,7 @@ export function useRoutePlanner(activityType: ActivityType) {
       newCells: state.plan.reward?.newCells,
       /* A törésponthoz: a válasz külön adja az odautat és a visszautat. */
       outboundPoints: state.plan.outbound.length,
+      roadClasses: state.plan.roadClasses,
     });
     setState((prev) => ({ ...prev, stage: 'closed' }));
     return ghost;

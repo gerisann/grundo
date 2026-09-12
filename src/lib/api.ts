@@ -1393,6 +1393,14 @@ export interface RoutePlanResult {
   /** A vezetett navigáció bemenete — lásd `ghostRoute.ts`. */
   polyline: string;
   maneuvers: RouteManeuver[];
+  /**
+   * Szakaszonkénti út-osztály: `[kezdőPontIndex, végPontIndex, osztály]`.
+   *
+   * A térkép ebből tudja, milyen vastagon rajzolja a vonalat — egy lakóutca és
+   * egy körút nem egyforma széles. Üres, ha a tervező a Mapbox-tartalékra
+   * esett vissza; akkor a vonal egyenletes vastagságú marad.
+   */
+  roadClasses: [number, number, string][];
   /** Hány tervezés maradt a héten; Pro és admin esetén `null`. */
   quotaLeft: number | null;
   reward: RouteReward | null;

@@ -762,6 +762,7 @@ export function TrackingScreen() {
           track={displayPoints}
           ghostTrack={ghostTrack}
           ghostSplitIndex={ghostRoute?.outboundPoints ?? null}
+          ghostRoadClasses={ghostRoute?.roadClasses ?? null}
           position={mapPosition}
           hexesVisible={showHexes && !navigationMap}
           onToggleHexes={toggleHexes}
@@ -1458,6 +1459,7 @@ const MapPane = memo(function MapPane({
   track,
   ghostTrack,
   ghostSplitIndex,
+  ghostRoadClasses,
   position,
   hexesVisible,
   onToggleHexes,
@@ -1476,6 +1478,8 @@ const MapPane = memo(function MapPane({
   ghostTrack: MapViewProps['ghostTrack'];
   /** Hol vált színt a tervezett vonal — lásd `MapView`. */
   ghostSplitIndex: MapViewProps['ghostSplitIndex'];
+  /** Út-osztályok a vonalvastagsághoz — lásd `MapView`. */
+  ghostRoadClasses: MapViewProps['ghostRoadClasses'];
   position: MapViewProps['position'];
   hexesVisible: boolean;
   onToggleHexes: () => void;
@@ -1502,6 +1506,7 @@ const MapPane = memo(function MapPane({
             track={track}
             ghostTrack={ghostTrack}
             ghostSplitIndex={ghostSplitIndex}
+            ghostRoadClasses={ghostRoadClasses}
             position={position}
             allowTilt
             navigationModeControl
