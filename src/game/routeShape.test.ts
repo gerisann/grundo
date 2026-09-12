@@ -4,8 +4,10 @@ import {
   countShortDetours,
   countUTurns,
   findShortDetours,
+  countSelfRevisits,
   preferCleanRoutes,
   selectMissionRoutes,
+  sharedPathRatio,
   withoutOutAndBackSpurs,
 } from './routeShape';
 import { destinationPoint } from './missions';
@@ -149,5 +151,104 @@ describe('selectMissionRoutes', () => {
       { id: 'cleanest', uTurns: 0, shortDetours: 2 },
     ];
     expect(selectMissionRoutes(routes).map((route) => route.id)).toEqual(['cleaner', 'cleanest']);
+  });
+});
+
+describe('sharedPathRatio', () => {
+  /** Egyenes szakasz A-ból B felé, `count` ponttal. */
+  function line(from: LatLng, to: LatLng, count = 20): LatLng[] {
+    return Array.from({ length: count }, (_unused, index) => ({
+      lat: from.lat + ((to.lat - from.lat) * index) / (count - 1),
+      lng: from.lng + ((to.lng - from.lng) * index) / (count - 1),
+    }));
+  }
+
+  const start: LatLng = { lat: 47.4979, lng: 19.0544 };
+  const end: LatLng = { lat: 47.5148, lng: 19.0777 };
+
+  it('ugyanaz az útvonal teljes átfedés', () => {
+    const path = line(start, end);
+    expect(sharedPathRatio(path, path)).toBeCloseTo(1, 5);
+  });
+
+  it('⚠️ a visszafelé bejárt ugyanaz az út IS teljes átfedés', () => {
+    const path = line(start, end);
+    expect(sharedPathRatio(path, [...path].reverse())).toBeCloseTo(1, 5);
+  });
+
+  it('egymástól távoli útvonalakon nulla', () => {
+    const north = line(start, end);
+    const south = line(
+      { lat: start.lat - 0.02, lng: start.lng },
+      { lat: end.lat - 0.02, lng: end.lng },
+    );
+    expect(sharedPathRatio(north, south)).toBe(0);
+  });
+
+  it('részleges közös szakaszt arányosan mér', () => {
+    const middle: LatLng = {
+      lat: (start.lat + end.lat) / 2,
+      lng: (start.lng + end.lng) / 2,
+    };
+    const full = line(start, end, 21);
+    // A második útvonal a felezőpontig ugyanaz, onnan elágazik.
+    const half = [
+      ...line(start, middle, 11),
+      ...line({ lat: middle.lat, lng: middle.lng + 0.01 }, { lat: end.lat, lng: end.lng + 0.02 }, 11),
+    ];
+    const ratio = sharedPathRatio(full, half);
+    expect(ratio).toBeGreaterThan(0.3);
+    expect(ratio).toBeLessThan(0.7);
+  });
+
+  it('üres vagy egypontos bemenetre nulla, nem hiba', () => {
+    expect(sharedPathRatio([], line(start, end))).toBe(0);
+    expect(sharedPathRatio([start], line(start, end))).toBe(0);
+  });
+});
+
+describe('countSelfRevisits', () => {
+  const origin: LatLng = { lat: 47.4979, lng: 19.0544 };
+
+  /** Egyenes vonal `metres` hosszan, `bearing` irányban. */
+  function leg(from: LatLng, bearing: number, metres: number, step = 10): LatLng[] {
+    const points: LatLng[] = [];
+    for (let travelled = 0; travelled <= metres; travelled += step) {
+      points.push(destinationPoint(from, bearing, travelled));
+    }
+    return points;
+  }
+
+  it('egyenes nyomvonalon nulla', () => {
+    expect(countSelfRevisits(leg(origin, 0, 1_000))).toBe(0);
+  });
+
+  it('egy nagy kanyar még nem visszatérés', () => {
+    const first = leg(origin, 0, 400);
+    const corner = first.at(-1)!;
+    expect(countSelfRevisits([...first, ...leg(corner, 90, 400)])).toBe(0);
+  });
+
+  it('⚠️ a tömb körüli hurkot elkapja — ezt a `countUTurns` NEM látja', () => {
+    // Négyzet: észak, kelet, dél, nyugat — visszaér a kiindulóhoz.
+    const a = leg(origin, 0, 300);
+    const b = leg(a.at(-1)!, 90, 300);
+    const c = leg(b.at(-1)!, 180, 300);
+    const d = leg(c.at(-1)!, 270, 300);
+    const square = [...a, ...b, ...c, ...d];
+
+    expect(countSelfRevisits(square)).toBeGreaterThan(0);
+    // A hurokban nincs 180 fokos fordulat, ezért a visszafordulás-mérő vak rá.
+    expect(countUTurns(square)).toBe(0);
+  });
+
+  it('az ugyanazon az úton visszafordulást is elkapja', () => {
+    const out = leg(origin, 45, 500);
+    expect(countSelfRevisits([...out, ...[...out].reverse()])).toBeGreaterThan(0);
+  });
+
+  it('rövid bemenetre nem hibázik', () => {
+    expect(countSelfRevisits([])).toBe(0);
+    expect(countSelfRevisits([origin])).toBe(0);
   });
 });

@@ -56,7 +56,18 @@ graphhopper:
   profiles_ch: []
   profiles_lm: []
 
-  graph.encoded_values: foot_access, foot_priority, foot_average_speed, foot_network, hike_rating, bike_access, bike_priority, bike_average_speed, bike_network, get_off_bike, mtb_rating, roundabout, road_class, road_class_link, road_environment, road_access, surface, smoothness, track_type, max_speed, country, foot_road_access, bike_road_access, orientation
+  # ⚠️ DOMBORZAT — CSAK A HELYI KONFIGURÁCIÓBAN (2026-09-12).
+  #
+  # A `config-cloudrun.yml` SZÁNDÉKOSAN NEM tartalmazza: az éles DEM-forrás
+  # kiválasztása (licenc, frissítés, konténerméret) külön döntés, lásd
+  # `docs/routing/data-sources.md` → Domborzati PoC. Ez itt az SRTM-et
+  # használja, hogy a sík/dombos preferencia HELYBEN kipróbálható legyen.
+  #
+  # A konfiguráció módosítása után a `graph-cache` mappát törölni kell,
+  # különben a régi, magasság nélküli gráffal indul (lásd README).
+  graph.elevation.provider: srtm
+  graph.elevation.cache_dir: elevation-cache
+  graph.encoded_values: foot_access, foot_priority, foot_average_speed, foot_network, hike_rating, bike_access, bike_priority, bike_average_speed, bike_network, get_off_bike, mtb_rating, roundabout, road_class, road_class_link, road_environment, road_access, surface, smoothness, track_type, max_speed, country, foot_road_access, bike_road_access, orientation, average_slope, max_slope
 
   import.osm.ignored_highways: motorway,trunk
 

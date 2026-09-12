@@ -456,3 +456,201 @@ Terv: [`terv-2026-09-09-bugreport-rendszer.md`](terv-2026-09-09-bugreport-rendsz
 - A készülékirány natív szenzorból jön (`CLHeading` / rotation vector), webes
   geolokációs fallback nélkül. Mozgáskor a GPS-nyomvonal iránya vezetheti a
   kamerát; álló helyzetben a pozíciójel iránynyila a készülék tájolását mutatja.
+
+## Útvonal-könyvtár (2026-09-12)
+
+Terv: [`../routing/route-library.md`](../routing/route-library.md) · mérés:
+[`../routing/benchmark.md`](../routing/benchmark.md) → „Hol megy el az idő”.
+
+- ⚠️ **A küldetés-ajánló lassúsága NEM a GraphHopperben van.** Mérve: a
+  tervezőmotor mindkét menete együtt 0,3–1,8 s minden hosszon, a bezárt
+  cellahalmaz kiszámítása viszont 20–25 km-en 8 s, 60 km-en 35 s. Ne kezdj a
+  tervezőmotor hangolásába a mérés újrafuttatása nélkül.
+- **A megoldás iránya nem gyorsítás, hanem felhalmozás:** minden kiszámolt
+  útvonal paraméterezve eltárolódik, és új keresésnél azonnal felajánlható,
+  amíg a friss generálás a háttérben fut. A könyvtár használat közben javul.
+- **A könyvtár útvonalat tárol, nem eredményt.** Terület, GP, áldozat és
+  birtokviszony sosem onnan jön — ezek minden kérésnél élőben számolódnak,
+  különben sérülne a „küldetés nem becslés” szabály.
+- **A cellahalmaz viszont TÁROLÓDIK** (Cloud Storage, a `territoryBlobStore`
+  mintájára), mert épp az a drága. Ettől lesz a hasonló találat teljes értékű
+  kártya, nem helyőrző.
+- **A rekordban nincs felhasználói azonosító.** Az útvonal az úthálózat terméke,
+  nem valakinek a nyomvonala; így a megosztása senkiről nem árul el semmit.
+- **A hasonló találat nem fogyasztja a heti generálási keretet**, mert nem
+  történt generálás. A Pro ettől sem kap játékbeli előnyt: ugyanaz a könyvtár,
+  ugyanaz a terület és GP.
+
+## A→B útvonaltervezés a rögzítés előtt (2026-09-12)
+
+Spec: [`../02-funkcionalis-spec.md`](../02-funkcionalis-spec.md) → *Útvonaltervezés
+a rögzítés előtt* · terv és mérés:
+[`../routing/point-to-point.md`](../routing/point-to-point.md).
+
+- **Tervezési réteg a meglévő rögzítés előtt, nem külön aktivitásrendszer.** A
+  kimenet ugyanaz a vezetett rögzítési csomag, amit a küldetés `Indítás most`
+  gombja állít elő. Ne épüljön párhuzamos routing- vagy location-rendszer.
+- ⚠️ **A „Csak oda" A→B útvonal nem zár kört, ezért nem ad területet**, csak a
+  megtett táv utáni GP-t. A felület ezt mondja ki indulás előtt.
+- **A kerülő mérete a bezárt terület mérete, ezért játékkonstans**
+  (`src/config/gameplay.ts`): az oldalirányú eltérés kis kerülőnél **±500 m**,
+  közepesnél **±1 km**, nagynál **±2 km** (Geri döntése, 2026-09-12).
+- **Az útvonaltervezés ugyanabba a heti generálási keretbe számít**, mint a
+  küldetés-ajánló. Enélkül megkerülné a küldetés-ajánló korlátját.
+- ⚠️ **Mérve (2026-09-12): a kétoldali loop megépíthető a meglévő
+  GraphHopperrel**, a kérésbe ágyazott `custom_model.areas` + `in_<terület>`
+  súlyozással — az odaút és a visszaút tényleg az egyenes ellentétes oldalára
+  kerül. **Új routing library nem kell.**
+- ⚠️ **De a kerülő méretét a jutalmazott sáv szélesítése NEM állítja** (mérve: a
+  közepes és a nagy sáv ugyanazt az útvonalat adta). A méret **köztes pontból**
+  jön, a `loopWaypoints` mintájára. Ne próbáld sávszélességgel megoldani.
+- **A `areas` poligonok száma mérhetően drágít** (4 → 229 ms, 27 → 557 ms). A
+  visszaút „ne az odaúton menj" korlátja ritka mintavétellel vagy egyetlen
+  korridor-poligonnal épüljön.
+- A poligonszámítás itt **routing-súlyozás, nem területszámítás** — a
+  „poligon-algebra soha" szabály a területre vonatkozik, ezt nem sérti.
+- **A geocoding az egyetlen új külső képesség.** A Mapbox Geocoding külön termék
+  és külön számlázás, és korlátozza a találat tartós tárolását; a geocoding mögé
+  ezért interfész kerül, hogy saját Photon/Nominatim is mögé tehető legyen.
+
+### Az elágazási szabályok súlyként (2026-09-12)
+
+- ⚠️ **A „merre forduljak" szabályok SÚLYOK, nem elágazásonkénti döntések.** A
+  szabály előretekintést kér („ha később jobb fordulási lehetőség jön, menj
+  egyenesen"), amit egy mohó bejáró elvileg sem tud: nem ismeri a folytatást,
+  zsákutcába futhat, és nem garantálja, hogy `B`-be eljut. **Ne írj mohó
+  útvonal-bejárót** — rosszabb útvonalat adna, mint a mai.
+- **Három zóna a helyes oldalon**, nem egy széles sáv: `reached` (a kért kerülő
+  ±30%-a, súly 1,0), `approach` (a tengely és a kerülő 70%-a között, 0,6 —
+  „még távolodj"), minden más 0,3 („gyere vissza"). Ez a súlyozott alakja
+  annak, hogy mikor kell távolodó és mikor közeledő irányt választani.
+- ⚠️ **A zónák a tengely 15–85%-a között élnek.** Az `A` és a `B` a tengelyen
+  van; végpontig érő zónánál maga az indulás és az érkezés esne büntetett
+  területre, és a tervező a rajt körül kezdene kanyarogni.
+- ⚠️ **A zónasúlyozás NEM helyettesíti a köztes pontot** (mérve: nélküle a kis,
+  közepes és nagy kerülő ugyanazt az útvonalat adja — Deák→Hősök tere mindhárom
+  esetben 2,8 km). A prioritás szorzó, nem kényszer: egy 3,3-szoros büntetés a
+  rövid úton olcsóbb, mint a hosszú kerülő a jutalmazott sávban. **A köztes pont
+  adja a MÉRETET, a zónák az ALAKOT — mindkettő kell.**
+- ⚠️ **A kerülő méretét a KÖZVETLEN TÁV arányában kell korlátozni**
+  (`MAX_OFFSET_AXIS_RATIO`, ma 0,45). Geri vizuális visszajelzése: 2,6 km-es
+  A–B távnál a 2000 m-es kitérő a teljes táv 77%-a, és a generált útvonal nem
+  kitérőt tesz, hanem **más irányba megy**, majd ugyanazon az úton hozza vissza
+  a felhasználót. Rövid úton tehát a nagy kerülő közelebb kerül a közepeshez —
+  ez az őszinte válasz, nem hiba.
+- **A leggyorsabb útvonal MINDKÉT legnek kerülendő, de csak lágyan**
+  (`FAST_LINE_PENALTY` 0,35). Korábban csak a visszaút kapott kerülendő
+  területet, ezért az odaút a köztes pontig egyszerűen a közvetlen úton ment.
+  ⚠️ De a majdnem-tiltás (0,05) itt MÉRHETŐEN ROMLOTT: nőtt a visszafordulás és
+  a két leg közös szakasza, mert a router ugyanarra a kevés maradék
+  alternatívára szorult. Az odaút újrajárása marad a kemény tiltás
+  (`RETRACE_PENALTY` 0,05) — a kettő nem ugyanaz a szabály.
+- **Gyalog és futva a forgalmas út mindig rossz**, nem csak a „csendes"
+  állásban (Geri, 2026-09-12). A `fast` sem jelenti, hogy négysávos úton
+  vezetünk végig sétálni. Ára mérhető: a gyalogos útvonalak hosszabbak és
+  kanyargósabbak lettek.
+- ⚠️ **`pass_through: true` KELL minden köztes pontos kérésbe.** A köztes pont
+  kötelező állomás, és a GraphHopper alapból ENGEDI, hogy ott megforduljunk:
+  ha a mértani pont egy mellékutca vagy rakparti szakasz közepére kapcsolódik,
+  az útvonal odamegy és ugyanazon az úton visszajön. Ez volt a képeken látható
+  „láb". A `pass_through` ennek a GraphHopper-megfelelője annak, amit a
+  Mapbox-ág `continue_straight=true`-val old meg (`planLoop`). Mérve, 21 eset:
+  **56 → 37 visszafordulás**, és az odaút 21-ből 18 esetben teljesen tiszta
+  lett. **Ne vedd ki.**
+- **A visszafordulásokat nem súllyal, hanem jelöltválasztással kezeljük.**
+  Legenként 9 köztes pont megy ki párhuzamosan, és a legkevésbé hibás nyer.
+- ⚠️ **A kérésbeli `turn_penalty` NEM megoldás — mérhetően ROMLIK tőle az
+  útvonal.** (Egy korábbi mérésem „hatástalannak" mondta; az csak a köztes
+  pontos beállításban volt igaz, ahol véletlenül ugyanazt adta. Sima A→B-n
+  mérve hat.) Három páron, kanyarbüntetés nélkül → enyhe (+15) → erős (+60):
+  Újpest U 0 → 5 → 6, Deák→Flórián U 0 → 1 → 5, Kelenföld U 2 → 5 → 5. A
+  „menjen tovább és forduljon a következő utcán" tehát NEM érhető el a kanyarok
+  árazásával. Ne próbáld újra.
+- ⚠️ **A kis tömbkerülő hurkokat az ÚTHÁLÓZAT kényszeríti, nem a súlyozásunk.**
+  Mérve: a kitérő be- és kilépési pontja között SEMMILYEN egyedi súlyozás
+  nélkül kért útvonal bitre ugyanolyan hosszú (5/5 esetben, 2,0× a légvonal).
+  Kanyarodási tilalom vagy egyirányú utca — a tervező helyesen viselkedik.
+- **Sétálótérre bringával nem megyünk** (`road_class == PEDESTRIAN` → 0,02
+  bike profilon), és a köztes pont sem kapcsolódhat rá (`snap_prevention`
+  tartalmazza a `pedestrian`-t). Gyalog és futva a téren átvágás természetes,
+  ezért ott nincs büntetés — egy enyhe (0,8) gyalogos büntetést megmértem, és
+  semmit nem változtatott, ezért nem került be.
+- **A felhasználói megállók CSAK az odaútra vonatkoznak** (Geri döntése,
+  2026-09-12). A visszaút egyben megy `B`-ből `A`-ba, a megállók érintése
+  nélkül — ettől marad a visszaút tervezése ugyanolyan egyszerű, mint megállók
+  nélkül: egyetlen A–B tengelyhez képest kell csak oldalt választania. Ha
+  megálló van, az odaút alakját AZOK adják, nem a mi köztes pontjaink.
+- **Az odaút oldalát a megállók döntik el**, nem a rögzített „bal". Különben a
+  keletre tett megállókat egy nyugatra terelt odaúttal küzdenénk le.
+- ⚠️ **A BEZÁRT TERÜLET NEM A MATERIALIZÁLT CELLÁK SZÁMA.** Nagy huroknál a
+  motor a belsőt tömör parentekben tartja (`loopInterior.ts`), ezért a
+  `shapeCandidateCells().cells` gyakorlatilag csak a FAL. Abból területet
+  számolni súlyos alulbecslés — mérve a labor első változatában: 1,498 km²
+  a valódi 8,901 helyett. A helyes szám a `loopCellCount(loop)`, a
+  reprezentációtól függetlenül. Ugyanez a kirajzolásra is igaz: a tömör belsőt
+  külön, a saját felbontásán kell poligonná alakítani.
+- ⚠️ **A GRAPHHOPPER A PRIORITÁST 1-NÉL ELVÁGJA — jutalmazni nem lehet, csak
+  büntetni.** Mérve (2026-09-12): a „dombos" terepprofilhoz a meredek élekre
+  tett `1.8`-as szorzó SEMMIT nem változtatott, mert a legtöbb él prioritása
+  eleve 1. A működő alak a fordítottja: a SÍK éleket kell büntetni
+  (`average_slope < 1.5` → 0,45). Ugyanez a csapda vár minden „ezt szeretném
+  előnyben" szabályra.
+- **A domborzat a HELYI gráfban be van kapcsolva** (`config-grundo.yml`:
+  `graph.elevation.provider: srtm`, `average_slope` + `max_slope`), hogy a
+  sík/dombos preferencia kipróbálható legyen. A `config-cloudrun.yml`
+  SZÁNDÉKOSAN NEM tartalmazza: az éles DEM-forrás (licenc, frissítés,
+  konténerméret) külön döntés — lásd `docs/routing/data-sources.md`.
+  ⚠️ Domborzat nélküli gráfon az `average_slope`-ra hivatkozó szabály HIBÁT ad,
+  nem útvonalat; a tervező ezért csak akkor küldi, ha a hívó kéri, a labor
+  pedig a GraphHopper `/info` alapján tiltja le a választót.
+- ⚠️ **A TERVEZŐNEK EL KELL TUDNIA ENGEDNI A KÖZTES PONTOT.** A jelöltek közt
+  van egy köztes pont NÉLKÜLI tartalék is, és a hibapontszám tartalmazza az
+  elmaradt kerülő büntetését (`OFFSET_SHORTFALL_WEIGHT`, 800 — szándékosan
+  kevesebb egy visszafordulásnál). Enélkül a tartalék mindig nyerne (hibátlan,
+  de nem kerül), így viszont csak akkor, ha MINDEN kerülős jelölt rossz.
+  Erre a Duna menti tengely mutatott rá: a kért oldalon 400–500 méterre víz
+  van, tehát mind a 9 köztes pont rossz helyre esett, és mindegyik jelölt
+  kiment egy stégre, majd vissza — a jelöltkészlet volt rossz, nem a választás.
+  Mérve: a Deák → Flórián kis kerülő odaútja 1 visszafordulás / 2 kitérő →
+  **0 / 0**.
+- ⚠️ **AMIT ERRE MEGMÉRTEM ÉS NEM HASZNÁLT:** sem a `road_class = other`
+  rákapcsolás-tiltása, sem az áthaladásának büntetése nem változtatott semmit
+  (bitre ugyanazok a jelöltek). A hiba nem az útosztályban van. Ne próbáld
+  újra útosztály-szabállyal.
+- ⚠️ **A KÖZTES PONT VÍZBE IS ESHET — nézd meg, hova kapcsolta a motor.**
+  A Deák → Flórián tengely a Duna mentén fut, tehát a „bal oldal" nagyrészt
+  maga a folyó. A vízbe eső mértani pontot a GraphHopper a legközelebbi
+  járható útra teszi — egy STÉGRE —, és az útvonalnak ki kell mennie rá, majd
+  vissza. Ugyanez vasúti területnél, zárt gyárudvarnál, repülőtérnél. A motor
+  megmondja, hova kapcsolt (`snapped_waypoints`, a `DirectionsRoute`-ban
+  `snappedWaypoints`); mérve ezen a tengelyen 1–204 m a szórás. A
+  `VIA_SNAP_TOLERANCE_M` fölötti rákapcsolás erős hibapont a jelöltre.
+  ⚠️ **Ez őrszem, nem gyógyszer:** a 21 mért eseten egyszer sem fordította meg
+  a választást — a stég a folytonos korridor bevezetésétől tűnt el. Attól még
+  kell, mert a hibaosztályt ez zárja ki.
+- ⚠️ **A KERÜLENDŐ FOLTOK ÉRJENEK ÖSSZE** (`routeAvoidRings` → `continuous`).
+  Szaggatott foltsornál (12 folt 6 km-en, ~500 m réssel) a tervező minden
+  foltnál kitér és visszatér — épp ez adja a felesleges „ficakokat" a
+  térképen. A sugár ezért a mintavételi lépés fele, `FAST_LINE_MAX_BUFFER_M`
+  plafonnal. Mérve: 122 → 109 rövid kitérő 42 legen.
+- **A rövid kitérők TÖBBSÉGE nem a mi hibánk.** Mérve, kitérőnként
+  visszaellenőrizve (a kitérő két vége között súlyozás NÉLKÜL kért útvonal
+  hossza): 9-ből 7 esetben ugyanolyan hosszú, tehát az úthálózat kényszeríti
+  (tiltott kanyar, egyirányú utca, rámpa). A maradékot a köztes pont
+  rákapcsolása okozza. **Mielőtt egy kitérőt hibaként javítanál, mérd meg,
+  melyik fajta** — a `tmp/probeSpurOrigin.ts` mintája erre való.
+- ⚠️ **AZ ÖNMAGÁBA VISSZATÉRÉS KÜLÖN MÉRTÉK, nem a visszafordulás változata**
+  (`countSelfRevisits`, `src/game/routeShape.ts`). Amikor a `pass_through`
+  megtiltotta a megfordulást a köztes pontnál, a tervező a hibák egy részét
+  nem megszüntette, hanem **hurokká alakította**: megkerüli a tömböt, és
+  ugyanoda tér vissza. A `countUTurns` erre VAK (nincs benne 180 fokos
+  fordulat), a térképen viszont ez a legszembetűnőbb hiba — ebből derült ki,
+  hogy a mérőszám és a felhasználói élmény elvált egymástól. A jelöltválasztás
+  ezért a visszatérést súlyozza a legerősebben (10 000), a visszafordulást
+  1 000-rel, a rövidkerülőt 1-gyel. Mérve: 26 → 14 visszatérés 42 legen, és
+  minden gyalogos eset tiszta lett.
+- ⚠️ **Amit le kell szállni, az sem útvonal.** Mérve: a bringás jelöltek
+  LÉPCSŐN mentek át (`road_class` részletek: `residential, footway, steps`) — a
+  GraphHopper járhatónak veszi, mert tolva teljesíthető. A `get_off_bike`
+  jelzés 0,1-es büntetése ezt megszünteti; a legnagyobb egyszeri javulás a
+  bringás eseteken (Újpest kis kerülő 7 → 3 visszafordulás).

@@ -199,6 +199,91 @@ A GRUNDO szíve (képek #49, #21).
   azonnal újratölti: Bringa = `bike`, Futás/Séta = `foot`.
 - Nagy play gomb + **Mentett útvonalak** gomb.
 
+### Útvonaltervezés a rögzítés előtt *(döntés: 2026-09-12)* `[Ingyenes: heti keret · Pro: korlátlan]`
+
+A mozgásforma kiválasztása után a felhasználó **Barangolás** vagy **Útvonal**
+között választ. Ez **tervezési réteg a meglévő rögzítés előtt**, nem külön
+aktivitásrendszer: a kiválasztott útvonal ugyanabba a vezetett rögzítésbe fut
+be, amit ma a küldetés `Indítás most` gombja indít.
+
+**Barangolás** — minden változatlan, a rögzítés a mai módon indul.
+
+**Útvonal** — a felhasználó célt ad meg, és a GRUNDO tervez oda.
+
+#### A cél megadása
+
+- **Cím beírásával**, autocomplete-tal: néhány karakter után már jönnek a
+  találatok (`Andr…` → `Andrássy út, Budapest`).
+- **Térképen kijelölve**: a címmező melletti pin ikonra koppintva a rögzítés
+  overlay eltűnik, a felhasználó pint tehet a térképre, majd az **Ide megyek**
+  gombbal visszatér a panelre a kiválasztott céllal. A pin koordinátájából
+  fordított geokódolással próbálunk címet meghatározni; ha nem sikerül, a
+  koordináta marad, nem hibaüzenet.
+- **Mentett útvonal kiválasztásával**, új cél megadása helyett. A mentett
+  útvonal nevet kaphat, és később újra indítható.
+
+#### Útvonaltípus
+
+**Csak oda** — `A → B`, ahol `A` a jelenlegi helyzet. Három állású választó:
+**gyors · biztonságos · csendes**.
+
+> ⚠️ A „biztonságos" és „csendes" állás **csak akkor kaphat ilyen feliratot, ha
+> van mögötte adat**. Amíg nincs, a rendszer legyen felkészítve rájuk, de a
+> felület nem ígérhet bizonyíthatatlant — lásd
+> [`routing/data-sources.md`](routing/data-sources.md) és a `Védettebb`
+> elnevezésről szóló döntést.
+
+⚠️ **A „Csak oda" útvonal nem zár kört, ezért NEM ad területet** — csak a
+megtett táv utáni GP-t. Ezt a felületnek ki kell mondania, mielőtt a felhasználó
+elindul, különben területet vár és csalódik.
+
+**Oda-vissza** — `A → B → A`, de **nem ugyanazon az úton**. Az odautat és a
+visszautat külön tervezzük, a közvetlen `A–B` vonal két oldalán, úgy, hogy a
+kettő együtt **zárt területet határoljon** — ez a rögzítés végén valódi
+területszerzés.
+
+A kerülő mérete a bezárt terület mérete, ezért játékegyensúlyi érték. A
+közvetlen `A–B` vonaltól merőlegesen mért eltérés:
+
+| Beállítás | Oldalirányú eltérés |
+|---|---|
+| Kis kerülő | **±500 m** |
+| Közepes kerülő | **±1 km** |
+| Nagy kerülő | **±2 km** |
+
+#### Útvonal-generálási szabályok
+
+- Az oda- és a visszaút lehetőleg különböző utakon haladjon, és ne fussanak
+  hosszú szakaszon közösen. A rajtnál és a cél közelében kisebb közös szakasz
+  elfogadható, ha az úthálózat ezt megköveteli.
+- Ne legyen értelmetlen visszafordulás, zsákutcába bevezetés vagy mesterséges
+  cikcakk. A kerülő természetes, logikus útvonal legyen.
+- `A → B` közben az útvonal összességében `B` felé haladjon, `B → A` közben
+  fordítva.
+- A teljes útvonal lehetőleg ne keresztezze önmagát; az oda- és visszaút csak
+  ott keresztezze egymást, ahol ez tényleg elkerülhetetlen.
+- Mindig a választott mozgásforma számára **szabályosan használható** út: nincs
+  egyirányú utcában tiltott irány, nincs az adott módra tiltott szakasz.
+- ⚠️ **A közlekedési szabály és a biztonság előbbre való a tökéletes loopnál.**
+  Ha az úthálózat miatt nem lehet értelmes kétoldali kört tervezni, azt **ki kell
+  mondani a felhasználónak**, nem szabad rossz, önmagába visszaforduló vagy
+  szabálytalan útvonalat adni helyette.
+
+#### Előnézet és indítás
+
+Az elkészült terv a térképen jelenik meg: indulási pont, célpont, útvonal, teljes
+táv és várható idő. Oda-vissza módban az oda- és a visszaút **vizuálisan
+megkülönböztethető**, és megjelenik a hozzávetőleges bezárt terület is. Ha a
+felhasználó elfogadja, a rögzítés a **Navigáció nézetben** indul.
+
+#### Keret
+
+Az útvonaltervezés **ugyanabba a heti generálási keretbe** számít, mint a
+küldetés-ajánló (`FREE_ROUTE_GENERATIONS_PER_WEEK`); Pro előfizetéssel
+korlátlan. Enélkül a tervező megkerülné a küldetés-ajánló korlátját.
+
+Megvalósítási terv és mérések: [`routing/point-to-point.md`](routing/point-to-point.md).
+
 ### Aktív rögzítés (kép #48)
 - A közvetlen play gomb **szabad rögzítést** indít: csak GRUNDO nézet van, navigációs fül vagy üres útvonalpanel nélkül. A Küldetések `Indítás most` gombja **vezetett rögzítést** indít, amely alapból Navigáció nézetben nyílik meg.
 - Vezetett rögzítéskor a GRUNDO és a Navigáció nézet ugyanannak az aktivitásnak két megjelenése. A GRUNDO nézetben a cellák és statisztikák dominálnak, de megmarad az egysoros következőutasítás (például `↱ 120 m · Bartók Béla út`); erre koppintva a teljes Navigáció nézet nyílik. A Navigáció nézet a következő kanyart, irányt, utcanévet, megtett és hátralévő távot, valamint az átlagsebességből becsült érkezést mutatja.

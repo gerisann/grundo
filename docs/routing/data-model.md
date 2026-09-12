@@ -195,6 +195,8 @@ type ActivityElevationAssessment = {
 | Aktív verzió manifestje | Firestore | kis méretű operatív állapot |
 | Útvonalgráf | GraphHopper image/volume | gyors lekérdezés |
 | Felhasználói preferenciák és mentett tervek | Firestore | felhasználóhoz kötött kis adatok |
+| Útvonal-könyvtár rekordjai | Firestore | kis, indexelhető, paraméter szerint kereshető — lásd [`route-library.md`](route-library.md) |
+| Útvonal-könyvtár cellahalmazai | Cloud Storage | jelöltenként tízezres cellalista, dokumentumba nem fér |
 | Közösségi nyers visszajelzés | Firestore | jogosultság és audit; aggregálva kerül a gráfba |
 | Aktív vezetési csomag | helyi tartós tár | offline/újraindulási helyreállítás |
 | Rövid életű lezárás | memóriabeli verziózott overlay | nem igényel teljes gráfépítést |

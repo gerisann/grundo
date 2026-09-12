@@ -106,6 +106,48 @@ dimenzió lefedettsége és magyarázata is megjelenik.
 látható opcióhoz van aktív adatforrás vagy őszinte „kevés adat” állapot; ugyanaz
 a kérés ugyanazzal a `scoringModelVersion` értékkel reprodukálható.
 
+### 1E. Útvonal-könyvtár *(új fő irány, 2026-09-12)*
+
+**Cél:** minden egyszer már kiszámolt útvonal megmaradjon paraméterezve, hogy új
+keresésnél azonnal legyen választék, miközben a friss generálás a háttérben fut.
+Részletes terv: [`route-library.md`](route-library.md).
+
+- Írási oldal: minden kiszámolt jelölt mentése; cellablob azokra, amelyekre a
+  drága geometria már lefutott.
+- Előtöltő script budapesti rajtpont-rácsra, hogy a könyvtár ne üresen induljon.
+- Olvasási oldal: indexelt lekérdezés (`profile` + origó H3-cella + hossz-sáv),
+  hasonlósági rangsor, és a mai birtokviszonnyal élő terület/GP-számítás.
+- Felület: „Hasonló találatok”, a rajt távolságának kiírása, a friss ajánlatok
+  utólagos beérkezése.
+- Elavulás: `graphVersion` tárolása, újravalidálás vezetett rögzítés indítása
+  előtt.
+
+**Kilépési feltétel:** hosszú körnél a felhasználó 300 ms-on belül teljes értékű
+kártyákat lát (terület és GP is), a friss generálás ugyanabban a nézetben
+fut be, és minden kiszámolt jelölt visszakereshetően bekerült a könyvtárba. A
+heti generálási keret csak a friss generálásra fogy.
+
+### 1F. A→B tervező és kétoldali loop *(2026-09-12)*
+
+**Cél:** a Rögzítés panelen a mozgásforma után `Barangolás | Útvonal` választás;
+az `Útvonal` ágon cél megadása címmel vagy térképi pinnel, majd `Csak oda` vagy
+`Oda-vissza` terv. Terv és mérés: [`point-to-point.md`](point-to-point.md).
+
+- Geocoding-interfész (előre + fordított), első implementáció Mapbox; a tartós
+  tárolás jogi kérdése az implementáció ELŐTT tisztázandó.
+- A→B pont-pont útvonal a `directions.ts`-ben (ma csak `round_trip` van).
+- Kétoldali loop: alapvonal → via-pont → odaút → visszaút → önellenőrzés.
+- A kerülő mérete játékkonstans: ±500 m / ±1 km / ±2 km.
+- Előnézet: rajt, cél, útvonal, táv, idő, elkülönülő oda/vissza, bezárt terület.
+- `gyors · biztonságos · csendes` választó; a két utóbbi felirata csak adattal.
+- Heti generálási keret ugyanaz, mint a küldetés-ajánlóé.
+
+**Kilépési feltétel:** a generált oda-vissza útvonal a mért szabályokat teljesíti
+(nincs értelmetlen visszafordulás, az oda- és visszaút élátfedése alacsony, a
+teljes útvonal kört zár), a közlekedési szabályok sértetlenek, és ha nincs
+értelmes megoldás, a felhasználó **őszinte nemleges választ** kap, nem rossz
+útvonalat.
+
 ### 2. Első külső útminőségi adat
 
 - PZU vagy a legjobb jogilag és technikailag elérhető egyetlen partnerforrás PoC-ja.

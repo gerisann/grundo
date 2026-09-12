@@ -32,6 +32,8 @@
     "seed:badges": "tsx src/scripts/seedBadges.ts",
     "inspect:push": "tsx src/scripts/inspectPushTokens.ts",
     "inspect:payload": "tsx src/scripts/inspectActivityPayload.ts",
+    "benchmark:routes": "tsx src/scripts/benchmarkRoutes.ts",
+    "lab:routes": "tsx src/scripts/routeLab.ts",
     "probe:apns": "tsx src/scripts/probeApns.ts",
     "probe:apns:key": "tsx src/scripts/probeApnsKey.ts"
   },

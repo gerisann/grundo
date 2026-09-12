@@ -22,6 +22,7 @@ tmp/*
 graphhopper/*.jar
 graphhopper/*.osm.pbf
 graphhopper/graph-cache/
+graphhopper/elevation-cache/
 graphhopper/*.log
 
 # Firebase

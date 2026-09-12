@@ -60,6 +60,15 @@ const MAX_REPAIR_PASSES = 2;
 export interface DirectionsRoute {
   /** A megtett táv méterben, az ÚTHÁLÓZAT szerint. */
   distanceM: number;
+  /**
+   * Ahova a motor a KÉRT pontokat ténylegesen rákapcsolta.
+   *
+   * ⚠️ EZ NEM DÍSZ. A köztes pont mértani hely; ha vízbe, vasútra vagy zárt
+   * területre esik, a GraphHopper a legközelebbi járható útra teszi — akár
+   * több száz méterrel odébb. Enélkül nem derül ki, hogy az útvonal azért megy
+   * ki egy stégre a Dunán, mert mi kértük.
+   */
+  snappedWaypoints?: LatLng[];
   /** A tervező becslése másodpercben — tájékoztató, nem ez a küldetés ideje. */
   durationS: number;
   /** Kódolt vonallánc, 5 tizedes pontossággal (`decodePolyline` érti). */
@@ -601,6 +610,7 @@ interface GraphHopperPath {
   distance?: number;
   time?: number;
   points?: string;
+  snapped_waypoints?: string;
   instructions?: Array<{
     sign?: number;
     interval?: number[];
@@ -623,6 +633,29 @@ async function requestGraphHopperRoundTrip(
   seed: number,
   customModel: Record<string, unknown>,
 ): Promise<DirectionsRoute | null> {
+  return postGraphHopperRoute({
+    points: [[origin.lng, origin.lat]],
+    profile,
+    'ch.disable': true,
+    algorithm: 'round_trip',
+    'round_trip.distance': Math.round(targetKm * 1000),
+    'round_trip.seed': seed,
+    headings: [headingDeg],
+    custom_model: customModel,
+  });
+}
+
+/**
+ * Egy GraphHopper `/route` hívás — a KÖZÖS fele.
+ *
+ * A kör (`round_trip`) és a pont-pont tervezés csak a kérés törzsében tér el;
+ * a hitelesítés, az időtúllépés, a hibakezelés és a manőver-normalizálás
+ * ugyanaz. A HIBA ITT SEM DOBÁS, hanem `null` — egyetlen elhasalt jelölt nem
+ * viheti el a többit.
+ */
+async function postGraphHopperRoute(
+  body: Record<string, unknown>,
+): Promise<DirectionsRoute | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -635,28 +668,24 @@ async function requestGraphHopperRoundTrip(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        points: [[origin.lng, origin.lat]],
-        profile,
-        'ch.disable': true,
-        algorithm: 'round_trip',
-        'round_trip.distance': Math.round(targetKm * 1000),
-        'round_trip.seed': seed,
-        headings: [headingDeg],
-        custom_model: customModel,
         points_encoded: true,
         instructions: true,
         elevation: false,
+        ...body,
       }),
     });
     if (!response.ok) return null;
 
-    const body = (await response.json()) as { paths?: GraphHopperPath[] };
-    const path = body.paths?.[0];
+    const parsed = (await response.json()) as { paths?: GraphHopperPath[] };
+    const path = parsed.paths?.[0];
     if (!path || typeof path.points !== 'string') return null;
 
     const maneuvers = normalizeGraphHopperManeuvers(path);
+    const snappedWaypoints =
+      typeof path.snapped_waypoints === 'string' ? decodePolyline(path.snapped_waypoints) : [];
     return {
       distanceM: Number(path.distance ?? 0),
+      ...(snappedWaypoints.length > 0 ? { snappedWaypoints } : {}),
       // A GraphHopper `time` mezője MILLISZEKUNDUM, a `DirectionsRoute.durationS`
       // szerződése szerint másodperc kell — enélkül a küldetés tízszer olyan
       // gyorsnak tűnne, mint amennyi idő alatt valóban végigmenne rajta.
@@ -671,6 +700,67 @@ async function requestGraphHopperRoundTrip(
     clearTimeout(timer);
   }
 }
+
+/**
+ * Pont-pont (és köztes pontos) útvonal a GraphHoppertől.
+ *
+ * A `points` sorrendben kötelező állomás mind — az A→B→A kétoldali kör ezzel
+ * kényszeríti a kerülő méretét adó köztes pontot az útvonalba (lásd
+ * `src/game/routeCorridor.ts`).
+ */
+export async function requestGraphHopperPath(
+  points: readonly LatLng[],
+  profile: 'foot' | 'bike',
+  customModel: Record<string, unknown>,
+  options: { snapPrevention?: readonly string[]; passThrough?: boolean } = {},
+): Promise<DirectionsRoute | null> {
+  if (points.length < 2) return null;
+  return postGraphHopperRoute({
+    points: points.map((point) => [point.lng, point.lat]),
+    profile,
+    'ch.disable': true,
+    custom_model: customModel,
+    ...(options.snapPrevention && options.snapPrevention.length > 0
+      ? { snap_prevention: [...options.snapPrevention] }
+      : {}),
+    /*
+      ⚠️ A KÖZTES PONT KÖTELEZŐ ÁLLOMÁS, és alapból szabad rajta megfordulni.
+      Ha a mértani pont egy mellékutca közepére kapcsolódik, az útvonalnak oda
+      KELL mennie és vissza — ez a képeken látható „láb". A `pass_through`
+      tiltja a megfordulást a köztes pontnál; ez a GraphHopper megfelelője
+      annak, amit a Mapbox-ág `continue_straight=true`-val old meg
+      (lásd `planLoop`).
+    */
+    ...(options.passThrough ? { pass_through: true } : {}),
+  });
+}
+
+/** Az adott profil alapsúlyozása — a tervező erre épít rá saját szabályokat. */
+export function graphhopperBasePriority(profile: 'foot' | 'bike'): unknown[] {
+  return [...GH_PRIORITY[profile]];
+}
+
+/**
+ * Pont-pont útvonal a Mapboxtól — TARTALÉK, ha a GraphHopper nem elérhető.
+ *
+ * ⚠️ CSAK AZ EGYSZERŰ A→B ÚTRA. A kétoldali körnek területi súlyozás kell, azt
+ * a Mapbox Directions nem tudja — ott nincs értelmes tartalék, a tervező
+ * inkább őszinte nemleges választ ad.
+ */
+export async function planDirectMapbox(
+  from: LatLng,
+  to: LatLng,
+  profile: 'walking' | 'cycling',
+): Promise<DirectionsRoute[]> {
+  const token = mapboxToken();
+  if (!token) return [];
+  const coordinates = [from, to]
+    .map((point) => `${round6(point.lng)},${round6(point.lat)}`)
+    .join(';');
+  return requestRoutes(profile, coordinates, token, '');
+}
+
+export { graphhopperProfile };
 
 function normalizeGraphHopperManeuvers(path: GraphHopperPath): RouteManeuver[] {
   if (typeof path.points !== 'string' || !Array.isArray(path.instructions)) return [];

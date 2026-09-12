@@ -50,6 +50,13 @@ telepített Temurin 21 megfelel):
 java -Xmx4g -jar graphhopper-web-11.0.jar server config-grundo.yml
 ```
 
+⚠️ **A helyi konfiguráció 2026-09-12 óta DOMBORZATOT is importál**
+(`graph.elevation.provider: srtm`, `average_slope`, `max_slope`) — ettől
+működik a sík/dombos preferencia a tervezőben. Az SRTM-csempék az
+`elevation-cache/` mappába töltődnek (~65 MB, nincs verziókövetve). A
+`config-cloudrun.yml` szándékosan NEM tartalmazza: az éles DEM-forrás külön
+döntés.
+
 Az első indítás importál (Magyarország: néhány perc). Utána a `graph-cache`
 mappából indul másodpercek alatt. **A konfiguráció módosítása után töröld a
 `graph-cache` mappát**, különben a régi gráffal indul.

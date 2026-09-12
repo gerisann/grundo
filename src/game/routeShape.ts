@@ -33,7 +33,7 @@
  * (AGENTS.md 4. szabály).
  */
 
-import { distanceM, type LatLng } from './geo';
+import { bearingDeg, distanceM, type LatLng } from './geo';
 
 /**
  * A be- és kimenő irányt ekkora bázison nézzük, nem szomszédos pontpárokból.
@@ -64,17 +64,6 @@ const LOCAL_DETOUR_MIN_M = 25;
  * akkor a rövid rész egy fölösleges visszatérés vagy doboz alakú kitérő.
  */
 const LOCAL_DETOUR_DIRECT_RATIO = 0.5;
-
-/** Irányszög két pont között, fokban (0 = észak). */
-function bearingDeg(a: LatLng, b: LatLng): number {
-  const rad = Math.PI / 180;
-  const dLng = (b.lng - a.lng) * rad;
-  const lat1 = a.lat * rad;
-  const lat2 = b.lat * rad;
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
 
 /** A nyomvonal újramintázása egyenletes lépésközzel. */
 function resample(points: readonly LatLng[], stepM: number): LatLng[] {
@@ -312,4 +301,140 @@ export function withoutOutAndBackSpurs<T extends RouteQuality>(
 export function selectMissionRoutes<T extends RouteQuality>(routes: readonly T[]): T[] {
   const clean = withoutOutAndBackSpurs(routes);
   return preferCleanRoutes(clean.length > 0 ? clean : routes);
+}
+
+/** Öt tizedes ≈ méteres azonossági küszöb — két útvonal ugyanazon a szakaszon. */
+const SHARED_PATH_DECIMALS = 5;
+
+function sharedPathKey(a: LatLng, b: LatLng): string {
+  const round = (value: number) => value.toFixed(SHARED_PATH_DECIMALS);
+  const first = `${round(a.lat)},${round(a.lng)}`;
+  const second = `${round(b.lat)},${round(b.lng)}`;
+  // IRÁNYFÜGGETLEN kulcs: a rendezés miatt az A→B és a B→A szakasz ugyanaz.
+  return first < second ? `${first}|${second}` : `${second}|${first}`;
+}
+
+function sharedPathEdges(points: readonly LatLng[]): {
+  lengths: Map<string, number>;
+  totalM: number;
+} {
+  const lengths = new Map<string, number>();
+  let totalM = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    const segment = distanceM(from, to);
+    if (segment <= 0) continue;
+    totalM += segment;
+    const key = sharedPathKey(from, to);
+    lengths.set(key, (lengths.get(key) ?? 0) + segment);
+  }
+  return { lengths, totalM };
+}
+
+/**
+ * Mennyire fut a két útvonal UGYANAZON az úton — a rövidebbik hosszához mérve.
+ *
+ * ⚠️ IRÁNYFÜGGETLEN, és pont ezért külön függvény. A mérőpad
+ * (`server/src/lib/routeBenchmark.ts`) irányÉRZÉKENY átfedést számol, mert ott
+ * két, AZONOS irányba tartó alternatívát hasonlít össze. Az oda-vissza
+ * tervezésnél viszont a visszaút fordítva járja be ugyanazt az utcát: irányra
+ * érzékenyen mérve ez nulla átfedésnek látszana, miközben a felhasználó
+ * pontosan azt élné meg, hogy ugyanazon az úton jött vissza.
+ *
+ * A `0` azt jelenti, hogy nincs közös szakasz, az `1`, hogy a rövidebb út
+ * teljes egészében a másikon halad.
+ */
+export function sharedPathRatio(
+  first: readonly LatLng[],
+  second: readonly LatLng[],
+): number {
+  const left = sharedPathEdges(first);
+  const right = sharedPathEdges(second);
+  const shorterM = Math.min(left.totalM, right.totalM);
+  if (shorterM === 0) return 0;
+
+  let sharedM = 0;
+  for (const [key, length] of left.lengths) {
+    const other = right.lengths.get(key);
+    if (other !== undefined) sharedM += Math.min(length, other);
+  }
+  return Math.min(1, sharedM / shorterM);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Önmagába visszatérés — a hurkok és az „ugyanazon az úton vissza" mértéke
+   ════════════════════════════════════════════════════════════════════════ */
+
+/** Ilyen sűrűn mintázzuk a nyomvonalat a visszatérés-kereséshez. */
+const REVISIT_STEP_M = 15;
+
+/** Ekkora rácson nézzük, hogy „ugyanott" vagyunk-e. */
+const REVISIT_CELL_M = 25;
+
+/**
+ * Legalább ennyi minta teljen el, mielőtt egy cella újralátogatása
+ * visszatérésnek számít.
+ *
+ * Enélkül minden kanyar és minden GPS-zaj visszatérésnek látszana: egy éles
+ * forduló két oldala természetesen ugyanabba a 25 méteres cellába esik.
+ */
+const REVISIT_MIN_GAP = 12;
+
+/**
+ * Hányszor tér vissza a nyomvonal oda, ahol már járt?
+ *
+ * ⚠️ MIÉRT KELL EZ A `countUTurns` MELLÉ? Mert a kettő MÁST mér, és a
+ * különbség drágán derült ki (2026-09-12, Geri képei). Amikor a köztes pontnál
+ * `pass_through`-val megtiltottuk a visszafordulást, a tervező nem megszüntette
+ * a hibát, hanem HUROKKÁ alakította: a zsákutcába beszaladás helyett megkerüli
+ * a tömböt, és ugyanoda tér vissza. A `countUTurns` erre vak — nincs benne
+ * 180 fokos fordulat —, a felhasználó viszont pontosan ugyanazt a felesleges
+ * kört járja be.
+ *
+ * Ez a mérték mindkettőt elkapja: az önmagát keresztező hurkot ÉS az
+ * ugyanazon az úton visszafelé haladást. A spec szabálya szó szerint ez:
+ * „a teljes útvonal lehetőleg ne keresztezze saját magát".
+ */
+export function countSelfRevisits(points: readonly LatLng[]): number {
+  const sampled = resample(points, REVISIT_STEP_M);
+  if (sampled.length < REVISIT_MIN_GAP) return 0;
+
+  const origin = sampled[0]!;
+  const mPerDegLat = 111_194.93;
+  const mPerDegLng = mPerDegLat * Math.cos((origin.lat * Math.PI) / 180);
+
+  const lastSeen = new Map<string, number>();
+  let revisits = 0;
+
+  for (let index = 0; index < sampled.length; index += 1) {
+    const point = sampled[index]!;
+    const cellX = Math.round(((point.lng - origin.lng) * mPerDegLng) / REVISIT_CELL_M);
+    const cellY = Math.round(((point.lat - origin.lat) * mPerDegLat) / REVISIT_CELL_M);
+    const key = `${cellX},${cellY}`;
+
+    /*
+      A SZOMSZÉDOS CELLÁKAT IS NÉZZÜK. Pontos cellaegyezésre szűrve a
+      keresztezések fele elveszne: két, egymástól 10 méterre lévő pont is
+      eshet külön cellába, ha épp a rácshatárt fogja közre. A 3×3-as
+      környezet ezt a véletlent kiveszi a mérésből.
+    */
+    let previous: number | undefined;
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const seen = lastSeen.get(`${cellX + dx},${cellY + dy}`);
+        if (seen !== undefined && (previous === undefined || seen < previous)) previous = seen;
+      }
+    }
+
+    if (previous !== undefined && index - previous >= REVISIT_MIN_GAP) {
+      revisits += 1;
+      // A hurok további celláit ne számoljuk külön visszatérésnek: egy
+      // kör egy hiba, nem húsz.
+      lastSeen.clear();
+    }
+    lastSeen.set(key, index);
+  }
+
+  return revisits;
 }

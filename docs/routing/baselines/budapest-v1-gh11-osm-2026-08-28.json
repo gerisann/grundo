@@ -1,0 +1,812 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "budapest-v1",
+  "generatedAt": "2026-09-11T12:46:57.382Z",
+  "gitCommit": "3c92d4d",
+  "graphVersion": "gh11-osm-2026-08-28-8e68f202bd225c65",
+  "configuration": {
+    "graphhopper": true,
+    "mapboxFallback": false,
+    "requestedCandidatesPerCase": 3,
+    "elevationRequested": false,
+    "warmup": true
+  },
+  "summary": {
+    "caseCount": 12,
+    "successfulCaseCount": 12,
+    "fallbackAttemptCount": 0,
+    "fallbackSuccessCount": 0,
+    "candidateCount": 24,
+    "candidateShortfall": 12,
+    "medianLatencyMs": 70.9,
+    "p95LatencyMs": 158.2,
+    "meanDistanceErrorRatio": 0.1145,
+    "meanManeuverCount": 58.1667,
+    "meanNamedManeuverShare": 0.2911,
+    "maxManeuverPositionErrorM": 0,
+    "meanDirectedEdgeOverlap": 0.642,
+    "maxDirectedEdgeOverlap": 0.8557
+  },
+  "cases": [
+    {
+      "id": "margitsziget-run-flat",
+      "name": "Margitsziget futókörnyezet",
+      "activity": "run",
+      "profile": "walking",
+      "terrain": "flat",
+      "junctions": "simple",
+      "character": "twisty",
+      "targetKm": 5,
+      "bearingDeg": 0,
+      "latencyMs": 63.7,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "9de31b77a7621e69",
+          "distanceM": 8860.1,
+          "durationS": 6396.8,
+          "distanceErrorRatio": 0.772,
+          "pointCount": 258,
+          "maneuverCount": 60,
+          "namedManeuverShare": 0.1552,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 3,
+          "shortDetours": 6,
+          "turnCount": 40,
+          "averageStraightM": 216.1
+        },
+        {
+          "geometryHash": "73ee0a34a31002c0",
+          "distanceM": 5893.7,
+          "durationS": 4256.6,
+          "distanceErrorRatio": 0.1787,
+          "pointCount": 144,
+          "maneuverCount": 41,
+          "namedManeuverShare": 0.2564,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 2,
+          "shortDetours": 4,
+          "turnCount": 27,
+          "averageStraightM": 210.5
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "9de31b77a7621e69",
+          "secondGeometryHash": "73ee0a34a31002c0",
+          "shorterRouteOverlap": 0.7876
+        }
+      ]
+    },
+    {
+      "id": "varosliget-walk-flat",
+      "name": "Városliget gyalogos környezet",
+      "activity": "walk",
+      "profile": "walking",
+      "terrain": "flat",
+      "junctions": "complex",
+      "character": "twisty",
+      "targetKm": 4,
+      "bearingDeg": 90,
+      "latencyMs": 41.8,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "3466d6bf9fa20af5",
+          "distanceM": 4087.9,
+          "durationS": 2957.1,
+          "distanceErrorRatio": 0.022,
+          "pointCount": 111,
+          "maneuverCount": 38,
+          "namedManeuverShare": 0.4444,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 0,
+          "shortDetours": 0,
+          "turnCount": 22,
+          "averageStraightM": 177.8
+        },
+        {
+          "geometryHash": "72b29f0d98797ebe",
+          "distanceM": 3270.4,
+          "durationS": 2361.9,
+          "distanceErrorRatio": 0.1824,
+          "pointCount": 106,
+          "maneuverCount": 38,
+          "namedManeuverShare": 0.4722,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 0,
+          "shortDetours": 1,
+          "turnCount": 19,
+          "averageStraightM": 163.5
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "3466d6bf9fa20af5",
+          "secondGeometryHash": "72b29f0d98797ebe",
+          "shorterRouteOverlap": 0.7102
+        }
+      ]
+    },
+    {
+      "id": "deak-run-straight",
+      "name": "Deák tér belvárosi futás",
+      "activity": "run",
+      "profile": "walking",
+      "terrain": "flat",
+      "junctions": "complex",
+      "character": "straight",
+      "targetKm": 7.5,
+      "bearingDeg": 90,
+      "latencyMs": 70.9,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "a698f87f46add0a6",
+          "distanceM": 7120.2,
+          "durationS": 5128.4,
+          "distanceErrorRatio": 0.0506,
+          "pointCount": 182,
+          "maneuverCount": 61,
+          "namedManeuverShare": 0.3051,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 6,
+          "shortDetours": 9,
+          "turnCount": 39,
+          "averageStraightM": 178
+        },
+        {
+          "geometryHash": "dc87f9eec0737fca",
+          "distanceM": 6377.9,
+          "durationS": 4592.1,
+          "distanceErrorRatio": 0.1496,
+          "pointCount": 153,
+          "maneuverCount": 47,
+          "namedManeuverShare": 0.4222,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 5,
+          "shortDetours": 6,
+          "turnCount": 27,
+          "averageStraightM": 227.8
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "a698f87f46add0a6",
+          "secondGeometryHash": "dc87f9eec0737fca",
+          "shorterRouteOverlap": 0.8557
+        }
+      ]
+    },
+    {
+      "id": "nepliget-run-flat",
+      "name": "Népliget futókörnyezet",
+      "activity": "run",
+      "profile": "walking",
+      "terrain": "flat",
+      "junctions": "simple",
+      "character": "twisty",
+      "targetKm": 8,
+      "bearingDeg": 135,
+      "latencyMs": 58.4,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "fd9ec1444c2d6886",
+          "distanceM": 8067.7,
+          "durationS": 5826.2,
+          "distanceErrorRatio": 0.0085,
+          "pointCount": 193,
+          "maneuverCount": 57,
+          "namedManeuverShare": 0.0909,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 2,
+          "shortDetours": 5,
+          "turnCount": 24,
+          "averageStraightM": 322.9
+        },
+        {
+          "geometryHash": "ee47ee1ccdb0e53b",
+          "distanceM": 7312.7,
+          "durationS": 5265.1,
+          "distanceErrorRatio": 0.0859,
+          "pointCount": 198,
+          "maneuverCount": 69,
+          "namedManeuverShare": 0.209,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 2,
+          "shortDetours": 5,
+          "turnCount": 25,
+          "averageStraightM": 281.4
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "fd9ec1444c2d6886",
+          "secondGeometryHash": "ee47ee1ccdb0e53b",
+          "shorterRouteOverlap": 0.6205
+        }
+      ]
+    },
+    {
+      "id": "normafa-walk-hilly",
+      "name": "Normafa dombos gyaloglás",
+      "activity": "walk",
+      "profile": "walking",
+      "terrain": "hilly",
+      "junctions": "simple",
+      "character": "twisty",
+      "targetKm": 6,
+      "bearingDeg": 270,
+      "latencyMs": 67.5,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "ac213359464a1696",
+          "distanceM": 5751.6,
+          "durationS": 4141.1,
+          "distanceErrorRatio": 0.0414,
+          "pointCount": 215,
+          "maneuverCount": 32,
+          "namedManeuverShare": 0.1,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 2,
+          "shortDetours": 4,
+          "turnCount": 13,
+          "averageStraightM": 411
+        },
+        {
+          "geometryHash": "6c0cc912c10d0a7e",
+          "distanceM": 5098.3,
+          "durationS": 3670.7,
+          "distanceErrorRatio": 0.1503,
+          "pointCount": 199,
+          "maneuverCount": 31,
+          "namedManeuverShare": 0.0345,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 1,
+          "shortDetours": 3,
+          "turnCount": 9,
+          "averageStraightM": 510.3
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "ac213359464a1696",
+          "secondGeometryHash": "6c0cc912c10d0a7e",
+          "shorterRouteOverlap": 0.7295
+        }
+      ]
+    },
+    {
+      "id": "gellert-run-hilly",
+      "name": "Gellért tér dombos futás",
+      "activity": "run",
+      "profile": "walking",
+      "terrain": "hilly",
+      "junctions": "complex",
+      "character": "straight",
+      "targetKm": 7.5,
+      "bearingDeg": 270,
+      "latencyMs": 71,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "9d3f6a1d83a6f31b",
+          "distanceM": 8848.6,
+          "durationS": 6411.9,
+          "distanceErrorRatio": 0.1798,
+          "pointCount": 267,
+          "maneuverCount": 49,
+          "namedManeuverShare": 0.234,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 3,
+          "shortDetours": 7,
+          "turnCount": 30,
+          "averageStraightM": 285.5
+        },
+        {
+          "geometryHash": "7f9d5cd2d6fac4cc",
+          "distanceM": 7358.1,
+          "durationS": 5337,
+          "distanceErrorRatio": 0.0189,
+          "pointCount": 196,
+          "maneuverCount": 37,
+          "namedManeuverShare": 0.1143,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 4,
+          "shortDetours": 4,
+          "turnCount": 18,
+          "averageStraightM": 387.4
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "9d3f6a1d83a6f31b",
+          "secondGeometryHash": "7f9d5cd2d6fac4cc",
+          "shorterRouteOverlap": 0.8412
+        }
+      ]
+    },
+    {
+      "id": "huvosvolgy-run-hilly",
+      "name": "Hűvösvölgy dombos futás",
+      "activity": "run",
+      "profile": "walking",
+      "terrain": "hilly",
+      "junctions": "complex",
+      "character": "twisty",
+      "targetKm": 10,
+      "bearingDeg": 225,
+      "latencyMs": 30.4,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "fa45a8e9507c4e5f",
+          "distanceM": 10094.4,
+          "durationS": 7297.1,
+          "distanceErrorRatio": 0.0094,
+          "pointCount": 384,
+          "maneuverCount": 54,
+          "namedManeuverShare": 0.2692,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 0,
+          "shortDetours": 3,
+          "turnCount": 44,
+          "averageStraightM": 224.2
+        },
+        {
+          "geometryHash": "94acc3ea0d703ee3",
+          "distanceM": 9264.7,
+          "durationS": 6691.3,
+          "distanceErrorRatio": 0.0735,
+          "pointCount": 398,
+          "maneuverCount": 56,
+          "namedManeuverShare": 0.1481,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 0,
+          "shortDetours": 3,
+          "turnCount": 41,
+          "averageStraightM": 220.5
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "fa45a8e9507c4e5f",
+          "secondGeometryHash": "94acc3ea0d703ee3",
+          "shorterRouteOverlap": 0.8398
+        }
+      ]
+    },
+    {
+      "id": "bikas-walk-flat",
+      "name": "Bikás park gyalogos környezet",
+      "activity": "walk",
+      "profile": "walking",
+      "terrain": "flat",
+      "junctions": "simple",
+      "character": "twisty",
+      "targetKm": 5,
+      "bearingDeg": 180,
+      "latencyMs": 96.9,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "bf4ecc5f7b95f687",
+          "distanceM": 4873.9,
+          "durationS": 3509.2,
+          "distanceErrorRatio": 0.0252,
+          "pointCount": 101,
+          "maneuverCount": 48,
+          "namedManeuverShare": 0.1087,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 1,
+          "shortDetours": 3,
+          "turnCount": 25,
+          "averageStraightM": 187.4
+        },
+        {
+          "geometryHash": "1199ce98d73ca8e6",
+          "distanceM": 3597.4,
+          "durationS": 2590.2,
+          "distanceErrorRatio": 0.2805,
+          "pointCount": 86,
+          "maneuverCount": 39,
+          "namedManeuverShare": 0.1622,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 2,
+          "shortDetours": 4,
+          "turnCount": 19,
+          "averageStraightM": 180
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "bf4ecc5f7b95f687",
+          "secondGeometryHash": "1199ce98d73ca8e6",
+          "shorterRouteOverlap": 0.5243
+        }
+      ]
+    },
+    {
+      "id": "margit-hid-bike-flat",
+      "name": "Margit híd kerékpáros csomópont",
+      "activity": "bike",
+      "profile": "cycling",
+      "terrain": "flat",
+      "junctions": "complex",
+      "character": "straight",
+      "targetKm": 20,
+      "bearingDeg": 0,
+      "latencyMs": 84,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "791c3d0e7f8295b9",
+          "distanceM": 21493.3,
+          "durationS": 4463.8,
+          "distanceErrorRatio": 0.0747,
+          "pointCount": 509,
+          "maneuverCount": 90,
+          "namedManeuverShare": 0.3977,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 11,
+          "shortDetours": 13,
+          "turnCount": 55,
+          "averageStraightM": 383.9
+        },
+        {
+          "geometryHash": "d511254850720e8d",
+          "distanceM": 19026.9,
+          "durationS": 4557.7,
+          "distanceErrorRatio": 0.0487,
+          "pointCount": 488,
+          "maneuverCount": 92,
+          "namedManeuverShare": 0.3111,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 9,
+          "shortDetours": 9,
+          "turnCount": 67,
+          "averageStraightM": 279.9
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "791c3d0e7f8295b9",
+          "secondGeometryHash": "d511254850720e8d",
+          "shorterRouteOverlap": 0.0051
+        }
+      ]
+    },
+    {
+      "id": "kelenfold-bike-hilly",
+      "name": "Kelenföld dombos kerékpár",
+      "activity": "bike",
+      "profile": "cycling",
+      "terrain": "hilly",
+      "junctions": "complex",
+      "character": "twisty",
+      "targetKm": 25,
+      "bearingDeg": 270,
+      "latencyMs": 158.2,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "ac22bdb96abc8df8",
+          "distanceM": 27678.5,
+          "durationS": 7371.1,
+          "distanceErrorRatio": 0.1071,
+          "pointCount": 925,
+          "maneuverCount": 117,
+          "namedManeuverShare": 0.313,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 6,
+          "shortDetours": 13,
+          "turnCount": 95,
+          "averageStraightM": 288.4
+        },
+        {
+          "geometryHash": "17ebf6972133280a",
+          "distanceM": 24019.2,
+          "durationS": 5651.3,
+          "distanceErrorRatio": 0.0392,
+          "pointCount": 751,
+          "maneuverCount": 107,
+          "namedManeuverShare": 0.3524,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 7,
+          "shortDetours": 11,
+          "turnCount": 86,
+          "averageStraightM": 276.2
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "ac22bdb96abc8df8",
+          "secondGeometryHash": "17ebf6972133280a",
+          "shorterRouteOverlap": 0.8003
+        }
+      ]
+    },
+    {
+      "id": "obuda-bike-hilly",
+      "name": "Óbuda kerékpáros környezet",
+      "activity": "bike",
+      "profile": "cycling",
+      "terrain": "hilly",
+      "junctions": "complex",
+      "character": "twisty",
+      "targetKm": 20,
+      "bearingDeg": 315,
+      "latencyMs": 143.1,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "4822244128735502",
+          "distanceM": 21030.3,
+          "durationS": 5401.5,
+          "distanceErrorRatio": 0.0515,
+          "pointCount": 424,
+          "maneuverCount": 61,
+          "namedManeuverShare": 0.4746,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 2,
+          "shortDetours": 7,
+          "turnCount": 42,
+          "averageStraightM": 489.1
+        },
+        {
+          "geometryHash": "f1b22deba60de49c",
+          "distanceM": 17890.2,
+          "durationS": 4874.8,
+          "distanceErrorRatio": 0.1055,
+          "pointCount": 402,
+          "maneuverCount": 60,
+          "namedManeuverShare": 0.5,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 0,
+          "shortDetours": 4,
+          "turnCount": 35,
+          "averageStraightM": 497.1
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "4822244128735502",
+          "secondGeometryHash": "f1b22deba60de49c",
+          "shorterRouteOverlap": 0.159
+        }
+      ]
+    },
+    {
+      "id": "rakos-patak-bike-flat",
+      "name": "Rákos-patak sík kerékpár",
+      "activity": "bike",
+      "profile": "cycling",
+      "terrain": "flat",
+      "junctions": "simple",
+      "character": "straight",
+      "targetKm": 25,
+      "bearingDeg": 90,
+      "latencyMs": 112.8,
+      "requests": {
+        "graphhopper": 3,
+        "mapbox": 0,
+        "other": 0
+      },
+      "fallbackAttempted": false,
+      "fallbackUsed": false,
+      "candidateCount": 2,
+      "candidateShortfall": 1,
+      "elevationAvailable": false,
+      "routes": [
+        {
+          "geometryHash": "e2cb790e15224bf4",
+          "distanceM": 24288.7,
+          "durationS": 5338.7,
+          "distanceErrorRatio": 0.0285,
+          "pointCount": 344,
+          "maneuverCount": 55,
+          "namedManeuverShare": 0.5849,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 5,
+          "shortDetours": 5,
+          "turnCount": 29,
+          "averageStraightM": 809.7
+        },
+        {
+          "geometryHash": "e1e9e04d03860ef5",
+          "distanceM": 23407.2,
+          "durationS": 5093.4,
+          "distanceErrorRatio": 0.0637,
+          "pointCount": 332,
+          "maneuverCount": 57,
+          "namedManeuverShare": 0.5273,
+          "maneuverPositionMaxErrorM": 0,
+          "maneuverOffsetsMonotonic": true,
+          "startsWithDepart": true,
+          "endsWithArrive": true,
+          "uTurns": 5,
+          "shortDetours": 8,
+          "turnCount": 32,
+          "averageStraightM": 709.4
+        }
+      ],
+      "directedEdgeOverlaps": [
+        {
+          "firstGeometryHash": "e2cb790e15224bf4",
+          "secondGeometryHash": "e1e9e04d03860ef5",
+          "shorterRouteOverlap": 0.8305
+        }
+      ]
+    }
+  ]
+}

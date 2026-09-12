@@ -27,6 +27,9 @@ Ez a mappa a GRUNDO funkcionális és technikai gerince. A `../*.jpg` (49 db) re
 | [Adatmodell](routing/data-model.md) | Irányított útszakaszok, minőségi metrikák, manőverek, útvonalterv és rögzítési állapot |
 | [Adatforrások és Mapbox-költségek](routing/data-sources.md) | Forrás-PoC-k, eredet/licenc, kiadási kapu, 2026-09-10-i Mapbox-limitek |
 | [Megvalósítási terv](routing/implementation-plan.md) | Fázisok, mérési kapuk, UX-elfogadási mátrix és az első implementációs csomag |
+| [Útvonal-mérési korpusz](routing/benchmark.md) | Rögzített budapesti esetek, újrafuttatható mérő és verziózott GraphHopper-alapvonal |
+| [Útvonal-könyvtár](routing/route-library.md) | Minden kiszámolt útvonal megőrzése, „Hasonló találatok” és háttérben futó friss generálás |
+| [A→B tervező és kétoldali loop](routing/point-to-point.md) | Cél megadása, `Csak oda` / `Oda-vissza`, a kerülő mérete és a területi súlyozás mérése |
 
 ## A GRUNDO egy mondatban
 

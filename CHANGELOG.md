@@ -23,6 +23,13 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.1.0] - 2026-09-12 (Új funkció)
+
+- A→B útvonaltervező motor: pont-pont útvonal, kétoldali oda-vissza kör, köztes megállók
+- Új alakmértékek a közös motorban: irányfüggetlen közös szakasz és önmagába visszatérés
+- A kerülő mérete játékkonstans (±500 m / ±1 km / ±2 km), a közvetlen táv 45%-ára vágva
+- Kézi útvonal-labor próbapad: címkereső, terep- és kerékpárút-preferencia, geometria és birtokviszony
+
 ## [1.0.0] - 2026-09-09 (Nagy verzió)
 
 - Verziókövetési rendszer bevezetése: szemantikus verziószám (`MAJOR.MINOR.PATCH`) a korábbi, kizárólag zárójeles build-számos követés mellé.

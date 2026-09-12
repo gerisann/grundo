@@ -393,6 +393,27 @@ export const GAMEPLAY = {
   MISSION_RESULT_MIN: 1,
   MISSION_RESULT_MAX: 5,
 
+  /**
+   * A→B ODA-VISSZA TERVEZÉS: a kerülő mérete, méterben.
+   *
+   * Ez az az oldalirányú (a közvetlen A–B vonalra MERŐLEGES) eltérés, amivel
+   * az odaút az egyik, a visszaút a másik irányba kitér. A kettő együtt zárja
+   * körbe a megszerezhető területet.
+   *
+   * ⚠️ EZ JÁTÉKKONSTANS, NEM TERVEZŐ-HANGOLÁS. A kerülő mérete közvetlenül a
+   * bezárt terület mérete, tehát a „nagy kerülő" gyakorlatilag terület-szerző
+   * eszköz. Geri döntése (2026-09-12), lásd
+   * `docs/02-funkcionalis-spec.md` → Útvonaltervezés a rögzítés előtt.
+   *
+   * ⚠️ AZ ÉRTÉK KÖZTES PONTKÉNT HAT, nem a súlyozott sáv szélességeként.
+   * Mérve (2026-09-12): a jutalmazott terület szélesítése NEM növeli a
+   * kerülőt — a router a megengedett sávon belül is a legolcsóbbat választja,
+   * és a „közepes" meg a „nagy" sáv ugyanazt az útvonalat adta. A méretet
+   * ezért merőleges köztes pont állítja. Lásd
+   * `docs/routing/point-to-point.md` → Mérés.
+   */
+  ROUTE_DETOUR_OFFSET_M: { small: 500, medium: 1_000, large: 2_000 } as const,
+
   // ── Ingyenes korlátok (a Pro ezeket oldja fel — játékbeli előnyt SOHA) ──
   FREE_ROUTE_GENERATIONS_PER_WEEK: 5,
   FREE_ACTIVE_EQUIPMENT: 3,
