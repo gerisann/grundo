@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { cellToChildren, cellToLatLng, latLngToCell } from 'h3-js';
+import { cellToChildren, latLngToCell } from 'h3-js';
 import { Button, OptionSwitch } from '@/components/ui';
 import { HexMap } from '@/components/HexMap';
 import type { MapViewProps } from '@/components/MapView';
@@ -770,19 +770,18 @@ export function TrackingScreen() {
           trailColor={captureAccent}
           plainCells={cells}
           cellPopup={ownerPopup}
+          onCellPress={onCellPress}
           /*
-            ⚠️ KIJELÖLÉS KÖZBEN A KOPPINTÁS A TERVEZŐÉ. Egyébként a birtokos
-            kártyáját nyitja; ha viszont pontot várunk, a koppintás a pont
-            kijelölése — különben a felhasználó a kártyát kapná, és nem
-            értené, miért nem történik semmi.
+            ⚠️ KIJELÖLÉSHEZ A TÉRKÉP BÁRMELY PONTJA KELL, nem csak a foglalt
+            cellák. Az `onCellPress` csak ott tüzel, ahol van tulajdonos —
+            szabad területre koppintva nem történne semmi, márpedig a rajt és a
+            cél jellemzően épp oda esik. Amíg ez a prop meg van adva, a
+            birtokos-kártya sem nyílik, tehát a két gesztus nem üt egymással.
           */
-          onCellPress={
+          onMapPress={
             planner.state.picking !== null
-              ? (info) => {
-                  const [lat, lng] = cellToLatLng(info.cell);
-                  planner.acceptMapPick(lat, lng);
-                }
-              : onCellPress
+              ? (point) => planner.acceptMapPick(point.lat, point.lng)
+              : undefined
           }
         />
       ) : null}
@@ -1433,6 +1432,7 @@ const MapPane = memo(function MapPane({
   plainCells,
   cellPopup,
   onCellPress,
+  onMapPress,
 }: {
   layers: NonNullable<MapViewProps['layers']>;
   track: MapViewProps['track'];
@@ -1451,6 +1451,8 @@ const MapPane = memo(function MapPane({
   /** A megkoppintott mező tulajdonos-kártyája — lásd `useCellOwnerCard`. */
   cellPopup: MapViewProps['cellPopup'];
   onCellPress: MapViewProps['onCellPress'];
+  /** Pontkijelölés a tervezőnek — lásd a hívási helyén a magyarázatot. */
+  onMapPress: MapViewProps['onMapPress'];
 }) {
   return (
     <div className={`track__map${mapboxConfigured ? '' : ' track__map--plain'}`}>
@@ -1483,6 +1485,7 @@ const MapPane = memo(function MapPane({
                felhasználó egy kis fekete pöttyöt látott (Geri, 2026-09-09). */
             cellPopup={cellPopup}
             onCellPress={onCellPress}
+            onMapPress={onMapPress}
             fill
           />
         </Suspense>

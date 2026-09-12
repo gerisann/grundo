@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { RewardIcon, type RewardIconName } from '@/components/RewardIcon';
+import { Icon, type IconName } from '@/components/Icon';
 import { formatArea, formatGp } from '@/lib/format';
 import type { RouteReward } from '@/lib/api';
 import './routeRewardPanel.css';
@@ -100,7 +100,7 @@ export function RouteRewardPanel({
         ) : (
           <div className="rrp__empty">
             <span className="rrp__empty-icon">
-              <RewardIcon name={closesLoop ? 'cells' : 'area'} size={32} />
+              <Icon name={closesLoop ? 'cells' : 'area'} size={32} />
             </span>
             <p>
               {skippedReason ??
@@ -127,7 +127,7 @@ function RewardTile({
   label,
   sub,
 }: {
-  icon: RewardIconName;
+  icon: IconName;
   value: string;
   label: string;
   sub?: string;
@@ -135,7 +135,7 @@ function RewardTile({
   return (
     <div className="rrp__tile">
       <span className="rrp__tile-icon">
-        <RewardIcon name={icon} />
+        <Icon name={icon} />
       </span>
       <span className="rrp__tile-value">{value}</span>
       <span className="rrp__tile-label">{label}</span>

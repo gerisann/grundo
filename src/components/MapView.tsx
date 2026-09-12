@@ -75,6 +75,16 @@ export interface MapViewProps {
   fill?: boolean;
   onViewport?: (view: { south: number; west: number; north: number; east: number; zoom: number }) => void;
   onCellPress?: (info: { cell: CellId; owner: string }) => void;
+  /**
+   * Koppintás a térkép BÁRMELY pontjára.
+   *
+   * ⚠️ NEM UGYANAZ, MINT AZ `onCellPress`. Az csak FOGLALT cellán tüzel (ahol
+   * van tulajdonos), és a birtokos kártyáját nyitja — pontkijelölésre tehát
+   * alkalmatlan: szabad területre koppintva nem történne semmi. Ez a callback
+   * minden koppintást megkap, és amíg meg van adva, a birtokos-kártya NEM
+   * nyílik ki, mert ilyenkor a kijelölés a feladat.
+   */
+  onMapPress?: (point: { lat: number; lng: number }) => void;
   cellPopup?: ReactNode;
   /**
    * Aktívan növekvő nyomvonal-e a `track`?
@@ -200,6 +210,7 @@ export function MapView({
   fill = false,
   onViewport,
   onCellPress,
+  onMapPress,
   cellPopup,
   live = false,
 }: MapViewProps) {
@@ -246,6 +257,8 @@ export function MapView({
   viewportRef.current = onViewport;
   const pressRef = useRef(onCellPress);
   pressRef.current = onCellPress;
+  const mapPressRef = useRef(onMapPress);
+  mapPressRef.current = onMapPress;
   const [popupHost, setPopupHost] = useState<HTMLElement | null>(null);
   const popup = useRef<mapboxgl.Popup | null>(null);
   const followPaused = useRef(false);
@@ -347,7 +360,20 @@ export function MapView({
     // hol megjelent, hol nem.
     instance.on('movestart', pauseFollow);
 
+    /*
+      PONTKIJELÖLÉS — a térkép BÁRMELY pontjára, rétegtől függetlenül.
+      Ez a kezelő a rétegre kötött alatt van, de az `onMapPress` jelenléte
+      kikapcsolja a birtokos-kártyát, tehát a kettő nem üt egymással.
+    */
+    instance.on('click', (event) => {
+      const handler = mapPressRef.current;
+      if (!handler) return;
+      handler({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+    });
+
     instance.on('click', `${CELL_SOURCE}-fill`, (event) => {
+      /* Kijelölés közben a koppintás a kijelölésé — ne nyíljon kártya. */
+      if (mapPressRef.current) return;
       const feature = event.features?.[0];
       const owner = String(feature?.properties?.owner ?? '');
       const cell = String(feature?.properties?.cell ?? '');

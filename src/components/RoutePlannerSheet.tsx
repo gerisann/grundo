@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon } from '@/components/Icon';
 import { OptionSwitch } from '@/components/ui/OptionSwitch';
 import { api, type PlaceHit, type RoutePlanInput } from '@/lib/api';
 import type { ActivityType } from '@/types';
@@ -57,7 +58,7 @@ export function RoutePlannerSheet({
   activityType: ActivityType;
   from: PlannerPoint | null;
   to: PlannerPoint | null;
-  stops: PlannerPoint[];
+  stops: (PlannerPoint | null)[];
   settings: PlannerSettings;
   busy: boolean;
   error: string | null;
@@ -71,7 +72,8 @@ export function RoutePlannerSheet({
   onClose: () => void;
 }) {
   const isBike = activityType === 'ride';
-  const canPlan = Boolean(from && to) && !busy;
+  /* Kijelöletlen megállóval nem tervezünk — lásd `addStop` a hookban. */
+  const canPlan = Boolean(from && to) && stops.every(Boolean) && !busy;
 
   function set<K extends keyof PlannerSettings>(key: K, value: PlannerSettings[K]) {
     onChangeSettings({ ...settings, [key]: value });
@@ -102,11 +104,7 @@ export function RoutePlannerSheet({
             point={from}
             onPick={(point) => onChangePoint('from', point)}
             onPickOnMap={() => onPickOnMap('from')}
-            extra={
-              <button type="button" className="rps__ghost" onClick={onUseCurrentPosition}>
-                📍 Jelenlegi pozícióm
-              </button>
-            }
+            onUseCurrent={onUseCurrentPosition}
           />
 
           {stops.map((stop, index) => (
@@ -282,14 +280,15 @@ function PointRow({
   onPick,
   onPickOnMap,
   onRemove,
-  extra,
+  onUseCurrent,
 }: {
   title: string;
   point: PlannerPoint | null;
   onPick: (point: PlannerPoint) => void;
   onPickOnMap: () => void;
   onRemove?: () => void;
-  extra?: React.ReactNode;
+  /** Csak a rajtnál van értelme — ott jelenik meg a célkereszt gomb. */
+  onUseCurrent?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<PlaceHit[]>([]);
@@ -325,8 +324,18 @@ function PointRow({
 
   return (
     <div className="rps__point">
+      {/*
+        EGY SOR A FEJLÉC: balra a szerep, jobbra a kiválasztott hely. Így egy
+        pillantással végigfut a szemed a rajt–megálló–cél láncon, és nem kell
+        háromszor annyit görgetni.
+      */}
       <div className="rps__point-head">
         <span className="rps__point-title">{title}</span>
+        <span
+          className={point ? 'rps__point-value' : 'rps__point-value rps__point-value--empty'}
+        >
+          {point ? (point.label ?? `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`) : 'Nincs kijelölve'}
+        </span>
         {onRemove ? (
           <button
             type="button"
@@ -339,21 +348,37 @@ function PointRow({
         ) : null}
       </div>
 
-      {point ? (
-        <p className="rps__point-value">
-          {point.label ?? `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`}
-        </p>
-      ) : (
-        <p className="rps__point-value rps__point-value--empty">Nincs kijelölve</p>
-      )}
-
-      <input
-        type="search"
-        className="rps__search"
-        placeholder="Keress címre…"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
+      {/* A kereső és a két gomb EGY sorban — a gombok csak ikonok. */}
+      <div className="rps__point-row">
+        <input
+          type="search"
+          className="rps__search"
+          placeholder="Keress címre…"
+          aria-label={`${title} keresése cím alapján`}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button
+          type="button"
+          className="rps__icon-btn"
+          aria-label={`${title} kijelölése a térképen`}
+          title="Kijelölés a térképen"
+          onClick={onPickOnMap}
+        >
+          <Icon name="pin" size={20} />
+        </button>
+        {onUseCurrent ? (
+          <button
+            type="button"
+            className="rps__icon-btn"
+            aria-label="Jelenlegi pozícióm használata"
+            title="Jelenlegi pozícióm"
+            onClick={onUseCurrent}
+          >
+            <Icon name="locate" size={20} />
+          </button>
+        ) : null}
+      </div>
 
       {searching && hits.length === 0 ? <p className="rps__hint">Keresés…</p> : null}
 
@@ -376,13 +401,6 @@ function PointRow({
           ))}
         </ul>
       ) : null}
-
-      <div className="rps__point-actions">
-        <button type="button" className="rps__ghost" onClick={onPickOnMap}>
-          🗺️ Kijelölés a térképen
-        </button>
-        {extra}
-      </div>
     </div>
   );
 }
@@ -391,14 +409,15 @@ function PointRow({
 export function toPlanInput(
   from: PlannerPoint,
   to: PlannerPoint,
-  stops: PlannerPoint[],
+  stops: (PlannerPoint | null)[],
   settings: PlannerSettings,
   activityType: ActivityType,
 ): RoutePlanInput {
   return {
     from: { lat: from.lat, lng: from.lng },
     to: { lat: to.lat, lng: to.lng },
-    stops: stops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+    /* A kijelöletlen megállók kimaradnak — a gomb amúgy is tiltva ilyenkor. */
+    stops: stops.flatMap((stop) => (stop ? [{ lat: stop.lat, lng: stop.lng }] : [])),
     profile: activityType === 'ride' ? 'cycling' : 'walking',
     mode: settings.mode,
     detour: settings.detour,

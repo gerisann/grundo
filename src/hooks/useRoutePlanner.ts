@@ -29,7 +29,8 @@ export interface RoutePlannerState {
   stage: PlannerStage;
   from: PlannerPoint | null;
   to: PlannerPoint | null;
-  stops: PlannerPoint[];
+  /** Egy elem `null`, amíg nincs kijelölve — lásd `addStop`. */
+  stops: (PlannerPoint | null)[];
   settings: PlannerSettings;
   plan: RoutePlanResult | null;
   busy: boolean;
@@ -76,8 +77,13 @@ export function useRoutePlanner(activityType: ActivityType) {
     });
   }, []);
 
+  /*
+    ⚠️ AZ ÜRES MEGÁLLÓ `null`, NEM (0, 0). A nullpont a Guineai-öbölben van:
+    egy kijelöletlen megállóval a tervező odáig akarna eljutni. Így viszont
+    látszik, hogy még nincs kitöltve, és a tervezés sem indulhat.
+  */
   const addStop = useCallback(() => {
-    setState((prev) => (prev.stops.length >= 5 ? prev : { ...prev, stops: [...prev.stops, { lat: 0, lng: 0 }] }));
+    setState((prev) => (prev.stops.length >= 5 ? prev : { ...prev, stops: [...prev.stops, null] }));
   }, []);
 
   const removeStop = useCallback((index: number) => {

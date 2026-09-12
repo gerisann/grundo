@@ -67,43 +67,46 @@
 
 /* ── Pontok ─────────────────────────────────────────────────────── */
 
+/*
+  KOMPAKT: kártyánként két sor. Fent a szerep és a kiválasztott hely egymás
+  mellett, lent a kereső és a két ikonos gomb. Korábban öt sor volt
+  kártyánként (felirat, érték, kereső, két szöveges gomb), és három ponttal a
+  lap alja már a képernyőn kívülre került.
+*/
 .rps__point {
   padding: var(--sp-3);
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-2);
   background: var(--bg-secondary);
   border-radius: var(--r-md);
 }
 
 .rps__point-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 
 .rps__point-title {
+  flex: 0 0 auto;
   font-size: var(--fs-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
 }
 
-.rps__point-remove {
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: var(--r-pill);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
 .rps__point-value {
-  margin: var(--sp-1) 0 var(--sp-2);
-  font-size: var(--fs-body);
+  /* A hely a sor JOBB oldalán, a felirattól elhúzva. */
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-size: var(--fs-small);
   font-weight: 600;
   color: var(--text-primary);
-  /* Hosszú cím ne tolja szét a kártyát. */
-  overflow-wrap: anywhere;
+  /* Hosszú cím egy sorban marad, a végén levágva — nem tolja szét a kártyát. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rps__point-value--empty {
@@ -112,8 +115,26 @@
   opacity: 0.75;
 }
 
+.rps__point-remove {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.rps__point-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+
 .rps__search {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-sm);
@@ -121,6 +142,26 @@
   color: var(--text-primary);
   font-family: var(--font);
   font-size: var(--fs-body);
+}
+
+/*
+  IKONOS GOMB. Négyzetes, a beviteli mezővel azonos magasságban — a felirat
+  helyett `aria-label` és `title` viszi a jelentést, hogy a sor ne törjön.
+*/
+.rps__icon-btn {
+  flex: 0 0 auto;
+  width: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  background: var(--bg-primary);
+  color: var(--brand-500);
+  cursor: pointer;
+}
+
+.rps__icon-btn:active {
+  background: var(--bg-tertiary);
 }
 
 .rps__hits {
@@ -161,13 +202,6 @@
   flex: 0 0 auto;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-}
-
-.rps__point-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
 }
 
 .rps__ghost {
