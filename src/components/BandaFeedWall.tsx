@@ -121,7 +121,7 @@ function BandaPostBoard({ bandaId, kind, canPost, canModerate, placeholder, empt
   function chooseImage(file: File | undefined) {
     if (!file) return;
     if (!file.type.startsWith('image/')) { setError('Csak képet lehet feltölteni.'); return; }
-    if (file.size > MAX_BANDA_FEED_IMAGE_BYTES) { setError('A kiválasztott kép legfeljebb 2 MB lehet.'); return; }
+    if (file.size > MAX_BANDA_FEED_IMAGE_BYTES) { setError('A kiválasztott kép legfeljebb 5 MB lehet.'); return; }
     setError(''); setImageFile(file);
   }
 

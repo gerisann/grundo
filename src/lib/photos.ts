@@ -203,22 +203,32 @@ export async function uploadBandaBrandImage(
   return { path, url: `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}v=${Date.now()}` };
 }
 
-/** A banda-hírfolyam egyetlen csatolt képének felső korlátja. */
-export const MAX_BANDA_FEED_IMAGE_BYTES = 2 * 1024 * 1024;
+/**
+ * A banda-hírfolyam egyetlen csatolt képének felső korlátja.
+ *
+ * 5 MB — Geri kérése (2026-09-12). A korábbi 2 MB a mai telefonok
+ * kameraképeit rendszeresen elutasította: egy 12 MP-es felvétel jellemzően
+ * 3–5 MB. A KORLÁT NEM ELHAGYHATÓ (a feltöltés a mi tárhelyünkre megy), de
+ * ekkora mérettel már nem a hétköznapi használatot akadályozza.
+ *
+ * A kép amúgy is átmegy a `compressImageToJpeg`-en, tehát a ténylegesen
+ * tárolt méret ennél jóval kisebb; ez a szám az EREDETI fájlra vonatkozik.
+ */
+export const MAX_BANDA_FEED_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /**
  * Banda-posztkép: ugyanúgy EXIF-mentes JPEG, mint az aktivitásfotó, de
- * legfeljebb 2 MB-os eredeti fájlból és legfeljebb 2 MB-os eredménnyel.
+ * legfeljebb 5 MB-os eredeti fájlból és legfeljebb 5 MB-os eredménnyel.
  */
 export async function uploadBandaFeedImage(file: File, uid: string, bandaId: string): Promise<string> {
   if (!storage) throw new PhotoError('A képfeltöltés nincs beállítva.');
   if (file.size > MAX_BANDA_FEED_IMAGE_BYTES) {
-    throw new PhotoError('A kiválasztott kép legfeljebb 2 MB lehet.');
+    throw new PhotoError('A kiválasztott kép legfeljebb 5 MB lehet.');
   }
 
   const blob = await compressImageToJpeg(file);
   if (blob.size > MAX_BANDA_FEED_IMAGE_BYTES) {
-    throw new PhotoError('A tömörített kép is nagyobb 2 MB-nál. Válassz kisebb képet.');
+    throw new PhotoError('A tömörített kép is nagyobb 5 MB-nál. Válassz kisebb képet.');
   }
 
   const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;

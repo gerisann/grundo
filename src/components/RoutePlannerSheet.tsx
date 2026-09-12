@@ -40,6 +40,7 @@ export const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
 
 export function RoutePlannerSheet({
   activityType,
+  near,
   from,
   to,
   stops,
@@ -56,6 +57,8 @@ export function RoutePlannerSheet({
   onClose,
 }: {
   activityType: ActivityType;
+  /** A keresés KÖZELSÉGE — enélkül a találatok távolsága értelmetlen. */
+  near?: { lat: number; lng: number } | null;
   from: PlannerPoint | null;
   to: PlannerPoint | null;
   stops: (PlannerPoint | null)[];
@@ -105,6 +108,7 @@ export function RoutePlannerSheet({
             onPick={(point) => onChangePoint('from', point)}
             onPickOnMap={() => onPickOnMap('from')}
             onUseCurrent={onUseCurrentPosition}
+            near={near}
           />
 
           {stops.map((stop, index) => (
@@ -115,6 +119,7 @@ export function RoutePlannerSheet({
               onPick={(point) => onChangePoint(index, point)}
               onPickOnMap={() => onPickOnMap(index)}
               onRemove={() => onRemoveStop(index)}
+              near={near}
             />
           ))}
 
@@ -123,6 +128,7 @@ export function RoutePlannerSheet({
             point={to}
             onPick={(point) => onChangePoint('to', point)}
             onPickOnMap={() => onPickOnMap('to')}
+            near={near}
           />
 
           {/* A szerver plafonja öt megálló — a felület se engedjen többet. */}
@@ -281,9 +287,12 @@ function PointRow({
   onPickOnMap,
   onRemove,
   onUseCurrent,
+  near,
 }: {
   title: string;
   point: PlannerPoint | null;
+  /** A keresés közelsége — a találatok EHHEZ képest vannak rendezve. */
+  near?: { lat: number; lng: number } | null;
   onPick: (point: PlannerPoint) => void;
   onPickOnMap: () => void;
   onRemove?: () => void;
@@ -308,7 +317,7 @@ function PointRow({
     setSearching(true);
     const timer = window.setTimeout(() => {
       void api
-        .routesGeocode(query)
+        .routesGeocode(query, near ?? undefined)
         .then((result) => {
           if (current === token.current) setHits(result.results);
         })
@@ -320,7 +329,7 @@ function PointRow({
         });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [query]);
+  }, [query, near]);
 
   return (
     <div className="rps__point">

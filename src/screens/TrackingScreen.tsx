@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cellToChildren, latLngToCell } from 'h3-js';
 import { Button, OptionSwitch } from '@/components/ui';
+import { Icon } from '@/components/Icon';
 import { HexMap } from '@/components/HexMap';
 import type { MapViewProps } from '@/components/MapView';
 import { SaveActivityForm } from '@/components/SaveActivityForm';
@@ -1006,64 +1007,97 @@ export function TrackingScreen() {
           <button
             type="button"
             className="track__type-picker-close"
-            aria-label="Mozgásforma-választó bezárása"
+            aria-label={planner.state.plan ? 'Bezárás' : 'Mozgásforma-választó bezárása'}
             onClick={() => {
               setPickerOpen(false);
-              setPendingType(null);
+              if (!planner.state.plan) setPendingType(null);
             }}
           >
             ✕
           </button>
-          <OptionSwitch
-            label="Mozgásforma"
-            value={type}
-            onChange={setPendingType}
-            options={[
-              { value: 'run', label: 'Futás' },
-              { value: 'walk', label: 'Séta' },
-              { value: 'ride', label: 'Bringa' },
-            ]}
-          />
-          {/*
-            ⚠️ A SORREND SZÁNDÉKOS: előbb a mozgásforma, utána ez. A tervező a
-            mozgásformától függ (a kerékpárút-preferencia csak bringánál
-            értelmes), tehát fordítva nem is lenne értelmezhető a kérdés.
-          */}
-          <div className={type ? undefined : 'track__mode-locked'} aria-disabled={!type}>
-          <OptionSwitch
-            label="Hogyan indulsz"
-            value={planner.state.plan ? 'route' : 'roam'}
-            onChange={(value) => {
-              /*
-                MINDKÉT IRÁNY MŰKÖDJÖN. A „Barangolás" nem csak a választó
-                állását állítja vissza: elveti a tervet ÉS a szellemvonalat is,
-                különben a tervezett útvonal ottmaradna a térképen, miközben a
-                felhasználó már szabad barangolást választott.
-              */
-              if (value === 'route') planner.open();
-              else {
-                planner.discardPlan();
-                setGuidance({ route: null, view: 'grundo' });
-              }
-            }}
-            options={[
-              { value: 'roam', label: 'Barangolás' },
-              { value: 'route', label: 'Útvonal' },
-            ]}
-          />
-          </div>
-          {/*
-            Nem néma tiltás: megmondjuk, MIÉRT nem választható még. A tervező
-            a mozgásformától függ, nem tudja kitalálni.
-          */}
-          {!type ? (
-            <p className="track__mode-hint">
-              Előbb válassz mozgásformát — az útvonal ettől függ.
-            </p>
-          ) : null}
-          <Button block variant="ghost" size="sm" onClick={() => setSavedRoutesOpen(true)}>
-            Mentett útvonalak
-          </Button>
+
+          {planner.state.plan ? (
+            /*
+              ⚠️ TERV UTÁN NEM VÁLASZTÓ KELL, HANEM VISSZAJELZÉS. A „Gyerünk!"
+              után a felhasználó már döntött: mozgásformát és útvonalat is
+              választott. Ha ilyenkor ugyanaz a két kapcsoló fogadja, az úgy
+              néz ki, mintha nem történt volna semmi — pedig a navigáció már
+              be is kapcsolt. Itt tehát az eredmény áll, és az, hogy mi a
+              következő lépés.
+            */
+            <div className="track__route-ready">
+              <span className="track__route-ready-badge">
+                <Icon name="pin" size={18} />
+                Útvonal kiválasztva
+              </span>
+              <strong className="track__route-ready-stat">
+                {(planner.state.plan.totalDistanceM / 1000).toFixed(1).replace('.', ',')} km
+                {' · '}
+                {Math.round(planner.state.plan.totalDurationS / 60)} perc
+              </strong>
+              <p className="track__route-ready-hint">
+                Indítsd a <strong>Play</strong> gombbal.
+              </p>
+              <div className="track__route-ready-actions">
+                <Button variant="ghost" size="sm" onClick={planner.reopenSettings}>
+                  Módosítás
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    planner.discardPlan();
+                    setGuidance({ route: null, view: 'grundo' });
+                  }}
+                >
+                  Elvetés
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <OptionSwitch
+                label="Mozgásforma"
+                value={type}
+                onChange={setPendingType}
+                options={[
+                  { value: 'run', label: 'Futás' },
+                  { value: 'walk', label: 'Séta' },
+                  { value: 'ride', label: 'Bringa' },
+                ]}
+              />
+              {/*
+                ⚠️ A SORREND SZÁNDÉKOS: előbb a mozgásforma, utána ez. A tervező
+                a mozgásformától függ (a kerékpárút-preferencia csak bringánál
+                értelmes), tehát fordítva nem is lenne értelmezhető a kérdés.
+              */}
+              <div className={type ? undefined : 'track__mode-locked'} aria-disabled={!type}>
+                <OptionSwitch
+                  label="Hogyan indulsz"
+                  value="roam"
+                  onChange={(value) => {
+                    if (value === 'route') planner.open();
+                  }}
+                  options={[
+                    { value: 'roam', label: 'Barangolás' },
+                    { value: 'route', label: 'Útvonal' },
+                  ]}
+                />
+              </div>
+              {/*
+                Nem néma tiltás: megmondjuk, MIÉRT nem választható még. A
+                tervező a mozgásformától függ, nem tudja kitalálni.
+              */}
+              {!type ? (
+                <p className="track__mode-hint">
+                  Előbb válassz mozgásformát — az útvonal ettől függ.
+                </p>
+              ) : null}
+              <Button block variant="ghost" size="sm" onClick={() => setSavedRoutesOpen(true)}>
+                Mentett útvonalak
+              </Button>
+            </>
+          )}
         </div>
       ) : null}
 
@@ -1078,6 +1112,12 @@ export function TrackingScreen() {
       {planner.state.stage === 'settings' ? (
         <RoutePlannerSheet
           activityType={type ?? 'run'}
+          /*
+            A KERESÉS KÖZELSÉGE a felhasználó helyzete. Enélkül a szerver
+            budapesti alapértelmezésre esne vissza, és vidéken minden találat
+            rossz sorrendben jönne — a rendezés TÁVOLSÁG szerint megy.
+          */
+          near={mapPosition ?? null}
           from={planner.state.from}
           to={planner.state.to}
           stops={planner.state.stops}
@@ -1135,20 +1175,6 @@ export function TrackingScreen() {
         </div>
       ) : null}
 
-      {/*
-        FOGASKERÉK — vissza a beállításokhoz, ha a tervet módosítanád. Csak
-        akkor látszik, ha van mire visszatérni.
-      */}
-      {planner.state.stage === 'closed' && planner.state.plan && planner.state.picking === null ? (
-        <button
-          type="button"
-          className="track__planner-gear"
-          aria-label="Útvonal beállításai"
-          onClick={planner.reopenSettings}
-        >
-          ⚙️
-        </button>
-      ) : null}
 
       {/*
         A TERÜLETSZERZÉS VISSZAJELZÉSE — portálban, a `body`-ban (lásd

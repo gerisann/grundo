@@ -23,6 +23,13 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.3.1] - 2026-09-12 (Javítás)
+
+- Az útvonaltervezés valódi végponton is ellenőrizve; javítva a címkeresés közelsége, ami üres paraméternél a Föld nullpontjára esett (a Deák tér 1427 km-re látszott Budapesttől)
+- A terv elfogadása után a Rögzítés panel az eredményt mutatja (Útvonal kiválasztva, táv, idő) a választók helyett, Módosítás és Elvetés gombbal
+- A mentés panel alatt eltűnnek a térkép lebegő gombjai (nagyító, célkereszt, iránytű) — eddig ráúsztak az űrlapra
+- A banda-hírfolyam képkorlátja 2 MB-ról 5 MB-ra nőtt — a mai telefonok kameraképei rendszeresen elakadtak rajta
+
 ## [1.3.0] - 2026-09-12 (Új funkció)
 
 - Útvonaltervezés a Rögzítés képernyőn: Barangolás | Útvonal választó, teljesképernyős tervező (rajt, cél, megállók, címkereső, jelenlegi pozíció, térképi kijelölés)

@@ -33,13 +33,20 @@
 }
 
 /*
-  A mentés-panel nyitva: a térkép saját lebegő gombjai (hexagon, 2D/3D) a
-  jobb/bal alsó sarokban ülnek, pont ott, ahol a mentés-panel is — Geri
-  mérése (2026-08-27) a Mentés gomb és a 2D/3D váltó átfedését mutatta.
-  Ilyenkor a gombok úgyis feleslegesek: a panel a teljes térképet eltakarja.
+  A mentés-panel nyitva: a térkép saját lebegő gombjai a panel alatt/fölött
+  ülnek, pont ott, ahol a mentés űrlapja is.
+
+  ⚠️ MINDEGYIK GOMB, NEM CSAK KETTŐ. Eredetileg (2026-08-27) csak a hexagon és
+  a 2D/3D váltó tűnt el; Geri mérése (2026-09-12) viszont a NAGYÍTÓ gombokat a
+  „Képek" szekción, a célkeresztet és az iránytűt pedig a Mentés gomb mellett
+  mutatta — azok is átfednek. Ilyenkor egyik gomb sem használható amúgy sem: a
+  panel a teljes térképet eltakarja.
 */
 .track--save-open .track__map .mapview__hex-toggle,
-.track--save-open .track__map .mapview__tilt {
+.track--save-open .track__map .mapview__tilt,
+.track--save-open .track__map .mapview__zoom-controls,
+.track--save-open .track__map .mapview__nav,
+.track--save-open .track__map .mapview__recenter {
   display: none;
 }
 
@@ -52,6 +59,12 @@
 .track--picker-open .track__map .mapview__tilt {
   display: none;
 }
+
+/*
+  ⚠️ A NAGYÍTÓ A VÁLASZTÓNÁL MARAD. A választó modul alacsonyabb, mint a
+  mentés-panel, és a térkép fölötte végig látszik — ott a nagyítás és a
+  középre állítás továbbra is hasznos, tehát azokat NEM rejtjük el.
+*/
 
 .track[data-recording-view='navigation'] .track__map .mapview__hex-toggle {
   display: none;
@@ -1214,23 +1227,6 @@
   cursor: pointer;
 }
 
-/* Fogaskerék: vissza a tervező beállításaihoz. */
-.track__planner-gear {
-  position: fixed;
-  z-index: 45;
-  right: var(--sp-4);
-  bottom: calc(var(--dock-height) + var(--dock-fab-overhang) + var(--safe-bottom) + var(--sp-3));
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: var(--r-pill);
-  background: var(--bg-secondary);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-  font-size: 20px;
-  cursor: pointer;
-}
 
 /*
   A „Barangolás | Útvonal" választó tiltva, amíg nincs mozgásforma.
@@ -1249,4 +1245,56 @@
   font-size: var(--fs-small);
   text-align: center;
   color: var(--text-secondary);
+}
+
+/*
+  TERV UTÁNI VISSZAJELZÉS a mozgásforma-választó helyén.
+
+  ⚠️ Nem díszítés: a „Gyerünk!" után a felhasználó már döntött, és ha ilyenkor
+  ugyanaz a két kapcsoló fogadja, az úgy néz ki, mintha semmi nem történt
+  volna — pedig a navigáció közben be is kapcsolt. Itt tehát az EREDMÉNY áll,
+  és az, hogy mi a következő lépés.
+*/
+.track__route-ready {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  text-align: center;
+}
+
+.track__route-ready-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
+  color: var(--brand-500);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.track__route-ready-stat {
+  font-size: var(--fs-heading);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.track__route-ready-hint {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.track__route-ready-hint strong {
+  color: var(--text-primary);
+}
+
+.track__route-ready-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
 }

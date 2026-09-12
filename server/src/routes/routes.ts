@@ -165,10 +165,16 @@ routesRouter.get('/geocode', async (req: AuthedRequest, res: Response, next) => 
 
     /*
       A KÖZELSÉG a térkép közepe, `lng,lat` sorrendben (ez a Mapbox alakja).
-      Hiányában Budapest közepe — jobb, mint a Föld közepe, és a rendezés
-      úgyis távolság szerint megy.
+
+      ⚠️ AZ ÜRES ÉRTÉK NEM NULLA. A `Number('')` nem `NaN`, hanem **0**, tehát
+      a kézenfekvő `Number.isFinite(...)` ellenőrzés az üres paramétert
+      érvényes nullának veszi — és a közelség a Föld nullpontjára esik. Mérve
+      (2026-09-12, valódi végponti próbán): a „Deák Ferenc tér” 1427 km-re
+      látszott Budapesttől, mert az origin az Atlanti-óceánra került.
+      Ezért a darabolás ELŐTT kell eldönteni, hogy egyáltalán kaptunk-e értéket.
     */
-    const parts = String(req.query.near ?? '').split(',').map(Number);
+    const raw = String(req.query.near ?? '').trim();
+    const parts = raw ? raw.split(',').map(Number) : [];
     const origin = {
       lng: Number.isFinite(parts[0]) ? (parts[0] as number) : 19.05,
       lat: Number.isFinite(parts[1]) ? (parts[1] as number) : 47.5,
