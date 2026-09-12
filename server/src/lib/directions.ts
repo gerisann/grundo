@@ -45,8 +45,24 @@ import {
   findShortDetours,
 } from '../../../src/game/routeShape';
 
-/** A Directions-hívás legfeljebb ennyi ideig futhat. */
-const REQUEST_TIMEOUT_MS = 8_000;
+/**
+ * A Directions-hívás legfeljebb ennyi ideig futhat.
+ *
+ * ⚠️ A 8 MÁSODPERC KEVÉS VOLT, ÉS EZ ÉLESBEN DERÜLT KI (2026-09-12). Egy kör
+ * tervezése 20 PÁRHUZAMOS hívást indít (10 jelölt × 2 leg); ennyi egyszerre
+ * érkező kérésre a Cloud Run új GraphHopper-példányt indít, annak pedig be
+ * kell töltenie a teljes magyar gráfot. A jelöltek eközben sorra túllépték a
+ * 8 másodpercet, mind `null` lett, és a tervezés „nem tudtunk kört tervezni”
+ * üzenettel hasalt el — miközben a „Csak oda” (EGY hívás) működött.
+ *
+ * A GraphHopper naplója mondta ki: „Starting new instance … no existing
+ * capacity for current traffic”, majd 843 ms-os válaszok, amint felállt.
+ *
+ * A 25 másodperc a hidegindítást is átengedi. ⚠️ Ez ENYHÍTÉS, nem megoldás: az
+ * OKOT a GraphHopper `min-instances=1` szünteti meg (nincs hidegindítás).
+ * Meleg gráfon egy hívás mérve 0,8–1 s, tehát ez a korlát ott nem aktív.
+ */
+const REQUEST_TIMEOUT_MS = 25_000;
 
 /** Egy rosszul ráillesztett köztes pont legfeljebb ilyen messze lehet a hibától. */
 const WAYPOINT_DEFECT_RADIUS_M = 150;
