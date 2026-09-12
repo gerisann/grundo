@@ -23,6 +23,13 @@ módosításoknál nem kell hozzá verzióemelés.
 folytatósorokat elveszítené.
 
 <!-- ÚJ BEJEGYZÉS IDE -->
+## [1.1.1] - 2026-09-12 (Javítás)
+
+- Útvonal-labor: a bezárt terület némán eltűnt a térképről, ha a rajzolandó cellahalmazban ismétlődő cella volt (h3-js: Duplicate input) — a halmaz mostantól deduplikált
+- Útvonal-labor: a cellánkénti rajz 40 000 cella fölött sem marad el, hanem a látható nézetre töltődik (mint az appban a csempés lekérés)
+- Útvonal-labor: részletező stopper — a teljes idő fázisokra bontva (GraphHopper, geometria, átvitel, rajzolás)
+- Útvonal-labor: a némán elvetett hurkok (too_large, interior_too_small) megjelennek a telemetriában
+
 ## [1.1.0] - 2026-09-12 (Új funkció)
 
 - A→B útvonaltervező motor: pont-pont útvonal, kétoldali oda-vissza kör, köztes megállók

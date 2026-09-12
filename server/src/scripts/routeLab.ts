@@ -26,7 +26,15 @@ import { GAMEPLAY } from '../../../src/config/gameplay';
 import { distanceM, type LatLng } from '../../../src/game/geo';
 import { decodePolyline } from '../../../src/game/polyline';
 import { countSelfRevisits, countShortDetours, countUTurns } from '../../../src/game/routeShape';
-import { cellToBoundary, cellToChildren, cellsToMultiPolygon } from 'h3-js';
+import {
+  cellToBoundary,
+  cellToChildren,
+  cellToParent,
+  cellsToMultiPolygon,
+  gridDisk,
+  latLngToCell,
+  polygonToCells,
+} from 'h3-js';
 
 import { areaToGp } from '../../../src/game/scoring';
 import { hasCompactInterior, loopCellCount } from '../../../src/game/loopInterior';
@@ -217,8 +225,102 @@ async function topVictims(
   }));
 }
 
-/** Ennél több cellát már nem rajzolunk ki CELLÁNKÉNT — a válasz mérete futna el. */
+/**
+ * Ennél több cellát nem küldünk EGYBEN a tervezés válaszában.
+ *
+ * ⚠️ EZ NEM A SZÁMÍTÁS PLAFONJA. A bezárt cellahalmazt a motor tömör belsővel
+ * tetszőleges méretben kiszámolja (lásd `src/game/loopInterior.ts`); itt a
+ * VÁLASZ MÉRETE a korlát. Mérve (2026-09-12): a cellánkénti GeoJSON 244
+ * byte/cella, tehát 40 000 cella már 9,3 MB, 200 000 pedig 47 MB.
+ *
+ * E fölött nem marad el a cellarajz: igény szerint, a LÁTHATÓ nézetre jön —
+ * lásd `cellsInBbox` és a lap `refreshVisibleCells` függvénye. Ugyanaz az
+ * eljárás, mint az éles appban (`TerritoryScreen` → `api.tiles(view)`).
+ */
 const CELL_RENDER_LIMIT = 40_000;
+
+/**
+ * A nézet szerinti lekérdezés bucket-felbontása.
+ *
+ * A rajzolt cellákat res8 szülő szerint csoportosítjuk, így egy bbox-kérésnél
+ * nem kell végigmenni több százezer cellán — csak a metsző bucketeken. Egy res8
+ * szülő 7^4 = 2401 res12 cellát fog össze (~0,7 km²), tehát a zoom 15-ös
+ * képernyő tipikusan néhány bucketet érint.
+ */
+const CELL_BUCKET_RES = 8;
+
+/** A nézet szerinti válasz plafonja — védőkorlát elszabadult bbox ellen. */
+const VISIBLE_CELL_LIMIT = 60_000;
+
+/**
+ * A LEGUTÓBBI tervezés kirajzolható cellái, bucketelve.
+ *
+ * ⚠️ EGY FELHASZNÁLÓRA MÉRETEZVE. A labor kézi eszköz, egy folyamat, egy fül:
+ * szándékosan nincs munkamenet-azonosító, a következő tervezés felülírja ezt.
+ * Ez a megoldás így NEM emelhető át az éles kiszolgálóba.
+ */
+let lastDrawing: Map<string, { cell: string; level: number }[]> | null = null;
+
+/** A bucketelt rajz felépítése — a tervezés végén, egyszer. */
+function indexDrawing(byLevel: ReadonlyMap<number, string[]>) {
+  const buckets = new Map<string, { cell: string; level: number }[]>();
+  for (const [level, cells] of byLevel) {
+    for (const cell of cells) {
+      const parent = cellToParent(cell, CELL_BUCKET_RES);
+      const bucket = buckets.get(parent);
+      if (bucket) bucket.push({ cell, level });
+      else buckets.set(parent, [{ cell, level }]);
+    }
+  }
+  return buckets;
+}
+
+/**
+ * A látható nézetbe eső cellák GeoJSON-ja a legutóbbi tervezésből.
+ *
+ * ⚠️ KÉT MAGVETÉS KELL, NEM EGY — mérve (2026-09-12): a `polygonToCells` csak
+ * azokat a szülőket adja, amelyeknek a KÖZÉPPONTJA a bboxban van. Nagy
+ * nagyításon a nézet KISEBB, mint egy res8 cella (~0,74 km²), ilyenkor egyetlen
+ * középpont sem esik bele, a halmaz üres, és a rács eltűnik — pont ott, ahol a
+ * részletet néznéd. Ezért a sarkok és a közép szülőjét is felvesszük, és az
+ * egészet egy gyűrűvel kiterjesztjük (a szélen belógó szülők miatt).
+ */
+function cellsInBbox(bbox: { w: number; s: number; e: number; n: number }) {
+  if (!lastDrawing) return { geojson: null as Record<string, unknown> | null, cells: 0 };
+
+  const ring: [number, number][] = [
+    [bbox.w, bbox.s],
+    [bbox.e, bbox.s],
+    [bbox.e, bbox.n],
+    [bbox.w, bbox.n],
+    [bbox.w, bbox.s],
+  ];
+  // `true` = GeoJSON sorrend ([lng, lat]).
+  const seeds = polygonToCells(ring, CELL_BUCKET_RES, true);
+  const centre: [number, number] = [(bbox.w + bbox.e) / 2, (bbox.s + bbox.n) / 2];
+  for (const [lng, lat] of [...ring, centre]) {
+    seeds.push(latLngToCell(lat, lng, CELL_BUCKET_RES));
+  }
+
+  const parents = new Set<string>();
+  for (const seed of seeds) for (const near of gridDisk(seed, 1)) parents.add(near);
+
+  const byLevel = new Map<number, string[]>();
+  let count = 0;
+  for (const parent of parents) {
+    const bucket = lastDrawing.get(parent);
+    if (!bucket) continue;
+    for (const { cell, level } of bucket) {
+      if (count >= VISIBLE_CELL_LIMIT) break;
+      const list = byLevel.get(level);
+      if (list) list.push(cell);
+      else byLevel.set(level, [cell]);
+      count += 1;
+    }
+  }
+
+  return { geojson: cellsToGeoJson(byLevel), cells: count };
+}
 
 /**
  * A tömör belső kibontásának plafonja.
@@ -252,8 +354,17 @@ function cellsToAreaGeoJson(byLevel: ReadonlyMap<number, string[]>): Record<stri
         properties: { level },
         geometry: { type: 'MultiPolygon', coordinates },
       });
-    } catch {
-      // Egyetlen rossz cellaazonosító miatt ne tűnjön el az egész réteg.
+    } catch (error) {
+      /*
+        ⚠️ EZ A CATCH KORÁBBAN NÉMA VOLT, és pont azt okozta, amit meg akart
+        előzni: a terület CSENDBEN eltűnt a térképről, miközben a telemetria
+        tízezres cellaszámot írt (mérve, 2026-09-12, 58 493 cellás körön).
+        Ha elnyeljük, legalább mondjuk meg, mit.
+      */
+      console.warn(
+        `⚠️  cellsToMultiPolygon elhasalt a(z) ${level}. szinten ` +
+          `(${cells.length} cella): ${(error as Error).message}`,
+      );
     }
   }
   return { type: 'FeatureCollection', features };
@@ -303,7 +414,20 @@ function measureGeometry(
     trace.push(...part);
   }
 
+  const shapedAt = performance.now();
   const shaped = shapeCandidateCells(trace);
+  const shapeMs = Math.round(performance.now() - shapedAt);
+
+  /*
+    ELVETETT BEZÁRÁSOK — a motor NÉMÁN dobja el a túl nagy hurkot.
+    (`loopDetection.ts`: `LoopTooLargeError` → `rejected` + `continue`.) Ettől
+    egy bezáródó körre 0 terület jöhet ki, minden hibaüzenet nélkül — ez volt
+    a „hol van lila folt, hol nincs” rejtélye. Ok szerint összesítve kiírjuk.
+  */
+  const rejected: Record<string, number> = {};
+  for (const item of shaped.geometry.loopDiagnostics.rejected) {
+    rejected[item.reason] = (rejected[item.reason] ?? 0) + 1;
+  }
 
   /*
     ⚠️ A TERÜLET NEM A MATERIALIZÁLT CELLÁK SZÁMA. Nagy huroknál a motor
@@ -327,7 +451,11 @@ function measureGeometry(
     kié most a cella (áttörés, elvétel, megerősítés); birtokviszony nélkül a
     körüljárás száma adja a szintet, egyre vágva és a maximumon megállítva.
   */
+  const windingAt = performance.now();
   const turns = windingCounts(shaped.geometry.cellPath, shaped.cells);
+  const windingMs = Math.round(performance.now() - windingAt);
+
+  const expandAt = performance.now();
 
   /*
     ⚠️ A TÖMÖR BELSŐT KIBONTJUK A KIRAJZOLÁSHOZ. Az éles app a szerverről
@@ -339,19 +467,31 @@ function measureGeometry(
     A kibontás PLAFONOS: a motor épp azért tart tömör belsőt, hogy egy
     Balaton-méretű hurok ne váljon több millió cellává.
   */
-  const drawable: string[] = [...shaped.cells];
+  /*
+    ⚠️ HALMAZ, NEM TÖMB — ez nem stílus kérdése, hanem HIBAJAVÍTÁS (mérve,
+    2026-09-12). A `cellsToMultiPolygon` ISMÉTLŐDŐ cellára `Duplicate input
+    (code: 10)` hibát dob, és attól a lila területréteg NÉMÁN eltűnt a
+    térképről, miközben a telemetria 58 493 cellát írt ki. Duplikátum két
+    helyről jött: a compact parentek gyerekei között ott vannak a `shaped.cells`
+    határsáv-cellái is, és KÉT ÁTFEDŐ HUROKNÁL ugyanaz a parent kétszer bomlik
+    ki. A cellánkénti rajz ezt túlélte (cellánként rajzol), az összevont nem —
+    ezért látszott hol a rács, hol semmi.
+  */
+  const drawable = new Set<string>(shaped.cells);
   let expanded = 0;
   for (const loop of shaped.geometry.loops) {
     const compact = loop.compactInterior;
     if (!compact) continue;
     for (const parent of compact.fullParents) {
-      if (drawable.length >= EXPAND_LIMIT) break;
-      const children = cellToChildren(parent, GAMEPLAY.H3_RESOLUTION);
-      drawable.push(...children);
-      expanded += children.length;
+      if (drawable.size >= EXPAND_LIMIT) break;
+      for (const child of cellToChildren(parent, GAMEPLAY.H3_RESOLUTION)) {
+        if (drawable.has(child)) continue;
+        drawable.add(child);
+        expanded += 1;
+      }
     }
   }
-  const truncated = drawable.length >= EXPAND_LIMIT;
+  const truncated = drawable.size >= EXPAND_LIMIT;
 
   const byLevel = new Map<number, string[]>();
   for (const cell of drawable) {
@@ -360,8 +500,21 @@ function measureGeometry(
     if (bucket) bucket.push(cell);
     else byLevel.set(level, [cell]);
   }
+  /*
+    A bucket-index MINDIG felépül, a plafontól függetlenül: a nézet szerinti
+    lekérdezés akkor is jól jön, ha a teljes halmaz belefért a válaszba (a
+    Mapbox a csempe méretkorlátja fölött csendben eldob feature-öket).
+  */
+  lastDrawing = indexDrawing(byLevel);
+  const expandMs = Math.round(performance.now() - expandAt);
+
   const distanceKm = legs.reduce((sum, leg) => sum + leg.route.distanceM, 0) / 1000;
   const perKm = GAMEPLAY.BASE_GP_PER_KM[profile === 'cycling' ? 'ride' : 'run'];
+
+  const geoJsonAt = performance.now();
+  const areaGeoJson = cellsToAreaGeoJson(byLevel);
+  const cellsGeoJson = drawable.size <= CELL_RENDER_LIMIT ? cellsToGeoJson(byLevel) : null;
+  const geoJsonMs = Math.round(performance.now() - geoJsonAt);
 
   return {
     cells: cellCount,
@@ -374,9 +527,15 @@ function measureGeometry(
       százezer cellát zár be, az több tíz megabájt lenne.
     */
     /* Távoli nézethez összevonva, közelihez cellánként. */
-    areaGeoJson: cellsToAreaGeoJson(byLevel),
-    cellsGeoJson: drawable.length <= CELL_RENDER_LIMIT ? cellsToGeoJson(byLevel) : null,
-    drawnCells: drawable.length,
+    areaGeoJson,
+    cellsGeoJson,
+    /* A plafon fölött a lap a látható nézetre kéri a cellákat (`/cells`). */
+    cellsOnDemand: drawable.size > CELL_RENDER_LIMIT,
+    drawnCells: drawable.size,
+    /* Ok szerint, hogy a némán eldobott hurok LÁTHATÓ legyen — lásd fent. */
+    rejected,
+    /* A geometria fázisai külön — ez a „Számítás” bontása. */
+    phases: { shape: shapeMs, winding: windingMs, expand: expandMs, geojson: geoJsonMs },
     expandedCells: expanded,
     truncated,
     /* Csak a birtokviszony-lekérdezéshez kell; a válaszból kimarad. */
@@ -461,11 +620,19 @@ async function plan(request: PlanRequest) {
   });
   if (!result.ok) return { ok: false as const, reason: result.reason };
 
+  /*
+    ⚠️ AZ `elapsedMs` A GRAPHHOPPER-FÁZIS, NEM A TELJES MUNKA. A geometria
+    utána jön, és nagy körnél TÖBB, mint maga a tervezés. Korábban ez csak az
+    objektum-literál kiértékelési sorrendjéből következett — most kimondva,
+    mert erre épül a felület „Tervezés” és „Számítás” sora.
+  */
+  const routeMs = Math.round(performance.now() - started);
+
   const { loop } = result;
   return {
     ok: true as const,
     mode: 'loop' as const,
-    elapsedMs: Math.round(performance.now() - started),
+    elapsedMs: routeMs,
     outbound: loop.outbound.points.map((point) => [point.lng, point.lat]),
     inbound: loop.inbound.points.map((point) => [point.lng, point.lat]),
     totalDistanceM: loop.totalDistanceM,
@@ -683,8 +850,17 @@ const PAGE = (token: string, slopeAvailable: boolean) => `<!doctype html>
     background: rgba(16,21,28,.94); border: 1px solid #24303f; border-radius: 10px;
     padding: 10px 12px; font-size: 12px; min-width: 168px; }
   #stopwatch b { display: block; margin-bottom: 6px; font-size: 13px; }
+  /* A fázisbontás halkabb, mint a főszám: kiegészítés, nem főszereplő. */
+  #stopwatch #swPhases { margin-top: 6px; border-top: 1px solid #24303f; padding-top: 5px; }
+  #stopwatch #swPhases td { font-size: 11px; padding-top: 1px; }
+  #stopwatch #swPhases .sub td:first-child { padding-left: 10px; color: #64748b; }
+  #stopwatch #swPhases .dom td { color: #fbbf24; }
   #stopwatch td:first-child { color: #8fa3bd; }
   #stopwatch td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  /* Futás közben az „Aktuális” sor kiemelve, hogy látszódjon: ez most ketyeg. */
+  #stopwatch.running #swNow { color: #7dd3fc; }
+  #stopwatch.running b::after { content: ' ●'; color: #7dd3fc; animation: swPulse 1s infinite; }
+  @keyframes swPulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
   .faster { color: #4ade80; }
   .slower { color: #f87171; }
 
@@ -840,6 +1016,11 @@ const PAGE = (token: string, slopeAvailable: boolean) => `<!doctype html>
         <tr><td>Előző</td><td id="swPrev">—</td></tr>
         <tr><td>Eltérés</td><td id="swDelta">—</td></tr>
       </table>
+      <!--
+        RÉSZLETEZŐ — a teljes idő fázisokra bontva. Enélkül csak azt látod,
+        hogy „lassú”; ebből azt is, hogy MELYIK fél az.
+      -->
+      <table id="swPhases"></table>
       <div class="seg" style="margin-top:6px">
         <button type="button" id="swReset">Nullázás</button>
       </div>
@@ -1410,11 +1591,46 @@ function levelOpacity(scale) {
 */
 const CELL_DETAIL_MIN_ZOOM = 15;
 
+/*
+  NÉZET SZERINTI CELLARAJZ. Nagy területnél a teljes cellahalmaz nem fér egy
+  válaszba (mérve: 244 byte/cella), ezért a szerver a LÁTHATÓ bbox celláit adja
+  — ugyanaz az eljárás, mint az appban (TerritoryScreen → api.tiles(view)).
+  A rács úgyis csak CELL_DETAIL_MIN_ZOOM fölött látszik, tehát amit nem
+  kérünk le, azt amúgy sem látnád.
+*/
+let cellsOnDemand = false;
+let visibleCellsToken = 0;
+
+async function refreshVisibleCells() {
+  if (!cellsOnDemand || !map.getSource('cells')) return;
+  if (map.getZoom() < CELL_DETAIL_MIN_ZOOM) return;
+
+  const bounds = map.getBounds();
+  const bbox = [
+    bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth(),
+  ].map((value) => value.toFixed(6)).join(',');
+
+  // Az utolsó kérés nyer: pásztázás közben a régi válasz ne írja felül az újat.
+  const token = ++visibleCellsToken;
+  try {
+    const response = await fetch('/cells?bbox=' + bbox);
+    const data = await response.json();
+    if (token !== visibleCellsToken) return;
+    const source = map.getSource('cells');
+    if (source && data.geojson) source.setData(data.geojson);
+  } catch {
+    // A cellarács kiegészítő réteg — a hibája ne vigye el a térképet.
+  }
+}
+
+map.on('moveend', () => { void refreshVisibleCells(); });
+
 function drawCells(geometry) {
   for (const id of ['cellLabel', 'cellLine', 'cellFill', 'areaFill', 'areaLine']) {
     if (map.getLayer(id)) map.removeLayer(id);
   }
   for (const id of ['cells', 'areas']) if (map.getSource(id)) map.removeSource(id);
+  cellsOnDemand = false;
   if (!geometry) return;
 
   // A vonalak ALÁ megy, hogy az útvonal olvasható maradjon.
@@ -1438,8 +1654,17 @@ function drawCells(geometry) {
     }, before);
   }
 
-  if (!geometry.cellsGeoJson) return;
-  map.addSource('cells', { type: 'geojson', data: geometry.cellsGeoJson });
+  /*
+    A forrás akkor is létrejön, ha a cellák nem fértek a válaszba — üresen,
+    és a moveend tölti fel a látható nézetre. Enélkül a rétegek sem
+    születnének meg, és a rács nagy területnél teljesen eltűnne.
+  */
+  if (!geometry.cellsGeoJson && !geometry.cellsOnDemand) return;
+  cellsOnDemand = Boolean(geometry.cellsOnDemand);
+  map.addSource('cells', {
+    type: 'geojson',
+    data: geometry.cellsGeoJson ?? { type: 'FeatureCollection', features: [] },
+  });
   map.addLayer({
     id: 'cellLine', type: 'line', source: 'cells', minzoom: CELL_DETAIL_MIN_ZOOM,
     paint: {
@@ -1470,6 +1695,9 @@ function drawCells(geometry) {
       'text-halo-width': 0.9,
     },
   });
+
+  // Az első adag azonnal, ne csak a következő pásztázásra jelenjen meg a rács.
+  void refreshVisibleCells();
 }
 
 /* Üres állapot: a doboz mondja meg, mire vár, ne csak üresen álljon. */
@@ -1490,17 +1718,68 @@ function row(label, value, warn) {
   a birtokviszony-lekérdezés és a térképi rajzolás is. Épp ezért ez az, amit a
   felhasználó megvár.
 */
-const stopwatch = { current: null, previous: null };
+const stopwatch = { current: null, previous: null, startedAt: null, ticker: 0, phases: null };
+
+/*
+  A FÁZISOK — mit mér melyik szám.
+
+  A „Tervezés” és a „Számítás” a SZERVER két, egymás UTÁN futó fele, nem
+  ugyanannak a munkának két nézete: előbb a GraphHopper-hívások és a jelöltek
+  pontozása, utána a bezárt cellahalmaz felépítése. A kettő összege plusz az
+  átvitel és a rajzolás adja a stoppert — ezért volt korábban „megmagyarázatlan”
+  másodpercek eltérés a „Tervezés” és a stopper között: a geometria hiányzott
+  a képből.
+*/
+function renderPhases() {
+  const table = document.getElementById('swPhases');
+  const p = stopwatch.phases;
+  if (!p) { table.innerHTML = ''; return; }
+
+  const ms = (value) => (value === null || value === undefined ? '—' : Math.round(value) + ' ms');
+  // A legdrágább SZERVEROLDALI fázis kiemelve — az a szűk keresztmetszet.
+  const top = Math.max(p.route ?? 0, p.geometry ?? 0, p.transfer ?? 0, p.draw ?? 0);
+  const line = (label, value, cls) =>
+    '<tr class="' + (cls || '') + (value === top && value > 0 ? ' dom' : '') + '">' +
+    '<td>' + label + '</td><td>' + ms(value) + '</td></tr>';
+
+  let html = line('Tervezés (GH)', p.route);
+  html += line('Geometria', p.geometry);
+  if (p.detail) {
+    html += '<tr class="sub"><td>hurokdetektálás</td><td>' + ms(p.detail.shape) + '</td></tr>';
+    html += '<tr class="sub"><td>körüljárás</td><td>' + ms(p.detail.winding) + '</td></tr>';
+    html += '<tr class="sub"><td>kibontás</td><td>' + ms(p.detail.expand) + '</td></tr>';
+    html += '<tr class="sub"><td>GeoJSON</td><td>' + ms(p.detail.geojson) + '</td></tr>';
+  }
+  if (p.ownership !== null && p.ownership !== undefined) html += line('Birtokviszony', p.ownership);
+  html += line('Átvitel + JSON', p.transfer);
+  html += line('Rajzolás', p.draw);
+  table.innerHTML = html;
+}
 
 function formatMs(value) {
   return value === null ? '—' : (value / 1000).toFixed(2) + ' s';
 }
 
+/*
+  A KIJELZETT idő futás közben az eltelt időből jön, végén a lezárt mérésből.
+  A ketyegés csak megjelenítés: a VÉGSŐ szám továbbra is egyetlen
+  performance.now() különbség, nem a tickek összege — a képfrissítés
+  ritkítása (vagy a háttérfülön való visszafogása) így nem rontja a mérést.
+*/
+function stopwatchDisplay() {
+  if (stopwatch.startedAt !== null) return performance.now() - stopwatch.startedAt;
+  return stopwatch.current;
+}
+
 function renderStopwatch() {
-  document.getElementById('swNow').textContent = formatMs(stopwatch.current);
+  const running = stopwatch.startedAt !== null;
+  document.getElementById('stopwatch').classList.toggle('running', running);
+  renderPhases();
+  document.getElementById('swNow').textContent = formatMs(stopwatchDisplay());
   document.getElementById('swPrev').textContent = formatMs(stopwatch.previous);
   const delta = document.getElementById('swDelta');
-  if (stopwatch.current === null || stopwatch.previous === null) {
+  /* Futás közben nincs értelmes eltérés: még nincs lezárt „aktuális”. */
+  if (running || stopwatch.current === null || stopwatch.previous === null) {
     delta.textContent = '—';
     delta.className = '';
     return;
@@ -1510,16 +1789,44 @@ function renderStopwatch() {
   delta.className = diff < 0 ? 'faster' : diff > 0 ? 'slower' : '';
 }
 
+/*
+  50 ms-onként — a kijelző két tizedesig megy, ennél sűrűbb frissítés már nem
+  látszana, csak a tervezés alatt venne el gépidőt a térképtől.
+*/
+function startStopwatch() {
+  stopwatch.previous = stopwatch.current;
+  stopwatch.current = null;
+  stopwatch.phases = null;
+  stopwatch.startedAt = performance.now();
+  clearInterval(stopwatch.ticker);
+  stopwatch.ticker = setInterval(renderStopwatch, 50);
+  renderStopwatch();
+}
+
+function stopStopwatch() {
+  clearInterval(stopwatch.ticker);
+  stopwatch.ticker = 0;
+  if (stopwatch.startedAt !== null) {
+    stopwatch.current = Math.round(performance.now() - stopwatch.startedAt);
+    stopwatch.startedAt = null;
+  }
+  renderStopwatch();
+}
+
 document.getElementById('swReset').addEventListener('click', () => {
+  clearInterval(stopwatch.ticker);
+  stopwatch.ticker = 0;
   stopwatch.current = null;
   stopwatch.previous = null;
+  stopwatch.startedAt = null;
+  stopwatch.phases = null;
   renderStopwatch();
 });
 
 document.getElementById('go').addEventListener('click', async () => {
   if (!state.to) { document.getElementById('status').textContent = 'Előbb jelölj ki célt.'; return; }
   const button = document.getElementById('go');
-  const startedAt = performance.now();
+  startStopwatch();
   button.disabled = true;
   document.getElementById('status').textContent = 'Tervezés…';
 
@@ -1538,6 +1845,24 @@ document.getElementById('go').addEventListener('click', async () => {
     });
     const data = await response.json();
 
+    /*
+      ÁTVITEL = a teljes kör MÍNUSZ amit a szerver magára mért. Nem külön
+      mérjük a hálózatot és a JSON-t, mert a kettő itt összefolyik (a fetch
+      már olvassa a törzset, amíg a szerver még ír). Localhoston ez a szám
+      lényegében a JSON szerializálás + parse ára.
+    */
+    const serverMs = (data.elapsedMs ?? 0) + (data.geometry?.elapsedMs ?? 0) +
+      (data.ownership?.elapsedMs ?? 0);
+    const receivedAt = performance.now() - stopwatch.startedAt;
+    stopwatch.phases = {
+      route: data.elapsedMs ?? null,
+      geometry: data.geometry?.elapsedMs ?? null,
+      detail: data.geometry?.phases ?? null,
+      ownership: data.ownership?.elapsedMs ?? null,
+      transfer: Math.max(0, receivedAt - serverMs),
+      draw: null,
+    };
+
     if (!data.ok) {
       document.getElementById('status').textContent = 'Nincs útvonal: ' + data.reason;
       clearResult('Nincs útvonal — ' + data.reason);
@@ -1550,9 +1875,16 @@ document.getElementById('go').addEventListener('click', async () => {
     // Oda-vissza módban a két leg egymás mellé tolva látszik; „Csak oda"
     // módban nincs mihez képest tolni.
     const offset = data.mode === 'loop' ? LEG_OFFSET_PX : 0;
+    const drawAt = performance.now();
     drawLine('outbound', data.outbound, OUTBOUND_COLOUR, { offset });
     drawLine('inbound', data.inbound, INBOUND_COLOUR, { offset });
     drawCells(data.geometry ?? null);
+    /*
+      ⚠️ EZ A RÉTEGEK FELÉPÍTÉSE, NEM A KIRAJZOLT KÉP. A Mapbox a csempézést
+      és a festést a következő képkockákon, aszinkron végzi — azt innen nem
+      látjuk. A stopper teljes ideje viszont tartalmazza.
+    */
+    if (stopwatch.phases) stopwatch.phases.draw = performance.now() - drawAt;
 
     const all = data.outbound.concat(data.inbound);
     const bounds = all.reduce((acc, point) => acc.extend(point), new mapboxgl.LngLatBounds(all[0], all[0]));
@@ -1587,9 +1919,20 @@ document.getElementById('go').addEventListener('click', async () => {
           row('Cellák', data.geometry.cells.toLocaleString('hu-HU') +
             (data.geometry.compact ? ' (tömör belső)' : '')) +
           row('Bezárások', data.geometry.loops) +
-          (data.geometry.cellsGeoJson
-            ? row('Szintek (1–5)', [1,2,3,4,5].map((l) => data.geometry.levels[l] ?? 0).join(' · '))
-            : row('Cellánkénti rajz', 'kihagyva — túl sok cella', true)) +
+          /*
+            ELVETETT BEZÁRÁSOK — a motor némán dobja el őket. A too_large a
+            fontos: ott a kör tényleg bezáródott, csak a plafon fölé esett.
+          */
+          (Object.keys(data.geometry.rejected ?? {}).length
+            ? row('Elvetett bezárás',
+                Object.entries(data.geometry.rejected)
+                  .map(([reason, count]) => count + '× ' + reason).join(' · '),
+                Boolean(data.geometry.rejected.too_large))
+            : '') +
+          row('Szintek (1–5)', [1,2,3,4,5].map((l) => data.geometry.levels[l] ?? 0).join(' · ')) +
+          (data.geometry.cellsOnDemand
+            ? row('Cellánkénti rajz', 'a látható nézetre — zoomolj rá')
+            : '') +
           (data.geometry.truncated ? row('Kirajzolás', 'csonkolva a plafonnál', true) : '') +
           row('GP területből', data.geometry.claimGp) +
           row('GP távból', data.geometry.distanceGp) +
@@ -1618,9 +1961,7 @@ document.getElementById('go').addEventListener('click', async () => {
     document.getElementById('status').textContent = 'Hiba: ' + error.message;
   } finally {
     button.disabled = false;
-    stopwatch.previous = stopwatch.current;
-    stopwatch.current = Math.round(performance.now() - startedAt);
-    renderStopwatch();
+    stopStopwatch();
   }
 });
 
@@ -1688,6 +2029,27 @@ createServer((request, response) => {
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify(result));
     })();
+    return;
+  }
+
+  /*
+    A LÁTHATÓ NÉZET cellái — ugyanaz az eljárás, mint az éles appban
+    (`TerritoryScreen` → `api.tiles(view)`). A teljes halmaz egyben túl nagy
+    lenne (mérve: 244 byte/cella), és kizoomolva úgyis rejtve van: a cellarács
+    csak `CELL_DETAIL_MIN_ZOOM` fölött látszik.
+  */
+  if (request.method === 'GET' && request.url?.startsWith('/cells?')) {
+    const params = new URL(request.url, 'http://localhost').searchParams;
+    const parts = (params.get('bbox') ?? '').split(',').map(Number);
+    if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) {
+      response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ ok: false, reason: 'hibás bbox' }));
+      return;
+    }
+    const [w, s, e, n] = parts as [number, number, number, number];
+    const result = cellsInBbox({ w, s, e, n });
+    response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify(result));
     return;
   }
 
